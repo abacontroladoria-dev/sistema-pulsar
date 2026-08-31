@@ -19,5 +19,5 @@
 
 INSERT INTO public.permissoes (codigo, nome, rota, grupo, descricao) VALUES
   ('tv_avisos', 'Avisos da TV', '/tv-avisos', 'Administração',
-   'Imagens do carrossel de avisos exibido na TV do saguão enquanto ninguém está sendo chamado')
+   'Imagens do carrossel de avisos exibido na TV da recepção enquanto ninguém está sendo chamado')
 ON CONFLICT (codigo) DO NOTHING;

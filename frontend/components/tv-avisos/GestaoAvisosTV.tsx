@@ -11,6 +11,7 @@ import {
   Loader2,
   Monitor,
   Trash2,
+  TriangleAlert,
 } from "lucide-react"
 import { CarrosselAvisos } from "@/components/tv/CarrosselAvisos"
 import {
@@ -23,7 +24,7 @@ import {
   type AvisoTVRegistro,
 } from "@/services/tvAvisos.service"
 
-// Gestão do carrossel da TV do saguão.
+// Gestão do carrossel da TV da recepção.
 //
 // Tudo aqui é IMEDIATO — sem "Salvar tudo". O upload já subiu o objeto para o
 // Storage no instante em que foi escolhido, e um estado pendente criaria órfão a
@@ -38,13 +39,21 @@ import {
 export function GestaoAvisosTV() {
   const [avisos, setAvisos] = useState<AvisoTVRegistro[]>([])
   const [carregando, setCarregando] = useState(true)
+  // Falha de leitura fica NA TELA, não só num toast que some em 4s: o caso mais
+  // provável aqui é a migration não aplicada, e quem abrir a página depois do
+  // toast sumir veria uma lista vazia — indistinguível de "nenhum aviso ainda".
+  const [falha, setFalha] = useState<string | null>(null)
   const [enviando, setEnviando] = useState(false)
   const [ocupado, setOcupado] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const recarregar = useCallback(async () => {
     const { avisos: lista, error } = await listarAvisos()
-    if (error) toast.error("Não foi possível carregar os avisos.")
+    // A mensagem do service já vem traduzida (tabela ausente, permissão
+    // faltando). Um "não foi possível carregar" genérico aqui mandaria quem lê
+    // procurar o problema no lugar errado.
+    setFalha(error)
+    if (error) toast.error(error)
     setAvisos(lista)
     setCarregando(false)
   }, [])
@@ -69,7 +78,7 @@ export function GestaoAvisosTV() {
     setEnviando(false)
 
     if (error) {
-      toast.error("Não foi possível enviar a imagem.")
+      toast.error(error)
       return
     }
 
@@ -80,7 +89,7 @@ export function GestaoAvisosTV() {
   async function alternar(aviso: AvisoTVRegistro) {
     setOcupado(true)
     const { error } = await definirAtivo(aviso.id, !aviso.ativo)
-    if (error) toast.error("Não foi possível alterar o aviso.")
+    if (error) toast.error(error)
     await recarregar()
     setOcupado(false)
   }
@@ -98,7 +107,7 @@ export function GestaoAvisosTV() {
     setOcupado(true)
 
     const { error } = await salvarOrdem(nova.map((a) => a.id))
-    if (error) toast.error("Não foi possível salvar a ordem.")
+    if (error) toast.error(error)
     await recarregar()
     setOcupado(false)
   }
@@ -108,7 +117,7 @@ export function GestaoAvisosTV() {
 
     setOcupado(true)
     const { error } = await removerAviso(aviso.id, aviso.caminho)
-    if (error) toast.error("Não foi possível remover o aviso.")
+    if (error) toast.error(error)
     else toast.success("Aviso removido.")
     await recarregar()
     setOcupado(false)
@@ -169,14 +178,76 @@ export function GestaoAvisosTV() {
           />
         </div>
 
-        {avisos.length === 0 ? (
+        {/* Especificação da arte. Fica FIXA na tela, não num tooltip ou num
+            aviso pós-erro: quem prepara o cartaz precisa do número ANTES de
+            abrir o editor, e descobrir a proporção certa depois de exportar
+            significa refazer a arte. */}
+        <div className="px-5 py-4 border-b border-slate-200 bg-slate-50/60">
+          <p className="text-xs font-semibold text-slate-700 mb-2.5">
+            Como preparar a imagem
+          </p>
+
+          <dl className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-3">
+            <div>
+              <dt className="text-[11px] uppercase tracking-wide text-slate-400">
+                Proporção
+              </dt>
+              <dd className="text-xs font-medium text-slate-800 mt-0.5 tabular-nums">
+                3:2 (horizontal)
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[11px] uppercase tracking-wide text-slate-400">
+                Dimensões
+              </dt>
+              <dd className="text-xs font-medium text-slate-800 mt-0.5 tabular-nums">
+                1800 × 1200 px
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[11px] uppercase tracking-wide text-slate-400">
+                Formato
+              </dt>
+              <dd className="text-xs font-medium text-slate-800 mt-0.5">
+                JPG, PNG ou WebP
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[11px] uppercase tracking-wide text-slate-400">
+                Tamanho máximo
+              </dt>
+              <dd className="text-xs font-medium text-slate-800 mt-0.5 tabular-nums">
+                10 MB
+              </dd>
+            </div>
+          </dl>
+
+          <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
+            A imagem aparece <strong className="font-medium text-slate-600">inteira</strong>, nunca cortada — se
+            a proporção for diferente de 3:2, sobra fundo nas laterais ou acima e
+            abaixo. Evite texto pequeno: a TV é lida a cerca de 4 metros de
+            distância.
+          </p>
+        </div>
+
+        {falha ? (
+          <div className="px-5 py-16 text-center">
+            <TriangleAlert className="w-8 h-8 mx-auto text-amber-500" />
+            <p className="mt-3 text-sm font-medium text-slate-700">
+              Não foi possível carregar os avisos
+            </p>
+            <p className="mt-1 text-xs text-slate-500 max-w-md mx-auto">
+              {falha}
+            </p>
+          </div>
+        ) : avisos.length === 0 ? (
           <div className="px-5 py-16 text-center">
             <Monitor className="w-8 h-8 mx-auto text-slate-300" />
             <p className="mt-3 text-sm font-medium text-slate-700">
               Nenhum aviso publicado
             </p>
             <p className="mt-1 text-xs text-slate-500 max-w-sm mx-auto">
-              Enquanto não houver imagem ativa, a TV do saguão continua exibindo
+              Enquanto não houver imagem ativa, a TV da recepção continua exibindo
               a tela padrão &ldquo;Atendimento em andamento&rdquo;.
             </p>
           </div>
@@ -212,6 +283,8 @@ export function GestaoAvisosTV() {
                   </button>
                 </div>
 
+                {/* 96×64 é 3:2, a mesma proporção do painel da TV: a miniatura
+                    mostra de relance se a arte vai preencher ou sobrar fundo. */}
                 <img
                   src={aviso.url}
                   alt=""
@@ -272,11 +345,15 @@ export function GestaoAvisosTV() {
       <div className="rounded-xl border border-slate-200 bg-white p-5">
         <h2 className="text-sm font-semibold text-slate-900">Prévia da TV</h2>
         <p className="text-xs text-slate-500 mt-0.5 mb-4">
-          Como aparece no saguão enquanto ninguém está sendo chamado.
+          Como aparece na recepção enquanto ninguém está sendo chamado.
         </p>
 
-        {/* 16/9 e fundo escuro para dar a mesma leitura de uma TV na parede. */}
-        <div className="aspect-video w-full rounded-lg bg-slate-100 border border-slate-200 overflow-hidden">
+        {/* 1337/860 é a área ÚTIL do painel esquerdo numa TV 1080p — não 16:9,
+            que é a proporção da TV inteira. O painel perde o header (90px), o
+            footer (70px), a coluna de "Últimas chamadas" e os espaçamentos, e
+            sobra quase 3:2. Usar aspect-video aqui faria a prévia mentir sobre
+            onde a arte encosta. */}
+        <div className="aspect-[1337/860] w-full rounded-lg bg-slate-100 border border-slate-200 overflow-hidden">
           {ativos.length > 0 ? (
             <CarrosselAvisos avisos={ativos} />
           ) : (

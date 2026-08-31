@@ -1,4 +1,4 @@
--- Carrossel de avisos da TV do saguão (/tv).
+-- Carrossel de avisos da TV da recepção (/tv).
 --
 -- O painel esquerdo da TV tem dois estados: CHAMADA (nome do responsável, 96px)
 -- e ESPERA. O de espera é o que fica na tela quase o dia inteiro, e até aqui era
@@ -82,7 +82,7 @@ create trigger trg_tv_avisos_atualizado
   for each row execute function public.set_tv_avisos_atualizado();
 
 comment on table public.tv_avisos is
-  'Fila de imagens do carrossel de avisos da TV do saguão (/tv), mantida pelo marketing em /tv-avisos. Aparece apenas no estado de ESPERA do painel esquerdo — a chamada de paciente tem precedência e ocupa a tela sozinha. Sem nenhum aviso ativo, a TV volta à ilustração fixa "Atendimento em andamento".';
+  'Fila de imagens do carrossel de avisos da TV da recepção (/tv), mantida pelo marketing em /tv-avisos. Aparece apenas no estado de ESPERA do painel esquerdo — a chamada de paciente tem precedência e ocupa a tela sozinha. Sem nenhum aviso ativo, a TV volta à ilustração fixa "Atendimento em andamento".';
 comment on column public.tv_avisos.caminho is
   'Path do objeto no bucket `tv-avisos`, nunca a URL. Cada troca grava um objeto NOVO: sobrescrever o path faria a TV, que nunca recarrega, continuar servindo o cartaz antigo.';
 comment on column public.tv_avisos.titulo is
@@ -184,7 +184,7 @@ create policy "tv_avisos_objects_select"
   using (bucket_id = 'tv-avisos');
 
 -- Escrita continua exigindo a permissão. Público para LER não é público para
--- ESCREVER — sem isto, qualquer anon substituiria o que passa na TV do saguão.
+-- ESCREVER — sem isto, qualquer anon substituiria o que passa na TV da recepção.
 --
 -- O `or remuneracao_has_role(...)` repete a `cond` da RLS da tabela pela mesma
 -- razão dali: usuario_tem_permissao() ignora os roleDefaults do frontend, então

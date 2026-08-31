@@ -110,7 +110,7 @@ export const CODIGO_PARA_ROTAS: Record<string, string[]> = {
   auditoria_assim: ['/auditoria-assim'],
   usuarios: ['/admin'],
   permissoes: ['/admin/permissoes'],
-  // Carrossel de avisos da TV do saguão. Código PRÓPRIO porque quem opera é o
+  // Carrossel de avisos da TV da recepção. Código PRÓPRIO porque quem opera é o
   // MARKETING — um setor sem nenhuma outra permissão aqui, e que não pode ganhar
   // acesso a dado de paciente só para trocar um cartaz de parede. A RLS de
   // public.tv_avisos e as policies do bucket exigem este mesmo código

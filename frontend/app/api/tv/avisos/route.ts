@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabaseService } from '@/lib/supabase/service'
 
-// Avisos do carrossel da TV do saguão. Mesma razão de /api/tv/chamadas existir:
+// Avisos do carrossel da TV da recepção. Mesma razão de /api/tv/chamadas existir:
 // /tv é rota pública (proxy.ts) e roda sem conta, mas a RLS de `tv_avisos` só
 // responde a `authenticated` — o anon leria `[]`. A leitura acontece aqui, no
 // servidor, com service_role.

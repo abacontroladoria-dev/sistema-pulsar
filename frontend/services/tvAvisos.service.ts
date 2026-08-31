@@ -1,6 +1,6 @@
 import { getSupabaseClient } from "@/lib/supabase/client"
 
-// Avisos do carrossel da TV do saguão — ver
+// Avisos do carrossel da TV da recepção — ver
 // supabase/migrations/20260831150000_tv_avisos.sql.
 //
 // Bucket PÚBLICO em leitura, ao contrário de `pacientes-fotos`: o conteúdo é
@@ -27,6 +27,24 @@ export type AvisoTVRegistro = {
   ativo: boolean
   /** derivada do caminho na leitura; o banco guarda o path, nunca a URL */
   url: string
+}
+
+/**
+ * Traduz os dois erros que esta tela previsivelmente encontra.
+ *
+ * PGRST205 é o mais importante: a migration não foi aplicada, e a mensagem crua
+ * ("Could not find the table in the schema cache") manda quem lê procurar bug no
+ * frontend. 42501 é a RLS recusando — que nesta tela significa permissão
+ * `tv_avisos` faltando, não erro de código.
+ */
+function descreverErro(error: { code?: string; message: string }): string {
+  if (error.code === "PGRST205") {
+    return "A tabela de avisos ainda não existe no banco. Aplique as migrations 20260831150000 e 20260831150100."
+  }
+  if (error.code === "42501") {
+    return "Sem permissão para gerenciar os avisos da TV (permissão `tv_avisos`)."
+  }
+  return error.message
 }
 
 /** Mesma validação que o bucket faz, mas antes de gastar o upload. */
@@ -65,8 +83,15 @@ export async function listarAvisos(): Promise<{
     .order("criado_em", { ascending: true })
 
   if (error) {
-    console.error("Erro ao listar avisos da TV:", error)
-    return { avisos: [], error: error.message }
+    // Campo a campo, e não o objeto: `PostgrestError` não é um Error de
+    // verdade e o console do Next o imprime como `{}` — o log dizia
+    // "Erro ao listar avisos da TV: {}" e escondia justamente a causa
+    // (PGRST205, tabela ausente porque a migration não foi aplicada).
+    console.error(
+      `Erro ao listar avisos da TV [${error.code}]: ${error.message}`,
+      error.hint ?? ""
+    )
+    return { avisos: [], error: descreverErro(error) }
   }
 
   const avisos = (data ?? []).map((a) => ({
@@ -105,7 +130,7 @@ export async function criarAviso(
     .upload(caminho, file, { upsert: false, contentType: file.type })
 
   if (erroUpload) {
-    console.error("Erro ao enviar aviso da TV:", erroUpload)
+    console.error(`Erro ao enviar aviso da TV: ${erroUpload.message}`)
     return { error: erroUpload.message }
   }
 
@@ -127,13 +152,15 @@ export async function criarAviso(
     .insert({ caminho, titulo: titulo.trim() || null, ordem: proximaOrdem })
 
   if (erroInsert) {
-    console.error("Erro ao registrar aviso da TV:", erroInsert)
+    console.error(
+      `Erro ao registrar aviso da TV [${erroInsert.code}]: ${erroInsert.message}`
+    )
 
     // O objeto já subiu; sem a linha ele é órfão invisível. Limpar aqui evita
     // acumular lixo no bucket a cada falha de RLS.
     await supabase.storage.from(BUCKET_AVISOS).remove([caminho])
 
-    return { error: erroInsert.message }
+    return { error: descreverErro(erroInsert) }
   }
 
   return { error: null }
@@ -147,8 +174,10 @@ export async function definirAtivo(
   const { error } = await supabase.from("tv_avisos").update({ ativo }).eq("id", id)
 
   if (error) {
-    console.error("Erro ao ligar/desligar aviso da TV:", error)
-    return { error: error.message }
+    console.error(
+      `Erro ao ligar/desligar aviso da TV [${error.code}]: ${error.message}`
+    )
+    return { error: descreverErro(error) }
   }
   return { error: null }
 }
@@ -173,8 +202,10 @@ export async function salvarOrdem(
 
   const falhou = resultados.find((r) => r.error)
   if (falhou?.error) {
-    console.error("Erro ao salvar a ordem dos avisos da TV:", falhou.error)
-    return { error: falhou.error.message }
+    console.error(
+      `Erro ao salvar a ordem dos avisos da TV [${falhou.error.code}]: ${falhou.error.message}`
+    )
+    return { error: descreverErro(falhou.error) }
   }
 
   return { error: null }
@@ -192,8 +223,10 @@ export async function removerAviso(
   const { error } = await supabase.from("tv_avisos").delete().eq("id", id)
 
   if (error) {
-    console.error("Erro ao remover aviso da TV:", error)
-    return { error: error.message }
+    console.error(
+      `Erro ao remover aviso da TV [${error.code}]: ${error.message}`
+    )
+    return { error: descreverErro(error) }
   }
 
   // Falhar aqui deixa um órfão no bucket, mas não pode derrubar a remoção, que

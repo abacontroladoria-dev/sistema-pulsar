@@ -9,7 +9,7 @@ export default function AvisosTVPage() {
   useEffect(() => {
     setHeader(
       "Avisos da TV",
-      "Imagens exibidas na TV do saguão enquanto ninguém está sendo chamado"
+      "Imagens exibidas na TV da recepção enquanto ninguém está sendo chamado"
     )
     return () => setHeader("", "")
   }, [setHeader])

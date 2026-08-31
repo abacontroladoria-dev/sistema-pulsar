@@ -22,7 +22,7 @@ const FADE_MS = 700
 /**
  * Carrossel de avisos institucionais.
  *
- * Vive em dois lugares — no estado de ESPERA da TV do saguão (app/tv/page.tsx) e
+ * Vive em dois lugares — no estado de ESPERA da TV da recepção (app/tv/page.tsx) e
  * na prévia da tela de gestão (/tv-avisos). É de propósito o MESMO componente:
  * uma prévia que aproxima o comportamento em vez de reproduzi-lo é uma prévia
  * que mente, e quem publica o cartaz não teria como saber.
