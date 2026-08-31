@@ -11,6 +11,7 @@ export const roleDefaults: Record<string, string[]> = {
     'acompanhamento_laudos',
     'escala_terapeutica',
     'auditoria_assim', 'usuarios', 'permissoes', 'cco',
+    'tv_avisos',
     'preauditoria', 'outros_convenios',
     'cronograma_solicitacoes', 'cronograma_saida_profissional', 'cronograma_ocupacao_paciente',
     'cronograma_disponibilidade_interna',
@@ -109,6 +110,13 @@ export const CODIGO_PARA_ROTAS: Record<string, string[]> = {
   auditoria_assim: ['/auditoria-assim'],
   usuarios: ['/admin'],
   permissoes: ['/admin/permissoes'],
+  // Carrossel de avisos da TV do saguão. Código PRÓPRIO porque quem opera é o
+  // MARKETING — um setor sem nenhuma outra permissão aqui, e que não pode ganhar
+  // acesso a dado de paciente só para trocar um cartaz de parede. A RLS de
+  // public.tv_avisos e as policies do bucket exigem este mesmo código
+  // (20260831150000). A rota /tv da TV em si continua PÚBLICA em proxy.ts: isto
+  // é a tela de gestão, não a de exibição.
+  tv_avisos: ['/tv-avisos'],
   cco: ['/cco'],
   // `autorizacoes` (a rota /autorizacoes) saiu em 2026-08-26: a tela foi
   // descontinuada e quem chama o responsável agora é a /solicitar. O código

@@ -17,6 +17,7 @@ import {
   Volume2,
   WifiOff,
 } from 'lucide-react'
+import { CarrosselAvisos, type AvisoTV } from '@/components/tv/CarrosselAvisos'
 
 // Sem `sala`: a clínica tem uma recepção só, então identificar qual seria ruído
 // (e a linha "Dirija-se à recepção Recepção 1" duplicava a palavra). Quando
@@ -51,6 +52,11 @@ const MAX_IDADE_ANUNCIO_S = 300
 // disso. Não desce mais que isto porque cada ciclo custa duas consultas ao banco.
 const POLL_CHAMADAS_MS = 1500
 const POLL_CLIMA_MS = 600000
+
+// Cartaz de marketing não muda de minuto em minuto: quem publica um aviso aceita
+// que ele entre no ar em alguns minutos. 5 min mantém a TV atualizada sem somar
+// requisição ao poll de chamadas, que é o que não pode atrasar.
+const POLL_AVISOS_MS = 300000
 
 // Chrome às vezes engole o `onend` da fala numa aba aberta há horas; sem isso a
 // fila travaria em `falando = true` e a TV ficaria muda pelo resto do dia.
@@ -449,6 +455,10 @@ export default function TVPage() {
   const [chamadas, setChamadas] = useState<Chamada[]>([])
   const [temperatura, setTemperatura] = useState<number | null>(null)
   const [codigoClima, setCodigoClima] = useState<number | null>(null)
+  // Avisos do marketing. Lista vazia (nenhum ativo, ou a rota falhou) é um
+  // estado legítimo: a TV volta à ilustração "Atendimento em andamento", que é
+  // o que ela sempre mostrou. Nunca fica buraco no layout.
+  const [avisos, setAvisos] = useState<AvisoTV[]>([])
   // Verdadeiro do início do sino até o fim da fala — a janela inteira em que
   // o pai precisa olhar pra tela, não só o segundo do "ding".
   const [chamando, setChamando] = useState(false)
@@ -852,6 +862,47 @@ export default function TVPage() {
     buscarClima()
 
     const interval = setInterval(buscarClima, POLL_CLIMA_MS)
+
+    return () => {
+      vivo = false
+      clearInterval(interval)
+    }
+  }, [])
+
+  // 📣 avisos do marketing — carrossel do estado de espera
+  useEffect(() => {
+    let vivo = true
+
+    const buscarAvisos = async () => {
+      try {
+        const res = await fetch('/api/tv/avisos/', { cache: 'no-store' })
+        const data = await res.json()
+
+        if (!vivo) return
+
+        const lista = Array.isArray(data?.avisos) ? data.avisos : []
+
+        setAvisos((atuais) => {
+          // Mesma disciplina do `mesmaLista` das chamadas: a rota devolve o
+          // mesmo conteúdo quase sempre, e trocar a identidade do array a cada
+          // 5 min remontaria os <img> — ou seja, rebaixaria todas as imagens do
+          // cache e faria a TV piscar sem nada ter mudado.
+          const igual =
+            atuais.length === lista.length &&
+            atuais.every((a, i) => a.id === lista[i]?.id && a.url === lista[i]?.url)
+
+          return igual ? atuais : lista
+        })
+      } catch {
+        // Rede caiu: mantém o que já está na tela. Zerar aqui trocaria o cartaz
+        // por um fallback só porque um poll falhou — a TV segue dias sem
+        // recarregar, e um soluço de rede não é motivo pra mudar o que se vê.
+      }
+    }
+
+    buscarAvisos()
+
+    const interval = setInterval(buscarAvisos, POLL_AVISOS_MS)
 
     return () => {
       vivo = false
@@ -1270,6 +1321,28 @@ export default function TVPage() {
               // fica atrás de aria-hidden — a informação toda está no texto,
               // que é o que o aria-live do <main> anuncia.
               //
+              // Havendo aviso publicado pelo marketing, ele ocupa a espera
+              // inteira; a ilustração abaixo é o FALLBACK de quando não há
+              // nenhum ativo (ou a rota falhou). A TV nunca fica com buraco.
+              //
+              // O carrossel vive só aqui, no ramo de espera: quando alguém é
+              // chamado, o React desmonta isto e o nome fica sozinho na tela.
+              // Nada de marketing divide espaço com a chamada, que é o motivo
+              // de a TV existir.
+              avisos.length > 0 ? (
+                // `absolute inset-0` e não margem negativa: o card é um flex
+                // container com px-10 e justify-center, e um filho de altura
+                // percentual ali seria comprimido pelo conteúdo. Sair do fluxo
+                // é o que garante que o cartaz ocupe o card INTEIRO — arte de
+                // marketing é feita de borda a borda, e uma moldura de padding
+                // a encolheria na tela que se lê a 4 m.
+                //
+                // p-3 deixa só o fio necessário pra arte não encostar na borda
+                // arredondada do card.
+                <div className="absolute inset-0 p-3">
+                  <CarrosselAvisos avisos={avisos} />
+                </div>
+              ) : (
               // -mx-10 desfaz o px-10 do card só nesta linha: a ilustração
               // precisa da largura toda pra respirar, e a chamada continua com
               // o padding original intacto.
@@ -1478,6 +1551,7 @@ export default function TVPage() {
                   </div>
                 </div>
               </div>
+              )
             )}
           </div>
         </main>

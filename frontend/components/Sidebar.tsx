@@ -18,6 +18,7 @@ import {
   BriefcaseBusiness,
   Star,
   KeyRound,
+  Monitor,
   BarChart3,
   CalendarPlus,
   Database,
@@ -82,6 +83,7 @@ const pathIconMap: Record<string, any> = {
   "/cco": BarChart3,
   "/admin": ShieldCheck,
   "/admin/permissoes": KeyRound,
+  "/tv-avisos": Monitor,
   "/relacionamento-prestador/solicitacoes?tab=simulacao": UserPlus,
   "/relacionamento-prestador/solicitacoes?tab=novo-cron": CalendarPlus,
   "/relacionamento-prestador/solicitacoes?tab=banco": Database,
@@ -693,15 +695,26 @@ export default function Sidebar() {
           )}
 
           {/* Administração */}
-          {canAccess("/admin") && (
+          {/* A condição do grupo é a UNIÃO dos itens, não mais só /admin: o
+              marketing recebe `tv_avisos` e nada mais, e com o gate antigo o
+              grupo inteiro ficaria escondido — a tela existiria, com permissão
+              concedida, e sem nenhum caminho até ela. "Usuários" também passou a
+              ser condicional pela mesma razão: era o único item incondicional
+              aqui, e apareceria para quem não tem /admin. */}
+          {(canAccess("/admin") || canAccess("/tv-avisos")) && (
             <SidebarGroup
               title="Administração"
               icon={ShieldCheck}
-              defaultOpen={["/admin", "/admin/permissoes"].some(p => pathname === p)}
+              defaultOpen={["/admin", "/admin/permissoes", "/tv-avisos"].some(p => pathname === p)}
             >
-              <MenuItem label="Usuários" icon={Users} path="/admin" />
+              {canAccess("/admin") && (
+                <MenuItem label="Usuários" icon={Users} path="/admin" />
+              )}
               {canAccess("/admin/permissoes") && (
                 <MenuItem label="Permissões" icon={KeyRound} path="/admin/permissoes" />
+              )}
+              {canAccess("/tv-avisos") && (
+                <MenuItem label="Avisos da TV" icon={Monitor} path="/tv-avisos" />
               )}
             </SidebarGroup>
           )}
