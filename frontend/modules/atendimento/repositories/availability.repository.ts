@@ -33,6 +33,19 @@ export interface ListarVagasInput {
   dataInicio?:     string | null
   dataFim?:        string | null
   terapiaId?:      number | null
+  // Os textos que a GRADE usa para a especialidade pedida, já traduzidos do
+  // nome que o responsável falou (agente/terapia.ts). Filtra por parte do
+  // nome-lista no banco.
+  //
+  // Existe além de `terapiaId` porque o id NÃO identifica a terapia: medido em
+  // produção, `terapia_id` 2317 aparece com sete `terapia_nome` diferentes.
+  // Filtrar por 2317 mistura quem só aplica ABA com quem faz psicologia; por
+  // 2259 esconde as 12 vagas de psicologia que vivem sob 2317. A informação
+  // está no nome, então é nele que o filtro cai.
+  //
+  // Array vazio é recusado pelo banco (22023): seria bug de chamador se
+  // comportando como "sem filtro". Passe undefined para não filtrar.
+  terapiaNomes?:   readonly string[] | null
   profissionalId?: number | null
   // Um dos três literais de UNIDADES. O banco valida e LANÇA (22023) em valor
   // desconhecido, em vez de não filtrar — passe por normalizarUnidade() antes.
@@ -52,6 +65,7 @@ export class AvailabilityRepository {
         p_terapia_id:      input.terapiaId      ?? null,
         p_profissional_id: input.profissionalId ?? null,
         p_unidade:         input.unidade        ?? null,
+        p_terapia_nomes:   input.terapiaNomes ? [...input.terapiaNomes] : null,
         p_limite:          input.limite         ?? null,
       })
 
@@ -102,6 +116,31 @@ export class AvailabilityRepository {
   // unidades = ['Realengo'], e o agente afirmava "temos fono, mas só em
   // Realengo" — falso, com a confiança de quem consultou o sistema. Um
   // `group by` não precisa de teto de linhas.
+  // Os NOMES crus da grade que têm vaga na janela, com a unidade de cada um.
+  //
+  // Cru de propósito: quem traduz para o vocabulário de oferta é
+  // agente/terapia.ts, e o de-para não pode viver em dois lugares. Aqui só se
+  // sabe o que a grade diz.
+  //
+  // Não agrega por `terapia_id`, e isso é o conserto: o id não identifica a
+  // terapia (2317 aparece com sete nomes), então um `group by terapia_id`
+  // colapsava 'Aplicador ABA (PS)' com 'Aplicador ABA (PS), Psicologia' e
+  // perdia justamente a distinção que interessa.
+  async listarNomesDeTerapiaComVaga(
+    dataInicio?: string | null,
+    dataFim?: string | null,
+  ): Promise<{ terapia_nome: string | null; unidade: Unidade | null }[]> {
+    const { data, error } = await (this.supabase as any)
+      .schema('central')
+      .rpc('listar_nomes_de_terapia_com_vaga', {
+        p_data_inicio: dataInicio ?? null,
+        p_data_fim:    dataFim    ?? null,
+      })
+
+    if (error) throw error
+    return (data ?? []) as { terapia_nome: string | null; unidade: Unidade | null }[]
+  }
+
   async listarTerapiasComVaga(
     dataInicio?: string | null,
     dataFim?: string | null,

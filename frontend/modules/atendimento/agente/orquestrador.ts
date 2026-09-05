@@ -143,7 +143,10 @@ function assinatura(c: LlmChamadaFerramenta): string {
 // Isso é magro e é suficiente: para responder "por que ofereceu Realengo?", o
 // que se precisa saber é `{unidade: null}` — e isso já é a resposta inteira.
 const ARGUMENTOS_LOGAVEIS = new Set([
-  'terapiaId', 'unidade', 'dataInicio', 'dataFim', 'limite', 'profissionalId', 'tipo',
+  // `terapia` é o nome que o modelo passa desde 05/09/2026; `terapiaId` fica na
+  // lista porque o rastro histórico o tem e porque a rota HTTP ainda o usa —
+  // remover só apagaria a coluna nas consultas de diagnóstico antigas.
+  'terapia', 'terapiaId', 'unidade', 'dataInicio', 'dataFim', 'limite', 'profissionalId', 'tipo',
 ])
 
 function argumentosLogaveis(args: Record<string, unknown>): Record<string, unknown> {

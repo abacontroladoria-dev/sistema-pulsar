@@ -95,13 +95,24 @@ try {
 
   checar(esp.ok === true, 'retorna ok', esp)
   checar(Array.isArray(esp.especialidades) && esp.especialidades.length > 0, 'lista ao menos uma especialidade')
-  const terapia = esp.especialidades?.[0]
-  checar(typeof terapia?.terapiaId === 'number', 'especialidade traz terapiaId numérico', terapia)
+  // A lista é de nomes do CATÁLOGO (terapia.ts), não do vocabulário cru da
+  // grade. Duas omissões deliberadas: o id, porque enquanto aparecia o modelo
+  // tinha um número para carregar pela conversa e reescrever quando a memória
+  // escorregasse; e a contagem de vagas, porque vinha de um group by terapia_id
+  // que não corresponde às especialidades do catálogo (2317 tem sete nomes).
+  const nomes: string[] = esp.especialidades.map((e: any) => e.nome)
+  const nomeTerapia = nomes[0]
+  checar(typeof nomeTerapia === 'string' && nomeTerapia.length > 0,
+    'especialidade traz o NOME do catálogo', esp.especialidades)
+  checar(!nomes.some(n => n.startsWith('Aplicador')),
+    'nenhum nome de escala ("Aplicador ...") é oferecido ao responsável', nomes)
+  checar(!nomes.some(n => n === 'Coordenador de Caso' || n === 'Supervisão ABA'),
+    'nenhum cargo interno é oferecido como terapia', nomes)
 
   console.log('\n2. consultar_horarios_disponiveis')
   const hor: any = await ferramentas.executar('consultar_horarios_disponiveis', {
-    // string de propósito: o modelo manda número como texto com frequência
-    terapiaId: String(terapia.terapiaId),
+    // Caixa trocada de propósito: o modelo escreve como o responsável falou.
+    terapia: nomeTerapia.toLowerCase(),
     limite: 5,
   })
   checar(hor.ok === true, 'retorna ok', hor)
@@ -197,15 +208,22 @@ try {
   // feita sobre as 500 primeiras linhas, e uma terapia com vaga em Padre Miguel
   // só a partir da linha 501 aparecia como unidades: ['Realengo'] — o agente
   // então dizia "temos fono, mas só em Realengo", falso.
-  checar(Array.isArray(terapia?.unidades),
-    'especialidade traz o array de unidades', terapia)
+  const primeira = esp.especialidades?.[0]
+  checar(Array.isArray(primeira?.unidades),
+    'especialidade traz o array de unidades', primeira)
   checar(
-    (terapia?.unidades ?? []).every((u: any) => UNIDADES.includes(u)),
+    (primeira?.unidades ?? []).every((u: any) => UNIDADES.includes(u)),
     'as unidades da especialidade são as três conhecidas',
-    terapia?.unidades,
+    primeira?.unidades,
   )
-  checar(typeof terapia?.vagas === 'number' && terapia.vagas > 0,
-    'especialidade traz a contagem de vagas', terapia?.vagas)
+  checar((primeira?.unidades ?? []).length > 0,
+    'uma especialidade com vaga tem ao menos uma unidade', primeira)
+
+  // A contagem de vagas NÃO vem mais: vinha de um group by terapia_id que não
+  // corresponde às especialidades do catálogo. Número aproximado que o modelo
+  // repetiria ao responsável como exato é pior que número nenhum.
+  checar(primeira?.vagas === undefined,
+    'a contagem por id (que não identifica a terapia) não vem', primeira)
 
   console.log('\n2d. lista parcial se anuncia como parcial')
 
@@ -225,8 +243,8 @@ try {
       'com mais vagas que o limite, listaCompleta é false', parcial.listaCompleta)
     checar(typeof parcial.aviso === 'string' && parcial.aviso.includes('PARCIAL'),
       'o aviso diz ao modelo que a lista é parcial', parcial.aviso)
-    checar(parcial.aviso.includes('terapiaId'),
-      'sem terapiaId, o aviso manda refinar por especialidade — foi o caso real',
+    checar(parcial.aviso.includes('terapia'),
+      'sem especialidade, o aviso manda refinar por ela — foi o caso real',
       parcial.aviso)
   }
 
@@ -240,57 +258,65 @@ try {
       'lista completa não carrega aviso (aviso sempre presente vira ruído)', completa.aviso)
   }
 
-  // Com terapiaId, o aviso não deve mandar passar terapiaId — o modelo já
-  // passou, e instrução redundante o faz repetir a mesma chamada (o que o
-  // orquestrador detecta como laço e escala).
+  // Com a especialidade já passada, o aviso não deve mandar passá-la de novo — o
+  // modelo já passou, e instrução redundante o faz repetir a mesma chamada (o
+  // que o orquestrador detecta como laço e escala).
   const comTerapia: any = await ferramentas.executar('consultar_horarios_disponiveis', {
-    terapiaId: terapia.terapiaId,
-    limite:    1,
+    terapia: nomeTerapia,
+    limite:  1,
   })
   if (comTerapia.ok && comTerapia.listaCompleta === false) {
-    checar(!comTerapia.aviso.includes('passando `terapiaId`'),
-      'com terapiaId já passado, o aviso não manda passá-lo de novo',
+    checar(!comTerapia.aviso.includes('passando `terapia`'),
+      'com a especialidade já passada, o aviso não manda passá-la de novo',
       comTerapia.aviso)
   }
 
-  console.log('\n2e. terapiaId inexistente é recusa, não "não temos vaga"')
+  console.log('\n2e. nome de especialidade desconhecido é recusa, não "não temos vaga"')
 
-  // O defeito (04/09/2026, no rastro): perguntada por psicologia a partir do dia
-  // 14, a IA passou `terapiaId: 1`. Psicologia é 2259 — ela tinha acabado de
-  // usar o id certo um minuto antes. Não perdeu o parâmetro: INVENTOU o valor.
+  // O defeito que trocou o parâmetro (04/09/2026, no rastro): perguntada por
+  // psicologia a partir do dia 14, a IA passou `terapiaId: 1`. Psicologia é
+  // 2259 — ela tinha usado o id certo um minuto antes. Não perdeu o parâmetro:
+  // INVENTOU o valor, e três reforços de prompt não a impediram de reincidir.
   //
-  // Sem validação, um id inexistente filtra por nada, devolve zero vagas, e a
-  // ferramenta responde `sem_vaga` — indistinguível de "essa terapia não tem
-  // horário nesse período". O modelo então nega ao responsável um atendimento
-  // que a clínica oferece, e nada na conversa denuncia a causa.
-  //
-  // `unidade` já tinha duas camadas de validação (enum no schema + LANÇA no
-  // banco); `terapiaId` não tinha nenhuma. Era ponto cego, não decisão.
-  const idInventado: any = await ferramentas.executar('consultar_horarios_disponiveis', {
-    terapiaId: 1,
-    unidade:   'Realengo',
+  // O parâmetro passou a ser o NOME do laudo, que o modelo sabe. Esta guarda
+  // cobre o que resta: um nome que não existe entre as especialidades com vaga.
+  // Sem ela o filtro não acha nada, devolve zero vagas, e a ferramenta responde
+  // `sem_vaga` — indistinguível de "essa terapia não tem horário nesse
+  // período". O modelo então nega um atendimento que a clínica oferece.
+  const nomeInventado: any = await ferramentas.executar('consultar_horarios_disponiveis', {
+    terapia: 'quiropraxia',
+    unidade: 'Realengo',
   })
-  checar(idInventado.ok === false,
-    'terapiaId inexistente é recusado, não vira lista vazia', idInventado)
-  checar(idInventado.motivo === MOTIVO.ERRO_INTERNO,
+  checar(nomeInventado.ok === false,
+    'nome desconhecido é recusado, não vira lista vazia', nomeInventado)
+  checar(nomeInventado.motivo === MOTIVO.ERRO_INTERNO,
     'a recusa é erro_interno, NÃO sem_vaga (a agenda não é o problema)',
-    idInventado.motivo)
-  checar(String(idInventado.mensagem).includes('id está errado'),
-    'a mensagem impede o modelo de dizer que não há horário', idInventado.mensagem)
-  checar(/\d+ = /.test(String(idInventado.mensagem)),
-    'a recusa lista os ids válidos — sem eles o modelo chuta de novo, e chute ' +
-    'diferente não é detectado como laço pelo orquestrador',
-    idInventado.mensagem)
+    nomeInventado.motivo)
+  checar(String(nomeInventado.mensagem).includes('não foi reconhecido'),
+    'a mensagem impede o modelo de dizer que não há horário', nomeInventado.mensagem)
+  checar(String(nomeInventado.mensagem).includes(nomeTerapia),
+    'a recusa lista os nomes válidos — sem eles o modelo tenta outro palpite, e ' +
+    'palpite diferente não é detectado como laço pelo orquestrador',
+    nomeInventado.mensagem)
 
-  // O id legítimo continua passando: a validação não pode ser tão estrita que
-  // recuse o que a própria ferramenta acabou de oferecer.
-  const idValido: any = await ferramentas.executar('consultar_horarios_disponiveis', {
-    terapiaId: terapia.terapiaId,
-    limite:    3,
+  // O número que o modelo mandava antes agora é um nome inválido, e precisa cair
+  // na mesma recusa em vez de casar por acaso com alguma especialidade.
+  const idComoNome: any = await ferramentas.executar('consultar_horarios_disponiveis', {
+    terapia: '1',
   })
-  checar(idValido.ok === true || idValido.motivo === MOTIVO.SEM_VAGA,
-    'terapiaId válido não é barrado pela validação',
-    idValido)
+  checar(idComoNome.ok === false && idComoNome.motivo === MOTIVO.ERRO_INTERNO,
+    "o chute antigo ('1') é recusado, não resolvido por acaso", idComoNome)
+
+  // O nome legítimo continua passando, inclusive em caixa alta: a resolução não
+  // pode ser tão estrita que recuse o que a própria ferramenta acabou de
+  // oferecer.
+  const nomeValido: any = await ferramentas.executar('consultar_horarios_disponiveis', {
+    terapia: nomeTerapia.toUpperCase(),
+    limite:  3,
+  })
+  checar(nomeValido.ok === true || nomeValido.motivo === MOTIVO.SEM_VAGA,
+    'nome válido (em caixa alta) não é barrado pela resolução',
+    nomeValido)
 
   console.log('\n3. agendar_sessao na vaga oferecida')
   const ag: any = await ferramentas.executar('agendar_sessao', {
@@ -307,7 +333,7 @@ try {
 
   console.log('\n4. a vaga sai da oferta')
   const hor2: any = await ferramentas.executar('consultar_horarios_disponiveis', {
-    terapiaId: terapia.terapiaId, limite: 50,
+    terapia: nomeTerapia, limite: 50,
   })
   const aindaOferecida = hor2.horarios?.some(
     (h: any) => h.profissionalId === vaga.profissionalId && h.data === vaga.data && h.hora === vaga.hora,
@@ -364,7 +390,7 @@ try {
   })
   checar(canc.ok === true, 'cancelamento aceito', canc)
   const hor3: any = await ferramentas.executar('consultar_horarios_disponiveis', {
-    terapiaId: terapia.terapiaId, limite: 50,
+    terapia: nomeTerapia, limite: 50,
   })
   const voltou = hor3.horarios?.some(
     (h: any) => h.profissionalId === vaga.profissionalId && h.data === vaga.data && h.hora === vaga.hora,

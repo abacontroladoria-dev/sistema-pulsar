@@ -112,6 +112,13 @@ export class AppointmentService {
     return this.availability.listarTerapiasComVaga(dataInicio, dataFim)
   }
 
+  // Os nomes CRUS de especialidade com vaga, para o agente traduzir pelo
+  // catálogo (agente/terapia.ts). Não agrega por terapia_id porque o id não
+  // identifica a terapia — 2317 aparece com sete terapia_nome diferentes.
+  async listarNomesDeTerapiaComVaga(dataInicio?: string | null, dataFim?: string | null) {
+    return this.availability.listarNomesDeTerapiaComVaga(dataInicio, dataFim)
+  }
+
   // --------------------------------------------------------------------------
   // Reserva de vaga de grade
   //

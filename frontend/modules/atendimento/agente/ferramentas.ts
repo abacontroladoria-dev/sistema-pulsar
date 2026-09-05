@@ -8,6 +8,7 @@ import {
 } from '../types/errors.types'
 import { horaCurta } from './formato'
 import { UNIDADES, unidadeDaSala, normalizarUnidade, type Unidade } from './unidade'
+import { resolverTerapia, nomesOfertaveis, especialidadesNaGrade } from './terapia'
 
 // ============================================================================
 // Ferramentas do agente de atendimento
@@ -96,7 +97,8 @@ export const DEFINICOES_FERRAMENTAS = [
         'Lista as especialidades (terapias) que têm vaga livre na agenda da clínica, com a quantidade de vagas ' +
         'e em quais unidades cada uma tem vaga. ' +
         'Use quando o responsável perguntar o que a clínica tem disponível, ou quando ele não disser qual terapia quer. ' +
-        'Chame esta ferramenta antes de consultar_horarios_disponiveis para descobrir o terapiaId correto.',
+        'Os nomes devolvidos aqui são os que consultar_horarios_disponiveis aceita em `terapia` — mas você não ' +
+        'precisa chamar esta ferramenta antes: se o responsável já disse a especialidade, passe o nome direto.',
       strict: true,
       parameters: {
         type: 'object',
@@ -118,8 +120,8 @@ export const DEFINICOES_FERRAMENTAS = [
         'a agenda da clínica só é populada algumas semanas à frente, e horários fora dela não existem. ' +
         'Se o responsável já disse em qual unidade quer ser atendido, passe esse valor em `unidade` — ' +
         'não filtre por conta própria olhando o campo `sala`, e não ofereça horário de outra unidade sem avisar. ' +
-        'O mesmo vale para a especialidade: se a conversa já estabeleceu qual terapia é, passe `terapiaId` em TODA ' +
-        'consulta seguinte, inclusive quando o responsável perguntar por outro dia. Sem ele a busca traz todas as ' +
+        'O mesmo vale para a especialidade: se a conversa já estabeleceu qual terapia é, passe `terapia` em TODA ' +
+        'consulta seguinte, inclusive quando o responsável perguntar por outro dia. Sem ela a busca traz todas as ' +
         'especialidades e a que interessa pode ficar de fora do recorte. ' +
         'O resultado traz `listaCompleta`: quando for false, você está vendo só uma parte — nunca conclua ausência ' +
         'a partir de uma lista parcial. ' +
@@ -128,13 +130,17 @@ export const DEFINICOES_FERRAMENTAS = [
       parameters: {
         type: 'object',
         properties: {
-          terapiaId: {
-            type: ['integer', 'null'],
+          terapia: {
+            type: ['string', 'null'],
             description:
-              'Id da terapia. Use SOMENTE um id que veio de consultar_especialidades_disponiveis ou de uma ' +
-              'consulta anterior nesta mesma conversa — nunca invente, nunca chute um número pequeno como 1 ou 2, ' +
-              'e nunca reescreva um id que já funcionou. Se não tiver certeza de qual é, chame ' +
-              'consultar_especialidades_disponiveis de novo em vez de adivinhar. null para buscar em todas.',
+              'NOME da especialidade, como está no laudo do paciente e como você o diria ao responsável: ' +
+              '"psicologia", "psicologia ABA", "fonoaudiologia", "terapia ocupacional". ' +
+              'Acento e maiúscula não importam, e o nome parcial serve ("fono" encontra Fonoaudiologia). ' +
+              'ATENÇÃO: "Psicologia" e "Psicologia ABA" são terapias DIFERENTES — passe exatamente a que o ' +
+              'responsável pediu e nunca troque uma pela outra. ' +
+              'Se o nome casar com mais de uma especialidade, a ferramenta devolve as opções: pergunte ao ' +
+              'responsável qual delas é, não escolha por ele. ' +
+              'null busca em todas as especialidades.',
           },
           unidade: {
             type: ['string', 'null'],
@@ -169,7 +175,7 @@ export const DEFINICOES_FERRAMENTAS = [
               'limite baixo sobre a agenda inteira devolve só os primeiros dias.',
           },
         },
-        required: ['terapiaId', 'unidade', 'dataInicio', 'dataFim', 'limite'],
+        required: ['terapia', 'unidade', 'dataInicio', 'dataFim', 'limite'],
         additionalProperties: false,
       },
     },
@@ -297,9 +303,27 @@ export class FerramentasAgente {
   }
 
   private async consultarEspecialidades(args: Record<string, any>): Promise<ResultadoFerramenta> {
-    const terapias = await this.agendamentos.listarTerapiasComVaga(args.dataInicio ?? null, args.dataFim ?? null)
+    // O que é oferecido sai do CATÁLOGO (terapia.ts), não do vocabulário cru da
+    // grade, e a diferença é grande em duas direções.
+    //
+    // O que a grade traz em `terapia_nome` é a lista do que aquele profissional
+    // atende naquele horário, na língua da ESCALA: 'Aplicador ABA (PS),
+    // Coordenador de Caso'. Devolver isso ao modelo produzia dois danos:
+    //
+    //   1. O agente oferecia cargo interno como se fosse terapia. Medido em
+    //      05/09/2026: 'Coordenador de Caso' (586 vagas) e 'Supervisão ABA'
+    //      (319) apareciam na resposta a "o que vocês têm disponível?".
+    //   2. O agente falava a língua errada. 'Aplicador ABA (PS)' (218 vagas) é
+    //      o que o TiTa grava; o laudo do responsável diz 'Psicologia ABA'.
+    //
+    // O catálogo resolve os dois: só o ofertável entra, e com o nome do laudo.
+    const vagas = await this.agendamentos.listarNomesDeTerapiaComVaga(
+      args.dataInicio ?? null,
+      args.dataFim ?? null,
+    )
+    const disponiveis = especialidadesNaGrade(vagas)
 
-    if (terapias.length === 0) {
+    if (disponiveis.length === 0) {
       return recusa(
         MOTIVO.SEM_VAGA,
         'Não há vaga livre na agenda no período consultado. A agenda costuma ser aberta algumas semanas antes.',
@@ -308,16 +332,32 @@ export class FerramentasAgente {
 
     return {
       ok: true,
-      especialidades: terapias.map(t => ({
-        terapiaId: t.terapiaId,
-        // Nome pode vir como lista ("Aplicador ABA (PS), Psicopedagogia") quando
-        // o profissional atende mais de uma especialidade naquele horário.
-        nome:      t.terapiaNome,
-        vagas:     t.vagas,
-        // Unidades onde essa terapia tem vaga. Se o responsável já escolheu uma
-        // unidade, use isto para não afirmar que a clínica atende ali antes de
-        // conferir.
-        unidades:  t.unidades,
+      // Nem `terapiaId` nem contagem de vagas vão aqui, e as duas omissões são
+      // deliberadas.
+      //
+      // O id: enquanto aparecia, o modelo tinha um número para carregar pela
+      // conversa e reescrever quando a memória escorregasse — foi assim que
+      // psicologia (2259) virou `terapiaId: 1`. Consultar horários pede o NOME,
+      // então o id não tem uso do lado do modelo, e o que ele não vê ele não
+      // inventa.
+      //
+      // A contagem: ela vinha de um `group by terapia_id`, e o id não
+      // corresponde às especialidades do catálogo (2317 tem sete nomes). Um
+      // número aproximado que o modelo repetiria ao responsável como se fosse
+      // exato é pior que número nenhum.
+      especialidades: disponiveis.map(nome => ({
+        nome,
+        // Em QUAIS unidades essa especialidade tem vaga. Sem isso o agente
+        // responde "sim, temos psicomotricidade" para quem já disse que só pode
+        // ir a Padre Miguel, e só descobre que não tem lá no passo seguinte.
+        //
+        // Derivado por nome, não pelo `group by terapia_id` de antes: aquela
+        // agregação atribuía as unidades ao id, e como o id não corresponde à
+        // especialidade, uma terapia podia herdar a unidade de outra que
+        // compartilhasse o id.
+        unidades: UNIDADES.filter(u =>
+          vagas.some(v => v.unidade === u && especialidadesNaGrade([v]).includes(nome)),
+        ),
       })),
     }
   }
@@ -340,43 +380,68 @@ export class FerramentasAgente {
       )
     }
 
-    // terapiaId que não existe é RECUSA, não lista vazia.
+    // A especialidade chega por NOME, e o que sai daqui são os textos que casam
+    // na GRADE — não um id.
     //
-    // Sem esta guarda um id inventado filtra por algo inexistente, devolve zero
-    // vagas, e a ferramenta responde `sem_vaga` — indistinguível de "essa
-    // terapia realmente não tem vaga nesse período". O modelo então diz ao
-    // responsável que a clínica não tem horário, quando a verdade é que ELE
-    // errou o id.
+    // O parâmetro era `terapiaId`, e o modelo o inventava: perguntada por
+    // psicologia a partir do dia 14 (04/09/2026, no rastro), a IA passou
+    // `terapiaId: 1` — psicologia é 2259, e ela tinha usado o id certo um minuto
+    // antes. Três reforços de prompt não impediram, porque não era
+    // desobediência: o id só existe no retorno de outra ferramenta, o schema
+    // exigia um inteiro, e `null` significa "todas as terapias". Ele preenchia
+    // um campo obrigatório sem ter fonte para ele.
     //
-    // Caso real (04/09/2026, no rastro): perguntada por psicologia a partir do
-    // dia 14, a IA passou `terapiaId: 1`. Psicologia é 2259 — ela tinha acabado
-    // de usar o id certo na consulta anterior, um minuto antes. Não perdeu o
-    // parâmetro (o conserto anterior pegou nisso): inventou o valor. A resposta
-    // foi "não encontrei horários", e nada na conversa denunciava a causa.
+    // E o id não serviria nem se o modelo o soubesse: medido em produção,
+    // `terapia_id` 2317 aparece com sete `terapia_nome` diferentes. Filtrar por
+    // ele mistura quem só aplica ABA com quem faz psicologia, e esconde as 12
+    // vagas de psicologia que vivem sob 2317. A informação está no nome.
     //
-    // `unidade` já tinha duas camadas (enum no schema + validação que LANÇA no
-    // banco) e `terapiaId` não tinha nenhuma. Era ponto cego, não decisão.
-    const terapiaId = toInt(args.terapiaId)
-    if (terapiaId != null) {
-      const conhecidas = await this.agendamentos.listarTerapiasComVaga(
+    // A resolução é contra o que TEM vaga no período: uma especialidade sem vaga
+    // na janela não é resolvível, e isso é correto — o retorno seria vazio de
+    // todo jeito, e a recusa nomeada explica melhor do que `sem_vaga`.
+    let terapiaNomes: readonly string[] | undefined
+    let nomeResolvido: string | undefined
+    if (args.terapia != null && String(args.terapia).trim() !== '') {
+      const naGrade     = await this.agendamentos.listarNomesDeTerapiaComVaga(
         args.dataInicio ?? null,
         args.dataFim ?? null,
       )
-      if (!conhecidas.some(t => t.terapiaId === terapiaId)) {
-        // A lista de válidas vai junto: sem ela o modelo tende a tentar outro
-        // palpite, e uma segunda chamada com argumentos diferentes não é
-        // detectada como laço pelo orquestrador — ele giraria até o teto.
-        const validas = conhecidas
-          .slice(0, 25)
-          .map(t => `${t.terapiaId} = ${t.terapiaNome}`)
-          .join('; ')
+      const disponiveis = especialidadesNaGrade(naGrade)
+      const resolucao   = resolverTerapia(String(args.terapia), disponiveis)
+
+      if (resolucao.tipo === 'nao_encontrada') {
+        // ERRO_INTERNO, não SEM_VAGA: os dois são indistinguíveis para o modelo
+        // se a mensagem não os separar, e tratá-lo como "não tem vaga" é
+        // exatamente o dano que se quer impedir — a agenda pode estar cheia.
+        const nomes = nomesOfertaveis(disponiveis)
         return recusa(
           MOTIVO.ERRO_INTERNO,
-          `Não existe terapia com id ${terapiaId} entre as que têm vaga no período. ` +
-          'NÃO diga ao responsável que não há horário: o id está errado, não a agenda. ' +
-          `Use um destes: ${validas}`,
+          `Não há especialidade chamada '${args.terapia}' entre as que têm vaga no período. ` +
+          'NÃO diga ao responsável que não há horário: o nome não foi reconhecido, o que não é o mesmo ' +
+          'que a agenda estar vazia. ' +
+          (nomes.length > 0
+            ? `As especialidades com vaga são: ${nomes.join('; ')}. ` +
+              'Use um destes nomes, ou pergunte ao responsável qual delas ele quer.'
+            : 'Não há nenhuma especialidade com vaga no período consultado.'),
         )
       }
+
+      if (resolucao.tipo === 'ambigua') {
+        // Escolher a primeira seria o mesmo erro do chute, do nosso lado — e
+        // aqui o custo é a criança ir para a terapia errada: 'psico' começa
+        // Psicologia, Psicologia ABA, Psicopedagogia e Psicomotricidade, que são
+        // quatro tratamentos distintos. A pergunta ao responsável é a resposta
+        // certa, e o modelo só a faz se receber os candidatos.
+        return recusa(
+          MOTIVO.ERRO_INTERNO,
+          `'${args.terapia}' corresponde a mais de uma especialidade: ${resolucao.candidatas.join('; ')}. ` +
+          'Pergunte ao responsável qual delas ele quer e consulte de novo com o nome completo. ' +
+          'NÃO escolha por ele: são tratamentos diferentes.',
+        )
+      }
+
+      terapiaNomes  = resolucao.casaCom
+      nomeResolvido = resolucao.nome
     }
 
     // O filtro por unidade acontece NO BANCO (p_unidade, 20260904100100), e é
@@ -399,14 +464,40 @@ export class FerramentasAgente {
     //
     // Nenhuma instrução de prompt conserta isso sozinha: o modelo estava
     // raciocinando sobre uma lista que ele tinha motivo para achar completa.
-    const comFolga = await this.agendamentos.listarVagas({
-      terapiaId:  toInt(args.terapiaId),
+    // Sem filtro de especialidade, a consulta traz a agenda inteira — incluindo
+    // 'Coordenador de Caso' (586 vagas), 'Supervisão ABA' (319) e 'Aplicador
+    // Suporte' (40), que são trabalho interno e não atendimento que um
+    // responsável agenda. Elas precisam sair, e SAIR AQUI custa folga.
+    //
+    // A folga é generosa de propósito. Cortar em `limite + 1` e filtrar depois
+    // reintroduziria, na dimensão da especialidade, exatamente o defeito de teto
+    // que este trabalho consertou na dimensão da unidade: as 586 vagas de
+    // 'Coordenador de Caso' ocupariam as primeiras posições da ordenação por
+    // data/hora e empurrariam a terapia real para fora do recorte, e a
+    // ferramenta responderia "não há vaga" sobre uma agenda cheia.
+    //
+    // Quando `terapiaNomes` veio, o banco já filtrou: a folga é desnecessária e
+    // `limite + 1` basta para detectar truncamento.
+    const folga = terapiaNomes ? limite + 1 : Math.min(500, Math.max(limite * 10, 100))
+
+    const brutas = await this.agendamentos.listarVagas({
+      terapiaNomes,
       unidade,
       dataInicio: args.dataInicio ?? null,
       dataFim:    args.dataFim ?? null,
-      limite:     limite + 1,
+      limite:     folga,
     })
-    const truncado = comFolga.length > limite
+
+    const comFolga = terapiaNomes
+      ? brutas
+      : brutas.filter(v => especialidadesNaGrade([v]).length > 0)
+
+    // `truncado` responde "há mais além do que você está vendo?". Com filtro, a
+    // folga é limite+1 e a comparação é direta. Sem filtro, a lista pode ter
+    // encolhido pelo descarte de cargo interno, mas se o banco devolveu a folga
+    // INTEIRA ainda há mais adiante — e isso continua sendo truncamento, mesmo
+    // que o que sobrou caiba no limite.
+    const truncado = comFolga.length > limite || brutas.length >= folga
     const vagas    = comFolga.slice(0, limite)
 
     if (vagas.length === 0) {
@@ -421,7 +512,7 @@ export class FerramentasAgente {
       // quando tem, na unidade ao lado.
       if (unidade) {
         const emOutras = await this.agendamentos.listarVagas({
-          terapiaId:  toInt(args.terapiaId),
+          terapiaNomes,
           dataInicio: args.dataInicio ?? null,
           dataFim:    args.dataFim ?? null,
           limite:     20,
@@ -457,7 +548,18 @@ export class FerramentasAgente {
         diaSemana:    v.dia_semana,
         horaFim:      horaCurta(v.hora_final),
         profissional: v.profissional_nome,
-        terapia:      v.terapia_nome,
+        // A especialidade na língua do LAUDO, não na da escala.
+        //
+        // `v.terapia_nome` é o que o TiTa grava — 'Aplicador ABA (PS),
+        // Coordenador de Caso'. Mandá-lo ao modelo fazia o agente dizer ao
+        // responsável que tem horário de "Aplicador ABA (PS)", um nome que ele
+        // nunca viu: o laudo dele diz 'Psicologia ABA'. E expunha cargo interno
+        // ('Coordenador de Caso') como se fizesse parte da oferta.
+        //
+        // Quando a busca foi por especialidade, o nome resolvido é a resposta
+        // exata. Sem filtro, a vaga pode oferecer várias — aí vão as ofertáveis
+        // que ela cobre, e nunca os nomes de escala.
+        terapia:      nomeResolvido ?? especialidadesNaGrade([v]).join(', '),
         sala:         v.sala_nome,
         // A unidade real, agora resolvida no banco (central.vw_vagas_livres).
         // `v.unidade_nome` é 'CLÍNICA UNIVERSO ABA' em toda vaga e não
@@ -477,12 +579,12 @@ export class FerramentasAgente {
       ...(truncado ? {
         aviso:
           `Esta lista é PARCIAL: há mais horários além destes ${limite}. ` +
-          (toInt(args.terapiaId) == null
+          (terapiaNomes == null
             ? 'Ela cobre TODAS as especialidades, então a que o responsável quer pode não estar aqui — ' +
-              'chame de novo passando `terapiaId` para ver só a dela. '
+              'chame de novo passando `terapia` para ver só a dela. '
             : '') +
           'NÃO conclua que não há vaga para uma especialidade, um dia ou um horário só porque não aparece nesta lista — ' +
-          'refine a busca (terapiaId, dataInicio/dataFim) e consulte de novo antes de responder.',
+          'refine a busca (terapia, dataInicio/dataFim) e consulte de novo antes de responder.',
       } : {}),
     }
   }

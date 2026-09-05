@@ -72,6 +72,12 @@ export const LIMITE_HISTORICO = 20
 // trunca — o modelo estava raciocinando sobre um recorte que tinha motivo para
 // achar completo, e nenhuma instrução conserta uma premissa falsa.
 //
+// Nota de leitura: os `terapiaId` acima são o registro do incidente, não o
+// contrato de hoje. Em 05/09/2026 a ferramenta passou a receber `terapia` (o
+// NOME do laudo), porque o id era um valor que o modelo não tinha como saber E
+// que não identifica a terapia — 2317 aparece com sete nomes na grade. Ver
+// terapia.ts. Não reintroduza o id no schema.
+//
 // A description de `dataInicio` já pedia para passá-la "quando o responsável
 // indicar preferência de data", e o caso da data explícita já funcionava. O que
 // precisa ser regra de system prompt é o que se pode AFIRMAR a partir de uma
