@@ -21,34 +21,36 @@
 // clicar pra selecionar/ordenar só re-renderiza as poucas linhas cujo estado
 // realmente mudou, em vez de recriar a tabela inteira a cada clique.
 
-import { Fragment, memo, useCallback, useMemo, useState } from "react"
-import { Loader2, Wallet, AlertTriangle, CalendarDays, ChevronDown, ChevronRight } from "lucide-react"
+import { Fragment, memo, useCallback, useEffect, useMemo, useState } from "react"
+import { Loader2, Wallet, AlertTriangle, CalendarDays, ChevronDown, ChevronRight, Download } from "lucide-react"
 import { StatCard } from "@/components/cronograma/ui/StatCard"
 import { SegmentedTabs } from "@/components/cronograma/ui/SegmentedTabs"
 import { SortableTh, ordenarPor, type SortDir } from "@/components/cronograma/ui/SortableTh"
 import { UnidadeMultiSelect } from "@/components/cronograma/ui/UnidadeMultiSelect"
+import { useHeader } from "@/contexts/HeaderContext"
 import { useOcupacaoSalas } from "@/hooks/useOcupacaoSalas"
 import { useConvenioValoresCalculo } from "@/hooks/useConvenioValores"
 import { useFeriados } from "@/hooks/useFeriados"
 import { useLinhasMesInteiro } from "@/hooks/useLinhasMesInteiro"
 import { usePrevisaoReceitasHistorico } from "@/hooks/usePrevisaoReceitasHistorico"
 import { normalizarUnidadeOcupacao } from "@/lib/cronograma/ocupacaoProf"
-import { getRefWeekDoMes, labelMesAno } from "@/lib/cronograma/helpers"
+import { getRefWeekDoMes, labelMesAno, fmtReal } from "@/lib/cronograma/helpers"
 import { SeletorMesPrevisao } from "./SeletorMesPrevisao"
+import { ExportEscopoDialog } from "./ExportEscopoDialog"
+import { exportarPrevisaoReceitasXlsx, type EscopoExport } from "@/lib/cronograma/exportPrevisaoReceitas"
 import {
   calcularPrevisaoReceita,
   enriquecerComDeducaoFalta,
   calcularSessoesMensaisPorConvenio,
   agregarSegmentoHistorico,
+  agregarPrevisaoPorPaciente,
+  ORIGEM_VALOR_LABEL,
   type PrevisaoReceitaConvenio, type PrevisaoReceitaSessao, type PrevisaoReceitaSegmento, type PrevisaoReceitaGeral,
+  type PrevisaoReceitaPacienteAgregado,
 } from "@/lib/cronograma/faturamentoProjecao"
 
 type VisaoDetalhe = "dia" | "terapia" | "paciente"
 const SORT_PADRAO_PACIENTE = { key: "pacienteNome" as keyof PrevisaoReceitaPacienteAgregado, dir: "asc" as SortDir }
-
-function fmtReal(v: number): string {
-  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
-}
 
 function fmtNum(v: number): string {
   return v.toLocaleString("pt-BR", { maximumFractionDigits: 1 })
@@ -57,66 +59,6 @@ function fmtNum(v: number): string {
 function fmtData(iso: string): string {
   const [ano, mes, dia] = iso.split("-")
   return ano && mes && dia ? `${dia}/${mes}/${ano}` : iso
-}
-
-const ORIGEM_LABEL: Record<string, string> = {
-  paciente: "Exceção paciente",
-  criterio_aba: "Critério ABA",
-  terapia: "Regra por terapia",
-  geral: "Regra geral",
-  pacote_avaliacao: "Pacote de sessões",
-  sem_valor: "Sem valor",
-}
-
-interface PrevisaoReceitaPacienteAgregado {
-  chave: string
-  pacienteId: number | null
-  pacienteNome: string
-  sessoesCount: number
-  /** Quantas dessas sessões do mês estão marcadas como falta em fila_autorizacoes (não revertida). */
-  faltasCount: number
-  /** Soma de todos os valores das sessões desse paciente no mês (sessões sem valor não entram na soma; inclui as sessões em falta, ver deducaoFalta). */
-  valorSemDeducao: number
-  /** Soma do valor só das sessões em falta desse paciente — o mesmo critério usado na dedução por convênio. */
-  deducaoFalta: number
-  /** valorSemDeducao − deducaoFalta. */
-  valorComDeducao: number
-  sessoes: PrevisaoReceitaSessao[]
-}
-
-/**
- * Aglutina as sessões do mês por paciente — ID Paciente, Nome, sessões/faltas/valor do mês.
- *
- * `aplicaDeducaoFalta` deve ser true SÓ no segmento Multidisciplinar — no
- * Processo Diagnóstico (cobrado em bloco/pacote, ver enriquecerComDeducaoFalta
- * em faturamentoProjecao.ts) uma falta pontual não reduz nada, então
- * deducaoFalta/valorComDeducao ficam neutros mesmo com sessões emFalta, pra
- * não divergir do total do convênio (que nunca deduz nesse segmento).
- * faltasCount continua contando normalmente — é só informativo.
- */
-function agregarPorPaciente(sessoes: PrevisaoReceitaSessao[], aplicaDeducaoFalta: boolean): PrevisaoReceitaPacienteAgregado[] {
-  const map = new Map<string, PrevisaoReceitaPacienteAgregado>()
-  for (const s of sessoes) {
-    const chave = s.pacienteId !== null ? `id:${s.pacienteId}` : `nome:${s.pacienteNome}`
-    let entry = map.get(chave)
-    if (!entry) {
-      entry = {
-        chave, pacienteId: s.pacienteId, pacienteNome: s.pacienteNome,
-        sessoesCount: 0, faltasCount: 0, valorSemDeducao: 0, deducaoFalta: 0, valorComDeducao: 0,
-        sessoes: [],
-      }
-      map.set(chave, entry)
-    }
-    entry.sessoesCount += 1
-    entry.valorSemDeducao += s.valor ?? 0
-    if (s.emFalta) {
-      entry.faltasCount += 1
-      if (aplicaDeducaoFalta) entry.deducaoFalta += s.valor ?? 0
-    }
-    entry.sessoes.push(s)
-  }
-  for (const entry of map.values()) entry.valorComDeducao = entry.valorSemDeducao - entry.deducaoFalta
-  return Array.from(map.values())
 }
 
 function chaveSessao(convenio: string, s: PrevisaoReceitaSessao): string {
@@ -164,7 +106,7 @@ const SessaoRow = memo(function SessaoRow({ s, chave, selecionada, valorPacote, 
   const valorExibido = s.valor !== null ? s.valor : (ehPacote ? valorPacote : null)
   const origemLabel = ehPacote
     ? (valorPacote !== null ? "Pacote de Sessões (À Vista)" : "Pacote de Sessões")
-    : (ORIGEM_LABEL[s.origem] ?? s.origem)
+    : (ORIGEM_VALOR_LABEL[s.origem] ?? s.origem)
   return (
     <tr
       onClick={() => onSelect(chave)}
@@ -277,7 +219,7 @@ interface ConvenioRowProps {
   avisoParticular?: boolean
   /** Sessões REAIS do mês inteiro deste convênio (não a amostra semanal) — fonte da aba "Por paciente", pra mostrar todas as faltas do mês. */
   porSessaoMes: PrevisaoReceitaSessao[]
-  /** true só no segmento Multidisciplinar — ver agregarPorPaciente. */
+  /** true só no segmento Multidisciplinar — ver agregarPrevisaoPorPaciente. */
   aplicaDeducaoFalta: boolean
 }
 
@@ -290,7 +232,7 @@ function ConvenioRow({ c, mesReferenciaLabel, sessaoSelecionada, onSelectSessao,
   // "Por paciente" usa o mês inteiro (porSessaoMes), diferente de "Por dia da
   // semana"/"Por terapia" abaixo, que continuam usando a amostra semanal (c.porDia/c.porTerapia).
   const pacientesAgregados = useMemo(
-    () => ordenarPor(agregarPorPaciente(porSessaoMes, aplicaDeducaoFalta), sortPaciente.key, sortPaciente.dir),
+    () => ordenarPor(agregarPrevisaoPorPaciente(porSessaoMes, aplicaDeducaoFalta), sortPaciente.key, sortPaciente.dir),
     [porSessaoMes, aplicaDeducaoFalta, sortPaciente.key, sortPaciente.dir],
   )
 
@@ -441,7 +383,7 @@ function ConvenioRow({ c, mesReferenciaLabel, sessaoSelecionada, onSelectSessao,
                             </td>
                             <td className="py-1 px-2 text-right tabular-nums">{fmtReal(t.receitaSemana)}</td>
                             <td className="py-1 pl-2 text-left text-muted-foreground">
-                              {t.origens.map(o => ORIGEM_LABEL[o] ?? o).join(" + ")}
+                              {t.origens.map(o => ORIGEM_VALOR_LABEL[o] ?? o).join(" + ")}
                             </td>
                           </tr>
                         ))
@@ -511,7 +453,7 @@ interface TabelaPorConvenioProps {
   avisoPacote?: boolean
   /** Sessões do mês inteiro por convênio (chave = nome do convênio) — fonte da aba "Por paciente" de cada ConvenioRow. */
   sessoesMensaisPorConvenio: Map<string, PrevisaoReceitaSessao[]>
-  /** true só pra Multidisciplinar — ver agregarPorPaciente. */
+  /** true só pra Multidisciplinar — ver agregarPrevisaoPorPaciente. */
   aplicaDeducaoFalta?: boolean
 }
 
@@ -589,6 +531,17 @@ function mesSeguinteAtual(): { ano: number; mes: number } {
   return { ano: d.getFullYear(), mes: d.getMonth() + 1 }
 }
 
+// `unidade_nome` em csv_grades_profissionais é sempre o nome da clínica
+// ("CLÍNICA UNIVERSO ABA"), não a unidade física — a unidade real só existe
+// dentro do texto livre de `sala_nome` (ex.: "Unid. Realengo - Sala 5"),
+// mesmo padrão usado em pacientesDashboard.ts (Dashboard de Pacientes) e em
+// ocupacaoProf.ts (Ocupação por Profissional). Em escopo de módulo (não fecha
+// sobre nada do componente) pra poder entrar como dependência estável de
+// useCallback sem recriar a cada render.
+function unidadeDaLinha(r: { sala_nome: string | null }): string {
+  return normalizarUnidadeOcupacao(r.sala_nome || "")
+}
+
 export function PrevisaoReceitasShell() {
   const [periodo, setPeriodo] = useState(mesSeguinteAtual)
   const semanaRef = useMemo(() => getRefWeekDoMes(periodo.ano, periodo.mes), [periodo.ano, periodo.mes])
@@ -601,13 +554,6 @@ export function PrevisaoReceitasShell() {
   // atual/futuro); no modo histórico (ver usarHistorico abaixo) é ignorado,
   // já que o retrato congelado não guarda a unidade da sessão.
   const [unidadesFiltro, setUnidadesFiltro] = useState<string[]>([])
-
-  // `unidade_nome` em csv_grades_profissionais é sempre o nome da clínica
-  // ("CLÍNICA UNIVERSO ABA"), não a unidade física — a unidade real só existe
-  // dentro do texto livre de `sala_nome` (ex.: "Unid. Realengo - Sala 5"),
-  // mesmo padrão usado em pacientesDashboard.ts (Dashboard de Pacientes) e em
-  // ocupacaoProf.ts (Ocupação por Profissional).
-  const unidadeDaLinha = (r: { sala_nome: string | null }) => normalizarUnidadeOcupacao(r.sala_nome || "")
 
   // Opções vêm de linhasMes (mês inteiro) SEM aplicar o próprio filtro, senão
   // a lista de opções encolheria conforme o usuário marca unidades.
@@ -683,6 +629,73 @@ export function PrevisaoReceitasShell() {
 
   const loading = loadingSalas || loadingValores || loadingFeriados || loadingMes || (mesEhPassado && historico.loading)
   const error = errorSalas || errorValores || errorMes || historico.error
+
+  const { setRightContent } = useHeader()
+  const [escopoDialogAberto, setEscopoDialogAberto] = useState(false)
+  const [exportando, setExportando] = useState(false)
+
+  const executarExport = useCallback((escopo: EscopoExport) => {
+    setEscopoDialogAberto(false)
+    setExportando(true)
+    // Recalcular "tudo" roda o motor de valor sobre o mês inteiro sem filtro
+    // (pode levar 1-3s) — adia pro próximo tick pra o botão desabilitado/
+    // "Exportando..." pintar ANTES de travar a thread principal.
+    setTimeout(() => {
+      try {
+        exportarPrevisaoReceitasXlsx({
+          escopo,
+          competencia: competenciaSelecionada,
+          mesReferenciaLabel: mesSelecionadoLabel,
+          periodo,
+          semanaRef,
+          unidadesFiltro,
+          usarHistorico,
+          snapshotData: historico.snapshotData,
+          previsaoExibida,
+          sessoesMensaisExibidas,
+          linhas,
+          linhasMes,
+          faltas,
+          regrasGerais,
+          excecoesPaciente,
+          pacotesAvaliacao,
+          feriados,
+        })
+      } finally {
+        setExportando(false)
+      }
+    }, 0)
+  }, [
+    competenciaSelecionada, mesSelecionadoLabel, periodo, semanaRef, unidadesFiltro, usarHistorico,
+    historico.snapshotData, previsaoExibida, sessoesMensaisExibidas, linhas, linhasMes, faltas,
+    regrasGerais, excecoesPaciente, pacotesAvaliacao, feriados,
+  ])
+
+  const onClickExportar = useCallback(() => {
+    // O diálogo de escopo só faz sentido quando há filtro ativo E o cálculo
+    // ao vivo está em uso — no modo histórico o filtro já está desabilitado
+    // na tela (o retrato não guarda unidade), então não há escolha real.
+    if (unidadesFiltro.length && !usarHistorico) {
+      setEscopoDialogAberto(true)
+    } else {
+      executarExport("filtro")
+    }
+  }, [unidadesFiltro, usarHistorico, executarExport])
+
+  useEffect(() => {
+    setRightContent(
+      <button
+        type="button"
+        onClick={onClickExportar}
+        disabled={loading || exportando}
+        className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold text-white shadow-sm bg-emerald-700 hover:bg-emerald-800 dark:bg-emerald-600 dark:hover:bg-emerald-700 active:scale-95 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        <Download size={13} />
+        {exportando ? "Exportando..." : "Exportar XLSX"}
+      </button>,
+    )
+    return () => setRightContent(null)
+  }, [onClickExportar, loading, exportando, setRightContent])
 
   if (loading) {
     return (
@@ -761,6 +774,14 @@ export function PrevisaoReceitasShell() {
         sessoesMensaisPorConvenio={sessoesMensaisExibidas.processoDiagnostico}
         avisoPacote={!usarHistorico}
       />
+
+      {escopoDialogAberto && (
+        <ExportEscopoDialog
+          unidades={unidadesFiltro}
+          onEscolher={escopo => executarExport(escopo)}
+          onCancel={() => setEscopoDialogAberto(false)}
+        />
+      )}
     </div>
   )
 }

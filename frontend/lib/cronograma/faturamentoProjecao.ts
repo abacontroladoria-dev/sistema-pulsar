@@ -21,6 +21,7 @@
 import { cleanTxt } from "./helpers"
 import { normTxt, EXIB_ID } from "./constants"
 import { isAgendadoAtivo, isTerapiaDiagnostico, semanasNoPeriodo } from "./pacientesDashboard"
+import { normalizarUnidadeOcupacao } from "./ocupacaoProf"
 import { getCalendario, type CalendarioResult } from "../remuneracao/datas"
 import type { FeriadoInfo } from "@/types/feriados"
 import type { AgendaSalaRow } from "./salasTypes"
@@ -150,6 +151,30 @@ export interface PrevisaoReceitaSessao {
   origem: OrigemValor
   /** true se esta sessão (pelo tita_agendamento_id) está marcada como falta em fila_autorizacoes (e não revertida) — preenchido por enriquecerComDeducaoFalta. */
   emFalta: boolean
+  /**
+   * true se esta sessão conta em `sessoesSemValor` — NÃO é o mesmo que
+   * `valor === null`: sessão de pacote (Avaliação Neuropsicológica/Psiquiatra)
+   * com valor à vista cadastrado tem valor nulo POR SESSÃO mas não é "sem
+   * valor" (ver o comentário em agregarSegmento). Gravado aqui pra quem
+   * precisa reproduzir a contagem — sobretudo o export XLSX — não ter que
+   * duplicar a regra e divergir.
+   */
+  semValor?: boolean
+  /**
+   * Campos abaixo: contexto da linha de origem (`AgendaSalaRow`) que a
+   * projeção não usa em nenhum cálculo, mas que o export XLSX precisa
+   * mostrar em coluna própria. OPCIONAIS de propósito —
+   * `PrevisaoReceitaSessaoHistorico` estende esta interface e o retrato
+   * congelado (`previsao_receitas_historico`, escrito pela Edge Function
+   * snapshot-previsao-receitas) não guarda nenhum deles: em modo histórico
+   * ficam legitimamente vazios, nunca preenchidos com valor adivinhado.
+   */
+  profissionalId?: number | null
+  profissionalNome?: string | null
+  salaNome?: string | null
+  /** Unidade física derivada de `sala_nome` — `unidade_nome` na fonte é sempre "CLÍNICA UNIVERSO ABA". */
+  unidade?: string | null
+  horaFinal?: string | null
 }
 
 export interface PrevisaoReceitaConvenio {
@@ -212,6 +237,72 @@ export interface PrevisaoReceitaGeral {
   multidisciplinar: PrevisaoReceitaSegmento
   /** Só sessões de Avaliação Neuropsicológica / Psiquiatra-Neurologista / Triagem. */
   processoDiagnostico: PrevisaoReceitaSegmento
+}
+
+/**
+ * Rótulo legível de cada origem de valor — compartilhado pela tela e pelo
+ * export XLSX. Nome com "VALOR" no meio de propósito: existe outro
+ * ORIGEM_LABEL, privado e com semântica diferente, em
+ * lib/remuneracao/pepAuditoriaFormat.ts.
+ */
+export const ORIGEM_VALOR_LABEL: Record<string, string> = {
+  paciente: "Exceção paciente",
+  criterio_aba: "Critério ABA",
+  terapia: "Regra por terapia",
+  geral: "Regra geral",
+  pacote_avaliacao: "Pacote de sessões",
+  sem_valor: "Sem valor",
+}
+
+export interface PrevisaoReceitaPacienteAgregado {
+  chave: string
+  pacienteId: number | null
+  pacienteNome: string
+  sessoesCount: number
+  /** Quantas dessas sessões do mês estão marcadas como falta em fila_autorizacoes (não revertida). */
+  faltasCount: number
+  /** Soma de todos os valores das sessões desse paciente no mês (sessões sem valor não entram na soma; inclui as sessões em falta, ver deducaoFalta). */
+  valorSemDeducao: number
+  /** Soma do valor só das sessões em falta desse paciente — o mesmo critério usado na dedução por convênio. */
+  deducaoFalta: number
+  /** valorSemDeducao − deducaoFalta. */
+  valorComDeducao: number
+  sessoes: PrevisaoReceitaSessao[]
+}
+
+/**
+ * Aglutina as sessões do mês por paciente — ID Paciente, Nome, sessões/faltas/valor do mês.
+ *
+ * `aplicaDeducaoFalta` deve ser true SÓ no segmento Multidisciplinar — no
+ * Processo Diagnóstico (cobrado em bloco/pacote, ver enriquecerComDeducaoFalta
+ * abaixo) uma falta pontual não reduz nada, então deducaoFalta/valorComDeducao
+ * ficam neutros mesmo com sessões emFalta, pra não divergir do total do
+ * convênio (que nunca deduz nesse segmento). faltasCount continua contando
+ * normalmente — é só informativo.
+ */
+export function agregarPrevisaoPorPaciente(sessoes: PrevisaoReceitaSessao[], aplicaDeducaoFalta: boolean): PrevisaoReceitaPacienteAgregado[] {
+  const map = new Map<string, PrevisaoReceitaPacienteAgregado>()
+  for (const s of sessoes) {
+    const chave = s.pacienteId !== null ? `id:${s.pacienteId}` : `nome:${s.pacienteNome}`
+    let entry = map.get(chave)
+    if (!entry) {
+      entry = {
+        chave, pacienteId: s.pacienteId, pacienteNome: s.pacienteNome,
+        sessoesCount: 0, faltasCount: 0, valorSemDeducao: 0, deducaoFalta: 0, valorComDeducao: 0,
+        sessoes: [],
+      }
+      map.set(chave, entry)
+    }
+    entry.sessoesCount += 1
+    entry.valorSemDeducao += s.valor ?? 0
+    if (s.emFalta) {
+      entry.faltasCount += 1
+      if (aplicaDeducaoFalta) entry.deducaoFalta += s.valor ?? 0
+    }
+    entry.sessoes.push(s)
+  }
+  for (const entry of map.values()) entry.valorComDeducao = entry.valorSemDeducao - entry.deducaoFalta
+  return Array.from(map.values())
 }
 
 function mesReferenciaDeDatas(datas: string[]): { ano: number; mes: number; label: string } | null {
@@ -308,6 +399,12 @@ function agregarSegmento(
       horaInicial: cleanTxt(r.hora_inicial) || null,
       valor, origem,
       emFalta: false,
+      semValor: (valor === null && origem !== "pacote_avaliacao") || pacoteSemRegistro,
+      profissionalId: r.profissional_id ?? null,
+      profissionalNome: cleanTxt(r.profissional_nome) || null,
+      salaNome: cleanTxt(r.sala_nome) || null,
+      unidade: normalizarUnidadeOcupacao(r.sala_nome || ""),
+      horaFinal: cleanTxt(r.hora_final) || null,
     })
   })
 
