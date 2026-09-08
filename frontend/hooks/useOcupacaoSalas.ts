@@ -20,7 +20,18 @@ import type { Sala, SalaComOcupacao, ResumoUnidadeSalas, AgendaSalaRow, Alocacao
  */
 export function semanaCorrenteRange(): { inicio: string; fim: string } {
   const { inicio, fim } = getRefWeek()
-  return { inicio, fim }
+  // getRefWeek() é Seg-Sex por design (várias outras telas — Previsão de
+  // Receitas, Comparativo de Sessões etc. — dependem dessa janela exata pra
+  // amostragem estatística, ver comentário em getRefWeekDoMes/helpers.ts) —
+  // não mexer nela. Só aqui, na Ocupação de Salas, o fim é estendido em +1
+  // dia (sábado) porque agora existem salas com `dias_disponiveis` incluindo
+  // sábado (ex.: Equoterapia em Movimento) — sem isso, a busca de agenda real
+  // (buscarLinhasAgendaParaSalas) nunca chega a trazer sessão nenhuma de
+  // sábado, e o cruzamento fica sempre "sem cruzamento no CSV" mesmo com o
+  // parser correto.
+  const [y, m, d] = fim.split("-").map(Number)
+  const fimComSabado = new Date(y, m - 1, d + 1).toISOString().slice(0, 10)
+  return { inicio, fim: fimComSabado }
 }
 
 /** Onde uma alocação (profissional) já se encontra — usado para detectar conflito ao mover. */

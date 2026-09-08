@@ -3,7 +3,7 @@
 import type { OcupFaixa, OcupSort, OcupCompareSlot } from "@/types/ocupacaoProf"
 
 export const DOW_PT: Record<number, string> = {
-  1: "Seg", 2: "Ter", 3: "Qua", 4: "Qui", 5: "Sex",
+  1: "Seg", 2: "Ter", 3: "Qua", 4: "Qui", 5: "Sex", 6: "Sáb",
 }
 
 export const OCUP_FAIXAS: OcupFaixa[] = [

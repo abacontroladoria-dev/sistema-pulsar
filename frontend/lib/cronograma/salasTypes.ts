@@ -44,8 +44,23 @@ export interface Sala {
   status: SalaStatus
   sala_nome_referencia: string | null
   observacoes: string | null
+  /** Dias/turnos em que a sala atende. Padrão = Seg-Sex, Manhã+Tarde (DIAS_DISPONIVEIS_PADRAO) — qualquer outro conjunto tira a sala da grade principal e a coloca numa seção separada (ver calcularSlotsDaSala em salas.ts). */
+  dias_disponiveis: DiaDisponivelSala[]
+  /** Override opcional de horários por dia/turno, chave `chaveHorarioCustomizado(dow,turno)` (ex.: "6-Manhã") — só quando a duração/janela de sessão desse turno for diferente do padrão do sistema (40min, HORAS_GRID). Ausência de chave = usa o grid padrão. */
+  horarios_customizados: Record<string, string[]>
   created_at: string
   updated_at: string
+}
+
+/** Chave de `horarios_customizados` pra um dia/turno — único formato usado em toda leitura/escrita, pra não divergir entre form e motor de ocupação. */
+export function chaveHorarioCustomizado(dow: number, turno: "Manhã" | "Tarde"): string {
+  return `${dow}-${turno}`
+}
+
+/** Um dia da semana em que a sala atende, com os turnos específicos desse dia (ex.: sábado só "Manhã"). */
+export interface DiaDisponivelSala {
+  dow: number
+  turnos: ("Manhã" | "Tarde")[]
 }
 
 /** Payload de criação/edição de sala (sem campos gerados pelo banco) */
@@ -59,6 +74,43 @@ export interface SalaInput {
   status?: SalaStatus
   sala_nome_referencia?: string | null
   observacoes?: string | null
+  dias_disponiveis?: DiaDisponivelSala[]
+  horarios_customizados?: Record<string, string[]>
+}
+
+/** Padrão Seg-Sex, dia inteiro (Manhã+Tarde) — usado como default de `dias_disponiveis` sempre que a sala não tiver o campo preenchido (ex.: linhas antigas do banco antes da coluna existir). */
+export const DIAS_DISPONIVEIS_PADRAO: DiaDisponivelSala[] = [1, 2, 3, 4, 5].map(dow => ({ dow, turnos: ["Manhã", "Tarde"] as ("Manhã" | "Tarde")[] }))
+
+/**
+ * Tolerante ao formato antigo de `dias_disponiveis` (smallint[] — só o dow,
+ * dia inteiro implícito), pré-migration 20260908092832: enquanto o banco
+ * ainda não tiver rodado essa migration (ou durante o intervalo entre deploy
+ * do frontend e aplicação manual do APLICAR_*.sql), a coluna pode chegar como
+ * `[1,2,3,4,5]` em vez de `[{dow,turnos}]`. Sem isso, `calcularSlotsDaSala`
+ * quebra tentando desestruturar `turnos` de um number (ver incidente
+ * 2026-09-08: "turnos is not iterable"). Aplica-se em toda leitura de sala
+ * vinda do banco — ver `listarSalas`/`criarSala`/`atualizarSala` em
+ * salas.service.ts.
+ */
+export function normalizarDiasDisponiveis(raw: unknown): DiaDisponivelSala[] {
+  if (!Array.isArray(raw) || raw.length === 0) return DIAS_DISPONIVEIS_PADRAO
+  return raw.map(item => {
+    if (typeof item === "number") return { dow: item, turnos: ["Manhã", "Tarde"] as ("Manhã" | "Tarde")[] }
+    const dow = Number((item as { dow?: unknown })?.dow)
+    const turnosRaw = (item as { turnos?: unknown })?.turnos
+    const turnos = Array.isArray(turnosRaw) ? turnosRaw.filter((t): t is "Manhã" | "Tarde" => t === "Manhã" || t === "Tarde") : []
+    return { dow, turnos: turnos.length ? turnos : (["Manhã", "Tarde"] as ("Manhã" | "Tarde")[]) }
+  }).filter(d => Number.isFinite(d.dow))
+}
+
+/** Tolerante a `null`/formato inesperado de `horarios_customizados` — mesmo cuidado defensivo de normalizarDiasDisponiveis (coluna nova, pode não existir ainda no banco no momento da leitura). */
+export function normalizarHorariosCustomizados(raw: unknown): Record<string, string[]> {
+  if (!raw || typeof raw !== "object") return {}
+  const out: Record<string, string[]> = {}
+  for (const [chave, horarios] of Object.entries(raw as Record<string, unknown>)) {
+    if (Array.isArray(horarios)) out[chave] = horarios.filter((h): h is string => typeof h === "string")
+  }
+  return out
 }
 
 /** Capacidade projetada (nº de profissionais/pacientes simultâneos esperados) */

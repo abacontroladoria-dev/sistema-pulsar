@@ -136,6 +136,7 @@ export function normalizarUnidadeOcupacao(unidade: string): string {
   if (n.includes("fazendinha")) return "Fazendinha"
   if (n.includes("padre miguel")) return "Padre Miguel"
   if (n.includes("realengo")) return "Realengo"
+  if (n.includes("campo grande") || n.includes("terceirizada")) return "Unidade Terceirizada - Campo Grande"
   return "Consertar Unidade no sistema"
 }
 
@@ -149,6 +150,7 @@ export function parseUnidadeSala(sala: string): string {
   if (n.includes("fazendinha")) return "Fazendinha"
   if (n.includes("padre miguel")) return "Padre Miguel"
   if (n.includes("realengo")) return "Realengo"
+  if (n.includes("campo grande") || n.includes("terceirizada")) return "Unidade Terceirizada - Campo Grande"
   return normalizarUnidadeOcupacao(raw.split(/[-–—]/)[0].trim())
 }
 
