@@ -16,6 +16,7 @@ import {
   Ban,
   UserMinus,
   UserX,
+  CalendarX,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -153,6 +154,22 @@ const TOKENS: Record<string, StatusToken> = {
     severidade: 'critico',
     icon: UserX,
   },
+  // A clínica não abriu: feriado, ponto facultativo, falta de energia.
+  //
+  // Não é falta de ninguém, e por isso não é 'atencao' — não há tratativa a
+  // fazer, ninguém deixou de comparecer. Severidade 'resolvido' mantém a sessão
+  // fora do bloco "Precisa de atenção", que é justamente o ponto: a recepção não
+  // deve ser cobrada todo dia por um dia em que não houve atendimento.
+  //
+  // Chega aqui por `tipo_falta = 'unidade'`, não por status_operacional — o CASE
+  // do banco ainda não tem o ramo 'falta_unidade' (ver o TODO em
+  // 20260908100200_falta_da_unidade_fora_da_assiduidade.sql).
+  falta_unidade: {
+    key: 'falta_unidade',
+    label: 'Unidade fechada',
+    severidade: 'resolvido',
+    icon: CalendarX,
+  },
   erro: {
     key: 'erro',
     label: 'Sem autorização',
@@ -210,6 +227,20 @@ export function resolverStatus(item: any): StatusToken {
   // motivo da recusa, que segue visível na ficha. O histórico não se apaga.
   if (String(bruto).toLowerCase() === 'glosa' && item?.vinculo) {
     return TOKENS.glosa_resolvida
+  }
+
+  // A clínica não abriu — feriado, ponto facultativo, falta de energia.
+  //
+  // Precisa vir ANTES da resolução por status porque a leitura do banco ainda
+  // não distingue este caso: o CASE de status_operacional testa tipo_falta
+  // 'terapeuta'/'paciente' e nada mais, então uma linha 'unidade' escorrega até
+  // o ELSE e chega aqui como 'falta' cru — que o TOKENS mapeia para "Falta do
+  // paciente", exatamente o rótulo errado. Ver o TODO em
+  // supabase/migrations/20260908100200_falta_da_unidade_fora_da_assiduidade.sql;
+  // quando o ramo 'falta_unidade' existir no banco, este bloco vira redundante
+  // (e inofensivo).
+  if (item?.tipo_falta === 'unidade') {
+    return TOKENS.falta_unidade
   }
 
   const token = TOKENS[String(bruto).toLowerCase()]

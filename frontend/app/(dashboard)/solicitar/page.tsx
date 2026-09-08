@@ -10,9 +10,19 @@ import { descreverErro, ehMigrationPendente } from '@/lib/supabase/erro'
 
 import { criarAutorizacao, resolverNomeUsuario } from '@/services/autorizacoes.service'
 
+import {
+  previewFaltaEmLote,
+  aplicarFaltaEmLote,
+  reverterFaltaEmLote,
+  MOTIVOS_FALTA,
+  ROTULO_IGNORADA,
+  type MotivoFalta,
+  type FaltaLoteResultado,
+} from '@/services/autorizacoes.service'
+
 import toast from 'react-hot-toast'
 
-import { Lock, CheckCircle, Loader2, Megaphone, XCircle } from 'lucide-react'
+import { Lock, CheckCircle, Loader2, Megaphone, XCircle, CalendarX, Undo2 } from 'lucide-react'
 
 import { sondarRobo } from '@/lib/machine'
 
@@ -41,6 +51,13 @@ import {
 // a recepção espera alguns segundos e chama de novo, contra um pai que nunca
 // descobre que foi chamado.
 const JANELA_RECHAMADA_MS = 90_000
+
+// O banner "Desfazer lote" precisa sobreviver a um F5: a atendente lança o
+// feriado, percebe que errou a data e recarrega a página por reflexo. Duas horas
+// cobrem o arrependimento real; depois disso o caminho é o snippet de suporte
+// com o lote_id, que continua gravado no banco.
+const CHAVE_ULTIMO_LOTE = 'pulsar:ultimoLoteFalta'
+const TTL_ULTIMO_LOTE_MS = 2 * 60 * 60 * 1000
 
 // =========================
 // TERAPIAS OCULTAS
@@ -214,6 +231,21 @@ const unidades = [
 
 	].sort()
 
+  // Opções de recorte do modal de "Fechar o dia".
+  //
+  // Carregadas da data ESCOLHIDA NO MODAL, não da data aberta na tela — as duas
+  // são independentes de propósito (ver abrirModalLote). Uma versão anterior
+  // derivava estas listas de `listaDiaCompleta`, o que oferecia à atendente as
+  // unidades e horários de um dia diferente daquele que ela estava fechando; o
+  // sintoma era um aviso âmbar pedindo que ela "prefira deixar em todos", que é
+  // um curativo sobre opções erradas em vez de opções certas.
+  const [opcoesLote, setOpcoesLote] = useState<{
+    unidades: string[]
+    horarios: string[]
+    convenios: string[]
+  }>({ unidades: [], horarios: [], convenios: [] })
+  const [carregandoOpcoesLote, setCarregandoOpcoesLote] = useState(false)
+
   const [filtroHorario, setFiltroHorario] = useState('')
   
   const [filtroUnidade, setFiltroUnidade] = useState('')
@@ -229,6 +261,27 @@ const unidades = [
   const [pacienteFaltaDia, setPacienteFaltaDia] = useState<any>(null)
 
   const [justificativaFalta, setJustificativaFalta] = useState('')
+
+  // ── Falta em lote ─────────────────────────────────────────────────────────
+  // Feriado e afins: o dia inteiro cai de uma vez. Duas etapas — formulário e
+  // confirmação com os números — porque errar a data aqui atinge centenas de
+  // sessões de uma vez.
+  const [modalLote, setModalLote] = useState(false)
+  const [loteEtapa, setLoteEtapa] = useState<'form' | 'confirmacao'>('form')
+  const [loteData, setLoteData] = useState('')
+  const [loteMotivo, setLoteMotivo] = useState<MotivoFalta>('feriado')
+  const [loteJustificativa, setLoteJustificativa] = useState('')
+  // Fixo: o lote existe para os casos em que a clínica não abriu. Ver o bloco
+  // explicativo no modal, onde o seletor de tipo deliberadamente não existe.
+  const loteTipo = 'unidade' as const
+  const [loteUnidade, setLoteUnidade] = useState('')
+  const [loteHorario, setLoteHorario] = useState('')
+  const [loteConvenio, setLoteConvenio] = useState('')
+  const [loteContagem, setLoteContagem] = useState<FaltaLoteResultado | null>(null)
+  const [loteCarregando, setLoteCarregando] = useState(false)
+  const [ultimoLote, setUltimoLote] = useState<
+    { id: string; aplicadas: number; quando: number } | null
+  >(null)
 
   const [filtro, setFiltro] = useState('')
   
@@ -259,6 +312,33 @@ const unidades = [
       .catch(() => { /* sem nome o selo só não mostra autor */ })
     return () => { cancelado = true }
   }, [])
+
+  useEffect(() => {
+    try {
+      const cru = localStorage.getItem(CHAVE_ULTIMO_LOTE)
+      if (!cru) return
+      const salvo = JSON.parse(cru)
+      if (Date.now() - salvo.quando > TTL_ULTIMO_LOTE_MS) {
+        localStorage.removeItem(CHAVE_ULTIMO_LOTE)
+        return
+      }
+      setUltimoLote(salvo)
+    } catch {
+      /* storage indisponível ou lixo salvo: o banner só não aparece */
+    }
+  }, [])
+
+  useEffect(() => {
+    try {
+      if (ultimoLote) {
+        localStorage.setItem(CHAVE_ULTIMO_LOTE, JSON.stringify(ultimoLote))
+      } else {
+        localStorage.removeItem(CHAVE_ULTIMO_LOTE)
+      }
+    } catch {
+      /* idem */
+    }
+  }, [ultimoLote])
 
   // Chamar o responsável é um ato sobre a PESSOA numa sessão, então a chave é
   // (paciente, data, horário) e não `buildCardKey` — que inclui a terapia e
@@ -1121,10 +1201,162 @@ const atendimentos = Object.values(
 } 
   
 
+  // ===========================
+  // ❌ FALTA EM LOTE
+  // ===========================
+  //
+  // Feriado, ponto facultativo, falta de energia: o dia inteiro cai. Ao
+  // contrário de handleFaltaDia (que é um paciente por vez, em laço), aqui uma
+  // única RPC resolve o recorte inteiro numa transação — ver
+  // supabase/migrations/20260908100100_registrar_falta_em_lote.sql.
+
+  function abrirModalLote() {
+    // A data começa VAZIA, e não herdada da tela.
+    //
+    // Fechar o dia é quase sempre uma ação sobre outro dia — o feriado que vem,
+    // a segunda-feira em que faltou luz — enquanto a tela costuma estar em hoje.
+    // Herdar a data da página fazia o campo chegar pré-preenchido com um valor
+    // plausível e quase sempre errado, do tipo que ninguém relê antes de
+    // confirmar. Vazio, a data é uma escolha; preenchida, era uma suposição.
+    //
+    // Os filtros de recorte também não são herdados: eles restringem o que já
+    // está na tela (a data de hoje), e aplicá-los a outro dia produziria um
+    // recorte que a atendente não pediu.
+    setLoteData('')
+    setLoteMotivo('feriado')
+    setLoteJustificativa(justificativaPadrao('feriado'))
+    setLoteUnidade('')
+    setLoteHorario('')
+    setLoteConvenio('')
+    setLoteContagem(null)
+    setLoteEtapa('form')
+    setModalLote(true)
+  }
+
+  function fecharModalLote() {
+    setModalLote(false)
+    setLoteEtapa('form')
+    setLoteContagem(null)
+  }
+
+  function justificativaPadrao(motivo: MotivoFalta) {
+    const mapa: Record<MotivoFalta, string> = {
+      feriado:           'Feriado — unidade fechada',
+      ponto_facultativo: 'Ponto facultativo — unidade fechada',
+      falta_energia:     'Falta de energia na unidade',
+      evento_climatico:  'Evento climático — atendimentos suspensos',
+      outro:             '',
+    }
+    return mapa[motivo]
+  }
+
+  // As funções do serviço já traduzem os códigos do Postgres em mensagens que a
+  // atendente entende; aqui só é preciso extrair o texto com segurança.
+  function mensagemDoErro(err: unknown, padrao: string) {
+    return err instanceof Error && err.message ? err.message : padrao
+  }
+
+  function paramsDoLote() {
+    return {
+      data: loteData,
+      motivo: loteMotivo,
+      justificativa: loteJustificativa.trim(),
+      tipoFalta: loteTipo,
+      unidade: loteUnidade || null,
+      horario: loteHorario || null,
+      convenioNome: loteConvenio || null,
+    }
+  }
+
+  // Salvar → conta o que seria feito e mostra a confirmação. Não escreve nada.
+  async function handleLotePreview() {
+    if (!loteJustificativa.trim()) {
+      toast.error('Justificativa é obrigatória')
+      return
+    }
+
+    setLoteCarregando(true)
+    try {
+      const r = await previewFaltaEmLote(paramsDoLote())
+
+      if (r.aplicadas === 0) {
+        // Falha silenciosa clássica: confirmar um lote que não faria nada e sair
+        // achando que o dia foi fechado. Melhor dizer aqui.
+        toast.error(
+          r.ignoradas > 0
+            ? `Nada a fechar — as ${r.ignoradas} sessões deste dia já estão resolvidas.`
+            : 'Nenhuma sessão neste dia com os filtros escolhidos.'
+        )
+        setLoteCarregando(false)
+        return
+      }
+
+      setLoteContagem(r)
+      setLoteEtapa('confirmacao')
+    } catch (err: unknown) {
+      toast.error(mensagemDoErro(err, 'Erro ao calcular o lote'))
+    } finally {
+      setLoteCarregando(false)
+    }
+  }
+
+  async function handleLoteAplicar() {
+    if (!loteContagem) return
+
+    setLoteCarregando(true)
+    try {
+      // Mesmo lote_id do preview: se a resposta se perder na rede e a atendente
+      // clicar de novo, o banco recusa em vez de lançar tudo duas vezes.
+      const r = await aplicarFaltaEmLote({
+        ...paramsDoLote(),
+        loteId: loteContagem.lote_id,
+      })
+
+      // Mesma palavra do botão e da confirmação: quem clicou em "Fechar o dia"
+      // precisa reconhecer o resultado sem traduzir nada.
+      toast.success(
+        r.ignoradas > 0
+          ? `Dia fechado · ${r.aplicadas} sessões · ${r.ignoradas} mantidas como estavam`
+          : `Dia fechado · ${r.aplicadas} sessões`
+      )
+
+      setUltimoLote({ id: r.lote_id, aplicadas: r.aplicadas, quando: Date.now() })
+      fecharModalLote()
+
+      // Recarrega pela RPC em vez de reconciliar o estado local: em massa é mais
+      // barato e não corre o risco de a tela discordar do banco.
+      await carregarLista()
+    } catch (err: unknown) {
+      toast.error(mensagemDoErro(err, 'Erro ao lançar as faltas'))
+    } finally {
+      setLoteCarregando(false)
+    }
+  }
+
+  async function handleDesfazerLote() {
+    if (!ultimoLote) return
+
+    setLoteCarregando(true)
+    try {
+      const r = await reverterFaltaEmLote(ultimoLote.id)
+      toast.success(
+        r.revertidas === 1
+          ? '1 sessão voltou para a lista'
+          : `${r.revertidas} sessões voltaram para a lista`
+      )
+      setUltimoLote(null)
+      await carregarLista()
+    } catch (err: unknown) {
+      toast.error(mensagemDoErro(err, 'Erro ao desfazer o lote'))
+    } finally {
+      setLoteCarregando(false)
+    }
+  }
+
   // =========================
   // CONCLUSAO MANUAL
   // =========================
-  
+
 async function handleManualLista(p: any) {
 
   try {
@@ -1331,6 +1563,71 @@ function buildCardKey(p: any) {
   }
 
 // =========================
+// OPÇÕES DE RECORTE DO LOTE
+// =========================
+//
+// Carrega unidades / horários / convênios da data escolhida DENTRO do modal.
+// Só roda com o modal aberto e uma data preenchida: fora disso não há o que
+// oferecer, e buscar a agenda de um dia que ninguém vai fechar é trabalho à toa.
+useEffect(() => {
+  if (!modalLote || !loteData) {
+    setOpcoesLote({ unidades: [], horarios: [], convenios: [] })
+    return
+  }
+
+  let cancelado = false
+  setCarregandoOpcoesLote(true)
+
+  ;(async () => {
+    const { data, error } = await supabase
+      .rpc('listar_central_autorizacoes', { p_data: loteData })
+
+    if (cancelado) return
+
+    if (error) {
+      console.error('Erro ao carregar opções do lote:', error)
+      // Sem opções a tela ainda funciona: os três selects ficam em "todos",
+      // que é o recorte mais comum de um feriado.
+      setOpcoesLote({ unidades: [], horarios: [], convenios: [] })
+      setCarregandoOpcoesLote(false)
+      return
+    }
+
+    const linhas = (data || []) as {
+      sala_nome?: string[] | null
+      horario?: string | null
+      convenio_nome?: string | null
+    }[]
+
+    setOpcoesLote({
+      unidades: [...new Set(
+        linhas
+          .flatMap(p => p.sala_nome || [])
+          .map((s: string) => s?.replace('Unid. ', '')?.split(' - ')[0])
+          .filter((s): s is string => Boolean(s))
+      )].sort(),
+      horarios: [...new Set(
+        linhas
+          .map(p => p.horario?.slice(0, 5))
+          .filter((h): h is string => Boolean(h))
+      )].sort(),
+      convenios: [...new Set(
+        linhas
+          .map(p => p.convenio_nome)
+          .filter((c): c is string => Boolean(c))
+      )].sort(),
+    })
+    setCarregandoOpcoesLote(false)
+  })()
+
+  return () => { cancelado = true }
+  // `supabase` vem de getSupabaseClient(), que devolve sempre a mesma instância;
+  // incluí-lo nas dependências não mudaria nada e só faria o efeito parecer
+  // reagir a algo que não muda.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [modalLote, loteData])
+
+// =========================
 // DATA DA AUTORIZACAO
 // =========================
 
@@ -1468,12 +1765,51 @@ useEffect(() => {
     <div className="p-6 min-h-[calc(100vh-80px)] bg-background">
       {/* HEADER */}
       <div className="mb-6 px-5 py-3 bg-card border border-border rounded-2xl shadow-sm">
-        <h1 className="text-2xl font-semibold text-slate-600">
-          Central de Atendimentos
-        </h1>
-        <p className="text-sm text-slate-500 mt-1">
-          Gestão diária de presenças, faltas e autorizações
-        </p>
+        {/* Título e ação de escopo do dia na mesma linha.
+            O botão fica no header, e não junto dos filtros, porque não é um
+            filtro: filtros mudam o que se vê, este muda o que existe. E fica
+            longe dos botões do card (Autorizar / Presença / Falta), que são o
+            trabalho de minuto a minuto — a distância física é o que evita
+            confundir "marcar a falta deste paciente" com "fechar o dia inteiro".
+
+            Neutro em repouso de propósito. A versão anterior era um retângulo
+            âmbar numa faixa só dele entre os filtros e a lista: criava uma
+            terceira zona na tela e usava a mesma cor do alerta do robô logo
+            acima, fazendo uma ação de meia dúzia de vezes por ano competir com
+            um aviso de fato urgente. A gravidade desta ação pertence à
+            confirmação, não ao repouso. */}
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold text-slate-600">
+              Central de Atendimentos
+            </h1>
+            <p className="text-sm text-slate-500 mt-1">
+              Gestão diária de presenças, faltas e autorizações
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={abrirModalLote}
+            title="Registrar que a clínica não abriu neste dia"
+            className="
+              shrink-0 mt-0.5
+              inline-flex items-center gap-2
+              rounded-lg
+              border border-slate-200
+              bg-white
+              px-3 py-1.5
+              text-sm font-medium text-slate-500
+              shadow-sm
+              transition-colors
+              hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700
+              focus:outline-none focus:ring-2 focus:ring-[#3A8FB7]/40
+            "
+          >
+            <CalendarX size={15} className="text-slate-400" />
+            Fechar o dia
+          </button>
+        </div>
         {/* O aviso muda de cor conforme a AÇÃO que ele pede. Âmbar quando a
             recepção resolve sozinha (reiniciar o robô); azul quando o robô está
             comprovadamente bem e o problema é técnico — insistir no PC ali só
@@ -1657,6 +1993,44 @@ useEffect(() => {
   </div>
 
 </div>
+
+          {/* DESFAZER O ÚLTIMO LOTE
+              Sobrevive a F5 (localStorage, 2h). É a rede de segurança da ação:
+              lançar o feriado na data errada atinge centenas de sessões, e o
+              arrependimento costuma vir em segundos. */}
+          {ultimoLote && (
+            <div className="mb-3 flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+              <span className="text-slate-600">
+                <strong className="font-semibold text-slate-800">
+                  {ultimoLote.aplicadas} {ultimoLote.aplicadas === 1 ? 'sessão' : 'sessões'}
+                </strong>{' '}
+                {ultimoLote.aplicadas === 1 ? 'marcada' : 'marcadas'} como unidade
+                fechada às{' '}
+                {new Date(ultimoLote.quando).toLocaleTimeString('pt-BR', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
+              </span>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleDesfazerLote}
+                  disabled={loteCarregando}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-100 disabled:opacity-40"
+                >
+                  <Undo2 size={13} />
+                  Desfazer
+                </button>
+                <button
+                  onClick={() => setUltimoLote(null)}
+                  className="text-slate-400 transition hover:text-slate-600"
+                  title="Dispensar aviso"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* A ASSIM carimba a guia com a data em que ela foi emitida, não com a data
               do atendimento. Autorizando adiantado, as duas divergem e o vínculo
@@ -2142,6 +2516,263 @@ useEffect(() => {
     </div>
   </div>
 )}
+
+{/* ═══════════════════════════════════════════════════════════════════════
+    MODAL FALTA EM LOTE
+
+    Duas etapas: formulário e confirmação com os números. A confirmação não é
+    cerimônia — a contagem de ignoradas só existe no banco (a tela recebe
+    apenas cards com mostrar_na_tela = true), então esta é a única chance de a
+    atendente ver a escala antes de commitar.
+   ═══════════════════════════════════════════════════════════════════════ */}
+{modalLote && (
+  <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+
+    {loteEtapa === 'form' ? (
+      <div className="relative bg-white rounded-2xl shadow-xl p-6 w-[520px] max-h-[90vh] overflow-y-auto border border-slate-200">
+
+        <button
+          onClick={fecharModalLote}
+          className="absolute top-3 right-3 text-slate-400 hover:text-slate-600 text-lg"
+        >
+          ✕
+        </button>
+
+        <h2 className="text-lg font-semibold text-slate-800">
+          Fechar o dia
+        </h2>
+        <p className="text-sm text-slate-500 mt-1">
+          Registra que a clínica não abriu. As sessões já autorizadas ou
+          concluídas ficam como estão.
+        </p>
+
+        {/* DATA — o campo que, errado, atinge o dia inteiro.
+            Independente da data aberta na tela e sem valor inicial: escolher a
+            data é o primeiro ato consciente de fechar um dia. */}
+        <div className="mt-5">
+          <label
+            htmlFor="lote-data"
+            className="block text-xs font-semibold text-slate-700 mb-1.5"
+          >
+            Qual dia a clínica não abriu?
+          </label>
+          <input
+            id="lote-data"
+            type="date"
+            value={loteData}
+            onChange={(e) => {
+              // Trocar a data invalida o recorte: a unidade ou o horário
+              // escolhidos podem nem existir no dia novo, e um filtro herdado
+              // em silêncio faria o lote pegar menos sessões do que a atendente
+              // espera — sem nada na tela explicando por quê.
+              setLoteData(e.target.value)
+              setLoteUnidade('')
+              setLoteHorario('')
+              setLoteConvenio('')
+              setLoteContagem(null)
+            }}
+            className="w-full border-2 border-[#3A8FB7]/40 rounded-lg px-3 py-2 text-sm font-medium text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#3A8FB7]/40"
+          />
+        </div>
+
+        {/* MOTIVO */}
+        <div className="mt-4">
+          <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+            Motivo
+          </label>
+          <select
+            value={loteMotivo}
+            onChange={(e) => {
+              const novo = e.target.value as MotivoFalta
+              // Só sobrescreve a justificativa se ela ainda for a sugestão
+              // automática — texto que a atendente escreveu não se perde.
+              if (loteJustificativa === justificativaPadrao(loteMotivo)) {
+                setLoteJustificativa(justificativaPadrao(novo))
+              }
+              setLoteMotivo(novo)
+            }}
+            className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#3A8FB7]/40"
+          >
+            {MOTIVOS_FALTA.map((m) => (
+              <option key={m.valor} value={m.valor}>{m.rotulo}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* JUSTIFICATIVA */}
+        <div className="mt-4">
+          <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+            Justificativa
+          </label>
+          <textarea
+            value={loteJustificativa}
+            onChange={(e) => setLoteJustificativa(e.target.value)}
+            placeholder="Descreva a situação"
+            rows={2}
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 resize-none shadow-sm focus:outline-none focus:ring-2 focus:ring-[#3A8FB7]/40"
+          />
+        </div>
+
+        {/* Sem seletor de "tipo de falta" de propósito.
+            Todo motivo desta lista é a clínica fechada, então o lançamento é
+            sempre tipo_falta='unidade'. Oferecer "do paciente" aqui seria
+            convidar a registrar ausência de quem não faltou — que é exatamente
+            o que suja a assiduidade e a fila de reposição. */}
+        <div className="mt-4 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2.5">
+          <p className="text-xs text-slate-600 leading-relaxed">
+            Estas sessões serão registradas como{' '}
+            <strong className="font-semibold text-slate-800">unidade fechada</strong>{' '}
+            — não contam como falta do paciente nem entram na reposição.
+          </p>
+        </div>
+
+        {/* RECORTE
+            As opções vêm da data escolhida acima (ver o efeito que popula
+            opcoesLote), então o que aparece aqui existe mesmo no dia que será
+            fechado. Sem data, não há o que recortar: os três ficam inertes. */}
+        <div className="mt-5 pt-4 border-t border-slate-100">
+          <div className="flex items-baseline justify-between mb-2.5">
+            <p className="text-xs font-semibold text-slate-700">
+              Fechar o dia todo, ou apenas parte dele
+            </p>
+            {carregandoOpcoesLote && (
+              <span className="text-xs text-slate-400">carregando…</span>
+            )}
+          </div>
+
+          <div className="grid grid-cols-3 gap-2">
+            <select
+              value={loteUnidade}
+              onChange={(e) => setLoteUnidade(e.target.value)}
+              disabled={!loteData}
+              className="bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-sm text-slate-600 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#3A8FB7]/40 disabled:bg-slate-50 disabled:text-slate-400"
+            >
+              <option value="">Todas as unidades</option>
+              {opcoesLote.unidades.map((u) => (
+                <option key={u} value={u}>{u}</option>
+              ))}
+            </select>
+
+            <select
+              value={loteHorario}
+              onChange={(e) => setLoteHorario(e.target.value)}
+              disabled={!loteData}
+              className="bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-sm text-slate-600 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#3A8FB7]/40 disabled:bg-slate-50 disabled:text-slate-400"
+            >
+              <option value="">Todos os horários</option>
+              {opcoesLote.horarios.map((h) => (
+                <option key={h} value={h}>{h}</option>
+              ))}
+            </select>
+
+            <select
+              value={loteConvenio}
+              onChange={(e) => setLoteConvenio(e.target.value)}
+              disabled={!loteData}
+              className="bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-sm text-slate-600 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#3A8FB7]/40 disabled:bg-slate-50 disabled:text-slate-400"
+            >
+              <option value="">Todos os convênios</option>
+              {opcoesLote.convenios.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Um dia sem nenhuma sessão quase sempre significa data errada — é o
+              momento de dizer isso, e não depois de clicar em Salvar. */}
+          {loteData && !carregandoOpcoesLote && opcoesLote.horarios.length === 0 && (
+            <p className="mt-2 text-xs text-slate-500">
+              Nenhuma sessão agendada em {formatarDataBr(loteData)}. Confira a data.
+            </p>
+          )}
+        </div>
+
+        <div className="mt-6 flex gap-3">
+          <button
+            onClick={fecharModalLote}
+            className="flex-1 py-2.5 rounded-lg border border-slate-300 text-slate-700 bg-white font-medium transition hover:bg-slate-50"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleLotePreview}
+            disabled={loteCarregando || !loteJustificativa.trim() || !loteData}
+            className="flex-1 py-2.5 rounded-lg bg-[#3A8FB7] text-white font-semibold transition hover:bg-[#32809f] disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
+          >
+            {loteCarregando && <Loader2 size={15} className="animate-spin" />}
+            Salvar
+          </button>
+        </div>
+      </div>
+
+    ) : (
+      /* ── CONFIRMAÇÃO ── */
+      <div className="relative bg-white rounded-2xl shadow-xl p-6 w-[420px] border border-slate-200">
+
+        {/* O número é o conteúdo, não o texto ao redor dele: é a única coisa que
+            a atendente precisa conferir antes de confirmar, e é o que denuncia
+            a data errada (12 sessões num dia que deveria ter 300). */}
+        <p className="text-center text-sm text-slate-500">
+          Serão marcadas como unidade fechada
+        </p>
+        <p className="text-center text-4xl font-semibold text-slate-800 tabular-nums mt-1">
+          {loteContagem?.aplicadas}
+        </p>
+        <p className="text-center text-sm text-slate-500">
+          {loteContagem?.aplicadas === 1 ? 'sessão' : 'sessões'}
+        </p>
+
+        {!!loteContagem?.ignoradas && (
+          <p className="text-sm text-slate-500 text-center mt-3">
+            {loteContagem.ignoradas}{' '}
+            {loteContagem.ignoradas === 1 ? 'sessão fica' : 'sessões ficam'} como
+            {loteContagem.ignoradas === 1 ? ' está' : ' estão'} —{' '}
+            {Object.keys(loteContagem.ignoradas_por_motivo || {})
+              .map((k) => ROTULO_IGNORADA[k] || k)
+              .join(', ')}
+            .
+          </p>
+        )}
+
+        <div className="mt-4 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2.5 text-sm text-slate-600 text-center">
+          {MOTIVOS_FALTA.find((m) => m.valor === loteMotivo)?.rotulo}
+          {' · '}
+          {formatarDataBr(loteData)}
+          {' · '}
+          {loteUnidade || 'todas as unidades'}
+          {loteHorario && ` · ${loteHorario}`}
+          {loteConvenio && ` · ${loteConvenio}`}
+        </div>
+
+        <div className="mt-6 flex gap-3">
+          <button
+            onClick={() => setLoteEtapa('form')}
+            disabled={loteCarregando}
+            className="flex-1 py-2.5 rounded-lg border border-slate-300 text-slate-700 bg-white font-medium transition hover:bg-slate-50 disabled:opacity-40"
+          >
+            Voltar
+          </button>
+          {/* Escuro, não vermelho. Vermelho é a cor de erro e de perda, e
+              fechar o dia não é nenhum dos dois — é um registro correto de um
+              fato. O peso vem do contraste (é o único elemento sólido do
+              modal), não do alarme. */}
+          <button
+            onClick={handleLoteAplicar}
+            disabled={loteCarregando}
+            className="flex-1 py-2.5 rounded-lg bg-slate-800 text-white font-semibold transition hover:bg-slate-900 disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
+          >
+            {loteCarregando && <Loader2 size={15} className="animate-spin" />}
+            Confirmar
+          </button>
+        </div>
+
+        <p className="text-xs text-slate-400 text-center mt-4 leading-relaxed">
+          Você poderá desfazer este lote logo depois.
+        </p>
+      </div>
+    )}
+  </div>
+)}
 	</div>
   )
 }
@@ -2155,7 +2786,10 @@ function formatarCpf(
     .replace(/\D/g, '')
 }
 
-function formatarDataNascimento(
+// ISO (YYYY-MM-DD) para o formato brasileiro, sem passar por Date: construir um
+// Date a partir de 'YYYY-MM-DD' o interpreta como UTC e, em fuso negativo, a
+// data exibida volta um dia.
+function formatarDataBr(
   data?: string | null
 ) {
 
@@ -2171,6 +2805,12 @@ function formatarDataNascimento(
   }
 
   return texto
+}
+
+function formatarDataNascimento(
+  data?: string | null
+) {
+  return formatarDataBr(data)
 }
 
 function erroColunaPacienteComplementar(

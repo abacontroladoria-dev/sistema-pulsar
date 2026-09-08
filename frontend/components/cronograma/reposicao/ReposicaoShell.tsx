@@ -50,6 +50,11 @@ function usePacienteSearch(query: string): { results: Paciente[]; loading: boole
         .from("fila_autorizacoes")
         .select("paciente_id, paciente_nome")
         .eq("status", "falta")
+        // Dia de clínica fechada (feriado, ponto facultativo, falta de energia)
+        // não torna o paciente candidato a reposição — ele não faltou. `or` com
+        // `is.null` porque tipo_falta é NULL nas faltas antigas, e um `neq`
+        // sozinho descartaria todas elas.
+        .or("tipo_falta.is.null,tipo_falta.neq.unidade")
         .ilike("paciente_nome", `%${query.trim()}%`)
         .limit(10)
 

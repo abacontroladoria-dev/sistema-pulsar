@@ -35,6 +35,12 @@ export function useVisaoGeralFaltas(semanaInicio: string) {
         .from('fila_autorizacoes')
         .select('id, paciente_id, paciente_nome, tita_agendamento_id, data_atendimento')
         .eq('status', 'falta')
+        // Feriado, ponto facultativo, falta de energia: a clínica não abriu.
+        // Não é falta a repor de uma pessoa específica — é dia sem operação, e
+        // listar isso como pendência de reposição enche a tela de trabalho que
+        // não existe. `or` com `is.null` porque tipo_falta é NULL nas faltas
+        // antigas, e um filtro `neq` sozinho descartaria todas elas.
+        .or('tipo_falta.is.null,tipo_falta.neq.unidade')
         .is('falta_revertida_em', null)
         .gte('data_atendimento', semanaInicio)
         .lte('data_atendimento', semanaFim)

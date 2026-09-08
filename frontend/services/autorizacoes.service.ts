@@ -249,6 +249,179 @@ export async function listarCentralAutorizacoes(data: string): Promise<Record<st
   return rows ?? []
 }
 
+// ============================================================================
+// FALTA EM LOTE
+//
+// Feriado, ponto facultativo, falta de energia: o dia inteiro cai. O caminho
+// individual (handleFalta) faz 2-3 round-trips por sessão sem transação — num
+// feriado de 300 sessões isso é ~900 requisições e um estado pela metade se algo
+// interromper no meio. Aqui é uma chamada só, atômica no banco.
+//
+// Ver supabase/migrations/20260908100100_registrar_falta_em_lote.sql.
+// ============================================================================
+
+export type MotivoFalta =
+  | 'feriado'
+  | 'ponto_facultativo'
+  | 'falta_energia'
+  | 'evento_climatico'
+  | 'outro'
+
+export const MOTIVOS_FALTA: { valor: MotivoFalta; rotulo: string }[] = [
+  { valor: 'feriado',           rotulo: 'Feriado' },
+  { valor: 'ponto_facultativo', rotulo: 'Ponto facultativo' },
+  { valor: 'falta_energia',     rotulo: 'Falta de energia' },
+  { valor: 'evento_climatico',  rotulo: 'Eventos Climáticos' },
+  { valor: 'outro',             rotulo: 'Outro' },
+]
+
+export type FaltaLoteParams = {
+  data: string                       // 'YYYY-MM-DD', direto do <input type="date">
+  motivo: MotivoFalta
+  justificativa: string
+  // 'unidade' = a clínica não abriu (feriado, ponto facultativo, falta de
+  // energia). Não é ausência de ninguém: fica fora da assiduidade do paciente e
+  // da fila de reposição. É o padrão do lote.
+  tipoFalta?: 'paciente' | 'terapeuta' | 'unidade'
+  unidade?: string | null            // null = todas
+  horario?: string | null            // 'HH:MM', null = todos
+  convenioNome?: string | null       // null = todos
+  loteId?: string
+}
+
+export type FaltaLoteResultado = {
+  lote_id: string
+  dry_run: boolean
+  aplicadas: number
+  atualizadas: number
+  criadas: number
+  ignoradas: number
+  ignoradas_por_motivo: Record<string, number>
+}
+
+// Rótulos das razões pelas quais uma sessão fica de fora do lote. A confirmação
+// mostra só o total, mas o detalhe é o que permite entender um lote que veio
+// menor do que o esperado.
+export const ROTULO_IGNORADA: Record<string, string> = {
+  autorizado_externo:  'já autorizadas fora do Pulsar',
+  concluido:           'já concluídas',
+  concluido_sem_guia:  'concluídas sem guia',
+  glosa:               'glosadas',
+  falta:               'já em falta',
+  em_processamento:    'sendo autorizadas agora',
+}
+
+function paramsParaRpc(p: FaltaLoteParams, dryRun: boolean) {
+  return {
+    p_data:          p.data,
+    p_motivo:        p.motivo,
+    p_justificativa: p.justificativa,
+    p_tipo_falta:    p.tipoFalta ?? 'unidade',
+    // String vazia é o valor das opções "Todas as unidades" / "Todos os
+    // horários" / "Todos os convênios"; o banco espera NULL para "sem filtro".
+    p_unidade:       p.unidade || null,
+    p_horario:       p.horario || null,
+    p_convenio_nome: p.convenioNome || null,
+    p_dry_run:       dryRun,
+    p_lote_id:       p.loteId ?? null,
+  }
+}
+
+function traduzirErroLote(error: { code?: string; message?: string } | null): Error {
+  // 57014 = statement timeout. A transação inteira aborta (o que é o
+  // comportamento seguro), mas o erro cru não diz nada de útil à atendente.
+  if (error?.code === '57014') {
+    return new Error(
+      'O lote é grande demais para uma tentativa. Filtre por unidade ou horário e repita.'
+    )
+  }
+  if (error?.code === '42501') {
+    return new Error('Você não tem permissão para lançar falta em lote.')
+  }
+  if (error?.code === '23505') {
+    return new Error('Este lote já foi aplicado.')
+  }
+  return new Error(error?.message || 'Erro ao processar falta em lote')
+}
+
+/**
+ * Conta o que o lote faria, sem escrever nada.
+ *
+ * A contagem de ignoradas SÓ pode vir daqui: a /solicitar recebe apenas cards
+ * com mostrar_na_tela = true, então as sessões já autorizadas nunca chegam ao
+ * browser e não há como contá-las no cliente.
+ */
+export async function previewFaltaEmLote(
+  params: FaltaLoteParams
+): Promise<FaltaLoteResultado> {
+
+  const supabase = getSupabaseClient()
+
+  const { data, error } = await supabase.rpc(
+    'registrar_falta_em_lote',
+    paramsParaRpc(params, true)
+  )
+
+  if (error) {
+    console.error('Erro no preview de falta em lote:', error)
+    throw traduzirErroLote(error)
+  }
+
+  return data as FaltaLoteResultado
+}
+
+/**
+ * Aplica o lote de verdade.
+ *
+ * Passe o mesmo `loteId` do preview: se a confirmação der timeout de rede e a
+ * atendente clicar de novo, o banco recusa o segundo lançamento em vez de
+ * duplicar as faltas.
+ */
+export async function aplicarFaltaEmLote(
+  params: FaltaLoteParams
+): Promise<FaltaLoteResultado> {
+
+  const supabase = getSupabaseClient()
+
+  const { data, error } = await supabase.rpc(
+    'registrar_falta_em_lote',
+    paramsParaRpc(params, false)
+  )
+
+  if (error) {
+    console.error('Erro ao aplicar falta em lote:', error)
+    throw traduzirErroLote(error)
+  }
+
+  return data as FaltaLoteResultado
+}
+
+/**
+ * Desfaz um lote inteiro pelo id.
+ *
+ * As sessões voltam como `cancelado`, não `pendente`: parte delas foi criada
+ * pelo próprio lote, e devolvê-las a pendente as transformaria em tarefa para o
+ * robô. Como `cancelado` aparece na /solicitar, a recepção age normalmente.
+ */
+export async function reverterFaltaEmLote(
+  loteId: string
+): Promise<{ lote_id: string; revertidas: number; ignoradas: number }> {
+
+  const supabase = getSupabaseClient()
+
+  const { data, error } = await supabase.rpc(
+    'reverter_falta_em_lote',
+    { p_lote_id: loteId }
+  )
+
+  if (error) {
+    console.error('Erro ao reverter falta em lote:', error)
+    throw traduzirErroLote(error)
+  }
+
+  return data as { lote_id: string; revertidas: number; ignoradas: number }
+}
+
 export async function listarAutorizacoes(): Promise<Record<string, any>[]> {
 
   const supabase =
