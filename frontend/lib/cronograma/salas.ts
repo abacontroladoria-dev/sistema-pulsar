@@ -9,7 +9,7 @@ import { normalizarUnidadeOcupacao, turnoDoHorario, corFaixaOcupacao } from "./o
 import { DOW_PT } from "./ocupacaoConst"
 import { pm, fm, cleanTxt } from "./helpers"
 import { normTxt, HORAS_GRID } from "./constants"
-import { capacidadeProjetadaSala, STATUS_SLOT_EXCLUIDO } from "./salasTypes"
+import { capacidadeProjetadaSala, STATUS_SLOT_EXCLUIDO, DIAS_DISPONIVEIS_PADRAO, chaveHorarioCustomizado } from "./salasTypes"
 import { construirIndiceExclusividadeTerapia, verificarExclusividade, type IndiceExclusividadeTerapia } from "./exclusividadeTerapia"
 import type {
   Sala,
@@ -40,6 +40,7 @@ const DOW_POR_NOME: Record<string, number> = {
   "quarta-feira": 3, "quarta": 3,
   "quinta-feira": 4, "quinta": 4,
   "sexta-feira": 5, "sexta": 5,
+  "sábado": 6, "sabado": 6,
 }
 
 export function dowDeDiaSemana(diaSemana: string | null | undefined): number | null {
@@ -57,13 +58,20 @@ export function dowDeDiaSemana(diaSemana: string | null | undefined): number | n
 // do texto e compara-se com os campos já normalizados de `cronograma_salas`,
 // em vez de comparar as strings inteiras.
 
-/** Extrai {unidade, numeroSala} de um `sala_nome` livre vindo da agenda (ex.: "Unid. Realengo - Sala 18 (Coordenação de caso)"). */
+/**
+ * Extrai {unidade, numeroSala} de um `sala_nome` livre vindo da agenda (ex.:
+ * "Unid. Realengo - Sala 18 (Coordenação de caso)"). O trecho "Sala N" é
+ * opcional — salas identificadas só pela descrição, sem número (ex.: "Unid.
+ * Terceirizada - Equoterapia em Movimento (Campo Grande)"), retornam
+ * `numeroSala: ""` em vez de `null` inteiro; ver `salaCasaComAgenda` pra como
+ * isso é tratado no casamento exato.
+ */
 export function parseSalaAgenda(salaNomeRaw: string | null | undefined): { unidade: string; numeroSala: string } | null {
   const raw = cleanTxt(salaNomeRaw)
   if (!raw) return null
-  const m = raw.match(/^Unid\.?\s*([^-–—]+?)\s*[-–—]\s*Sala\s*0*(\d+)\b/i)
+  const m = raw.match(/^Unid\.?\s*([^-–—]+?)\s*[-–—]\s*(?:Sala\s*0*(\d+)\b)?/i)
   if (!m) return null
-  return { unidade: normalizarUnidadeOcupacao(m[1]), numeroSala: m[2] }
+  return { unidade: normalizarUnidadeOcupacao(m[1]), numeroSala: m[2] ?? "" }
 }
 
 /** Normaliza número de sala para comparação (remove zeros à esquerda: "09" -> "9"). */
@@ -76,8 +84,14 @@ export function normNumeroSala(numero: string | null | undefined): string {
 function salaCasaComAgenda(sala: Sala, salaNomeAgenda: string | null): boolean {
   const parsed = parseSalaAgenda(salaNomeAgenda)
   if (!parsed) return false
-  return normalizarUnidadeOcupacao(sala.unidade_nome) === parsed.unidade
-    && normNumeroSala(sala.numero_sala) === parsed.numeroSala
+  if (parsed.unidade !== normalizarUnidadeOcupacao(sala.unidade_nome)) return false
+  // Sem "Sala N" no nome real (ex.: "Unid. Terceirizada - Equoterapia em
+  // Movimento (Campo Grande)") — a sala não tem como ser diferenciada de
+  // outras da mesma unidade pelo nome, então a própria unidade já a
+  // identifica; não exige bater o número cadastrado (que nesses casos é só
+  // organizacional, sem correspondência na TiTa).
+  if (parsed.numeroSala === "") return true
+  return normNumeroSala(sala.numero_sala) === parsed.numeroSala
 }
 
 /** Filtra linhas de agenda cuja `sala_nome` corresponde estruturalmente (unidade + número) à sala. */
@@ -107,10 +121,10 @@ export function linhasDaUnidade(sala: Sala, linhas: AgendaSalaRow[]): AgendaSala
 // profissionais diferentes em sequência (blocos de 40min) — isso é normal,
 // não é ocupação simultânea. `capacidadeProjetadaSala` representa capacidade
 // POR BLOCO de horário (1/2/3 pacientes ao mesmo tempo), não por turno inteiro.
-// O nº de blocos de 40min por turno segue a mesma grade fixa já usada em todo
-// o módulo Cronograma (manhã 08:00–12:00 = 6 blocos; tarde = 7 blocos — ver
-// `agenda.service.ts`/legado `slotsTurno()`).
-const BLOCOS_POR_TURNO: Record<"Manhã" | "Tarde", number> = { "Manhã": 6, "Tarde": 7 }
+// O nº de blocos por turno vem do tamanho da própria grade de horários em uso
+// (`horasTurno` em calcularSlotsDaSala) — HORAS_POR_TURNO por padrão (6 na
+// manhã / 7 na tarde, grade fixa do módulo), ou `sala.horarios_customizados`
+// quando a sala tiver um override (ex.: sábado com sessões de 30min).
 
 // HORAS_GRID tem os 13 horários oficiais em sequência (6 da manhã + 7 da
 // tarde) — mesma fonte usada em toda a Cronograma, nunca hardcodar de novo.
@@ -239,11 +253,17 @@ export function calcularSlotsDaSala(
   })
 
   const slots: SlotOcupacaoSala[] = []
-  for (let dow = 1; dow <= 5; dow++) {
-    for (const turno of ["Manhã", "Tarde"] as const) {
+  const diasDaSala = sala.dias_disponiveis?.length ? sala.dias_disponiveis : DIAS_DISPONIVEIS_PADRAO
+  for (const { dow, turnos } of diasDaSala) {
+    for (const turno of turnos) {
       const key = `${dow}-${turno}`
       const alocacoesDoSlot = alocacoesPorSlot.get(key) ?? []
-      const capacidadeBloco = BLOCOS_POR_TURNO[turno]
+      // Override opcional de horários (sala/dia/turno com duração de sessão
+      // diferente do padrão do sistema, ex.: sábado da Equoterapia em
+      // Movimento — 30min em vez dos 40min de HORAS_POR_TURNO). Ausência de
+      // chave = grid padrão, comportamento 100% igual ao de antes.
+      const horasTurno = sala.horarios_customizados?.[chaveHorarioCustomizado(dow, turno)] ?? HORAS_POR_TURNO[turno]
+      const capacidadeBloco = horasTurno.length
 
       const cards: AlocacaoCardSlot[] = alocacoesDoSlot.map(a => {
         const sessoesReais = (a.profissional_id !== null ? sessoesPorProfissionalId.get(`${dow}|${turno}|${a.profissional_id}`) : undefined)
@@ -282,11 +302,14 @@ export function calcularSlotsDaSala(
       // não exige mais a sala exata). Cadeiras além da capacidade (alocação
       // excedente, já sinalizado por `inconsistente`) não geram bloco — o
       // denominador continua limitado à capacidade física da sala.
-      const horasTurno = HORAS_POR_TURNO[turno]
+      // Duração de cada bloco: gap entre os 2 primeiros horários da própria
+      // grade em uso (padrão ou customizada) — 40min no grid padrão (igual
+      // sempre foi), ou o passo customizado (ex.: 30min) quando houver override.
+      const duracaoBloco = horasTurno.length >= 2 ? (pm(horasTurno[1])! - pm(horasTurno[0])!) : 40
       const blocos: BlocoOcupacaoSlot[] = []
       for (const hora of horasTurno) {
         const minutos = pm(hora) ?? 0
-        const horaFim = fm(minutos + 40)
+        const horaFim = fm(minutos + duracaoBloco)
         const chaveHora = `${dow}|${turno}|${minutos}`
         for (let seat = 0; seat < capacidadeProjetada; seat++) {
           const alocacao = alocacoesDoSlot[seat]

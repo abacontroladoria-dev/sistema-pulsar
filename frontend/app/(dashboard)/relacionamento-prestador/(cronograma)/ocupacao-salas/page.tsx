@@ -15,7 +15,30 @@ import { SalaEditModal } from "@/components/cronograma/salas/SalaEditModal"
 import { GerenciarCategoriasModal } from "@/components/cronograma/salas/GerenciarCategoriasModal"
 import { ExclusividadeTerapiaModal } from "@/components/cronograma/salas/ExclusividadeTerapiaModal"
 import { HistoricoAuditoriaModal } from "@/components/cronograma/salas/HistoricoAuditoriaModal"
-import { STATUS_SLOT_EXCLUIDO, type Sala, type SlotOcupacaoSala } from "@/lib/cronograma/salasTypes"
+import { DIAS_DISPONIVEIS_PADRAO, STATUS_SLOT_EXCLUIDO, type Sala, type SalaComOcupacao, type SlotOcupacaoSala } from "@/lib/cronograma/salasTypes"
+import { DOW_PT } from "@/lib/cronograma/ocupacaoConst"
+
+/** true se a sala segue o padrão Seg-Sex, dia inteiro (ou não tem `dias_disponiveis` cadastrado) — usado para separar a grade principal (largura fixa) de uma seção à parte para salas fora do padrão (ex.: só quarta e sábado, ou sábado meio período), sem alargar a tabela de ninguém. */
+function seguePadraoSemanal(sala: Sala): boolean {
+  const dias = sala.dias_disponiveis?.length ? sala.dias_disponiveis : DIAS_DISPONIVEIS_PADRAO
+  if (dias.length !== DIAS_DISPONIVEIS_PADRAO.length) return false
+  return dias.every(d => {
+    const padrao = DIAS_DISPONIVEIS_PADRAO.find(p => p.dow === d.dow)
+    return !!padrao && d.turnos.length === 2 && d.turnos.includes("Manhã") && d.turnos.includes("Tarde")
+  })
+}
+
+/** Agrupa salas fora do padrão pelo conjunto exato de DIAS que atendem (ignora diferença de turno dentro do dia — a célula de um turno ausente já aparece vazia sozinha) — cada grupo vira uma mini-tabela com só essas colunas (ex.: só Qua+Sáb), nunca a semana inteira. */
+function agruparPorDiasDisponiveis(itens: SalaComOcupacao[]): { chave: string; dias: { dow: number; label: string }[]; itens: SalaComOcupacao[] }[] {
+  const grupos = new Map<string, { dias: { dow: number; label: string }[]; itens: SalaComOcupacao[] }>()
+  itens.forEach(item => {
+    const dows = [...new Set((item.sala.dias_disponiveis?.length ? item.sala.dias_disponiveis : DIAS_DISPONIVEIS_PADRAO).map(d => d.dow))].sort((a, b) => a - b)
+    const chave = dows.join(",")
+    if (!grupos.has(chave)) grupos.set(chave, { dias: dows.map(dow => ({ dow, label: DOW_PT[dow] ?? String(dow) })), itens: [] })
+    grupos.get(chave)!.itens.push(item)
+  })
+  return [...grupos.entries()].map(([chave, g]) => ({ chave, ...g }))
+}
 
 type ViewTab = "grade" | "mapa" | "regularizacoes"
 
@@ -60,6 +83,13 @@ export default function OcupacaoSalasPage() {
       })
       .filter(item => !filtros.semSessao || item.slots.length > 0)
   }, [salasComOcupacao, filtros, isolada, somenteInconsistentes, salasComExclusividade])
+
+  // Salas com dias diferentes do padrão Seg-Sex (ex.: só quarta e sábado) não
+  // entram na grade/mapa principal — iriam aparecer "furadas" nos dias que não
+  // atendem, ou forçar uma coluna de sábado pra todas as outras salas. Ganham
+  // uma seção própria abaixo, agrupada pelo conjunto exato de dias que usam.
+  const filtradasPadrao = useMemo(() => filtradas.filter(item => seguePadraoSemanal(item.sala)), [filtradas])
+  const gruposEspeciais = useMemo(() => agruparPorDiasDisponiveis(filtradas.filter(item => !seguePadraoSemanal(item.sala))), [filtradas])
 
   // Os 4 cards respondem aos filtros atuais (unidade/núcleo/andar/capacidade/
   // turno/status/profissional/isolada) — calculados sobre `filtradas`, a mesma
@@ -174,23 +204,61 @@ export default function OcupacaoSalasPage() {
       {error && <div className="text-sm font-semibold text-rose-600 dark:text-rose-400">{error}</div>}
 
       {!loading && !error && tab === "grade" && (
-        <SalasGridView
-          salas={filtradas}
-          onEditarSala={id => setEditando(salasComOcupacao.find(s => s.sala.id === id)?.sala ?? null)}
-          onIsolarSala={alternarIsolarSala}
-          salaIsoladaId={isolada?.id ?? null}
-          encontrarAlocacaoDoProfissional={encontrarAlocacaoDoProfissional}
-          onRecarregar={recarregarAlocacoes}
-          buscaProfissional={filtros.profissional}
-          salasComExclusividade={salasComExclusividade}
-          salasTodas={salas}
-          exclusividades={exclusividades}
-          profissionaisTodos={profissionaisTodos}
-          terapiasTodas={terapiasTodas}
-        />
+        <>
+          {filtradasPadrao.length === 0 && gruposEspeciais.length > 0 ? null : (
+          <SalasGridView
+            salas={filtradasPadrao}
+            onEditarSala={id => setEditando(salasComOcupacao.find(s => s.sala.id === id)?.sala ?? null)}
+            onIsolarSala={alternarIsolarSala}
+            salaIsoladaId={isolada?.id ?? null}
+            encontrarAlocacaoDoProfissional={encontrarAlocacaoDoProfissional}
+            onRecarregar={recarregarAlocacoes}
+            buscaProfissional={filtros.profissional}
+            salasComExclusividade={salasComExclusividade}
+            salasTodas={salas}
+            exclusividades={exclusividades}
+            profissionaisTodos={profissionaisTodos}
+            terapiasTodas={terapiasTodas}
+          />
+          )}
+          {gruposEspeciais.map(grupo => (
+            <div key={grupo.chave} className="flex flex-col gap-2">
+              <h3 className="text-xs font-bold uppercase text-muted-foreground">
+                Salas com dias diferenciados ({grupo.dias.map(d => d.label).join(" + ")})
+              </h3>
+              <SalasGridView
+                salas={grupo.itens}
+                dias={grupo.dias}
+                onEditarSala={id => setEditando(salasComOcupacao.find(s => s.sala.id === id)?.sala ?? null)}
+                onIsolarSala={alternarIsolarSala}
+                salaIsoladaId={isolada?.id ?? null}
+                encontrarAlocacaoDoProfissional={encontrarAlocacaoDoProfissional}
+                onRecarregar={recarregarAlocacoes}
+                buscaProfissional={filtros.profissional}
+                salasComExclusividade={salasComExclusividade}
+                salasTodas={salas}
+                exclusividades={exclusividades}
+                profissionaisTodos={profissionaisTodos}
+                terapiasTodas={terapiasTodas}
+              />
+            </div>
+          ))}
+        </>
       )}
       {!loading && !error && tab === "mapa" && (
-        <SalasHeatmapView salas={filtradas} onIsolarSala={alternarIsolarSala} salaIsoladaId={isolada?.id ?? null} salasComExclusividade={salasComExclusividade} />
+        <>
+          {filtradasPadrao.length === 0 && gruposEspeciais.length > 0 ? null : (
+          <SalasHeatmapView salas={filtradasPadrao} onIsolarSala={alternarIsolarSala} salaIsoladaId={isolada?.id ?? null} salasComExclusividade={salasComExclusividade} />
+          )}
+          {gruposEspeciais.map(grupo => (
+            <div key={grupo.chave} className="flex flex-col gap-2">
+              <h3 className="text-xs font-bold uppercase text-muted-foreground">
+                Salas com dias diferenciados ({grupo.dias.map(d => d.label).join(" + ")})
+              </h3>
+              <SalasHeatmapView salas={grupo.itens} dias={grupo.dias} onIsolarSala={alternarIsolarSala} salaIsoladaId={isolada?.id ?? null} salasComExclusividade={salasComExclusividade} />
+            </div>
+          ))}
+        </>
       )}
       {!loading && !error && tab === "regularizacoes" && (
         <RegularizacoesView
