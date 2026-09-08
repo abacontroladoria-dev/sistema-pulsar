@@ -145,7 +145,12 @@ export function useReposicaoFaltas(
       // falta_revertida_em é um campo específico de falta e é aplicado aqui
       // (client-side) em vez de no filtro da query, pois não deve afetar
       // linhas 'concluido'.
-      const r1Faltas     = (r1.data ?? []).filter((r: any) => r.status === 'falta' && !r.falta_revertida_em)
+      // tipo_falta 'unidade' fica de fora: feriado, ponto facultativo e falta de
+      // energia são dias em que a clínica não abriu. Não há falta de ninguém a
+      // repor, e tratá-los como pendência encheria a reposição de trabalho
+      // inexistente. Filtrado aqui junto de falta_revertida_em (e não na query)
+      // pelo mesmo motivo: não pode afetar as linhas 'concluido'/'glosa'.
+      const r1Faltas     = (r1.data ?? []).filter((r: any) => r.status === 'falta' && !r.falta_revertida_em && r.tipo_falta !== 'unidade')
       // 'glosa' é tratada como concluído (ver comentário na query de r1 acima) —
       // mesmo card, só com rótulo diferente (SessaoConcluida.glosa).
       const r1Concluidos = (r1.data ?? []).filter((r: any) => r.status === 'concluido' || r.status === 'glosa')
