@@ -2,6 +2,7 @@ import { getSupabaseClient } from "@/lib/supabase/client"
 import { buscarGrade, fixMojibake } from "@/lib/grade/fonte"
 import { isFakePatient } from "@/lib/remuneracao/pacientes"
 import { PACS_BLOQUEIO_ADMIN, normTxt } from "@/lib/cronograma/constants"
+import { normalizarDiasDisponiveis, normalizarHorariosCustomizados } from "@/lib/cronograma/salasTypes"
 import type { Sala, SalaInput, AgendaSalaRow, AlocacaoSala, AlocacaoInput, SalaStatus, SalaTerapiaExclusiva, SalaTerapiaExclusivaInput } from "@/lib/cronograma/salasTypes"
 import { registrarAuditoriaSala } from "@/services/salasAuditoria.service"
 
@@ -47,6 +48,15 @@ function lancarErroDeEscrita(error: { code?: string; message: string }, acao: st
   throw new Error(error.message)
 }
 
+/** Normaliza `dias_disponiveis` de uma linha crua vinda do banco — ver comentário em normalizarDiasDisponiveis (salasTypes.ts). */
+function normalizarSala(row: Sala): Sala {
+  return {
+    ...row,
+    dias_disponiveis: normalizarDiasDisponiveis(row.dias_disponiveis),
+    horarios_customizados: normalizarHorariosCustomizados(row.horarios_customizados),
+  }
+}
+
 export async function listarSalas(): Promise<Sala[]> {
   const sb = getSupabaseClient()
   const { data, error } = await sb
@@ -55,7 +65,7 @@ export async function listarSalas(): Promise<Sala[]> {
     .order("unidade_nome")
 
   if (error) throw new Error(error.message)
-  const salas = (data ?? []) as Sala[]
+  const salas = ((data ?? []) as Sala[]).map(normalizarSala)
   return salas.sort((a, b) =>
     a.unidade_nome.localeCompare(b.unidade_nome)
     || a.numero_sala.localeCompare(b.numero_sala, undefined, { numeric: true, sensitivity: "base" }),
@@ -71,7 +81,7 @@ export async function criarSala(input: SalaInput): Promise<Sala> {
     .single()
 
   if (error) lancarErroDeEscrita(error, "cadastrar salas")
-  const sala = data as Sala
+  const sala = normalizarSala(data as Sala)
   await registrarAuditoriaSala({
     tabela: "sala", registroId: sala.id, acao: "criar",
     unidadeNome: sala.unidade_nome, salaNome: sala.nome_exibicao, depois: sala,
@@ -90,7 +100,7 @@ export async function atualizarSala(id: string, input: Partial<SalaInput>): Prom
     .single()
 
   if (error) lancarErroDeEscrita(error, "editar esta sala", antes)
-  const sala = data as Sala
+  const sala = normalizarSala(data as Sala)
   await registrarAuditoriaSala({
     tabela: "sala", registroId: sala.id, acao: "editar",
     unidadeNome: sala.unidade_nome, salaNome: sala.nome_exibicao, antes: antes ?? null, depois: sala,

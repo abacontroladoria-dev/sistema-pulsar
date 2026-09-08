@@ -26,11 +26,13 @@ import { Loader2, Wallet, AlertTriangle, CalendarDays, ChevronDown, ChevronRight
 import { StatCard } from "@/components/cronograma/ui/StatCard"
 import { SegmentedTabs } from "@/components/cronograma/ui/SegmentedTabs"
 import { SortableTh, ordenarPor, type SortDir } from "@/components/cronograma/ui/SortableTh"
+import { UnidadeMultiSelect } from "@/components/cronograma/ui/UnidadeMultiSelect"
 import { useOcupacaoSalas } from "@/hooks/useOcupacaoSalas"
 import { useConvenioValoresCalculo } from "@/hooks/useConvenioValores"
 import { useFeriados } from "@/hooks/useFeriados"
 import { useLinhasMesInteiro } from "@/hooks/useLinhasMesInteiro"
 import { usePrevisaoReceitasHistorico } from "@/hooks/usePrevisaoReceitasHistorico"
+import { normalizarUnidadeOcupacao } from "@/lib/cronograma/ocupacaoProf"
 import { getRefWeekDoMes, labelMesAno } from "@/lib/cronograma/helpers"
 import { SeletorMesPrevisao } from "./SeletorMesPrevisao"
 import {
@@ -595,28 +597,51 @@ export function PrevisaoReceitasShell() {
   const { regrasGerais, excecoesPaciente, pacotesAvaliacao, loading: loadingValores, error: errorValores } = useConvenioValoresCalculo()
   const { feriados, loading: loadingFeriados } = useFeriados()
 
-  const previsaoBase = useMemo(
-    () => calcularPrevisaoReceita(linhas, regrasGerais, excecoesPaciente, pacotesAvaliacao, feriados),
-    [linhas, regrasGerais, excecoesPaciente, pacotesAvaliacao, feriados],
+  // Filtro por Unidade — vazio = todas. Só funciona no cálculo ao vivo (mês
+  // atual/futuro); no modo histórico (ver usarHistorico abaixo) é ignorado,
+  // já que o retrato congelado não guarda a unidade da sessão.
+  const [unidadesFiltro, setUnidadesFiltro] = useState<string[]>([])
+
+  // `unidade_nome` em csv_grades_profissionais é sempre o nome da clínica
+  // ("CLÍNICA UNIVERSO ABA"), não a unidade física — a unidade real só existe
+  // dentro do texto livre de `sala_nome` (ex.: "Unid. Realengo - Sala 5"),
+  // mesmo padrão usado em pacientesDashboard.ts (Dashboard de Pacientes) e em
+  // ocupacaoProf.ts (Ocupação por Profissional).
+  const unidadeDaLinha = (r: { sala_nome: string | null }) => normalizarUnidadeOcupacao(r.sala_nome || "")
+
+  // Opções vêm de linhasMes (mês inteiro) SEM aplicar o próprio filtro, senão
+  // a lista de opções encolheria conforme o usuário marca unidades.
+  const { linhasMes, faltas, loading: loadingMes, error: errorMes } = useLinhasMesInteiro(periodo.ano, periodo.mes)
+  const unidadesDisponiveis = useMemo(
+    () => [...new Set(linhasMes.map(unidadeDaLinha))].sort(),
+    [linhasMes],
   )
 
-  // Deduções por falta precisam das sessões REAIS do mês inteiro (não a
-  // amostra semanal usada na projeção) — ver enriquecerComDeducaoFalta. Usa o
-  // mês SELECIONADO (não previsaoBase.mesReferencia, derivado dos dados) pra
-  // continuar funcionando mesmo se a semana de referência não tiver sessões.
-  const { linhasMes, faltas, loading: loadingMes, error: errorMes } = useLinhasMesInteiro(periodo.ano, periodo.mes)
+  const linhasFiltradas = useMemo(
+    () => unidadesFiltro.length ? linhas.filter(r => unidadesFiltro.includes(unidadeDaLinha(r))) : linhas,
+    [linhas, unidadesFiltro],
+  )
+  const linhasMesFiltradas = useMemo(
+    () => unidadesFiltro.length ? linhasMes.filter(r => unidadesFiltro.includes(unidadeDaLinha(r))) : linhasMes,
+    [linhasMes, unidadesFiltro],
+  )
+
+  const previsaoBase = useMemo(
+    () => calcularPrevisaoReceita(linhasFiltradas, regrasGerais, excecoesPaciente, pacotesAvaliacao, feriados),
+    [linhasFiltradas, regrasGerais, excecoesPaciente, pacotesAvaliacao, feriados],
+  )
 
   const previsao = useMemo(
-    () => enriquecerComDeducaoFalta(previsaoBase, linhasMes, faltas, regrasGerais, excecoesPaciente),
-    [previsaoBase, linhasMes, faltas, regrasGerais, excecoesPaciente],
+    () => enriquecerComDeducaoFalta(previsaoBase, linhasMesFiltradas, faltas, regrasGerais, excecoesPaciente),
+    [previsaoBase, linhasMesFiltradas, faltas, regrasGerais, excecoesPaciente],
   )
 
   // Sessões do mês inteiro por convênio, pra aba "Por paciente" mostrar TODAS
   // as sessões/faltas do mês (não só as da semana de referência) — "Por dia
   // da semana"/"Por terapia" continuam usando a amostra semanal de `previsao`.
   const sessoesMensais = useMemo(
-    () => calcularSessoesMensaisPorConvenio(linhasMes, regrasGerais, excecoesPaciente, pacotesAvaliacao, faltas),
-    [linhasMes, regrasGerais, excecoesPaciente, pacotesAvaliacao, faltas],
+    () => calcularSessoesMensaisPorConvenio(linhasMesFiltradas, regrasGerais, excecoesPaciente, pacotesAvaliacao, faltas),
+    [linhasMesFiltradas, regrasGerais, excecoesPaciente, pacotesAvaliacao, faltas],
   )
 
   const mesSelecionadoLabel = labelMesAno(periodo.ano, periodo.mes)
@@ -677,10 +702,18 @@ export function PrevisaoReceitasShell() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <SeletorMesPrevisao ano={periodo.ano} mes={periodo.mes} onChange={(ano, mes) => setPeriodo({ ano, mes })} />
+        <div className="flex flex-wrap items-center gap-2">
+          <SeletorMesPrevisao ano={periodo.ano} mes={periodo.mes} onChange={(ano, mes) => setPeriodo({ ano, mes })} />
+          <UnidadeMultiSelect label="Unidades" values={unidadesFiltro} options={unidadesDisponiveis} onChange={setUnidadesFiltro} disabled={usarHistorico} />
+        </div>
         {usarHistorico && historico.snapshotData && (
           <span className="text-[11px] font-semibold text-blue-600 dark:text-blue-400">
             📅 Histórico — retrato de {fmtData(historico.snapshotData)}
+          </span>
+        )}
+        {usarHistorico && (
+          <span className="text-[11px] text-muted-foreground">
+            Filtro por unidade não disponível pra meses passados (retrato histórico não guarda a unidade da sessão).
           </span>
         )}
         {mesEhPassado && !usarHistorico && (

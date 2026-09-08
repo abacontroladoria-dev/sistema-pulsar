@@ -21,7 +21,8 @@ import type { AlocacaoAtual } from "@/hooks/useOcupacaoSalas"
 import type { Tone } from "@/components/cronograma/ui/tones"
 import type { ProfissionalOpcao } from "@/services/salas.service"
 
-const DIAS = [
+/** Colunas de dia padrão (Seg-Sex) — usadas quando a view não recebe `dias` explícito. Salas fora desse padrão (ver `dias_disponiveis` em Sala) são renderizadas em instâncias separadas desta mesma view, com `dias` próprio. */
+const DIAS_PADRAO = [
   { dow: 1, label: "Seg" },
   { dow: 2, label: "Ter" },
   { dow: 3, label: "Qua" },
@@ -71,11 +72,13 @@ interface SalasGridViewProps {
   /** Profissionais e terapias já carregados pela página — o modal de alocação abre com essas listas prontas, sem round-trip extra. */
   profissionaisTodos: ProfissionalOpcao[]
   terapiasTodas: string[]
+  /** Colunas de dia da tabela — default Seg-Sex. Usado para renderizar salas com `dias_disponiveis` fora do padrão numa instância própria desta view, com só as colunas que elas usam. */
+  dias?: readonly { dow: number; label: string }[]
 }
 
 export function SalasGridView({
   salas, onEditarSala, onIsolarSala, salaIsoladaId, encontrarAlocacaoDoProfissional, onRecarregar, buscaProfissional = "", salasComExclusividade,
-  salasTodas, exclusividades, profissionaisTodos, terapiasTodas,
+  salasTodas, exclusividades, profissionaisTodos, terapiasTodas, dias = DIAS_PADRAO,
 }: SalasGridViewProps) {
   const [modal, setModal] = useState<ModalState | null>(null)
 
@@ -131,7 +134,7 @@ export function SalasGridView({
             <th className="sticky top-0 z-20 w-10 border-b border-l border-border bg-muted px-1 py-2 text-center text-[10px] font-bold uppercase text-muted-foreground">
               Turno
             </th>
-            {DIAS.map(d => (
+            {dias.map(d => (
               <th key={d.dow} className="sticky top-0 z-20 border-b border-l border-border bg-muted px-2 py-2 text-center text-xs font-bold uppercase text-muted-foreground">
                 {d.label}
               </th>
@@ -206,7 +209,7 @@ export function SalasGridView({
                 <td className={`w-10 border-l border-border px-1 py-1.5 text-center text-[10px] font-semibold text-muted-foreground ${turnoIdx === 0 ? "border-t" : ""}`}>
                   {turno === "Manhã" ? "M" : "T"}
                 </td>
-                {DIAS.map(d => (
+                {dias.map(d => (
                   <SlotCell
                     key={`${sala.id}-${d.dow}-${turno}`}
                     sala={sala}

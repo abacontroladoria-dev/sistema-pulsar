@@ -24,7 +24,8 @@ function corFaixaOcupacaoPastel(pct: number | null | undefined): string {
   return "#F0AFAF"
 }
 
-const DIAS = [
+/** Colunas de dia padrão (Seg-Sex) — usadas quando a view não recebe `dias` explícito. Salas fora desse padrão (ver `dias_disponiveis` em Sala) são renderizadas em instâncias separadas desta mesma view, com `dias` próprio. */
+const DIAS_PADRAO = [
   { dow: 1, label: "Seg" },
   { dow: 2, label: "Ter" },
   { dow: 3, label: "Qua" },
@@ -48,9 +49,11 @@ interface SalasHeatmapViewProps {
   salaIsoladaId: string | null
   /** Ids de sala com pelo menos uma regra em "Exclusividade de salas com terapias" — só pra exibir o selo ao lado do nome da sala. */
   salasComExclusividade: Set<string>
+  /** Colunas de dia da tabela — default Seg-Sex. Usado para renderizar salas com `dias_disponiveis` fora do padrão numa instância própria desta view, com só as colunas que elas usam. */
+  dias?: readonly { dow: number; label: string }[]
 }
 
-export function SalasHeatmapView({ salas, onIsolarSala, salaIsoladaId, salasComExclusividade }: SalasHeatmapViewProps) {
+export function SalasHeatmapView({ salas, onIsolarSala, salaIsoladaId, salasComExclusividade, dias = DIAS_PADRAO }: SalasHeatmapViewProps) {
   const salaRowRefs = useRef<Map<string, HTMLTableRowElement>>(new Map())
   /** Sala isolada mais recente — guardado à parte porque `salaIsoladaId` já
       vira null no MESMO clique que dispara o efeito abaixo (precisamos saber
@@ -87,7 +90,7 @@ export function SalasHeatmapView({ salas, onIsolarSala, salaIsoladaId, salasComE
             <tr className="bg-muted/40">
               <th className="sticky left-0 z-10 bg-muted/40 px-3 py-2 text-left text-xs font-bold uppercase text-muted-foreground">Sala</th>
               <th className="w-10 border-l border-border bg-muted/40 px-1 py-2 text-center text-[10px] font-bold uppercase text-muted-foreground">Turno</th>
-              {DIAS.map(d => (
+              {dias.map(d => (
                 <th key={d.dow} className="border-l border-border px-2 py-2 text-center text-xs font-bold uppercase text-muted-foreground">
                   {d.label}
                 </th>
@@ -149,7 +152,7 @@ export function SalasHeatmapView({ salas, onIsolarSala, salaIsoladaId, salasComE
                   <td className={`w-10 border-l border-border px-1 py-2 text-center text-[10px] font-semibold text-muted-foreground ${turnoIdx === 0 ? "border-t" : ""}`}>
                     {turno === "Manhã" ? "M" : "T"}
                   </td>
-                  {DIAS.map(d => (
+                  {dias.map(d => (
                     <HeatCell
                       key={`${sala.id}-${d.dow}-${turno}`}
                       slot={slots.find(s => s.dow === d.dow && s.turno === turno)}
@@ -181,8 +184,10 @@ function HeatCell({ slot, salaStatus, bordaTopo }: { slot: SlotOcupacaoSala | un
   const { labels: statusLabels, loading: statusLabelsLoading } = useStatusLabels()
   const bordaCls = bordaTopo ? "border-t" : ""
 
+  // Slot ausente = a sala não atende esse dia/turno (ex.: sábado só de manhã)
+  // — distinto de "bloqueado"/"inativo" (status da sala), que tem célula própria abaixo.
   if (!slot) {
-    return <td className={`border-l border-border bg-muted/30 px-1 py-2 text-center text-[10px] text-muted-foreground ${bordaCls}`}>ADM</td>
+    return <td className={`border-l border-border bg-muted/30 px-1 py-2 text-center text-[10px] text-muted-foreground ${bordaCls}`}>—</td>
   }
   if (slot.status === "bloqueado" || slot.status === "inativo") {
     const labelReal = statusLabels[salaStatus]
