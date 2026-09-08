@@ -138,7 +138,22 @@ function construirProfOcupado(cRows: CsvRow[]): Set<string> {
   return ocupado
 }
 
-export function listarSlotsLivres(cRows: CsvRow[]): SlotLivre[] {
+export interface OpcoesSlotsLivres {
+  /** Quando true, um horário "Livre" de terapia bruta "Coordenador de Caso"
+   *  deixa de ser descartado como "isolado" (ver PSICOLOGIA_ABA_DISPONIVEL_
+   *  INTERNAMENTE acima) e passa a gerar um SlotLivre com
+   *  especialidade "Psicologia ABA" (mesma chave usada por calcularGaps, pra
+   *  reusar o gap/CH e o sequenciamento já existentes) preservando
+   *  terapia: "Coordenador de Caso" pra quem precisar filtrar só esses
+   *  horários depois (ver ocupacaoCategoria.ts). Usado só pela tab "Por
+   *  Unidade, Dia e Especialidade" quando a especialidade escolhida é
+   *  "Coordenador de Caso" — default false preserva o comportamento atual
+   *  em todos os outros consumidores (tab "Por Nome", Simulação de Novo
+   *  Prestador). */
+  incluirCoordCaso?: boolean
+}
+
+export function listarSlotsLivres(cRows: CsvRow[], opts?: OpcoesSlotsLivres): SlotLivre[] {
   const profOcupado = construirProfOcupado(cRows)
   return cRows
     .filter(r =>
@@ -158,6 +173,7 @@ export function listarSlotsLivres(cRows: CsvRow[]): SlotLivre[] {
         const esp = TERAPIA_TO_ESP[terapiaBruta] ?? null
         if (!esp) continue
         const isolado = esp === "Psicologia ABA" && !PSICOLOGIA_ABA_DISPONIVEL_INTERNAMENTE.has(terapiaBruta)
+          && !(opts?.incluirCoordCaso && terapiaBruta === "Coordenador de Caso")
         if (isolado) continue
         if (!porEspecialidade.has(esp)) porEspecialidade.set(esp, terapiaBruta)
       }
@@ -188,9 +204,9 @@ function chaveGrupo(dia: string, hora: string, unidade: string, especialidade: s
  *  que o gap dele permite, e nunca atribui mais pacientes a um horário do que
  *  profissionais realmente livres ali. */
 export function listarOportunidadesDiretas(
-  cRows: CsvRow[], gapMap: Record<string, GapItem>,
+  cRows: CsvRow[], gapMap: Record<string, GapItem>, opts?: OpcoesSlotsLivres,
 ): OportunidadeDireta[] {
-  const slotsLivres = listarSlotsLivres(cRows).filter((s): s is SlotLivre & { especialidade: string } => !!s.especialidade)
+  const slotsLivres = listarSlotsLivres(cRows, opts).filter((s): s is SlotLivre & { especialidade: string } => !!s.especialidade)
 
   const porGrupo = new Map<string, SlotLivre[]>()
   for (const s of slotsLivres) {

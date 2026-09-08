@@ -241,6 +241,15 @@ export const TODAS_ESP = [
   "Terapia Ocupacional",
 ]
 
+// "Coordenador de Caso" não é uma especialidade — é uma terapia dentro de
+// "Psicologia ABA" (ver TERAPIA_TO_ESP) — mas na tab "Por Unidade, Dia e
+// Especialidade" (ocupacaoCategoria.ts) o usuário precisa poder filtrar só
+// por ela, como se fosse avulsa. Lista separada em vez de acrescentar direto
+// em TODAS_ESP porque TODAS_ESP também alimenta outras telas (tab "Por Nome"
+// em OcupPacMode.tsx, "por Nome do Profissional" em
+// DisponibilidadeInternaView.tsx) onde essa opção não deve aparecer.
+export const TODAS_ESP_CATEGORIA = [...TODAS_ESP, "Coordenador de Caso"]
+
 // ─── PRIORIDADES ──────────────────────────────────────────────────────────────
 export const PL: Record<number, string> = {
   1: "P1 – Liminar+Conv",
