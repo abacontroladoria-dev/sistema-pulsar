@@ -14,11 +14,14 @@
 // feita só dessas duas terapias não sobra nenhuma sessão no dashboard geral,
 // então some dele por completo (aparece só no Processo Diagnóstico).
 
-import { Loader2, Users, Clock, CalendarDays } from "lucide-react"
+import { useCallback, useEffect } from "react"
+import { Loader2, Users, Clock, CalendarDays, Download } from "lucide-react"
 import { StatCard } from "@/components/cronograma/ui/StatCard"
 import { TONE_ACCENT } from "@/components/cronograma/ui/tones"
 import { fmtHDec } from "@/lib/cronograma/helpers"
-import { useOcupacaoSalas } from "@/hooks/useOcupacaoSalas"
+import { useHeader } from "@/contexts/HeaderContext"
+import { useOcupacaoSalas, semanaCorrenteRange } from "@/hooks/useOcupacaoSalas"
+import { exportarDashboardPacientesXlsx } from "@/lib/cronograma/exportPacientesDashboard"
 import type { ResumoPacientesGrupo, ResumoPacientesSalas, ResumoPacientesDia } from "@/lib/cronograma/salasTypes"
 
 function fmtPct(valor: number, total: number): string {
@@ -179,7 +182,27 @@ function DashboardBloco({
 }
 
 export function PacientesDashboardShell() {
-  const { dashboardPacientes, loading, error } = useOcupacaoSalas()
+  const { linhas, dashboardPacientes, loading, error } = useOcupacaoSalas()
+  const { setRightContent } = useHeader()
+
+  const exportar = useCallback(() => {
+    exportarDashboardPacientesXlsx({ linhas, dashboard: dashboardPacientes, periodo: semanaCorrenteRange() })
+  }, [linhas, dashboardPacientes])
+
+  useEffect(() => {
+    setRightContent(
+      <button
+        type="button"
+        onClick={exportar}
+        disabled={loading}
+        className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold text-white shadow-sm bg-emerald-700 hover:bg-emerald-800 dark:bg-emerald-600 dark:hover:bg-emerald-700 active:scale-95 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        <Download size={13} />
+        Exportar XLSX
+      </button>,
+    )
+    return () => setRightContent(null)
+  }, [exportar, loading, setRightContent])
 
   if (loading) {
     return (

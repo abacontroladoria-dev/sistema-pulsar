@@ -21,7 +21,7 @@
 import { startTransition, useMemo, useState } from "react"
 import { ArrowRight, ChevronLeft, ChevronRight, Sparkles } from "lucide-react"
 import { rankearOportunidadesInternas, type CategoriaComOportunidade } from "@/lib/cronograma/ocupacaoCategoria"
-import { corTerapiaBadge, escurecerHex, hexParaRgba, TODAS_ESP, UNID_COR } from "@/lib/cronograma/constants"
+import { corTerapiaBadge, escurecerHex, hexParaRgba, TODAS_ESP_CATEGORIA, UNID_COR } from "@/lib/cronograma/constants"
 import { Button } from "@/components/ui/button"
 import { InlineNotice } from "@/components/cronograma/ui/InlineNotice"
 import { BadgeOcupacao, COR_OCUPACAO } from "@/components/cronograma/ui/BadgeOcupacao"
@@ -32,12 +32,14 @@ import type { GapItem, Turno } from "@/lib/cronograma/simulacaoNovoPrestador"
 import type { CsvRow } from "@/types/cronograma"
 
 const ITENS_POR_PAGINA = 5
-const ESPECIALIDADES_OPCOES = TODAS_ESP.map((nome, id) => ({ id, nome }))
+const ESPECIALIDADES_OPCOES = TODAS_ESP_CATEGORIA.map((nome, id) => ({ id, nome }))
 const UNIDADES_OPCOES = Object.keys(UNID_COR).map((nome, id) => ({ id, nome }))
 
 interface Props {
   cRows: CsvRow[]
   gapMap: Record<string, GapItem>
+  /** Teto de pacientes por profissional Coordenador de Caso — ver gerarVagasCategoria. */
+  limiteCoordenadorCaso?: number
   onAplicar: (unidade: string, periodos: { dia: string; turno: Turno }[], especialidade: string) => void
 }
 
@@ -88,7 +90,7 @@ function CardOportunidade({ item, onAplicar }: { item: CategoriaComOportunidade;
   )
 }
 
-export function OportunidadesInternasPanel({ cRows, gapMap, onAplicar }: Props) {
+export function OportunidadesInternasPanel({ cRows, gapMap, limiteCoordenadorCaso, onAplicar }: Props) {
   const [modo, setModo] = useState<ModoCascataOcupacao>("diaInteiro")
   const [especialidadesIds, setEspecialidadesIds] = useState<Set<number>>(new Set())
   const [unidadesIds, setUnidadesIds] = useState<Set<number>>(new Set())
@@ -104,8 +106,8 @@ export function OportunidadesInternasPanel({ cRows, gapMap, onAplicar }: Props) 
   )
 
   const ranking = useMemo(
-    () => rankearOportunidadesInternas(cRows, gapMap, { unidades: unidadesSelecionadas, modo, especialidades: especialidadesSelecionadas }),
-    [cRows, gapMap, unidadesSelecionadas, modo, especialidadesSelecionadas],
+    () => rankearOportunidadesInternas(cRows, gapMap, { unidades: unidadesSelecionadas, modo, especialidades: especialidadesSelecionadas, limiteCoordenadorCaso }),
+    [cRows, gapMap, unidadesSelecionadas, modo, especialidadesSelecionadas, limiteCoordenadorCaso],
   )
 
   // startTransition: recalcular o ranking varre unidade × dia × especialidade

@@ -20,7 +20,8 @@ import { Building2, CheckCircle2, Lock } from "lucide-react"
 import { useCronogramaData } from "@/contexts/CronogramaDataContext"
 import { calcularGaps, gapsParaMapa, type GapItem, type Turno } from "@/lib/cronograma/simulacaoNovoPrestador"
 import { gerarVagasCategoria, contarOcupadosCategoria, compararUnidadesOportunidade, type VagaCategoria } from "@/lib/cronograma/ocupacaoCategoria"
-import { DIAS_UTIL, HORAS_GRID, TODAS_ESP, UNID_COR, estiloUnidade } from "@/lib/cronograma/constants"
+import { getParametrosGerais } from "@/services/parametrosGerais.service"
+import { DIAS_UTIL, HORAS_GRID, TODAS_ESP_CATEGORIA, UNID_COR, estiloUnidade } from "@/lib/cronograma/constants"
 import { diaCurto, fmtName, turnoFromHora, turnoNome } from "@/lib/cronograma/helpers"
 import { InlineNotice } from "@/components/cronograma/ui/InlineNotice"
 import { InfoTooltip } from "@/components/cronograma/ui/InfoTooltip"
@@ -210,8 +211,8 @@ function CelulaGrade({
 }
 
 function GradeCategoria({
-  unidade, periodosSel, especialidade, cRows, gapMap, onAbrirCelula,
-}: { unidade: string; periodosSel: PeriodosSel; especialidade: string; cRows: CsvRow[]; gapMap: Record<string, GapItem>; onAbrirCelula: (dia: string, hora: string, vagas: VagaCategoria[]) => void }) {
+  unidade, periodosSel, especialidade, cRows, gapMap, limiteCoordenadorCaso, onAbrirCelula,
+}: { unidade: string; periodosSel: PeriodosSel; especialidade: string; cRows: CsvRow[]; gapMap: Record<string, GapItem>; limiteCoordenadorCaso?: number; onAbrirCelula: (dia: string, hora: string, vagas: VagaCategoria[]) => void }) {
   const diasAtivos = useMemo(
     () => DIAS_UTIL.filter(d => periodosSel[d]?.manha || periodosSel[d]?.tarde),
     [periodosSel],
@@ -219,9 +220,9 @@ function GradeCategoria({
 
   const vagasPorDia = useMemo(() => {
     const m = new Map<string, VagaCategoria[]>()
-    for (const d of diasAtivos) m.set(d, gerarVagasCategoria(unidade, d, especialidade, cRows, gapMap))
+    for (const d of diasAtivos) m.set(d, gerarVagasCategoria(unidade, d, especialidade, cRows, gapMap, undefined, undefined, undefined, limiteCoordenadorCaso))
     return m
-  }, [diasAtivos, unidade, especialidade, cRows, gapMap])
+  }, [diasAtivos, unidade, especialidade, cRows, gapMap, limiteCoordenadorCaso])
 
   // Filtra pelo(s) turno(s) MARCADO(S) de cada dia — gerarVagasCategoria
   // sempre devolve o dia inteiro (manhã+tarde), então sem esse filtro um dia
@@ -327,11 +328,11 @@ function GradeCategoria({
 // internamente nas OUTRAS unidades também, pro mesmo dia/turno/especialidade
 // — sem precisar trocar o filtro 3 vezes pra comparar manualmente.
 function ComparativoUnidades({
-  unidadeAtiva, periodos, especialidade, cRows, gapMap, onEscolherUnidade,
-}: { unidadeAtiva: string; periodos: { dia: string; turno: Turno }[]; especialidade: string; cRows: CsvRow[]; gapMap: Record<string, GapItem>; onEscolherUnidade: (u: string) => void }) {
+  unidadeAtiva, periodos, especialidade, cRows, gapMap, limiteCoordenadorCaso, onEscolherUnidade,
+}: { unidadeAtiva: string; periodos: { dia: string; turno: Turno }[]; especialidade: string; cRows: CsvRow[]; gapMap: Record<string, GapItem>; limiteCoordenadorCaso?: number; onEscolherUnidade: (u: string) => void }) {
   const comparativo = useMemo(
-    () => compararUnidadesOportunidade(periodos, especialidade, cRows, gapMap),
-    [periodos, especialidade, cRows, gapMap],
+    () => compararUnidadesOportunidade(periodos, especialidade, cRows, gapMap, limiteCoordenadorCaso),
+    [periodos, especialidade, cRows, gapMap, limiteCoordenadorCaso],
   )
   const totais = comparativo.map(u => u.qtdDireto + u.qtdRemanejamentoMesmoDia + u.qtdRemanejamentoOutroDia + u.qtdNovoDia)
   const escala = Math.max(1, ...totais)
@@ -380,6 +381,20 @@ export function OcupacaoCategoriaView({ cRows }: Props) {
   const laudosCarregados = lRows.length > 0
   const gapMap = useMemo(() => gapsParaMapa(calcularGaps(lRows, cRows)), [lRows, cRows])
 
+  // Teto de pacientes por profissional Coordenador de Caso — mesmo parâmetro
+  // configurável já usado no relatório de remuneração (cc_lim_default).
+  // Quem não tem acesso a Taxas/Parâmetros de Remuneração (RLS da tabela
+  // remuneracao_parametros_gerais) recebe null aqui e a tela cai no default
+  // 18 (mesmo valor hoje configurado no banco).
+  const [limiteCoordenadorCaso, setLimiteCoordenadorCaso] = useState<number | undefined>(undefined)
+  useEffect(() => {
+    let ativo = true
+    getParametrosGerais().then(({ data }) => {
+      if (ativo && data) setLimiteCoordenadorCaso(data.cc_lim_default)
+    })
+    return () => { ativo = false }
+  }, [])
+
   const [unidade, setUnidade] = useState("")
   const [periodosSel, setPeriodosSel] = useState<PeriodosSel>({})
   const [especialidade, setEspecialidade] = useState("")
@@ -426,7 +441,7 @@ export function OcupacaoCategoriaView({ cRows }: Props) {
         </InlineNotice>
       ) : (
         <>
-          <OportunidadesInternasPanel cRows={cRows} gapMap={gapMap} onAplicar={aplicarOportunidade} />
+          <OportunidadesInternasPanel cRows={cRows} gapMap={gapMap} limiteCoordenadorCaso={limiteCoordenadorCaso} onAplicar={aplicarOportunidade} />
 
           <div className="rounded-2xl border border-border bg-card p-4">
             <div className="mb-1 flex items-center gap-1.5">
@@ -442,7 +457,7 @@ export function OcupacaoCategoriaView({ cRows }: Props) {
                 <SearchCombobox value={unidade} onChange={setUnidade} opcoes={UNIDADES} placeholder="Digite para buscar a unidade..." ariaLabel="Buscar unidade" />
 
                 <span className="mt-1 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Especialidade</span>
-                <SearchCombobox value={especialidade} onChange={setEspecialidade} opcoes={TODAS_ESP} placeholder="Digite para buscar a especialidade..." ariaLabel="Buscar especialidade" />
+                <SearchCombobox value={especialidade} onChange={setEspecialidade} opcoes={TODAS_ESP_CATEGORIA} placeholder="Digite para buscar a especialidade..." ariaLabel="Buscar especialidade" />
               </div>
 
               <PeriodosSelector periodosSel={periodosSel} onChange={setPeriodosSel} />
@@ -454,6 +469,7 @@ export function OcupacaoCategoriaView({ cRows }: Props) {
                   especialidade={especialidade}
                   cRows={cRows}
                   gapMap={gapMap}
+                  limiteCoordenadorCaso={limiteCoordenadorCaso}
                   onEscolherUnidade={setUnidade}
                 />
               )}
@@ -472,6 +488,7 @@ export function OcupacaoCategoriaView({ cRows }: Props) {
                 especialidade={especialidade}
                 cRows={cRows}
                 gapMap={gapMap}
+                limiteCoordenadorCaso={limiteCoordenadorCaso}
                 onAbrirCelula={abrirCelula}
               />
             </div>

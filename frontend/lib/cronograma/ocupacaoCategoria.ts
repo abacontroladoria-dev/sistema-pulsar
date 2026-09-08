@@ -7,17 +7,39 @@
 // só trocando o agrupamento de "por profissional" pra "por categoria" — nunca
 // mexe na agenda de ninguém, é só visualização.
 
-import { listarOportunidadesDiretas, listarSlotsLivres, unidadeDominanteDoDia, type OportunidadeDireta } from "./disponibilidadeInterna"
+import { listarOportunidadesDiretas, listarSlotsLivres, unidadeDominanteDoDia, type OportunidadeDireta, type OpcoesSlotsLivres } from "./disponibilidadeInterna"
 import { encontrarCandidatosRemanejamento, construirIndiceRemanejamento, type IndiceRemanejamento } from "./remanejamento"
 import { listarOportunidadesNovoDia, construirIndiceNovoDia, type OportunidadeNovoDia } from "./novoDia"
 import { filtrarCapacidadeLivreReservada, turnoFromHora } from "./helpers"
 import { hiStr, type GapItem, type Turno } from "./simulacaoNovoPrestador"
-import { DIAS_UTIL, TERAPIA_TO_ESP, TODAS_ESP, UNID_COR } from "./constants"
+import { DIAS_UTIL, TERAPIA_TO_ESP, TODAS_ESP, TODAS_ESP_CATEGORIA, UNID_COR } from "./constants"
 import type { FaixaCascata, ModoCascataOcupacao } from "./sugestaoContratacao"
 import type { RemanejamentoDetalhe } from "./sugestaoContratacaoTypes"
 import type { CsvRow } from "@/types/cronograma"
 
 const TURNOS: Turno[] = ["manha", "tarde"]
+
+// "Coordenador de Caso" não é uma especialidade de verdade — é uma terapia
+// dentro de "Psicologia ABA" (TERAPIA_TO_ESP) — mas o usuário precisa poder
+// filtrar só por ela nesta tab, como se fosse avulsa. Em vez de duplicar o
+// motor de gap/CH/sequenciamento (calcularGaps, slotValidoParaPaciente,
+// listarOportunidadesNovoDia), tratamos como um ALIAS: por baixo dos panos,
+// todo o cálculo de candidatos roda com especialidade "Psicologia ABA" (que já
+// soma Coordenador de Caso no ofertado — ver calcularGaps), e só no final
+// filtramos pelos slots/oportunidades cuja terapia real é "Coordenador de
+// Caso". Isso garante que a CH autorizada de Psicologia ABA nunca é
+// ultrapassada (é o MESMO saldo) e que "não gerar buraco"/"Dia Novo de
+// Atendimento" continuam se aplicando sem duplicação de regra.
+const COORDENADOR_CASO = "Coordenador de Caso"
+const ESP_INTERNA_COORDENADOR_CASO = "Psicologia ABA"
+
+function especialidadeInterna(especialidade: string): string {
+  return especialidade === COORDENADOR_CASO ? ESP_INTERNA_COORDENADOR_CASO : especialidade
+}
+
+function optsSlotsLivres(especialidade: string): OpcoesSlotsLivres | undefined {
+  return especialidade === COORDENADOR_CASO ? { incluirCoordCaso: true } : undefined
+}
 
 // Mesma cascata 70/60/50 das sugestões automáticas de contratação
 // (sugestaoContratacao.ts) — usada só pra colorir o badge de aproveitamento
@@ -73,16 +95,27 @@ export function gerarVagasCategoria(
    */
   diretasPrecalculadas?: OportunidadeDireta[], indiceRemanejamento?: IndiceRemanejamento,
   novoDiaPrecalculadas?: OportunidadeNovoDia[],
+  /** Só usado quando especialidade === "Coordenador de Caso" — teto de
+   *  pacientes distintos por profissional coordenador (parâmetro configurável
+   *  cc_lim_default, ver TaxasEParametrosCadastro.tsx; default 18 se não
+   *  informado). */
+  limiteCoordenadorCaso = 18,
 ): VagaCategoria[] {
   const cRows = filtrarCapacidadeLivreReservada(cRowsBrutos)
-  const slots = listarSlotsLivres(cRows).filter(
-    s => s.unidade === unidade && s.dia === dia && s.especialidade === especialidade,
+  const isCC = especialidade === COORDENADOR_CASO
+  const espInterna = especialidadeInterna(especialidade)
+  const opts = optsSlotsLivres(especialidade)
+
+  const slots = listarSlotsLivres(cRows, opts).filter(
+    s => s.unidade === unidade && s.dia === dia && s.especialidade === espInterna
+      && (!isCC || s.terapia === COORDENADOR_CASO),
   )
   if (!slots.length) return []
 
-  const todasDiretas = diretasPrecalculadas ?? listarOportunidadesDiretas(cRows, gapMap)
+  const todasDiretas = diretasPrecalculadas ?? listarOportunidadesDiretas(cRows, gapMap, opts)
   const diretas = todasDiretas.filter(
-    o => o.unidade === unidade && o.dia === dia && o.especialidade === especialidade,
+    o => o.unidade === unidade && o.dia === dia && o.especialidade === espInterna
+      && (!isCC || o.terapia === COORDENADOR_CASO),
   )
 
   // Casa cada direta com o slot exato (profissional+hora) que ela preenche —
@@ -117,7 +150,7 @@ export function gerarVagasCategoria(
   const turnosPresentes = [...new Set(slotsSemDireta.map(s => turnoFromHora(s.hora)))]
   const candidatosPorHora = new Map<string, { pac: string; gap: number; aut: number; of: number; remanejamento: RemanejamentoDetalhe }[]>()
   for (const turno of turnosPresentes) {
-    for (const { hora, candidato } of encontrarCandidatosRemanejamento(dia, turno, unidade, especialidade, cRows, gapMap, indiceRemanejamento)) {
+    for (const { hora, candidato } of encontrarCandidatosRemanejamento(dia, turno, unidade, espInterna, cRows, gapMap, indiceRemanejamento)) {
       if (!candidato.remanejamento) continue
       // Mesma regra R5.4 aplicada à modalidade "direto" acima — remanejamento
       // não pode empurrar o paciente pra uma unidade minoritária do dia dele.
@@ -149,14 +182,15 @@ export function gerarVagasCategoria(
   // Modalidade "Novo Dia": só tentada nos slots que sobraram sem Direto nem
   // Remanejamento — as duas primeiras resolvem a MESMA terapia sem exigir
   // mudança de rotina do paciente, sempre preferíveis quando existem.
-  const todasNovoDia = (novoDiaPrecalculadas ?? listarOportunidadesNovoDia(cRows, gapMap))
-    .filter(o => o.dia === dia && o.unidade === unidade && o.ancora.especialidade === especialidade)
+  const todasNovoDia = (novoDiaPrecalculadas ?? listarOportunidadesNovoDia(cRows, gapMap, undefined, opts))
+    .filter(o => o.dia === dia && o.unidade === unidade && o.ancora.especialidade === espInterna
+      && (!isCC || o.ancora.terapia === COORDENADOR_CASO))
   const novoDiaPorSlot = new Map(todasNovoDia.map(o => [`${o.ancora.profissional}|||${o.ancora.hora}`, o]))
 
   for (const s of slotsSemNada) {
     const oportunidade = novoDiaPorSlot.get(`${s.profissional}|||${s.hora}`)
     if (oportunidade) {
-      const g = oportunidade.gapPorEspecialidade[especialidade]
+      const g = oportunidade.gapPorEspecialidade[espInterna]
       vagas.push({
         hora: s.hora, turno: turnoFromHora(s.hora), profissional: s.profissional, terapia: s.terapia,
         status: "novo-dia",
@@ -168,7 +202,52 @@ export function gerarVagasCategoria(
     }
   }
 
-  return limitarPorGapCategoria(vagas, gapMap, especialidade)
+  const comGap = limitarPorGapCategoria(vagas, gapMap, espInterna)
+  return isCC ? limitarPorRegrasCoordenadorCaso(comGap, cRows, limiteCoordenadorCaso) : comGap
+}
+
+/** Regras específicas de Coordenador de Caso, sem equivalente em nenhuma
+ *  outra especialidade — por isso não vivem em limitarPorGapCategoria (que é
+ *  genérica): (1) cada paciente só pode ter 1 profissional Coordenador de
+ *  Caso; (2) um profissional não pode coordenar mais que `limiteCC` pacientes
+ *  distintos. Vaga que viola qualquer uma das duas volta a "livre", mesmo
+ *  padrão de rebaixamento de limitarPorGapCategoria — sem indicação visual
+ *  separada do motivo (decisão do usuário: mantém simples). */
+function limitarPorRegrasCoordenadorCaso(
+  vagas: VagaCategoria[], cRows: CsvRow[], limiteCC: number,
+): VagaCategoria[] {
+  const pacientesPorProf = new Map<string, Set<string>>()
+  const profPorPaciente = new Map<string, string>()
+  for (const r of cRows) {
+    if (r["Status do Agendamento"] !== "Agendado" || r.Terapia !== COORDENADOR_CASO) continue
+    const prof = r["Profissional"]
+    const pac = r["Nome Favorecido"]
+    if (!prof || !pac) continue
+    const set = pacientesPorProf.get(prof) ?? new Set<string>()
+    set.add(pac)
+    pacientesPorProf.set(prof, set)
+    if (!profPorPaciente.has(pac)) profPorPaciente.set(pac, prof)
+  }
+
+  return vagas.map(v => {
+    if (!v.paciente) return v
+    const prof = v.profissional
+    const pac = v.paciente.pac
+    const coordenadorAtual = profPorPaciente.get(pac)
+    const pacientesDoProf = pacientesPorProf.get(prof) ?? new Set<string>()
+    const violaExclusividade = coordenadorAtual && coordenadorAtual !== prof
+    const violaLimite = !pacientesDoProf.has(pac) && pacientesDoProf.size >= limiteCC
+    if (violaExclusividade || violaLimite) {
+      return { hora: v.hora, turno: v.turno, profissional: v.profissional, terapia: v.terapia, status: "livre" as const }
+    }
+    // Reserva o paciente pras próximas vagas desta mesma varredura, senão
+    // várias vagas simultâneas do mesmo profissional poderiam somar mais que
+    // limiteCC pacientes novos de uma vez.
+    pacientesDoProf.add(pac)
+    pacientesPorProf.set(prof, pacientesDoProf)
+    profPorPaciente.set(pac, prof)
+    return v
+  })
 }
 
 /** Mesmo princípio de limitarPorGap (ocupacaoProfissional.ts): um paciente
@@ -234,8 +313,10 @@ export interface RankearOportunidadesInternasOpts {
   unidades?: ReadonlySet<string>
   /** "diaInteiro" agrupa manhã+tarde numa linha por dia; "porTurno" mantém uma linha por turno isolado. */
   modo: ModoCascataOcupacao
-  /** Especialidades a considerar; omitido/vazio = todas (TODAS_ESP). */
+  /** Especialidades a considerar; omitido/vazio = todas (TODAS_ESP_CATEGORIA, inclui "Coordenador de Caso"). */
   especialidades?: ReadonlySet<string>
+  /** Teto de pacientes por profissional Coordenador de Caso — ver gerarVagasCategoria. */
+  limiteCoordenadorCaso?: number
 }
 
 /** Varre Unidade × Dia × (Turno ou dia inteiro, conforme `modo`) ×
@@ -252,9 +333,9 @@ export function rankearOportunidadesInternas(
   cRowsBrutos: CsvRow[], gapMap: Record<string, GapItem>,
   opts: RankearOportunidadesInternasOpts,
 ): CategoriaComOportunidade[] {
-  const { unidades: unidadesFiltro, modo, especialidades } = opts
+  const { unidades: unidadesFiltro, modo, especialidades, limiteCoordenadorCaso } = opts
   const unidades = unidadesFiltro?.size ? [...unidadesFiltro] : Object.keys(UNID_COR)
-  const listaEspecialidades = especialidades?.size ? [...especialidades] : TODAS_ESP
+  const listaEspecialidades = especialidades?.size ? [...especialidades] : TODAS_ESP_CATEGORIA
 
   // Pré-calculados UMA VEZ pra toda a varredura — sem isso, gerarVagasCategoria
   // recomputava listarOportunidadesDiretas (o dataset inteiro) e refazia
@@ -266,11 +347,29 @@ export function rankearOportunidadesInternas(
   const indiceNovoDia = construirIndiceNovoDia(cRows, gapMap)
   const novoDiaGlobais = listarOportunidadesNovoDia(cRows, gapMap, indiceNovoDia)
 
+  // "Coordenador de Caso" precisa de um precálculo À PARTE, com
+  // incluirCoordCaso:true — se fosse a MESMA base usada acima, os horários de
+  // Coordenador de Caso passariam a competir pelo MESMO grupo "Psicologia
+  // ABA" também quando a varredura testa a especialidade "Psicologia ABA" de
+  // verdade, contaminando aquele resultado (ver comentário em
+  // especialidadeInterna/optsSlotsLivres). Só computado se a especialidade
+  // estiver realmente sendo varrida, pra não gastar à toa.
+  const precisaCC = listaEspecialidades.includes(COORDENADOR_CASO)
+  const diretasGlobaisCC = precisaCC ? listarOportunidadesDiretas(cRows, gapMap, { incluirCoordCaso: true }) : diretasGlobais
+  const indiceNovoDiaCC = precisaCC ? construirIndiceNovoDia(cRows, gapMap, { incluirCoordCaso: true }) : indiceNovoDia
+  const novoDiaGlobaisCC = precisaCC ? listarOportunidadesNovoDia(cRows, gapMap, indiceNovoDiaCC, { incluirCoordCaso: true }) : novoDiaGlobais
+
   const resultado: CategoriaComOportunidade[] = []
   for (const unid of unidades) {
     for (const dia of DIAS_UTIL) {
       for (const especialidade of listaEspecialidades) {
-        const vagas = gerarVagasCategoria(unid, dia, especialidade, cRows, gapMap, diretasGlobais, indiceRemanejamento, novoDiaGlobais)
+        const isCC = especialidade === COORDENADOR_CASO
+        const vagas = gerarVagasCategoria(
+          unid, dia, especialidade, cRows, gapMap,
+          isCC ? diretasGlobaisCC : diretasGlobais, indiceRemanejamento,
+          isCC ? novoDiaGlobaisCC : novoDiaGlobais,
+          limiteCoordenadorCaso,
+        )
         if (!vagas.length) continue
 
         const grupos: { periodo: Turno | "diaInteiro"; doGrupo: typeof vagas }[] = modo === "diaInteiro"
@@ -315,20 +414,22 @@ export interface UnidadeComOportunidade {
  *  o usuário precisa ver o comparativo mesmo já tendo fixado uma unidade. */
 export function compararUnidadesOportunidade(
   periodos: { dia: string; turno: Turno }[], especialidade: string, cRows: CsvRow[], gapMap: Record<string, GapItem>,
+  limiteCoordenadorCaso?: number,
 ): UnidadeComOportunidade[] {
   const diasPresentes = [...new Set(periodos.map(p => p.dia))]
   if (!diasPresentes.length || !especialidade) return []
 
   const cRowsFiltradas = filtrarCapacidadeLivreReservada(cRows)
-  const diretasGlobais = listarOportunidadesDiretas(cRowsFiltradas, gapMap)
+  const opts = optsSlotsLivres(especialidade)
+  const diretasGlobais = listarOportunidadesDiretas(cRowsFiltradas, gapMap, opts)
   const indiceRemanejamento = construirIndiceRemanejamento(cRowsFiltradas)
-  const novoDiaGlobais = listarOportunidadesNovoDia(cRowsFiltradas, gapMap, construirIndiceNovoDia(cRowsFiltradas, gapMap))
+  const novoDiaGlobais = listarOportunidadesNovoDia(cRowsFiltradas, gapMap, construirIndiceNovoDia(cRowsFiltradas, gapMap, opts), opts)
 
   return Object.keys(UNID_COR).map(unidade => {
     let qtdDireto = 0, qtdRemanejamentoMesmoDia = 0, qtdRemanejamentoOutroDia = 0, qtdNovoDia = 0, qtdLivre = 0
     for (const dia of diasPresentes) {
       const turnosDoDia = new Set(periodos.filter(p => p.dia === dia).map(p => p.turno))
-      const vagas = gerarVagasCategoria(unidade, dia, especialidade, cRowsFiltradas, gapMap, diretasGlobais, indiceRemanejamento, novoDiaGlobais)
+      const vagas = gerarVagasCategoria(unidade, dia, especialidade, cRowsFiltradas, gapMap, diretasGlobais, indiceRemanejamento, novoDiaGlobais, limiteCoordenadorCaso)
         .filter(v => turnosDoDia.has(v.turno))
       qtdDireto += vagas.filter(v => v.status === "direto").length
       qtdRemanejamentoMesmoDia += vagas.filter(v => v.status === "remanejamento-mesmo-dia").length
@@ -348,10 +449,16 @@ export function contarOcupadosCategoria(
   unidade: string, periodos: { dia: string; turno: Turno }[], especialidade: string, cRows: CsvRow[],
 ): number {
   const periodosSet = new Set(periodos.map(p => `${p.dia}|||${p.turno}`))
+  // "Coordenador de Caso" nunca é o valor de TERAPIA_TO_ESP (ele mapeia pra
+  // "Psicologia ABA") — quando a especialidade avulsa é essa, compara a
+  // terapia bruta diretamente em vez do balde de especialidade.
+  const bate = especialidade === COORDENADOR_CASO
+    ? (r: CsvRow) => r.Terapia === COORDENADOR_CASO
+    : (r: CsvRow) => TERAPIA_TO_ESP[r.Terapia] === especialidade
   return cRows.filter(r =>
     r["Status do Agendamento"] === "Agendado" &&
     String(r.Unidade || "Desconhecida") === unidade &&
-    TERAPIA_TO_ESP[r.Terapia] === especialidade &&
+    bate(r) &&
     periodosSet.has(`${r["Dia da Semana"]}|||${turnoFromHora(hiStr(r))}`),
   ).length
 }
