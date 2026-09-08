@@ -319,16 +319,13 @@ export default function ModalTokenMensal({ open, onClose }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, mesRef])
 
-  // Dia → paciente: dentro do mesmo dia a ordem é alfabética por paciente,
-  // sem considerar o horário — é como a pilha de filipetas da recepção é
-  // conferida.
+  // A pilha de filipetas da recepção é conferida em ordem alfabética,
+  // independentemente da data e do horário da sessão.
   const ordenados = useMemo(
     () =>
-      [...itens].sort((a, b) => {
-        const dia = (a.data_atendimento ?? '').localeCompare(b.data_atendimento ?? '')
-        if (dia !== 0) return dia
-        return (a.paciente_nome ?? '').localeCompare(b.paciente_nome ?? '', 'pt-BR')
-      }),
+      [...itens].sort((a, b) =>
+        (a.paciente_nome ?? '').localeCompare(b.paciente_nome ?? '', 'pt-BR')
+      ),
     [itens]
   )
 
