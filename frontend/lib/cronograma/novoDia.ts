@@ -10,7 +10,7 @@
 // modal — aqui só calculamos QUEM qualifica pra vaga e QUAIS candidatas
 // existem, nunca escrevemos na agenda real.
 
-import { listarSlotsLivres, unidadeDominantePaciente, turnoDominantePaciente, type SlotLivre } from "./disponibilidadeInterna"
+import { listarSlotsLivres, unidadeDominantePaciente, turnoDominantePaciente, type SlotLivre, type OpcoesSlotsLivres } from "./disponibilidadeInterna"
 import { agendaClinica, type GapItem, type Turno } from "./simulacaoNovoPrestador"
 import { turnoFromHora } from "./helpers"
 import { HORAS_GRID } from "./constants"
@@ -58,9 +58,9 @@ export interface IndiceNovoDia {
   pacientesComGapPorEspecialidade: Map<string, string[]>
 }
 
-export function construirIndiceNovoDia(cRows: CsvRow[], gapMap: Record<string, GapItem>): IndiceNovoDia {
+export function construirIndiceNovoDia(cRows: CsvRow[], gapMap: Record<string, GapItem>, opts?: OpcoesSlotsLivres): IndiceNovoDia {
   const slotsPorDiaUnidadeTurno = new Map<string, SlotLivre[]>()
-  for (const s of listarSlotsLivres(cRows)) {
+  for (const s of listarSlotsLivres(cRows, opts)) {
     if (!s.especialidade) continue
     const chave = `${s.dia}|||${s.unidade}|||${turnoFromHora(s.hora)}`
     const lista = slotsPorDiaUnidadeTurno.get(chave) ?? []
@@ -174,9 +174,9 @@ function debugAtivo(): boolean {
 }
 
 export function listarOportunidadesNovoDia(
-  cRows: CsvRow[], gapMap: Record<string, GapItem>, indicePre?: IndiceNovoDia,
+  cRows: CsvRow[], gapMap: Record<string, GapItem>, indicePre?: IndiceNovoDia, opts?: OpcoesSlotsLivres,
 ): OportunidadeNovoDia[] {
-  const indice = indicePre ?? construirIndiceNovoDia(cRows, gapMap)
+  const indice = indicePre ?? construirIndiceNovoDia(cRows, gapMap, opts)
   const todosSlots = [...indice.slotsPorDiaUnidadeTurno.values()].flat()
   const debug = debugAtivo()
 
