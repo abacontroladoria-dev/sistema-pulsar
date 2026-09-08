@@ -231,7 +231,7 @@ const unidades = [
 
 	].sort()
 
-  // Opções de recorte do modal de "Fechar o dia".
+  // Opções de recorte do modal de "Registrar dia sem atendimento".
   //
   // Carregadas da data ESCOLHIDA NO MODAL, não da data aberta na tela — as duas
   // são independentes de propósito (ver abrirModalLote). Uma versão anterior
@@ -1213,8 +1213,9 @@ const atendimentos = Object.values(
   function abrirModalLote() {
     // A data começa VAZIA, e não herdada da tela.
     //
-    // Fechar o dia é quase sempre uma ação sobre outro dia — o feriado que vem,
-    // a segunda-feira em que faltou luz — enquanto a tela costuma estar em hoje.
+    // Registrar um dia sem atendimento é quase sempre uma ação sobre outro dia
+    // — o feriado que vem, a segunda em que faltou luz — enquanto a tela
+    // costuma estar em hoje.
     // Herdar a data da página fazia o campo chegar pré-preenchido com um valor
     // plausível e quase sempre errado, do tipo que ninguém relê antes de
     // confirmar. Vazio, a data é uma escolha; preenchida, era uma suposição.
@@ -1281,10 +1282,10 @@ const atendimentos = Object.values(
 
       if (r.aplicadas === 0) {
         // Falha silenciosa clássica: confirmar um lote que não faria nada e sair
-        // achando que o dia foi fechado. Melhor dizer aqui.
+        // achando que o dia foi registrado. Melhor dizer aqui.
         toast.error(
           r.ignoradas > 0
-            ? `Nada a fechar — as ${r.ignoradas} sessões deste dia já estão resolvidas.`
+            ? `Nada a registrar — as ${r.ignoradas} sessões deste dia já estão resolvidas.`
             : 'Nenhuma sessão neste dia com os filtros escolhidos.'
         )
         setLoteCarregando(false)
@@ -1312,12 +1313,14 @@ const atendimentos = Object.values(
         loteId: loteContagem.lote_id,
       })
 
-      // Mesma palavra do botão e da confirmação: quem clicou em "Fechar o dia"
-      // precisa reconhecer o resultado sem traduzir nada.
+      // "Unidade fechada" é o mesmo rótulo que o card, a Central e a Auditoria
+      // mostram daqui em diante (ver severity.ts e statusAutorizacao.ts). O
+      // toast é a última coisa na tela antes de a atendente olhar a lista: dizer
+      // aqui a palavra que ela vai ler lá poupa a tradução.
       toast.success(
         r.ignoradas > 0
-          ? `Dia fechado · ${r.aplicadas} sessões · ${r.ignoradas} mantidas como estavam`
-          : `Dia fechado · ${r.aplicadas} sessões`
+          ? `${r.aplicadas} sessões marcadas como unidade fechada · ${r.ignoradas} mantidas como estavam`
+          : `${r.aplicadas} sessões marcadas como unidade fechada`
       )
 
       setUltimoLote({ id: r.lote_id, aplicadas: r.aplicadas, quando: Date.now() })
@@ -1791,15 +1794,16 @@ useEffect(() => {
           <button
             type="button"
             onClick={abrirModalLote}
-            title="Registrar que a clínica não abriu neste dia"
+            title="Feriado, ponto facultativo ou falta de energia: registra que não houve atendimento"
             className="
               shrink-0 mt-0.5
               inline-flex items-center gap-2
+              whitespace-nowrap
               rounded-lg
               border border-slate-200
               bg-white
               px-3 py-1.5
-              text-sm font-medium text-slate-500
+              text-[13px] font-medium text-slate-500
               shadow-sm
               transition-colors
               hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700
@@ -1807,7 +1811,7 @@ useEffect(() => {
             "
           >
             <CalendarX size={15} className="text-slate-400" />
-            Fechar o dia
+            Registrar dia sem atendimento
           </button>
         </div>
         {/* O aviso muda de cor conforme a AÇÃO que ele pede. Âmbar quando a
@@ -2539,7 +2543,7 @@ useEffect(() => {
         </button>
 
         <h2 className="text-lg font-semibold text-slate-800">
-          Fechar o dia
+          Registrar dia sem atendimento
         </h2>
         <p className="text-sm text-slate-500 mt-1">
           Registra que a clínica não abriu. As sessões já autorizadas ou
@@ -2633,7 +2637,7 @@ useEffect(() => {
         <div className="mt-5 pt-4 border-t border-slate-100">
           <div className="flex items-baseline justify-between mb-2.5">
             <p className="text-xs font-semibold text-slate-700">
-              Fechar o dia todo, ou apenas parte dele
+              O dia todo, ou apenas parte dele
             </p>
             {carregandoOpcoesLote && (
               <span className="text-xs text-slate-400">carregando…</span>
@@ -2753,9 +2757,9 @@ useEffect(() => {
             Voltar
           </button>
           {/* Escuro, não vermelho. Vermelho é a cor de erro e de perda, e
-              fechar o dia não é nenhum dos dois — é um registro correto de um
-              fato. O peso vem do contraste (é o único elemento sólido do
-              modal), não do alarme. */}
+              registrar um dia sem atendimento não é nenhum dos dois — é o
+              registro correto de um fato. O peso vem do contraste (é o único
+              elemento sólido do modal), não do alarme. */}
           <button
             onClick={handleLoteAplicar}
             disabled={loteCarregando}
