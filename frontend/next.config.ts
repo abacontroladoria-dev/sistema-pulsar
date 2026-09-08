@@ -39,7 +39,36 @@ const nextConfig: NextConfig = {
   // submit nativo e o handler React nunca roda).
   allowedDevOrigins: ['192.168.0.241', '127.0.0.1'],
   typescript: {
-    tsconfigPath: './tsconfig.json'
+    tsconfigPath: './tsconfig.json',
+
+    // O type check NÃO roda dentro do build de produção — ele roda antes, no
+    // `npm run typecheck` (ver package.json), e é lá que ele é obrigatório.
+    //
+    // Por que: o servidor do Coolify tem ~3,8 GB. O `next build` compila com
+    // sucesso e SÓ ENTÃO roda o "Running TypeScript", que neste projeto usa
+    // ~1,26 GB sozinho (2210 arquivos, 1,2 milhão de instanciações, 33s só de
+    // checagem — medido com `tsc --extendedDiagnostics`). Somado ao que o
+    // compilador ainda segura, isso estoura a RAM e o kernel mata o processo.
+    //
+    // O sintoma é traiçoeiro e foi o que derrubou o deploy de 08/09/2026: o
+    // build imprime "✓ Compiled successfully", depois "Running TypeScript ...",
+    // e morre em SILÊNCIO com exit 255 — sem nome de arquivo, sem linha, sem
+    // mensagem. Parece erro de tipo e não é: erro de tipo real é impresso. O
+    // que não imprime nada é OOM.
+    //
+    // ⚠️  A checagem não foi abandonada, foi movida. `npm run typecheck` roda o
+    // mesmo tsconfig com os mesmos rigores; com "incremental": true ele leva ~5s
+    // localmente. Rode-o antes de commitar — sem isso, um erro de tipo passa
+    // direto para produção, porque aqui ninguém mais o pega.
+    ignoreBuildErrors: true,
+  },
+
+  experimental: {
+    // Reduz o pico de memória do webpack em troca de um build um pouco mais
+    // lento. Documentado como baixo risco em docs/01-app/02-guides/memory-usage.
+    // Não resolve sozinho o estouro acima (o webpack já passava; quem morria era
+    // o type check), mas devolve folga no mesmo build de 3,8 GB.
+    webpackMemoryOptimizations: true,
   },
   turbopack: { root: __dirname },
 
