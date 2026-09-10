@@ -9,7 +9,7 @@ import { CriarNovoCronogramaPacMode } from "@/components/cronograma/solicitacoes
 import { OrcamentoPacMode } from "@/components/cronograma/solicitacoes/OrcamentoPacMode"
 import { WorkspaceEmptyState } from "@/components/cronograma/ui/CronogramaWorkspace"
 import { buscarGradeComoCSVRows } from "@/lib/cronograma/gradeService"
-import { descartarLivresComprometidos } from "@/lib/cronograma/gradeTitaOcupacao"
+import { filtrarLivresSemGradeAberta } from "@/lib/cronograma/gradeTitaOcupacao"
 import { construirSuspensaoTemporaria, type SuspensaoLinkInfo } from "@/lib/cronograma/suspensaoTemporaria"
 import { getJanelaOcupacaoPaciente } from "@/lib/cronograma/helpers"
 import type { CsvRow } from "@/types/cronograma"
@@ -45,19 +45,20 @@ export default function OcupacaoPacientePage() {
     if (fetchedRef.current) return
     fetchedRef.current = true
     const janela = getJanelaOcupacaoPaciente()
-    // A grade da TiTa tem a palavra final sobre slot comprometido — o CSV de
-    // agendamentos sozinho oferecia horário já ocupado (ver o cabeçalho de
-    // gradeTitaOcupacao.ts). Aplicado aqui, na origem da cópia, para valer nas
-    // três modalidades sem alterar assinatura de nenhuma função do módulo — e
-    // sem alcançar a Simulação de Novo Prestador, que lê o cRows do
-    // CronogramaDataProvider, não este.
+    // A grade da TiTa tem a palavra final sobre o que é ofertável — o CSV de
+    // agendamentos sozinho oferecia horário já ocupado (C1) e horário em que a
+    // profissional não tem grade aberta (C2, caso Evelyn Andressa na segunda de
+    // manhã). Ver o cabeçalho de gradeTitaOcupacao.ts. Aplicado aqui, na origem
+    // da cópia, para valer nas três modalidades sem alterar assinatura de
+    // nenhuma função do módulo — e sem alcançar a Simulação de Novo Prestador,
+    // que lê o cRows do CronogramaDataProvider, não este.
     //
     // O Set de suspensão temporária é montado do mesmo jeito, na mesma origem
     // — uma consulta só, compartilhada por "Aumentar Cronograma" e "Criar Novo
     // Cronograma" (ver suspensaoTemporaria.ts). "Orçamento" não recebe: usa
     // paciente sintético ("Simulação"), sem id_paciente_pulsar real.
     buscarGradeComoCSVRows(janela.inicio, janela.fim)
-      .then(rows => descartarLivresComprometidos(rows, janela.inicio))
+      .then(rows => filtrarLivresSemGradeAberta(rows, janela.inicio))
       .then(rows => {
         setCRows(rows)
         void construirSuspensaoTemporaria(rows).then(({ set, info }) => {
