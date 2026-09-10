@@ -299,6 +299,7 @@ interface Execucao {
   tratativa_criada_em:         string | null
   tratativa_origem:            string | null
   evolucao_vinculo:            string | null
+  descricao_evolucao:          string | null
   criado_em_tita:              string | null
   excluido_em_tita:            string | null
 }
@@ -371,7 +372,8 @@ const CAMPOS_CONTEUDO: (keyof Linha)[] = [
 const CAMPOS_EXECUCAO: (keyof Execucao)[] = [
   "status_execucao", "justificativa", "possui_tratativa",
   "tratativa_profissional_id", "tratativa_profissional_nome", "tratativa_criada_em",
-  "tratativa_origem", "evolucao_vinculo", "criado_em_tita", "excluido_em_tita",
+  "tratativa_origem", "evolucao_vinculo", "descricao_evolucao",
+  "criado_em_tita", "excluido_em_tita",
 ]
 
 /** Os três campos de instante voltam do banco noutro offset; comparar texto acusaria diferença sempre. */
@@ -630,6 +632,15 @@ async function buscarRegistros(dataInicio: string, dataFim: string): Promise<Reg
   const iCriadoEm   = col("agendamento criado em")
   const iExcluidoEm = col("agendamento excluído em")
 
+  // O texto que o profissional escreve depois de atender. Apareceu em setembro/2026
+  // como 43ª coluna e vinha sendo descartada em silêncio — o lookup é por nome, e o
+  // que não está nesta lista não é lido. O cabeçalho vem acentuado (conferido na API
+  // em 2026-09-09); a variante sem acento é defensiva, porque este `col()` compara
+  // string crua, sem normalizar NFD como o cco-sync-tita-sessions faz.
+  const iDescEvol = col("descrição da evolução") >= 0
+    ? col("descrição da evolução")
+    : col("descricao da evolucao")
+
   const v = (vals: string[], i: number) => (i >= 0 ? vals[i]?.trim() ?? "" : "")
 
   const registros: Registro[] = []
@@ -668,6 +679,7 @@ async function buscarRegistros(dataInicio: string, dataFim: string): Promise<Reg
       tratativa_criada_em:         toTimestamp(v(vals, iTratCriac)),
       tratativa_origem:            v(vals, iTratOrig)   || null,
       evolucao_vinculo:            v(vals, iVinculo)    || null,
+      descricao_evolucao:          v(vals, iDescEvol)   || null,
       criado_em_tita:              toTimestamp(v(vals, iCriadoEm)),
       excluido_em_tita:            toTimestamp(v(vals, iExcluidoEm)),
     })
@@ -941,6 +953,7 @@ async function sincronizarExecucao(
       tratativas,
       tratativas_distintas:        tratativasDistintas,
       evolucao_vinculo:            novo.evolucao_vinculo,
+      descricao_evolucao:          novo.descricao_evolucao,
       criado_em_tita:              novo.criado_em_tita,
       excluido_em_tita:            novo.excluido_em_tita,
     })
@@ -1007,6 +1020,7 @@ async function sincronizarExecucao(
           tratativa_criada_em:         r.tratativa_criada_em,
           tratativa_origem:            r.tratativa_origem,
           evolucao_vinculo:            r.evolucao_vinculo,
+          descricao_evolucao:          r.descricao_evolucao,
           criado_em_tita:              r.criado_em_tita,
           excluido_em_tita:            r.excluido_em_tita,
         })

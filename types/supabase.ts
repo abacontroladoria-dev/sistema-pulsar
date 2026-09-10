@@ -1639,6 +1639,7 @@ export type Database = {
           convenio_nome: string | null
           criado_em_tita: string | null
           data: string
+          descricao_evolucao: string | null
           dia_semana: string | null
           evolucao_vinculo: string | null
           excluido_em_tita: string | null
@@ -1682,6 +1683,7 @@ export type Database = {
           convenio_nome?: string | null
           criado_em_tita?: string | null
           data: string
+          descricao_evolucao?: string | null
           dia_semana?: string | null
           evolucao_vinculo?: string | null
           excluido_em_tita?: string | null
@@ -1725,6 +1727,7 @@ export type Database = {
           convenio_nome?: string | null
           criado_em_tita?: string | null
           data?: string
+          descricao_evolucao?: string | null
           dia_semana?: string | null
           evolucao_vinculo?: string | null
           excluido_em_tita?: string | null
