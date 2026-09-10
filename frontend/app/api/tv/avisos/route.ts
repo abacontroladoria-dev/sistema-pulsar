@@ -35,7 +35,7 @@ export async function GET() {
 async function listar() {
   const { data, error } = await supabaseService
     .from('tv_avisos')
-    .select('id, caminho')
+    .select('id, caminho, atualizado_em')
     .eq('ativo', true)
     // Ordenação TOTAL: `ordem` empata com frequência (a UI reescreve o bloco em
     // setas, e dois avisos podem ficar com o mesmo valor por um instante). Sem
@@ -55,15 +55,29 @@ async function listar() {
   // Campo a campo, nunca `...a`: este endpoint é público, e `titulo` é rótulo
   // interno do marketing — não tem por que ser publicado. `caminho` também
   // fica de fora; o que a TV precisa é da URL pronta.
-  const avisos = (data ?? []).map((a) => ({
-    id: a.id as string,
-    url: supabaseService.storage.from(BUCKET).getPublicUrl(a.caminho as string)
-      .data.publicUrl,
-  }))
+  const avisos = (data ?? []).map((a) => {
+    const publicUrl = supabaseService.storage
+      .from(BUCKET)
+      .getPublicUrl(a.caminho as string).data.publicUrl
 
-  // `no-store` como em /api/tv/chamadas. O poll do carrossel já é lento (5 min);
-  // cachear por cima disso só atrasaria a entrada de um aviso novo sem economizar
-  // nada relevante — é uma consulta indexada, respondendo a UMA tela.
+    // `?v=` carimba a URL com a versão da linha. `getPublicUrl` não versiona nada
+    // e o bucket é público sem expirar: se um dia o mesmo `caminho` for
+    // sobrescrito no storage, o <img> da TV — que fica DIAS aberto — serviria a
+    // imagem velha do cache pra sempre, e nenhum poll consertaria isso.
+    // Hoje `criarAviso` sempre gera um uuid novo, então o furo está latente, não
+    // aberto; isto o fecha antes que uma mudança inocente no service o acorde.
+    const versao = Date.parse(a.atualizado_em as string) || 0
+
+    return {
+      id: a.id as string,
+      url: `${publicUrl}?v=${versao}`,
+    }
+  })
+
+  // `no-store` como em /api/tv/chamadas. Quem controla a frequência aqui é o
+  // carimbo de /api/tv/avisos/versao: esta rota só é chamada quando algo mudou
+  // de fato. Cachear por cima disso atrasaria justamente a entrada do aviso
+  // novo, sem economizar nada — é uma consulta indexada, servindo UMA tela.
   return NextResponse.json(
     { avisos },
     { headers: { 'Cache-Control': 'no-store' } }

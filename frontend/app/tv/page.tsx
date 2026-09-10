@@ -53,10 +53,15 @@ const MAX_IDADE_ANUNCIO_S = 300
 const POLL_CHAMADAS_MS = 1500
 const POLL_CLIMA_MS = 600000
 
-// Cartaz de marketing não muda de minuto em minuto: quem publica um aviso aceita
-// que ele entre no ar em alguns minutos. 5 min mantém a TV atualizada sem somar
-// requisição ao poll de chamadas, que é o que não pode atrasar.
-const POLL_AVISOS_MS = 300000
+// Antes eram 5 min entre buscas da lista inteira de avisos. Na prática ninguém
+// aceitou esperar: quem publicava achava que não tinha funcionado e ia atrás de
+// um F5 na TV — que não existe (é quiosque; o jeito era reiniciar a máquina).
+//
+// Agora o ciclo pergunta a /api/tv/avisos/versao, que é barato, e só busca a
+// lista completa quando o carimbo muda. 30s é imperceptível pra quem publica e
+// custa 2 consultas triviais por minuto, sem somar peso ao poll de chamadas —
+// que continua sendo o que não pode atrasar.
+const POLL_AVISOS_VERSAO_MS = 30000
 
 // Chrome às vezes engole o `onend` da fala numa aba aberta há horas; sem isso a
 // fila travaria em `falando = true` e a TV ficaria muda pelo resto do dia.
@@ -872,9 +877,30 @@ export default function TVPage() {
   // 📣 avisos do marketing — carrossel do estado de espera
   useEffect(() => {
     let vivo = true
+    let timer: ReturnType<typeof setTimeout>
 
-    const buscarAvisos = async () => {
+    // Última versão JÁ APLICADA na tela. Variável do efeito, não estado: mudar
+    // isto não deve repintar nada. Vive exatamente o que o ciclo vive — o efeito
+    // roda uma vez só ([] de dependências) e o cleanup encerra o agendamento.
+    let versaoNaTela: string | null = null
+
+    const ciclo = async () => {
       try {
+        // Pergunta barata: mudou alguma coisa? Na esmagadora maioria dos ciclos
+        // a resposta é não, e o ciclo acaba aqui — sem tocar na rota que monta a
+        // lista inteira.
+        const resVersao = await fetch('/api/tv/avisos/versao/', { cache: 'no-store' })
+        const dataVersao = await resVersao.json()
+
+        if (!vivo) return
+
+        const versao = typeof dataVersao?.versao === 'string' ? dataVersao.versao : null
+
+        // Sem carimbo (erro na rota) não dá pra concluir NADA — nem que mudou,
+        // nem que está igual. Mantém a tela e tenta no próximo ciclo.
+        if (versao === null) return
+        if (versao === versaoNaTela) return
+
         const res = await fetch('/api/tv/avisos/', { cache: 'no-store' })
         const data = await res.json()
 
@@ -883,30 +909,39 @@ export default function TVPage() {
         const lista = Array.isArray(data?.avisos) ? data.avisos : []
 
         setAvisos((atuais) => {
-          // Mesma disciplina do `mesmaLista` das chamadas: a rota devolve o
-          // mesmo conteúdo quase sempre, e trocar a identidade do array a cada
-          // 5 min remontaria os <img> — ou seja, rebaixaria todas as imagens do
-          // cache e faria a TV piscar sem nada ter mudado.
+          // Mesma disciplina do `mesmaLista` das chamadas: trocar a identidade
+          // do array remontaria os <img> — ou seja, rebaixaria todas as imagens
+          // do cache e faria a TV piscar sem nada ter mudado. O gate de versão
+          // acima já filtra quase tudo, mas isto segue sendo a última linha de
+          // defesa: um `atualizado_em` pode mexer sem que a lista visível mude.
           const igual =
             atuais.length === lista.length &&
             atuais.every((a, i) => a.id === lista[i]?.id && a.url === lista[i]?.url)
 
           return igual ? atuais : lista
         })
+
+        // Só DEPOIS de aplicar. Gravar antes faria uma falha no fetch da lista
+        // dar a mudança por vista, e o cartaz novo esperaria a publicação
+        // seguinte pra entrar.
+        versaoNaTela = versao
       } catch {
         // Rede caiu: mantém o que já está na tela. Zerar aqui trocaria o cartaz
         // por um fallback só porque um poll falhou — a TV segue dias sem
         // recarregar, e um soluço de rede não é motivo pra mudar o que se vê.
+        // `versaoNaTela` fica como está, então o próximo ciclo tenta de novo.
+      } finally {
+        // Reagendado, não `setInterval`: se a rede engasgar e um ciclo demorar
+        // mais que o intervalo, não queremos ciclos empilhando por cima.
+        if (vivo) timer = setTimeout(ciclo, POLL_AVISOS_VERSAO_MS)
       }
     }
 
-    buscarAvisos()
-
-    const interval = setInterval(buscarAvisos, POLL_AVISOS_MS)
+    ciclo()
 
     return () => {
       vivo = false
-      clearInterval(interval)
+      clearTimeout(timer)
     }
   }, [])
 
