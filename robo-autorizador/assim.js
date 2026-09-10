@@ -55,6 +55,24 @@
  * 3. `input[name="senha"]` NÃO SIGNIFICA "ESTOU NA TELA DE LOGIN". A página do
  *    formulário carrega a senha do posto num campo hidden com esse mesmo nome
  *    (verificado). Quem identifica a tela de login é `form[name="entrar"]`.
+ *
+ * -------------------------------------------------------------------------
+ * 1.1.8 — O GUARDA DE ABA DEIXOU DE SER SÓ DO TOKEN
+ * -------------------------------------------------------------------------
+ *
+ * `temTokenAberto` protegia uma etapa humana só. A 1.1.8 tirou o prazo da
+ * espera pelo clique em "enviar" (ver rpa.js), e uma espera sem prazo passa do
+ * `aba_ttl_minutos` (30 min) por definição: sem guarda, `podar()` fecharia a
+ * janela com o formulário preenchido dentro — o mesmo defeito que a 1.1.8 veio
+ * consertar, só que meia hora depois.
+ *
+ * Entrou `abaEmUso()`: token na tela OU `aguardandoOperador` (flag posta pelo
+ * rpa.js). `podar()` e `descartar()` consultam ela. A aba aguardando operador
+ * não tem prazo de graça — o `gracaMs` existe para um token de ~60s que já
+ * morreu, mas um formulário preenchido continua válido depois de horas.
+ *
+ * `fecharTudo()` continua furando tudo, de propósito: restart, atualização e
+ * erro fatal fecham mesmo, porque contexto órfão do Chrome é pior.
  */
 
 const { delay, humanType } = require('./humano')
@@ -416,6 +434,27 @@ class SessaoAssim {
     ).first().isVisible({ timeout: 1000 }).catch(() => false)
   }
 
+  /**
+   * A aba tem alguém do outro lado no meio de uma etapa?
+   *
+   * Duas situações, e as duas proíbem o fechamento automático:
+   *
+   * 1. O modal de token está na tela (acima).
+   * 2. `aguardandoOperador` — o robô preencheu o formulário e está parado
+   *    esperando a recepcionista clicar em "enviar". A flag é posta e tirada
+   *    pelo rpa.js.
+   *
+   * A (2) existe porque desde a 1.1.8 essa espera NÃO TEM PRAZO, e uma espera
+   * sem prazo passa do `aba_ttl_minutos` (30 min) por definição: sem este
+   * guarda, a poda fecharia a janela com o formulário preenchido dentro — o
+   * mesmo defeito que a 1.1.8 veio consertar, só que meia hora depois.
+   */
+  async abaEmUso(registro) {
+    if (!registro) return false
+    if (registro.aguardandoOperador) return true
+    return this.temTokenAberto(registro)
+  }
+
   async podar(cfg) {
     const teto = Math.max(1, Number(cfg.max_abas_abertas) || 3)
     const ttlMs = Math.max(1, Number(cfg.aba_ttl_minutos) || 30) * 60000
@@ -435,6 +474,15 @@ class SessaoAssim {
     let protegidas = 0
 
     for (const aba of [...vencidas, ...excedentes]) {
+      // A aba parada esperando o clique em "enviar" NÃO tem prazo de graça: o
+      // `gracaMs` faz sentido para um token de ~60s que já morreu, mas o
+      // formulário preenchido na tela continua válido depois de horas, e quem
+      // decide o destino dele é a pessoa. Só `fecharTudo()` a leva.
+      if (aba.aguardandoOperador) {
+        protegidas++
+        continue
+      }
+
       if (agora - aba.criadoEm <= gracaMs && await this.temTokenAberto(aba)) {
         protegidas++
         continue
@@ -457,8 +505,8 @@ class SessaoAssim {
     // está com 9 abas abertas?" sem resposta.
     if (protegidas) {
       console.log(
-        `🔒 ${protegidas} aba(s) mantida(s): modal de token do beneficiário aberto. ` +
-        'Só o usuário fecha.'
+        `🔒 ${protegidas} aba(s) mantida(s): token do beneficiário na tela ou ` +
+        'envio aguardando a recepção. Só o usuário fecha.'
       )
     }
   }
@@ -466,11 +514,12 @@ class SessaoAssim {
   /**
    * Descarta uma aba imediatamente (execução que deu errado, nada a imprimir).
    *
-   * Com uma exceção, e ela é o motivo deste comentário: aba com o modal de token
-   * aberto NÃO é fechada. Uma execução que falhou realmente não tem nada para
-   * imprimir, mas se o token está na tela existe alguém do outro lado no meio de
+   * Com exceções, e elas são o motivo deste comentário: aba EM USO não é
+   * fechada — token do beneficiário na tela, ou envio parado esperando a
+   * recepção (ver abaEmUso). Uma execução que falhou realmente não tem nada
+   * para imprimir, mas nesses dois casos existe alguém do outro lado no meio de
    * uma etapa que não se refaz de graça. A aba perde o vínculo com a tarefa e
-   * fica para o usuário; a poda a recolhe depois, com prazo de graça.
+   * fica para o usuário.
    *
    * `{ forcar: true }` ignora o guarda — para quem realmente precisa fechar
    * (encerramento do processo, erro fatal).
@@ -478,10 +527,10 @@ class SessaoAssim {
   async descartar(registro, { forcar = false } = {}) {
     if (!registro) return
 
-    if (!forcar && await this.temTokenAberto(registro)) {
+    if (!forcar && await this.abaEmUso(registro)) {
       console.warn(
-        '🔒 Aba mantida aberta: o modal de token do beneficiário está na tela. ' +
-        'Só o usuário fecha.'
+        '🔒 Aba mantida aberta: há uma etapa em andamento na tela (token do ' +
+        'beneficiário ou envio aguardando a recepção). Só o usuário fecha.'
       )
       registro.filaId = null
       return

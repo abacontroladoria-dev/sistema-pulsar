@@ -24,6 +24,34 @@
  *
  * O que NÃO mudou, de propósito: o robô preenche e PARA. Quem clica em "enviar"
  * é a recepcionista. A decisão de autorizar continua humana.
+ *
+ * -------------------------------------------------------------------------
+ * 1.1.8 — A JANELA NUNCA MAIS FECHA SOZINHA
+ * -------------------------------------------------------------------------
+ *
+ * As duas esperas humanas tinham prazo, e o estouro fechava a janela na cara de
+ * quem estava atendendo — sem aviso e sem contagem visível:
+ *
+ * - o envio (`envio_timeout_ms`, 120s) devolvia 'timeout', o chamador LANÇAVA,
+ *   o worker chamava sessao.descartar() e o contexto do Chrome ia embora com o
+ *   formulário preenchido dentro;
+ * - a identificação (`confirmacao_beneficiario_ms`, 15 min) lançava do mesmo
+ *   jeito, com a leitura facial/QR em andamento.
+ *
+ * Agora as duas esperam SEM PRAZO. Elas acabam de dois jeitos, e só: a ASSIM
+ * responde, ou uma PESSOA fecha a aba. Os prazos do servidor são ignorados de
+ * propósito — máquina com config velha em cache não pode ressuscitar o
+ * fechamento automático.
+ *
+ * O preço, aceito: a máquina atende uma tarefa por vez, então tela abandonada
+ * prende a fila daquela recepção. Fechar a janela é o gesto que libera o robô.
+ *
+ * Sobrevive um teto só, o do token (`token_ms`), porque a saída dele é SEGURA:
+ * devolve a tarefa por retorno, sem lançar e sem fechar a aba.
+ *
+ * Ver também `aguardandoOperador` em assim.js: sem aquele guarda a poda fecharia
+ * a aba ao passar do TTL de 30 min, refazendo este mesmo defeito meia hora
+ * depois.
  */
 
 const { delay, humanType } = require('./humano')
@@ -442,19 +470,18 @@ async function seletorDe(locator) {
 async function aguardarConfirmacaoBeneficiario(page, cfg, api, tarefa, alertas = []) {
   const tetoConsulta = Number(cfg.beneficiario_consulta_ms) || 60000
   const tetoAparecer = Number(cfg.identificacao_aparecer_ms) || 90000
-  const tetoHumano = Number(cfg.confirmacao_beneficiario_ms) || 900000
-  // Teto próprio do token, contado de quando ele aparece. Existe para a espera
-  // suspensa não virar espera infinita — a armadilha da geração anterior. Largo
-  // porque do outro lado há um pai procurando o SMS.
+  // `confirmacao_beneficiario_ms` NÃO é mais lido: desde a 1.1.8 a espera pela
+  // identificação também é sem prazo. Ver o bloco da etapa 3.
+  //
+  // Teto próprio do token, contado de quando ele aparece. Sobrevive porque sua
+  // saída é SEGURA: devolve 'token_pendente' por retorno, sem lançar e sem
+  // fechar a aba. Largo porque do outro lado há um pai procurando o SMS.
   const tetoToken = Number(cfg.token_ms) || 1800000
   const SILENCIO_MS = 6000
 
   const filaId = tarefa.id
 
   const marcaAlerta = alertas.length
-  const prazoLegivel = tetoHumano >= 60000
-    ? `${Math.round(tetoHumano / 60000)} min`
-    : `${Math.round(tetoHumano / 1000)} s`
 
   const contar = (seletor) => page.locator(seletor).count().catch(() => -1)
   const identificado = () => page.locator(SEL_CODIGO_IDENTIFICACAO)
@@ -570,41 +597,41 @@ async function aguardarConfirmacaoBeneficiario(page, cfg, api, tarefa, alertas =
   // ---- 3. Esperar a recepção resolver ----
   console.log('🧍 IDENTIFICAÇÃO DO BENEFICIÁRIO NA TELA DA ASSIM — o robô está PARADO.')
   console.log('   Conclua na tela: QR Code no dispositivo, biometria facial, token ou nascimento + CPF.')
-  console.log(`   O preenchimento só continua depois disso. Prazo: ${prazoLegivel}.`)
+  console.log('   O preenchimento só continua depois disso. SEM PRAZO: esta janela não fecha sozinha.')
   await api.registrarLog(filaId, 'Aguardando a recepcao identificar o beneficiario na tela da ASSIM')
 
   const inicio = Date.now()
-  let limite = inicio + tetoHumano
   let silencioDesde = null
   let ultimoLog = Date.now()
-  let concluiuIdentificacao = false
   let tokenDesde = null
   let avisouToken = false
 
-  while (Date.now() < limite) {
+  // Sem prazo desde a 1.1.8. Antes o laço morria em `confirmacao_beneficiario_ms`
+  // (15 min) e o throw logo abaixo levava a janela junto — a recepção perdia a
+  // tela no meio da leitura facial/QR. As saídas legítimas continuam todas aqui:
+  // a aba fechada por uma pessoa, o código de identificação gravado, o silêncio
+  // da tela e o teto do token (que devolve sem lançar).
+  while (true) {
     const ocupada = await contar(SEL_ASSIM_OCUPADA)
     if (ocupada === -1) {
       throw new Error('A janela da ASSIM foi fechada durante a identificação do beneficiário.')
     }
 
-    // O token é do usuário: enquanto está na tela, o relógio do robô fica
-    // SUSPENSO (empurrado a cada volta), não estendido por um delta fixo — senão
-    // quem está digitando o token correria contra um segundo cronômetro.
+    // O token é do usuário e tem teto próprio, contado de quando aparece.
     if (await tokenNaTela(page)) {
       if (tokenDesde === null) tokenDesde = Date.now()
-      limite = Date.now() + tetoHumano
 
       if (!avisouToken) {
         avisouToken = true
         console.log('🔑 TOKEN DO BENEFICIÁRIO NA TELA — o robô não fecha esta janela.')
-        console.log('   O prazo fica suspenso enquanto o modal estiver aberto.')
         await api.registrarLog(
           filaId, 'Modal de token aberto: robo aguardando sem prazo e sem fechar a aba'
         )
       }
 
-      // Mas suspensão não é eternidade. Um token de ~60s que está na tela há
-      // meia hora já morreu de qualquer forma.
+      // O teto do token não fere a regra da 1.1.8: ele devolve a tarefa por
+      // RETORNO, sem lançar, e a aba fica de pé. Um token de ~60s que está na
+      // tela há meia hora já morreu de qualquer forma.
       if (Date.now() - tokenDesde >= tetoToken) {
         console.warn(
           `⚠️  O token está aberto há ${Math.round(tetoToken / 60000)} min. ` +
@@ -625,24 +652,21 @@ async function aguardarConfirmacaoBeneficiario(page, cfg, api, tarefa, alertas =
     } else {
       // Atalho: a ASSIM já gravou o código da identificação e não há mais nada
       // aberto. Acabou, sem esperar o silêncio inteiro.
-      if (await identificado()) { concluiuIdentificacao = true; break }
+      if (await identificado()) break
 
       if (silencioDesde === null) silencioDesde = Date.now()
-      if (Date.now() - silencioDesde >= SILENCIO_MS) { concluiuIdentificacao = true; break }
+      if (Date.now() - silencioDesde >= SILENCIO_MS) break
     }
 
     if (Date.now() - ultimoLog >= 15000) {
       ultimoLog = Date.now()
-      console.log(`⌛ Ainda aguardando a recepção... (${Math.round((Date.now() - inicio) / 1000)}s)`)
+      console.log(
+        `⌛ Ainda aguardando a recepção... (${Math.round((Date.now() - inicio) / 1000)}s). ` +
+        'Sem prazo: a janela não fecha sozinha.'
+      )
     }
 
     await delay(700)
-  }
-
-  if (!concluiuIdentificacao) {
-    throw new Error(
-      `A identificação do beneficiário não foi concluída na tela da ASSIM em ${prazoLegivel}.`
-    )
   }
 
   // ---- 4. Sobrou tela utilizável? ----
@@ -691,7 +715,7 @@ const MARCAS_DESFECHO = [
 ]
 
 /**
- * Espera o desfecho do envio feito pela recepcionista.
+ * Espera o desfecho do envio feito pela recepcionista. SEM PRAZO.
  *
  * Passou a olhar os alertas da ASSIM. Antes só esperava o texto de sucesso: um
  * envio recusado pelo servidor ("Beneficiario nao confirmado. Tentar novamente")
@@ -699,26 +723,45 @@ const MARCAS_DESFECHO = [
  * viravam a mesma mensagem errada na fila.
  *
  * Passou também a reconhecer a REJEIÇÃO. Antes só existia "BENEFICIO
- * PROCESSADO": quando a ASSIM recusava, o robô não achava nada, queimava os
- * 120s inteiros e o timeout virava "a recepção não clicou em enviar" — mentira
+ * PROCESSADO": quando a ASSIM recusava, o robô não achava nada, queimava o
+ * prazo inteiro e o timeout virava "a recepção não clicou em enviar" — mentira
  * que jogava fora a guia e o horário que estavam na tela.
  *
- * A espera continua até o fim do prazo depois de um ALERTA de recusa, de
- * propósito: aquilo acontece sem sair da tela e a recepcionista pode corrigir e
- * reenviar. Já a rejeição é outra página, com recibo — não há o que reenviar,
- * então retorna na hora.
+ * DESDE A 1.1.8 NÃO HÁ MAIS PRAZO NENHUM AQUI. Havia 120s (`envio_timeout_ms`),
+ * e quando estouravam esta função devolvia 'timeout', o chamador LANÇAVA, o
+ * worker chamava sessao.descartar() e o contexto do Chrome fechava: a janela
+ * sumia na cara do operador, com o formulário preenchido dentro. Ninguém via
+ * contagem alguma — a tela simplesmente desaparecia no meio do atendimento.
+ *
+ * A espera agora acaba de dois jeitos, e só: a ASSIM responde, ou uma PESSOA
+ * fecha a aba. O prazo do servidor é ignorado de propósito — máquina com config
+ * velha em cache não pode ressuscitar o fechamento automático.
+ *
+ * A espera continua depois de um ALERTA de recusa, de propósito: aquilo acontece
+ * sem sair da tela e a recepcionista pode corrigir e reenviar. Já a rejeição é
+ * outra página, com recibo — não há o que reenviar, então retorna na hora.
  *
  * @param {string[]} alertas array alimentado pelo handler de dialog da aba
- * @returns {Promise<{resultado: 'sucesso'|'rejeitado'|'timeout', recusa: string|null}>}
+ * @returns {Promise<{resultado: 'sucesso'|'rejeitado'|'aba_fechada', recusa: string|null}>}
  */
-async function aguardarResultadoEnvio(page, timeoutMs, alertas = []) {
-  console.log('⏳ Aguardando confirmação real...')
+async function aguardarResultadoEnvio(page, alertas = []) {
+  console.log('⏳ Aguardando o envio da recepção — SEM PRAZO. Esta janela não fecha sozinha.')
 
-  const limite = Date.now() + timeoutMs
+  const inicio = Date.now()
+  let ultimoLog = Date.now()
   let lidos = alertas.length
   let recusa = null
 
-  while (Date.now() < limite) {
+  while (true) {
+    // Mesmo padrão da identificação (`contar`): `isClosed()` sozinho não pega o
+    // contexto derrubado por fora, e sem esta saída o laço giraria para sempre
+    // numa página que já não existe.
+    const viva = await page.locator('body').count().catch(() => -1)
+    if (viva === -1 || page.isClosed()) {
+      console.log('🚪 A janela da ASSIM foi fechada antes do envio')
+      return { resultado: 'aba_fechada', recusa }
+    }
+
     for (const { marca, resultado } of MARCAS_DESFECHO) {
       if (await visivel(page, `text=${marca}`)) {
         console.log(resultado === 'sucesso'
@@ -733,11 +776,18 @@ async function aguardarResultadoEnvio(page, timeoutMs, alertas = []) {
       console.log('⚠️  A ASSIM recusou o envio:', recusa)
     }
 
+    // Espera infinita não pode ser espera muda: sem isto, ninguém que abre o log
+    // consegue distinguir "parado esperando o clique" de "travado".
+    if (Date.now() - ultimoLog >= 30000) {
+      ultimoLog = Date.now()
+      console.log(
+        `⌛ Ainda aguardando o clique em enviar... (${Math.round((Date.now() - inicio) / 1000)}s). ` +
+        'A aba só sai daqui pelo envio ou se alguém fechá-la.'
+      )
+    }
+
     await delay(1000)
   }
-
-  console.log('❌ Não apareceu confirmação')
-  return { resultado: 'timeout', recusa }
 }
 
 // =========================
@@ -1053,7 +1103,7 @@ function lerConfirmacao() {
  * ficou aberto e a tarefa voltou para a recepção. Volta por retorno, e não por
  * throw, exatamente para o worker não descartar a aba.
  */
-async function executarRpa({ page, tarefa, cfg, api, cancelado, alertas = [] }) {
+async function executarRpa({ page, tarefa, cfg, api, cancelado, alertas = [], aba = null }) {
   if (!cancelado) cancelado = async () => false
 
   let concluiu = false
@@ -1173,20 +1223,34 @@ async function executarRpa({ page, tarefa, cfg, api, cancelado, alertas = [] }) 
     }
 
     // ===== Aqui o robô para. Quem envia é a recepcionista. =====
+    //
+    // A partir daqui a aba é INTOCÁVEL enquanto o operador não resolver: a flag
+    // segura a poda (assim.js), que fecharia esta janela ao passar do TTL de 30
+    // min — e uma espera sem prazo passa desse TTL por definição.
     console.log('📤 Aguardando envio manual...')
+    if (aba) aba.aguardandoOperador = true
 
-    const { resultado, recusa } = await aguardarResultadoEnvio(
-      page,
-      Number(cfg.envio_timeout_ms) || 120000,
-      alertas
-    )
+    let resultado, recusa
+    try {
+      ;({ resultado, recusa } = await aguardarResultadoEnvio(page, alertas))
+    } finally {
+      if (aba) aba.aguardandoOperador = false
+    }
 
-    if (resultado === 'timeout') {
-      throw new Error(
-        recusa
-          ? `A ASSIM recusou o envio: "${recusa}"`
-          : 'A recepção não clicou em enviar dentro do prazo'
-      )
+    // A janela foi fechada por uma pessoa antes do envio. Encerra AQUI por
+    // retorno normal, nunca por throw: é o throw que faz o worker chamar
+    // sessao.descartar(). Mesmo desenho do 'token_pendente' acima.
+    if (resultado === 'aba_fechada') {
+      await api.concluirTarefa(tarefa.id, 'erro', {
+        erro: recusa
+          ? `A ASSIM recusou o envio ("${recusa}") e a janela foi fechada antes de ` +
+            'reenviar. A solicitacao NAO foi enviada: corrija e solicite de novo.'
+          : 'A janela da ASSIM foi fechada antes do clique em enviar. A solicitacao ' +
+            'NAO foi enviada e nada foi autorizado: solicite de novo.',
+      })
+      concluiu = true
+      console.log('🚪 RPA encerrado — a janela foi fechada antes do envio')
+      return 'envio_nao_ocorrido'
     }
 
     console.log('📄 Aguardando tela final...')

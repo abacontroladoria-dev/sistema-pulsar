@@ -346,6 +346,54 @@ function checar(nome, ok, detalhe = '') {
     checar('saiu do pool', sessao.abas.length === 0)
   }
 
+  // ---------------------------------------------------------------
+  //
+  // 1.1.8. A espera pelo clique em "enviar" deixou de ter prazo, e uma espera
+  // sem prazo passa do TTL de 30 min por definição. Sem este guarda a poda
+  // fecharia a janela com o formulário preenchido dentro — o mesmo defeito que
+  // a 1.1.8 veio consertar, só que meia hora depois.
+  console.log('\n10. aguardandoOperador: a aba do envio não é podada nem descartada')
+  {
+    const sessao = new SessaoAssim(browser)
+    const antigo = Date.now() - 60 * 60000 // 1h: vencida para um TTL de 30min
+
+    const ctx = await browser.newContext()
+    const pg = await ctx.newPage()
+    // SEM token na tela: quem protege aqui é só a flag.
+    await pg.setContent(paginaAssim({ comToken: false }))
+    const reg = {
+      ctx, page: pg, criadoEm: antigo, filaId: 'w', alertas: [],
+      aguardandoOperador: true,
+    }
+
+    checar('abaEmUso() reconhece a espera pelo envio',
+      await sessao.abaEmUso(reg) === true)
+
+    sessao.abas = [reg]
+    await sessao.podar({ max_abas_abertas: 3, aba_ttl_minutos: 30 })
+    checar('a poda não fechou a aba vencida que aguarda envio',
+      !pg.isClosed() && sessao.abas.length === 1, `restaram ${sessao.abas.length}`)
+
+    // Diferente do token: aqui NÃO existe prazo de graça. O formulário
+    // preenchido continua válido depois de horas.
+    reg.criadoEm = Date.now() - 10 * 60 * 60000
+    await sessao.podar({ max_abas_abertas: 3, aba_ttl_minutos: 30 })
+    checar('nem depois de 10h a poda a recolhe (não há prazo de graça)',
+      !pg.isClosed() && sessao.abas.length === 1, `restaram ${sessao.abas.length}`)
+
+    await sessao.descartar(reg)
+    checar('descartar() também recusa fechá-la', !pg.isClosed())
+    checar('soltou o vínculo com a tarefa', reg.filaId === null)
+
+    // Resolvido o envio, a aba volta a ser comum.
+    reg.aguardandoOperador = false
+    checar('sem a flag, abaEmUso() volta a false',
+      await sessao.abaEmUso(reg) === false)
+
+    await sessao.podar({ max_abas_abertas: 3, aba_ttl_minutos: 30 })
+    checar('e a poda a recolhe normalmente', pg.isClosed())
+  }
+
   await browser.close()
 
   const falhas = casos.filter(c => !c.ok)

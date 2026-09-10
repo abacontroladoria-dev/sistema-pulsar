@@ -1,6 +1,6 @@
 {
   "name": "robo-autorizador",
-  "version": "1.1.7",
+  "version": "1.1.8",
   "description": "RPA de autorizacoes ASSIM. Roda no PC da recepcao, fala com o Supabase apenas pelas RPCs robo_*.",
   "main": "worker.js",
   "private": true,
@@ -8,7 +8,7 @@
     "start": "node worker.js",
     "chaves": "node publicar.js gerar-chaves",
     "publicar": "node publicar.js publicar",
-    "test": "node testes/checkbday.test.js && node testes/token-prazo.test.js"
+    "test": "node testes/checkbday.test.js && node testes/token-prazo.test.js && node testes/envio-sem-prazo.test.js"
   },
   "dependencies": {
     "cors": "^2.8.6",

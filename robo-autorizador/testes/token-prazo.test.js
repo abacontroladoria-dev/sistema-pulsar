@@ -129,15 +129,65 @@ const checar = (nome, ok, det = '') => {
   }
 
   // ---------------------------------------------------------------
-  console.log('\n3. SEM token: o prazo continua valendo e a função lança (1.1.6 intacto)')
+  //
+  // ATÉ A 1.1.7 ESTE CASO EXIGIA O CONTRÁRIO: que a função LANÇASSE ao estourar
+  // `confirmacao_beneficiario_ms`. Era justamente esse throw que subia ao worker,
+  // passava por sessao.descartar() e FECHAVA A JANELA na cara de quem estava
+  // fazendo a leitura facial/QR. A 1.1.8 tirou o prazo; a asserção virou.
+  console.log('\n3. QR aberto e não resolvido: 1.1.8 espera SEM PRAZO e não lança')
   {
     const page = await browser.newPage()
-    // Modal de QR aberto e nunca resolvido: é o caminho que DEVE estourar.
     await page.setContent(pagina({ comToken: false }).replace(
       '<div id="myModal" class="modal" style="display:none"></div>',
       // Com conteudo: div vazia nao tem caixa e o :visible do Playwright a
       // ignora (de proposito — e o que impede o #loadModal vazio de parecer
       // aberto o tempo todo).
+      '<div id="myModal" class="modal" style="display:block"><p>Leia o QR Code</p></div>'))
+
+    const api = { registrarLog: async () => {}, concluirTarefa: async () => {} }
+    const cfg = {
+      // Prazo curtíssimo DE PROPÓSITO: na 1.1.7 a função lançaria em ~1,5s.
+      // Agora o valor é ignorado e ela continua esperando.
+      beneficiario_consulta_ms: 3000,
+      identificacao_aparecer_ms: 3000,
+      confirmacao_beneficiario_ms: 1500,
+      token_ms: 60000,
+      modal_bday_ms: 500,
+    }
+
+    // A recepção conclui a leitura MUITO depois do prazo antigo.
+    setTimeout(() => {
+      page.evaluate(() => {
+        document.getElementById('myModal').style.display = 'none'
+        document.getElementById('loadModal').style.display = 'none'
+        document.forms.autorizador.autBiofacial.value = 'FACIAL-999'
+      }).catch(() => {})
+    }, 5000)
+
+    const t0 = Date.now()
+    let lancou = null
+    let veredito = null
+    try {
+      veredito = await aguardarConfirmacaoBeneficiario(
+        page, cfg, api, { id: 'tk3', cpf: null, data_nascimento: null }, [])
+    } catch (e) { lancou = e.message }
+    const ms = Date.now() - t0
+
+    checar('não lançou (na 1.1.7 lançaria em ~1,5s)', lancou === null, lancou || '')
+    checar('esperou muito além do prazo antigo', ms > 4500, `${ms}ms`)
+    checar('concluiu quando a recepção resolveu',
+      veredito === 'manual' || veredito === 'automatica', `veio '${veredito}'`)
+    checar('a aba continua viva', !page.isClosed())
+
+    await page.close()
+  }
+
+  // ---------------------------------------------------------------
+  console.log('\n4. identificação: a aba fechada por uma pessoa encerra a espera')
+  {
+    const page = await browser.newPage()
+    await page.setContent(pagina({ comToken: false }).replace(
+      '<div id="myModal" class="modal" style="display:none"></div>',
       '<div id="myModal" class="modal" style="display:block"><p>Leia o QR Code</p></div>'))
 
     const api = { registrarLog: async () => {}, concluirTarefa: async () => {} }
@@ -149,20 +199,22 @@ const checar = (nome, ok, det = '') => {
       modal_bday_ms: 500,
     }
 
+    setTimeout(() => { page.close().catch(() => {}) }, 3000)
+
     const t0 = Date.now()
     let lancou = null
     try {
       await aguardarConfirmacaoBeneficiario(
-        page, cfg, api, { id: 'tk3', cpf: null, data_nascimento: null }, [])
+        page, cfg, api, { id: 'tk4', cpf: null, data_nascimento: null }, [])
     } catch (e) { lancou = e.message }
     const ms = Date.now() - t0
 
-    checar('lançou, como em 1.1.6', lancou !== null, lancou || '(não lançou)')
-    checar('a mensagem explica que a identificação não foi resolvida',
-      /não foi concluída|não abriu a identificação/i.test(lancou || ''), lancou || '')
-    checar('estourou no tetoHumano, sem suspensão', ms < 6000, `${ms}ms`)
+    // Sem prazo, fechar a janela é a ÚNICA saída humana: sem esta saída o laço
+    // giraria para sempre numa página que já não existe.
+    checar('a espera terminou ao fechar a aba', ms < 12000, `${ms}ms`)
+    checar('acusou a janela fechada', /fechada/i.test(lancou || ''), lancou || '(não lançou)')
 
-    await page.close()
+    if (!page.isClosed()) await page.close()
   }
 
   await browser.close()

@@ -21,6 +21,15 @@
  *   relançava o processo: "reiniciar" pelo painel na verdade matava o robô até o
  *   próximo logon do Windows. Agora start.bat tem laço e os códigos de saída
  *   significam algo (0 = relançar, 99 = parar de vez).
+ *
+ * 1.1.8:
+ * - O registro da aba passa a ser entregue ao rpa.js, que marca nele
+ *   `aguardandoOperador` enquanto está parado esperando o clique em "enviar".
+ *   É essa flag que impede `podar()` de fechar a janela no meio do atendimento
+ *   agora que aquela espera não tem mais prazo.
+ * - Desfecho novo: `envio_nao_ocorrido`, quando alguém fecha a janela antes do
+ *   envio. Vem por RETORNO, como o 'devolvida' do token — um throw passaria por
+ *   sessao.descartar().
  */
 
 require('dotenv').config({ path: __dirname + '/.env' })
@@ -295,6 +304,10 @@ async function iniciarWorker() {
           // Os alertas que a ASSIM emitiu nesta aba. É por eles que uma recusa
           // do portal deixa de ser confundida com "ninguém clicou em enviar".
           alertas: aba.alertas || [],
+          // O registro da aba, para o rpa.js marcar `aguardandoOperador`
+          // enquanto está parado esperando o clique em "enviar" — é essa flag
+          // que impede a poda de fechar a janela no meio do atendimento.
+          aba,
         })
 
         const DESCRICAO_DESFECHO = {
@@ -306,6 +319,10 @@ async function iniciarWorker() {
           // passaria por sessao.descartar() e fecharia a janela na cara de quem
           // está digitando o token.
           devolvida: 'Devolvida à recepção (token aberto, aba preservada)',
+          // Mesma razão: a janela foi fechada por uma pessoa antes do clique em
+          // "enviar". Não é falha do robô e não há nada a descartar — a aba já
+          // não existe. Vem por retorno para não passar pelo catch.
+          envio_nao_ocorrido: 'Encerrada sem envio (janela fechada antes do enviar)',
         }
 
         await api.registrarLog(
@@ -328,12 +345,14 @@ async function iniciarWorker() {
         // Execução que falhou não tem nada para imprimir: fecha a aba em vez de
         // deixar lixo na tela da recepcionista.
         //
-        // COM UMA EXCEÇÃO, decidida dentro de `descartar()`: se o modal de token
-        // do beneficiário está na tela, a aba NÃO é fechada. Ali existe alguém
-        // do outro lado no meio de uma etapa que não se refaz de graça — o token
-        // vale ~60s e a operadora só reenvia depois de espera. O caminho normal
-        // do token nem chega aqui (volta como 'devolvida', sem throw); este é o
-        // cinto para qualquer outro erro que apareça com o modal aberto.
+        // COM EXCEÇÕES, decididas dentro de `descartar()` (ver abaEmUso): a aba
+        // NÃO é fechada se o modal de token do beneficiário está na tela, nem
+        // se o robô está parado esperando o clique em "enviar". Nos dois casos
+        // existe alguém do outro lado no meio de uma etapa que não se refaz de
+        // graça — o token vale ~60s, e o formulário preenchido é o atendimento
+        // inteiro. Os caminhos normais nem chegam aqui (voltam como 'devolvida'
+        // e 'envio_nao_ocorrido', sem throw); este é o cinto para qualquer
+        // outro erro que apareça durante essas etapas.
         await sessao.descartar(aba)
 
         if (erroExecucao.fatal) throw erroExecucao
