@@ -71,6 +71,16 @@ import {
 const DESFAZER_MS = 8000
 
 /**
+ * Quanto tempo o "Confirmar exclusão" fica armado antes de voltar ao normal.
+ *
+ * Curto de propósito: a confirmação existe para pegar o clique mal-mirado, e um
+ * botão que continua armado por muito tempo vira a própria armadilha que ele
+ * deveria evitar — o segundo clique distraído no mesmo lugar acha o estado
+ * perigoso esperando.
+ */
+const CONFIRMAR_EXCLUSAO_MS = 4000
+
+/**
  * Espera antes de gravar a ordem.
  *
  * 600ms é mais que o intervalo entre dois cliques de seta seguidos e menos que
@@ -100,24 +110,32 @@ type Removido = {
  * Rótulo de quem está fora do ar, na voz de quem opera a TV.
  *
  * RASCUNHO nunca esteve no ar; APOSENTADO esteve e foi tirado. No banco os dois
- * são `ativo = false` e continuam assim — a distinção vive só nesta tela, e é
- * deliberadamente frouxa: some quando a página recarrega.
+ * são `ativo = false`; quem os separa é `publicado_em`, carimbado pelo trigger
+ * na primeira ida ao ar (20260910190000_tv_avisos_publicado_em.sql).
  *
- * Isso basta porque ela existe para proteger UMA ação, o "Publicar", dentro de
- * UMA sessão. Gravar a diferença no banco criaria um terceiro estado para manter
- * para sempre, com migration e regra de RLS, para responder a uma pergunta que
- * só importa enquanto a pessoa está com a tela aberta.
+ * Isto já foi um Set em memória, e a distinção evaporava no F5 — todo cartaz de
+ * julho voltava a se declarar "Nunca publicada". O rótulo existia quando o risco
+ * era baixo (a pessoa tinha acabado de mexer) e sumia quando era alto (semanas
+ * depois, sem ninguém lembrar do que já foi parede).
  */
 type Situacao = "no-ar" | "rascunho" | "aposentado"
 
 /**
- * Botão de excluir em lote — vizinho do publicar.
+ * Botão de excluir em lote — vizinho do publicar, mas deliberadamente distante.
  *
- * Contorno e texto rosa, nunca preenchido: as duas ações ficam lado a lado e
- * agem sobre a MESMA seleção, então a diferença de peso visual é o que impede o
- * clique errado. Publicar é a ação que a pessoa veio fazer; excluir é a saída
- * secundária, e um botão sólido vermelho ao lado do âmbar disputaria o olho toda
- * vez que alguém marca uma imagem.
+ * ─── Por que dois cliques ────────────────────────────────────────────────────
+ *
+ * As duas ações agem sobre a MESMA seleção e carregam o mesmo número no rótulo
+ * ("Excluir 3" / "Publicar 3 na TV"). Só o peso visual separava uma da outra, e
+ * peso visual não corrige mira: num trackpad, 40px de erro horizontal trocava
+ * "pôr na parede da recepção" por "destruir 3 uploads".
+ *
+ * O segundo clique não é cerimônia — é o que dá ao erro de mira uma tela de
+ * saída. A confirmação expira sozinha em 4s para não virar uma armadilha
+ * esperando o próximo clique distraído no mesmo lugar.
+ *
+ * Continua contorno e nunca preenchido: publicar é a ação que a pessoa veio
+ * fazer, excluir é a saída secundária.
  */
 function BotaoExcluirSelecionados({
   quantidade,
@@ -126,16 +144,44 @@ function BotaoExcluirSelecionados({
   quantidade: number
   onExcluir: () => void
 }) {
+  // Guarda a QUANTIDADE que estava armada, não um booleano: assim a confirmação
+  // se invalida sozinha quando a seleção muda, sem efeito nenhum para sincronizar
+  // — um "Confirmar exclusão" pendente sobre 3 imagens não pode continuar armado
+  // depois que a pessoa marcou a quarta.
+  const [armadoPara, setArmadoPara] = useState<number | null>(null)
+  const confirmando = armadoPara === quantidade
+
+  useEffect(() => {
+    if (armadoPara === null) return
+    const t = setTimeout(() => setArmadoPara(null), CONFIRMAR_EXCLUSAO_MS)
+    return () => clearTimeout(t)
+  }, [armadoPara])
+
   if (quantidade === 0) return null
 
   return (
     <button
       type="button"
-      onClick={onExcluir}
-      className="shrink-0 inline-flex items-center gap-2 rounded-lg border border-rose-200 px-3 py-2.5 text-sm font-medium text-rose-700 transition-colors hover:bg-rose-50 hover:border-rose-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-2"
+      onClick={() => {
+        if (confirmando) {
+          setArmadoPara(null)
+          onExcluir()
+        } else {
+          setArmadoPara(quantidade)
+        }
+      }}
+      className={`shrink-0 inline-flex min-h-11 items-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-2 ${
+        confirmando
+          ? "border-rose-400 bg-rose-50 text-rose-800"
+          : "border-rose-200 text-rose-700 hover:bg-rose-50 hover:border-rose-300"
+      }`}
     >
       <Trash2 className="w-4 h-4" />
-      {quantidade === 1 ? "Excluir 1" : `Excluir ${quantidade}`}
+      {confirmando
+        ? "Confirmar exclusão"
+        : quantidade === 1
+          ? "Excluir 1"
+          : `Excluir ${quantidade}`}
     </button>
   )
 }
@@ -163,16 +209,24 @@ function BotaoPublicar({
   const vazio = quantidade === 0
 
   return (
-    /* Âmbar NUNCA preenche botão: `amber-600` com texto branco mede 3,0:1 e
-       `amber-700` sólido vira ferrugem repetida na lista (ver "Âmbar sólido
-       não é botão" na DESIGN.md). A forma correta é tint + anel, que é o que
-       a Auditoria ASSIM já usa. */
+    /* Clinical Steel, não âmbar.
+
+       O âmbar daqui honrava "Âmbar sólido não é botão" usando tint + anel, mas
+       errava um degrau acima: a Decoration-Free Semantics Rule reserva âmbar
+       para "esperando alguém olhar" e manda a AÇÃO PRIMÁRIA usar o aço da marca.
+       Um matiz que carrega estado não decora botão — e nesta mesma tela o âmbar
+       já significa outra coisa (o anel da prévia, o fundo da linha em rascunho).
+       Gastá-lo também no botão apagava a diferença entre "isto está pendente" e
+       "clique aqui".
+
+       O botão de enviar imagens ao lado já usava `bg-brand-fg`; agora as duas
+       ações primárias da tela falam a mesma língua. */
     <button
       type="button"
       onClick={onPublicar}
       disabled={publicando || vazio}
       title={vazio ? "Marque as imagens que quer publicar" : undefined}
-      className="shrink-0 inline-flex items-center gap-2 rounded-lg bg-amber-100 px-3.5 py-2.5 text-sm font-semibold text-amber-900 ring-1 ring-amber-400 transition-colors hover:bg-amber-200 disabled:opacity-45 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+      className="shrink-0 inline-flex min-h-11 items-center gap-2 rounded-lg bg-brand-fg px-3.5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-brand-dark disabled:opacity-45 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
     >
       {publicando ? (
         <Loader2 className="w-4 h-4 animate-spin" />
@@ -233,11 +287,23 @@ function GrupoAvisos({
   acao?: React.ReactNode
 }) {
   const selecionavel = !!selecionados && !!onAlternarSelecao
-  const ids = avisos.map((a) => a.id)
+
+  // O atalho age só sobre quem NUNCA foi ao ar.
+  //
+  // Marcar tudo de uma vez era o acidente antigo com dois cliques em vez de um:
+  // com 30 aposentados e 2 novidades na lista, "Selecionar todas" armava as 32 e
+  // o botão oferecia "Publicar 32 na TV" — a mesma parede de julho de volta.
+  //
+  // Republicar um aposentado continua possível, e é uma escolha legítima: clica
+  // a caixa dele. O que deixa de existir é o gesto que faz isso por engano com
+  // dezenas de cartazes ao mesmo tempo.
+  const idsAtalho = avisos
+    .filter((a) => (situacaoDe ? situacaoDe(a) !== "aposentado" : true))
+    .map((a) => a.id)
   const marcados = selecionados
-    ? ids.filter((id) => selecionados.has(id)).length
+    ? idsAtalho.filter((id) => selecionados.has(id)).length
     : 0
-  const todosMarcados = marcados > 0 && marcados === ids.length
+  const todosMarcados = marcados > 0 && marcados === idsAtalho.length
 
   return (
     <section className="border-b border-slate-200 last:border-b-0">
@@ -252,11 +318,12 @@ function GrupoAvisos({
         {acao}
       </div>
 
-      {/* "Selecionar todas" só aparece a partir de duas linhas: com uma só, a
-          caixa da própria linha já faz o trabalho e o atalho seria ruído. */}
-      {selecionavel && onSelecionarTodos && avisos.length > 1 && (
+      {/* "Selecionar todas" só aparece a partir de duas linhas do atalho: com
+          uma só, a caixa da própria linha já faz o trabalho e o atalho seria
+          ruído. */}
+      {selecionavel && onSelecionarTodos && idsAtalho.length > 1 && (
         <div className="px-5 py-2 border-b border-slate-100">
-          <label className="inline-flex items-center gap-2 text-xs text-slate-600 cursor-pointer select-none">
+          <label className="inline-flex min-h-11 items-center gap-2 text-xs text-slate-600 cursor-pointer select-none">
             <input
               type="checkbox"
               checked={todosMarcados}
@@ -266,10 +333,16 @@ function GrupoAvisos({
               ref={(el) => {
                 if (el) el.indeterminate = marcados > 0 && !todosMarcados
               }}
-              onChange={() => onSelecionarTodos(ids, !todosMarcados)}
+              onChange={() => onSelecionarTodos(idsAtalho, !todosMarcados)}
               className="w-4 h-4 rounded border-slate-300 text-brand-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1"
             />
-            {todosMarcados ? "Desmarcar todas" : "Selecionar todas"}
+            {/* O rótulo diz o ESCOPO, não só a ação: "todas" numa lista que tem
+                aposentado escondido prometeria mais do que a caixa entrega. */}
+            {todosMarcados
+              ? "Desmarcar as novas"
+              : avisos.length > idsAtalho.length
+                ? `Selecionar as ${idsAtalho.length} novas`
+                : "Selecionar todas"}
           </label>
         </div>
       )}
@@ -294,11 +367,12 @@ function GrupoAvisos({
                     varre a lista de cima a baixo marcando precisa de todas
                     alinhadas na mesma coluna.
 
-                    Envolvida num <label> que cobre a caixa e o rótulo invisível
-                    — a área de clique passa dos 16px do desenho, sem inflar a
-                    altura da linha. */}
+                    Envolvida num <label> de 44×44 (o mínimo da DESIGN.md) que
+                    cobre a caixa e o rótulo invisível. A margem negativa desfaz
+                    o excedente no layout, então o alvo cresce sem que a linha
+                    engorde: o dedo ganha os 44px, o olho continua vendo 16. */}
                 {selecionavel && onAlternarSelecao && (
-                  <label className="shrink-0 grid place-items-center w-9 h-9 -m-1.5 cursor-pointer">
+                  <label className="shrink-0 grid place-items-center w-11 h-11 -my-2 -ml-3 cursor-pointer">
                     <span className="sr-only">
                       Selecionar {aviso.titulo || "aviso"} para publicar
                     </span>
@@ -319,19 +393,33 @@ function GrupoAvisos({
 
                     36px cada, com folga entre elas: antes eram 24px coladas uma
                     na outra, que é a geometria clássica de clicar na seta
-                    errada. Não chegam aos 44px da DESIGN.md porque duas setas
-                    de 44 empurrariam a linha para 96px de altura e a lista
-                    deixaria de ser varrível — a regra nasceu para o PWA de
-                    celular, e esta tela é de desktop. A folga resolve o erro de
-                    mira, que era o problema real. */}
+                    errada.
+
+                    Os 44px da DESIGN.md valem para a ÁREA CLICÁVEL, não para o
+                    desenho. As setas passam a 44 de altura real, empilhadas sem
+                    gap: coladas, cada uma tem alvo cheio e a fronteira entre
+                    elas é uma linha só — não há faixa morta nem sobreposição
+                    onde o clique cai na irmã errada. O ícone continua com 16px,
+                    então a lista não engorda visualmente.
+
+                    Alargar o alvo por fora (um `::after` de 44 sobre um botão de
+                    36) NÃO serve aqui: com 4px de gap os centros ficariam a 40px
+                    e os dois alvos se sobreporiam em 4px — exatamente o erro de
+                    mira que este bloco existe para evitar.
+
+                    (Antes havia aqui um argumento de que a regra "nasceu para o
+                    PWA de celular e esta tela é de desktop". A DESIGN.md não
+                    abre essa exceção — diz que toda tela do sistema é instalação
+                    PWA. Refutar um documento vinculante num comentário de código
+                    é deixar a divergência para alguém reabrir depois.) */}
                 {onMover && (
-                  <div className="shrink-0 flex flex-col gap-1">
+                  <div className="shrink-0 flex flex-col">
                     <button
                       type="button"
                       onClick={() => onMover(i, -1)}
                       disabled={i === 0}
                       aria-label={`Mover ${aviso.titulo || "aviso"} para cima`}
-                      className="grid place-items-center w-9 h-9 rounded-lg text-slate-500 transition-colors hover:text-slate-900 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1"
+                      className="grid place-items-center w-11 h-11 rounded-t-lg text-slate-500 transition-colors hover:text-slate-900 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1"
                     >
                       <ArrowUp className="w-4 h-4" />
                     </button>
@@ -340,7 +428,7 @@ function GrupoAvisos({
                       onClick={() => onMover(i, 1)}
                       disabled={i === avisos.length - 1}
                       aria-label={`Mover ${aviso.titulo || "aviso"} para baixo`}
-                      className="grid place-items-center w-9 h-9 rounded-lg text-slate-500 transition-colors hover:text-slate-900 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1"
+                      className="grid place-items-center w-11 h-11 rounded-b-lg text-slate-500 transition-colors hover:text-slate-900 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1"
                     >
                       <ArrowDown className="w-4 h-4" />
                     </button>
@@ -374,6 +462,8 @@ function GrupoAvisos({
                       no carrossel — que é o ponto inteiro de ter separado os
                       grupos. Antes isto era um `findIndex` sobre outra lista,
                       justamente porque as duas ordens não batiam. */}
+                  {/* "Já esteve no ar" agora sobrevive ao F5: sai de
+                      `publicado_em`, não de memória de sessão. */}
                   <p className="text-xs text-slate-500 mt-0.5">
                     {mostrarPosicao
                       ? `Posição ${i + 1} na TV`
@@ -387,7 +477,7 @@ function GrupoAvisos({
                   type="button"
                   onClick={() => onAlternar(aviso)}
                   disabled={salvando}
-                  className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1"
+                  className="shrink-0 inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1"
                 >
                   {aviso.ativo ? (
                     <>
@@ -420,7 +510,7 @@ function GrupoAvisos({
                   // toda linha lê como estado de erro, e a Status Lock Rule
                   // reserva rosa para "indisponível", não para cor ociosa de
                   // controle.
-                  className="shrink-0 grid place-items-center w-9 h-9 rounded-lg text-slate-500 transition-colors hover:text-rose-700 hover:bg-rose-50 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-1"
+                  className="shrink-0 grid place-items-center w-11 h-11 rounded-lg text-slate-500 transition-colors hover:text-rose-700 hover:bg-rose-50 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-1"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
@@ -458,19 +548,6 @@ export function GestaoAvisosTV() {
   // abaixo) ainda depende de haver rascunho.
   const [verPendentesPedido, setVerPendentesPedido] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
-  // Ids que JÁ ESTIVERAM no ar nesta sessão. É o que separa "rascunho" de
-  // "aposentado" (ver `Situacao`).
-  //
-  // Alimentado em dois momentos: na primeira carga, com quem chegou `ativo`, e
-  // a cada vez que alguém coloca um cartaz no ar. Ninguém é removido daqui ao
-  // sair do ar — é justamente o "esteve no ar um dia" que queremos lembrar.
-  //
-  // Em ESTADO, não em ref: a divisão dos grupos é lida durante o render, e um
-  // ref lido no render não avisa o React quando muda. Hoje funcionaria por
-  // acidente (toda mutação daqui também mexe em `avisos`, que re-renderiza),
-  // mas é acidente — bastaria um caminho que mexesse só neste conjunto para a
-  // tela parar de acompanhar.
-  const [jaEsteveNoAr, setJaEsteveNoAr] = useState<Set<string>>(new Set())
   // Timer do debounce da ordem + contador de sequência das gravações.
   // Ver `agendarSalvarOrdem`.
   const salvarOrdemRef = useRef<{
@@ -504,17 +581,6 @@ export function GestaoAvisosTV() {
     })
   }, [])
 
-  /** Marca como "já esteve no ar" todo mundo que chegou ativo do banco. */
-  const semearJaEsteveNoAr = useCallback((lista: AvisoTVRegistro[]) => {
-    setJaEsteveNoAr((atual) => {
-      const proximo = new Set(atual)
-      for (const a of lista) {
-        if (a.ativo) proximo.add(a.id)
-      }
-      return proximo
-    })
-  }, [])
-
   /** Marca ou desmarca uma imagem para publicação. */
   const alternarSelecao = useCallback((id: string) => {
     setSelecionados((atual) => {
@@ -537,15 +603,30 @@ export function GestaoAvisosTV() {
     })
   }, [])
 
-  /** Acrescenta ou remove ids do conjunto "já esteve no ar". */
-  const marcarJaEsteveNoAr = useCallback((ids: string[], esteve: boolean) => {
-    setJaEsteveNoAr((atual) => {
-      const proximo = new Set(atual)
-      for (const id of ids) {
-        if (esteve) proximo.add(id)
-        else proximo.delete(id)
-      }
-      return proximo
+  /**
+   * Descarta da seleção quem já não pode ser publicado nem excluído em lote.
+   *
+   * Marcar é uma afirmação sobre uma linha que está fora do ar. Quando a linha
+   * sobe para o ar, ou some porque outra aba a removeu, a marca perde referente:
+   * a caixa que a representava não é mais desenhada, e a contagem dos botões
+   * ("Publicar 3") cai sozinha sem que ninguém tenha desmarcado nada.
+   *
+   * A contagem já filtrava por `foraDoAr` e nunca chegou a publicar o que não
+   * devia — o defeito era de leitura, não de escrita: a pessoa via "3
+   * selecionadas" virar "2" depois de um clique sem relação com a seleção.
+   */
+  const podarSelecao = useCallback((lista: AvisoTVRegistro[]) => {
+    setSelecionados((atual) => {
+      if (atual.size === 0) return atual
+      const elegiveis = new Set(
+        lista.filter((a) => !a.ativo).map((a) => a.id)
+      )
+      const proximo = new Set(
+        [...atual].filter((id) => elegiveis.has(id))
+      )
+      // Mesma referência quando nada mudou: `selecionados` alimenta o efeito do
+      // observador da barra, e um Set novo a cada releitura o reiniciaria à toa.
+      return proximo.size === atual.size ? atual : proximo
     })
   }, [])
 
@@ -556,13 +637,9 @@ export function GestaoAvisosTV() {
     // procurar o problema no lugar errado.
     setFalha(error)
     if (error) toast.error(error.mensagem)
-    // Antes do setAvisos: quem já está no ar quando a tela abre é APOSENTADO se
-    // sair do ar depois, nunca rascunho. Semear aqui é o que impede o "Publicar"
-    // de varrer para a TV um cartaz de julho que alguém tirou do ar de propósito.
-    semearJaEsteveNoAr(lista)
     setAvisos(lista)
     setCarregando(false)
-  }, [semearJaEsteveNoAr])
+  }, [])
 
   /**
    * Relê o banco sem bloquear a tela — a rede de segurança contra RLS calada.
@@ -571,18 +648,15 @@ export function GestaoAvisosTV() {
    * faria a lista sumir e voltar; esta versão só corrige o que estiver
    * divergente. Erro é engolido: a ação otimista já reportou o resultado dela, e
    * um segundo toast sobre a releitura não teria ação associada.
-   *
-   * NÃO semeia `jaEsteveNoAr`, e a omissão é proposital: esta função roda depois
-   * de TODA escrita, então semear aqui marcaria como "esteve no ar" um cartaz
-   * que o próprio usuário acabou de publicar e tirar do ar em seguida — ele
-   * viraria aposentado sem nunca ter chegado à TV. Só a carga inicial e o ato
-   * explícito de publicar alimentam aquele conjunto.
    */
   const reconciliar = useCallback(async () => {
     const { avisos: lista, error } = await listarAvisos()
     if (error) return
     setAvisos(lista)
-  }, [])
+    // A lista que volta é a autoridade sobre o que ainda dá para marcar. Uma
+    // linha removida noutra aba não pode deixar a marca dela para trás.
+    podarSelecao(lista)
+  }, [podarSelecao])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- carga inicial via API, sem valor derivável no primeiro render
@@ -619,18 +693,18 @@ export function GestaoAvisosTV() {
    * sempre e, de tanto estar lá, deixaria de ser vista — que é exatamente o que
    * aconteceu com a barra na posição antiga.
    *
-   * Depende de `avisos` e `jaEsteveNoAr` — as duas fontes de que sai
-   * `rascunhos` — e não de `rascunhos.length` diretamente: aquela constante é
-   * declarada mais abaixo, junto do resto da divisão em grupos, e usá-la aqui
-   * cairia na zona morta temporal. O efeito precisa reassinar sempre que a
-   * barra ancorada monta ou desmonta; sem isso o observador ficaria preso ao nó
-   * antigo depois de publicar.
+   * Depende de `avisos` — a fonte de que sai `foraDoAr` — e não de
+   * `foraDoAr.length` diretamente: aquela constante é declarada mais abaixo,
+   * junto do resto da divisão em grupos, e usá-la aqui cairia na zona morta
+   * temporal. O efeito precisa reassinar sempre que a barra ancorada monta ou
+   * desmonta; sem isso o observador ficaria preso ao nó antigo depois de
+   * publicar.
    */
   useEffect(() => {
     const alvo = barraAncoradaRef.current
     // Sem barra ancorada não há nada a acompanhar — e nem precisa zerar o
-    // estado aqui: as duas barras dependem de `rascunhos.length > 0`, então sem
-    // a ancorada a flutuante também não é renderizada, qualquer que seja o
+    // estado aqui: as duas barras dependem do grupo "fora do ar" existir, então
+    // sem a ancorada a flutuante também não é renderizada, qualquer que seja o
     // valor guardado.
     if (!alvo) return
 
@@ -642,7 +716,7 @@ export function GestaoAvisosTV() {
     )
     observador.observe(alvo)
     return () => observador.disconnect()
-  }, [avisos, jaEsteveNoAr])
+  }, [avisos])
 
   /**
    * Envia um lote (do seletor ou do arrastar-e-soltar).
@@ -742,17 +816,34 @@ export function GestaoAvisosTV() {
   async function publicar() {
     // Filtra pela lista real: um id marcado cuja linha sumiu (removida noutra
     // aba, e a reconciliação trouxe a lista sem ela) não pode ir para o update.
-    const ids = foraDoAr
-      .filter((a) => selecionados.has(a.id))
-      .map((a) => a.id)
+    const marcados = foraDoAr.filter((a) => selecionados.has(a.id))
+    const ids = marcados.map((a) => a.id)
     if (ids.length === 0) return
+
+    // Quem nunca esteve no ar estreia agora. Só esses voltam a `null` se alguém
+    // desfizer — para um cartaz que já era aposentado, a data de estreia
+    // permanece verdadeira mesmo depois do desfazer.
+    const estreantes = marcados
+      .filter((a) => a.publicadoEm === null)
+      .map((a) => a.id)
 
     const anterior = avisos
     // Publicar é a ação mais visível da tela e some com a barra inteira.
     // Aplicar na hora é o que faz o clique parecer resolvido; o rollback abaixo
     // é o que torna isso seguro.
+    //
+    // `publicadoEm` entra junto com `ativo` porque é o trigger do banco que o
+    // carimba, e a releitura só chega depois. Sem ele, publicar e tirar do ar em
+    // seguida devolveria o cartaz ao grupo dos rascunhos — a tela insistiria em
+    // republicar justamente o que a pessoa acabou de recusar. `?? agora` guarda
+    // a estreia: republicar não reescreve a data original, igual ao trigger.
+    const agora = new Date().toISOString()
     setAvisos((atuais) =>
-      atuais.map((a) => (ids.includes(a.id) ? { ...a, ativo: true } : a))
+      atuais.map((a) =>
+        ids.includes(a.id)
+          ? { ...a, ativo: true, publicadoEm: a.publicadoEm ?? agora }
+          : a
+      )
     )
     setPublicando(true)
 
@@ -766,19 +857,19 @@ export function GestaoAvisosTV() {
       return
     }
 
-    // A partir daqui eles são "aposentados" se saírem do ar depois — nunca
-    // rascunhos de novo. Sem isto, publicar e tirar do ar em seguida devolveria
-    // o cartaz à barra de publicação, que passaria a insistir para republicar
-    // justamente o que a pessoa acabou de recusar.
-    marcarJaEsteveNoAr(ids, true)
     // A seleção morre com a publicação. Deixá-la marcada apontaria para linhas
     // que já subiram para o grupo de cima, e o próximo clique no botão não teria
     // o que fazer.
     selecionarTodos(ids, false)
 
+    // Ícone de monitor no toast: o desfazer de publicação e o de exclusão têm o
+    // mesmo texto ("Desfazer"), a mesma duração e o mesmo botão branco, e podem
+    // estar na tela ao mesmo tempo fazendo coisas opostas. O ícone é o que
+    // separa "tirar da parede" de "trazer o arquivo de volta".
     toast(
       (t) => (
         <span className="flex items-center gap-3">
+          <Monitor className="w-4 h-4 shrink-0" aria-hidden="true" />
           <span className="truncate">
             {ids.length === 1
               ? `No ar. A TV atualiza em ${LATENCIA_TV}.`
@@ -788,7 +879,7 @@ export function GestaoAvisosTV() {
             type="button"
             onClick={() => {
               toast.dismiss(t.id)
-              desfazerPublicacao(ids)
+              desfazerPublicacao(ids, estreantes)
             }}
             className="shrink-0 rounded-md bg-white/20 px-2.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-white/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
           >
@@ -805,27 +896,46 @@ export function GestaoAvisosTV() {
   /**
    * Tira do ar o que o "Publicar" acabou de subir.
    *
-   * Devolve os ids a RASCUNHO (tira de `jaEsteveNoAr`), não a aposentado: quem
-   * desfaz está dizendo "não era para ter publicado", e o estado correto é o de
-   * antes do clique. Tratá-los como aposentados os esconderia da barra de
+   * Devolve os ids ao estado de ANTES do clique, e para quem estreou naquele
+   * clique isso inclui voltar a ser rascunho — quem desfaz está dizendo "não era
+   * para ter publicado". Tratá-los como aposentados os esconderia da fila de
    * publicação e a pessoa não teria como tentar de novo.
+   *
+   * `estreantes` distingue os dois casos: quem já tinha `publicadoEm` antes
+   * deste clique é um cartaz que voltou ao ar e saiu de novo, e a data de
+   * estreia dele continua verdadeira. Só quem estreou aqui volta a `null`.
+   *
+   * A seleção é devolvida junto. Desfazer é "volte ao instante anterior", e
+   * naquele instante as imagens estavam marcadas; sem isto, quem desfaz para
+   * corrigir uma escolha teria de remarcar tudo à mão antes de tentar de novo.
    */
-  async function desfazerPublicacao(ids: string[]) {
+  async function desfazerPublicacao(ids: string[], estreantes: string[]) {
     const anterior = avisos
+    const estreou = new Set(estreantes)
 
     setAvisos((atuais) =>
-      atuais.map((a) => (ids.includes(a.id) ? { ...a, ativo: false } : a))
+      atuais.map((a) =>
+        ids.includes(a.id)
+          ? {
+              ...a,
+              ativo: false,
+              publicadoEm: estreou.has(a.id) ? null : a.publicadoEm,
+            }
+          : a
+      )
     )
-    marcarJaEsteveNoAr(ids, false)
+    selecionarTodos(ids, true)
 
     const resultados = await Promise.all(
-      ids.map((id) => definirAtivo(id, false))
+      ids.map((id) =>
+        definirAtivo(id, false, estreou.has(id) ? { limparEstreia: true } : {})
+      )
     )
     const falhou = resultados.find((r) => r.error)
 
     if (falhou?.error) {
       setAvisos(anterior)
-      marcarJaEsteveNoAr(ids, true)
+      selecionarTodos(ids, false)
       toast.error(falhou.error)
     } else {
       toast.success(
@@ -839,14 +949,26 @@ export function GestaoAvisosTV() {
   async function alternar(aviso: AvisoTVRegistro) {
     const desejado = !aviso.ativo
     const anterior = avisos
+    const agora = new Date().toISOString()
 
     setAvisos((atuais) =>
-      atuais.map((a) => (a.id === aviso.id ? { ...a, ativo: desejado } : a))
+      atuais.map((a) =>
+        a.id === aviso.id
+          ? {
+              ...a,
+              ativo: desejado,
+              // Subir ao ar carimba a estreia (o trigger faz o mesmo no banco);
+              // descer não apaga nada — é justamente o "esteve no ar um dia" que
+              // faz dele um aposentado em vez de um rascunho.
+              publicadoEm: desejado ? (a.publicadoEm ?? agora) : a.publicadoEm,
+            }
+          : a
+      )
     )
-    // Colocar no ar promove a rascunho → aposentado (quando sair do ar de
-    // novo). Tirar do ar NÃO remove daqui: é justamente o "esteve no ar um dia"
-    // que faz dele um aposentado em vez de um rascunho.
-    if (desejado) marcarJaEsteveNoAr([aviso.id], true)
+    // Subir ao ar tira a linha do grupo que tem caixa de seleção. Sem desmarcar,
+    // a contagem dos botões cairia sozinha e a pessoa veria "3 selecionadas"
+    // virar "2" depois de um clique que não tinha nada a ver com a seleção.
+    if (desejado) selecionarTodos([aviso.id], false)
     marcarEmVoo(aviso.id, true)
 
     const { error } = await definirAtivo(aviso.id, desejado)
@@ -974,6 +1096,7 @@ export function GestaoAvisosTV() {
     toast(
       (t) => (
         <span className="flex items-center gap-3">
+          <Trash2 className="w-4 h-4 shrink-0" aria-hidden="true" />
           <span className="truncate">{nome} removido</span>
           <button
             type="button"
@@ -998,16 +1121,18 @@ export function GestaoAvisosTV() {
    * `removidosRef` com seu próprio índice e seu próprio timer, e o arquivo só
    * some do bucket quando a janela fecha. O desfazer devolve TODOS juntos.
    *
-   * Sem diálogo de confirmação, pela mesma razão da remoção individual — e aqui
-   * a razão é ainda mais forte: quem marcou cinco imagens e clicou já fez uma
-   * escolha explícita, item por item. O que protege não é perguntar "tem
-   * certeza?" antes, é poder voltar atrás depois de ver a lista sem elas.
+   * A proteção principal continua sendo o desfazer, não o "tem certeza?": quem
+   * marcou cinco imagens já fez uma escolha explícita item por item, e o que
+   * salva de verdade é ver a lista sem elas e poder voltar atrás.
+   *
+   * O segundo clique do botão (ver `BotaoExcluirSelecionados`) não protege da
+   * decisão, protege da MIRA — ele existe porque este botão divide a barra com o
+   * de publicar, sobre a mesma seleção e com o mesmo número no rótulo.
    */
   async function excluirSelecionados() {
     const alvos = foraDoAr.filter((a) => selecionados.has(a.id))
     if (alvos.length === 0) return
 
-    const anterior = avisos
     // Índice de cada um ANTES de remover: o desfazer devolve cada aviso ao
     // lugar de onde saiu, e depois da remoção esses índices não existem mais.
     const comIndice = alvos.map((aviso) => ({
@@ -1023,17 +1148,46 @@ export function GestaoAvisosTV() {
     const resultados = await Promise.all(ids.map((id) => removerAviso(id)))
     for (const id of ids) marcarEmVoo(id, false)
 
-    const falhou = resultados.find((r) => r.error)
-    if (falhou?.error) {
-      setAvisos(anterior)
-      toast.error(falhou.error)
+    // ─── Falha parcial ───────────────────────────────────────────────────────
+    //
+    // Antes, UM erro entre N devolvia a lista inteira (`setAvisos(anterior)`) —
+    // inclusive as que o banco de fato apagou. Quem excluía 40 e via 39 saírem
+    // presenciava as 40 voltarem e sumirem de novo um instante depois, quando a
+    // reconciliação corrigia. Um pisca-pisca de 40 linhas com um toast de erro
+    // que não explicava nada disso.
+    //
+    // Agora cada linha responde por si: quem falhou volta, quem saiu fica fora.
+    // A tela passa a mostrar o que o banco tem antes mesmo da reconciliação.
+    const idsComErro = new Set(
+      ids.filter((_, i) => resultados[i].error)
+    )
+    const sobreviventes = comIndice.filter((c) => !idsComErro.has(c.aviso.id))
+
+    if (idsComErro.size > 0) {
+      const falhou = resultados.find((r) => r.error)!
+      // Devolve só as que não saíram, cada uma no índice de origem. De trás para
+      // frente porque os índices são os da lista original.
+      setAvisos((atuais) => {
+        const nova = [...atuais]
+        for (const { aviso, indice } of [...comIndice]
+          .filter((c) => idsComErro.has(c.aviso.id))
+          .reverse()) {
+          nova.splice(Math.min(indice, nova.length), 0, aviso)
+        }
+        return nova
+      })
+      toast.error(
+        idsComErro.size === ids.length
+          ? falhou.error!
+          : `${idsComErro.size} de ${ids.length} não puderam ser excluídas. ${falhou.error}`
+      )
       reconciliar()
-      return
+      if (sobreviventes.length === 0) return
     }
 
     // Um timer por aviso, como no caminho individual: assim o desfazer de um
     // lote e o de uma linha solta convivem sem um cancelar o outro.
-    for (const { aviso, indice } of comIndice) {
+    for (const { aviso, indice } of sobreviventes) {
       const timer = setTimeout(() => {
         removidosRef.current.delete(aviso.id)
         descartarArquivoAviso(aviso.caminho)
@@ -1041,22 +1195,22 @@ export function GestaoAvisosTV() {
       removidosRef.current.set(aviso.id, { aviso, indice, timer })
     }
 
+    const idsDesfazer = sobreviventes.map((c) => c.aviso.id)
+
     toast(
       (t) => (
         <span className="flex items-center gap-3">
+          <Trash2 className="w-4 h-4 shrink-0" aria-hidden="true" />
           <span className="truncate">
-            {alvos.length === 1
-              ? `${alvos[0].titulo || "Aviso"} removido`
-              : `${alvos.length} imagens removidas`}
+            {sobreviventes.length === 1
+              ? `${sobreviventes[0].aviso.titulo || "Aviso"} removido`
+              : `${sobreviventes.length} imagens removidas`}
           </span>
           <button
             type="button"
             onClick={() => {
               toast.dismiss(t.id)
-              // De trás para frente: cada `splice` usa o índice original, e
-              // reinserir do menor para o maior empurraria os seguintes para
-              // fora do lugar.
-              for (const id of [...ids].reverse()) desfazerRemocao(id)
+              desfazerRemocaoEmLote(idsDesfazer)
             }}
             className="shrink-0 rounded-md bg-white/20 px-2.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-white/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
           >
@@ -1091,11 +1245,72 @@ export function GestaoAvisosTV() {
       titulo: aviso.titulo,
       ordem: aviso.ordem,
       ativo: aviso.ativo,
+      publicadoEm: aviso.publicadoEm,
     })
 
     if (error) {
       toast.error(error)
       setAvisos((atuais) => atuais.filter((a) => a.id !== aviso.id))
+    }
+
+    reconciliar()
+  }
+
+  /**
+   * Desfaz um lote inteiro numa atualização só.
+   *
+   * Chamar `desfazerRemocao` N vezes parecia bastar — cada uma faz seu `splice`
+   * no índice de origem, de trás para frente. Mas as N chamadas disparam N
+   * `setAvisos` que o React agrupa: cada updater recebe `atuais` num estágio
+   * diferente da reinserção, e o `Math.min(indice, nova.length)` então grampeia
+   * uns no fim da lista. Num lote grande a ordem restaurada não era a original,
+   * apesar de o comentário de lá prometer que sim.
+   *
+   * Uma leitura de estado, todos os índices aplicados sobre ela, um write.
+   */
+  async function desfazerRemocaoEmLote(ids: string[]) {
+    const pendentes = ids
+      .map((id) => removidosRef.current.get(id))
+      .filter((p): p is Removido => !!p)
+    if (pendentes.length === 0) return
+
+    for (const p of pendentes) {
+      clearTimeout(p.timer)
+      removidosRef.current.delete(p.aviso.id)
+    }
+
+    // Do maior índice para o menor: assim cada `splice` acontece antes de os
+    // anteriores empurrarem as posições seguintes.
+    const ordenados = [...pendentes].sort((a, b) => b.indice - a.indice)
+
+    setAvisos((atuais) => {
+      const nova = [...atuais]
+      for (const { aviso, indice } of ordenados) {
+        nova.splice(Math.min(indice, nova.length), 0, aviso)
+      }
+      return nova
+    })
+
+    const resultados = await Promise.all(
+      pendentes.map((p) =>
+        restaurarAviso({
+          caminho: p.aviso.caminho,
+          titulo: p.aviso.titulo,
+          ordem: p.aviso.ordem,
+          ativo: p.aviso.ativo,
+          publicadoEm: p.aviso.publicadoEm,
+        })
+      )
+    )
+
+    const falhou = resultados.find((r) => r.error)
+    if (falhou?.error) {
+      // Tira da tela só as que não voltaram ao banco.
+      const perdidos = new Set(
+        pendentes.filter((_, i) => resultados[i].error).map((p) => p.aviso.id)
+      )
+      setAvisos((atuais) => atuais.filter((a) => !perdidos.has(a.id)))
+      toast.error(falhou.error)
     }
 
     reconciliar()
@@ -1113,38 +1328,44 @@ export function GestaoAvisosTV() {
   // imagens fora do ar" e, com um clique, devolve os 3 velhos à parede da
   // recepção. Um lote não pode ter o mesmo escopo de um clique individual.
   //
-  // A separação não custou coluna no banco (ver `Situacao`): é memória de
-  // sessão, que é exatamente a vida útil da pergunta.
+  // A separação por seleção resolveu o botão, mas não o gesto: o "Selecionar
+  // todas" passou a armar os mesmos aposentados de uma vez, e a prévia — que é
+  // o argumento de segurança da tela — nunca mostrava o aposentado marcado.
+  // Ver `idsAtalho` em GrupoAvisos e `entrantes` logo abaixo.
+  //
+  // A separação agora vem do banco (`publicado_em`), não de memória de sessão:
+  // a pergunta "isto já foi parede?" sobrevive ao F5, que é quando ela importa.
   const situacaoDe = (a: AvisoTVRegistro): Situacao =>
-    a.ativo
-      ? "no-ar"
-      : jaEsteveNoAr.has(a.id)
-        ? "aposentado"
-        : "rascunho"
+    a.ativo ? "no-ar" : a.publicadoEm ? "aposentado" : "rascunho"
 
   const noAr = avisos.filter((a) => situacaoDe(a) === "no-ar")
   const rascunhos = avisos.filter((a) => situacaoDe(a) === "rascunho")
   const aposentados = avisos.filter((a) => situacaoDe(a) === "aposentado")
   const foraDoAr = [...rascunhos, ...aposentados]
 
-  // A prévia mostra o que está no ar MAIS os rascunhos — nunca os aposentados.
-  // Ela responde "como a TV vai ficar se eu publicar", e publicar não traz de
-  // volta quem foi tirado do ar de propósito. Incluí-los aqui ensinaria uma
-  // consequência que o botão (agora) não tem.
-  //
-  // `&& rascunhos.length > 0` porque o modo se desliga sozinho quando não sobra
-  // rascunho — depois de publicar, ou de remover o último. Sem isso o botão de
-  // voltar sumiria junto com os rascunhos e o painel ficaria preso num título
-  // ("Prévia com os não publicados") que já não descreve nada.
   // Quantas estão marcadas AGORA. Serve aos DOIS botões — publicar e excluir
-  // agem sobre a mesma seleção, e é por isso que eles se diferenciam pelo peso
-  // visual (âmbar cheio × contorno rosa) e não por escopos diferentes.
-  const qtdSelecionada = foraDoAr.filter((a) =>
-    selecionados.has(a.id)
-  ).length
+  // agem sobre a mesma seleção.
+  const marcados = foraDoAr.filter((a) => selecionados.has(a.id))
+  const qtdSelecionada = marcados.length
 
+  // ─── O que a prévia mostra ─────────────────────────────────────────────────
+  //
+  // A prévia É o argumento de segurança desta tela: o texto manda conferir nela
+  // antes de publicar. Então ela tem de mostrar exatamente o que o botão vai
+  // fazer — nem mais, nem menos.
+  //
+  // Antes ela mostrava "no ar + rascunhos", fixo, e o botão publicava a SELEÇÃO
+  // (que pode conter aposentado). Um cartaz aposentado marcado ia para a parede
+  // da recepção sem ter aparecido na prévia uma única vez, e o comentário que
+  // ficava aqui afirmava o contrário — dizia que o botão não tinha mais essa
+  // consequência. Tinha.
+  //
+  // Com algo marcado, a prévia é o futuro literal: o que já está no ar mais o
+  // que sobe se a pessoa clicar. Sem nada marcado, ela volta a ser o presente
+  // (só o que está no ar), com o botão de espiar os rascunhos.
   const verPendentes = verPendentesPedido && rascunhos.length > 0
-  const naPrevia = verPendentes ? [...noAr, ...rascunhos] : noAr
+  const entrantes = qtdSelecionada > 0 ? marcados : verPendentes ? rascunhos : []
+  const naPrevia = [...noAr, ...entrantes]
 
   // Esqueleto com a forma da lista, não um spinner centralizado: a página já
   // sabe que vai ser uma lista de linhas com miniatura à esquerda, e mostrar
@@ -1339,11 +1560,22 @@ export function GestaoAvisosTV() {
                 onAlternarSelecao={alternarSelecao}
                 onSelecionarTodos={selecionarTodos}
                 acao={
-                  <div ref={barraAncoradaRef} className="shrink-0 flex items-center gap-2">
+                  /* Divisória entre as duas ações, e não só espaço: elas agem
+                     sobre a mesma seleção e mostram o mesmo número, então o que
+                     as separa precisa ser visível. A ordem também importa —
+                     destrutiva à esquerda, primária à direita, encostada na
+                     borda onde o polegar e o olho terminam. */
+                  <div ref={barraAncoradaRef} className="shrink-0 flex items-center gap-3">
                     <BotaoExcluirSelecionados
                       quantidade={qtdSelecionada}
                       onExcluir={excluirSelecionados}
                     />
+                    {qtdSelecionada > 0 && (
+                      <span
+                        aria-hidden="true"
+                        className="h-6 w-px bg-slate-200"
+                      />
+                    )}
                     <BotaoPublicar
                       quantidade={qtdSelecionada}
                       publicando={publicando}
@@ -1365,14 +1597,21 @@ export function GestaoAvisosTV() {
       <div className="rounded-xl border border-slate-200 bg-white p-5 xl:sticky xl:top-6">
         <div className="flex items-baseline justify-between gap-3">
           <h2 className="text-sm font-semibold text-slate-900">
-            {verPendentes ? "Prévia com os não publicados" : "Prévia da TV"}
+            {qtdSelecionada > 0
+              ? "Prévia com as selecionadas"
+              : verPendentes
+                ? "Prévia com os não publicados"
+                : "Prévia da TV"}
           </h2>
           {/* Sem este botão, o rascunho não seria conferível em lugar nenhum: a
               prévia mostra o que está NO AR, e o cartaz recém-enviado por
               definição não está. Pedir para "conferir antes de publicar" e não
               dar onde conferir empurraria a pessoa a publicar às cegas — que é
-              exatamente o que este fluxo existe para evitar. */}
-          {rascunhos.length > 0 && (
+              exatamente o que este fluxo existe para evitar.
+
+              Some quando há seleção: aí a prévia já segue as marcas, e um botão
+              que alterna algo que não está no comando confunde. */}
+          {qtdSelecionada === 0 && rascunhos.length > 0 && (
             <button
               type="button"
               onClick={() => setVerPendentesPedido((v) => !v)}
@@ -1383,9 +1622,11 @@ export function GestaoAvisosTV() {
           )}
         </div>
         <p className="text-xs text-slate-500 mt-0.5 mb-4">
-          {verPendentes
-            ? "Como ficaria depois de publicar. Ainda não é o que a recepção vê."
-            : "Como aparece na recepção enquanto ninguém está sendo chamado."}
+          {qtdSelecionada > 0
+            ? `Como a TV fica se você publicar ${qtdSelecionada === 1 ? "a imagem marcada" : `as ${qtdSelecionada} imagens marcadas`}.`
+            : verPendentes
+              ? "Como ficaria depois de publicar. Ainda não é o que a recepção vê."
+              : "Como aparece na recepção enquanto ninguém está sendo chamado."}
         </p>
 
         {/* 1337/860 é a área ÚTIL do painel esquerdo numa TV 1080p — não 16:9,
@@ -1395,7 +1636,9 @@ export function GestaoAvisosTV() {
             onde a arte encosta. */}
         <div
           className={`aspect-[1337/860] w-full rounded-lg bg-slate-100 border overflow-hidden transition-colors ${
-            verPendentes ? "border-amber-300 ring-2 ring-amber-100" : "border-slate-200"
+            entrantes.length > 0
+              ? "border-amber-300 ring-2 ring-amber-100"
+              : "border-slate-200"
           }`}
         >
           {naPrevia.length > 0 ? (
@@ -1485,20 +1728,25 @@ export function GestaoAvisosTV() {
           transparente que atravessa a tela roubaria cliques da lista embaixo. */}
       {qtdSelecionada > 0 && !barraAncoradaVisivel && (
         <div className="fixed inset-x-0 bottom-0 z-40 flex justify-center px-4 pb-4 pointer-events-none">
-          <div className="pointer-events-auto flex items-center justify-between gap-4 w-full max-w-3xl rounded-xl border border-amber-300 bg-amber-50 px-5 py-3 shadow-lg shadow-slate-900/10 motion-safe:animate-in motion-safe:slide-in-from-bottom-2 motion-safe:fade-in motion-safe:duration-200">
-            <p className="text-xs text-amber-900 min-w-0">
-              <strong className="font-semibold">
+          {/* Superfície branca, não âmbar: o âmbar aqui competia com o anel
+              âmbar da prévia (que marca "isto ainda não está no ar") e, agora
+              que o botão primário é o aço da marca, uma faixa âmbar atrás dele
+              só sujaria a leitura. A elevação já basta para destacar a barra. */}
+          <div className="pointer-events-auto flex items-center justify-between gap-4 w-full max-w-3xl rounded-xl border border-slate-200 bg-white px-5 py-3 shadow-lg shadow-slate-900/10 motion-safe:animate-in motion-safe:slide-in-from-bottom-2 motion-safe:fade-in motion-safe:duration-200">
+            <p className="text-xs text-slate-600 min-w-0">
+              <strong className="font-semibold text-slate-900">
                 {qtdSelecionada === 1
                   ? "1 imagem selecionada"
                   : `${qtdSelecionada} imagens selecionadas`}
               </strong>{" "}
               — publicando, a TV atualiza em {LATENCIA_TV}.
             </p>
-            <div className="shrink-0 flex items-center gap-2">
+            <div className="shrink-0 flex items-center gap-3">
               <BotaoExcluirSelecionados
                 quantidade={qtdSelecionada}
                 onExcluir={excluirSelecionados}
               />
+              <span aria-hidden="true" className="h-6 w-px bg-slate-200" />
               <BotaoPublicar
                 quantidade={qtdSelecionada}
                 publicando={publicando}

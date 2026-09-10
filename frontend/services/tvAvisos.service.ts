@@ -25,6 +25,20 @@ export type AvisoTVRegistro = {
   titulo: string | null
   ordem: number
   ativo: boolean
+  /**
+   * Instante da PRIMEIRA ida ao ar; `null` significa que nunca esteve.
+   *
+   * É o que separa rascunho de aposentado — no resto do schema os dois são
+   * `ativo = false` e indistinguíveis. Antes isto era um Set em memória na tela
+   * de gestão, o que fazia a distinção evaporar no F5 justamente quando ela
+   * mais importa (semanas depois, quando ninguém lembra do que já foi parede).
+   * Ver 20260910190000_tv_avisos_publicado_em.sql.
+   *
+   * Linhas inativas anteriores ao backfill ficaram `null` de propósito: não há
+   * como saber retroativamente se foram publicadas. Elas se corrigem sozinhas
+   * na próxima publicação.
+   */
+  publicadoEm: string | null
   /** derivada do caminho na leitura; o banco guarda o path, nunca a URL */
   url: string
 }
@@ -112,7 +126,7 @@ export async function listarAvisos(): Promise<{
 
   const { data, error } = await supabase
     .from("tv_avisos")
-    .select("id, caminho, titulo, ordem, ativo")
+    .select("id, caminho, titulo, ordem, ativo, publicado_em")
     .order("ordem", { ascending: true })
     .order("criado_em", { ascending: true })
 
@@ -134,6 +148,7 @@ export async function listarAvisos(): Promise<{
     titulo: (a.titulo as string | null) ?? null,
     ordem: a.ordem as number,
     ativo: a.ativo as boolean,
+    publicadoEm: (a.publicado_em as string | null) ?? null,
     url: urlPublica(a.caminho as string),
   }))
 
@@ -239,12 +254,30 @@ export async function publicarAvisos(
   return { error: null }
 }
 
+/**
+ * Liga ou desliga um aviso.
+ *
+ * `limparEstreia` existe só para o desfazer de uma publicação: o trigger carimba
+ * `publicado_em` na subida ao ar, e desfazer precisa devolver o estado anterior
+ * ao clique — inclusive o "nunca esteve no ar" de quem estreou naquele momento.
+ * Sem isso, desfazer deixaria o cartaz fora do ar mas já aposentado, e ele
+ * sumiria da fila de publicação sem nunca ter chegado à TV.
+ *
+ * Só quem estreou no clique desfeito passa a opção. Um cartaz que já era
+ * aposentado e voltou ao ar mantém a data de estreia: ela continua verdadeira.
+ */
 export async function definirAtivo(
   id: string,
-  ativo: boolean
+  ativo: boolean,
+  opcoes: { limparEstreia?: boolean } = {}
 ): Promise<{ error: string | null }> {
   const supabase = getSupabaseClient()
-  const { error } = await supabase.from("tv_avisos").update({ ativo }).eq("id", id)
+  const { error } = await supabase
+    .from("tv_avisos")
+    .update(
+      opcoes.limparEstreia ? { ativo, publicado_em: null } : { ativo }
+    )
+    .eq("id", id)
 
   if (error) {
     console.error(
@@ -329,12 +362,19 @@ export async function removerAviso(id: string): Promise<{ error: string | null }
  * O `id` NÃO é reaproveitado (o banco gera um novo). Nada aqui referencia aviso
  * por id fora desta tela, então recriar com id novo é indistinguível para a TV,
  * que só lê caminho e ordem.
+ *
+ * `publicadoEm` viaja junto pela mesma razão de `ativo` e `ordem`: sem ele, um
+ * cartaz aposentado voltaria do desfazer se declarando "Nunca publicada" e
+ * reapareceria na fila de publicação que ele já tinha deixado. O trigger não
+ * repõe o valor sozinho — ele só carimba na transição para o ar, e restaurar um
+ * aposentado é um insert com `ativo = false`.
  */
 export async function restaurarAviso(aviso: {
   caminho: string
   titulo: string | null
   ordem: number
   ativo: boolean
+  publicadoEm: string | null
 }): Promise<{ error: string | null }> {
   const supabase = getSupabaseClient()
 
@@ -343,6 +383,7 @@ export async function restaurarAviso(aviso: {
     titulo: aviso.titulo,
     ordem: aviso.ordem,
     ativo: aviso.ativo,
+    publicado_em: aviso.publicadoEm,
   })
 
   if (error) {
