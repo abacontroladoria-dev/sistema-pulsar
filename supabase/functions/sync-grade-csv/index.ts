@@ -32,6 +32,22 @@
 // falhou vem discriminado na resposta (HTTP 207). Abortar na primeira falha foi
 // o que deixou outubro inteiro em zero.
 //
+// ─── Por que a execução se reencadeia ─────────────────────────────────────────
+//
+// Um dia por fatia resolveu a carga POR CHAMADA, mas não o total: medido em
+// 2026-09-10, pedir 20 dias processou 4 dias úteis e morreu com "Cannot read
+// properties of undefined (reading 'error')" — o cliente Supabase falhando por
+// dentro ao esgotar recurso, entregue como 500 SEM corpo. O que tinha entrado
+// estava correto; o que faltava era saber onde parou.
+//
+// Então o laço para sozinho em TETO_EXECUCAO_MS e dispara a continuação do ponto
+// exato (`proximoDia`), até MAX_SALTOS. Sem isso o cron diário — que manda {} e
+// não lê a resposta — cobriria só os primeiros dias e nunca alcançaria o fim do
+// mês seguinte, recriando o congelamento que este arquivo corrige.
+//
+// Repetir é seguro: não há DELETE em caminho nenhum e linha inalterada não gera
+// escrita, então uma fatia reprocessada é idempotente.
+//
 // ─── Por que isto NÃO faz DELETE ──────────────────────────────────────────────
 //
 // Até 2026-08-05 esta function fazia DELETE do período + INSERT do que a TiTa
@@ -106,6 +122,39 @@ const DIAS_REVALIDACAO = 7
  * janela. Abaixo disso a rodada insere, mas não inativa nada. Ver `sincronizarGrade`.
  */
 const FRACAO_MINIMA_PLAUSIVEL = 0.8
+
+/**
+ * Quanto tempo o laço de fatias pode consumir antes de parar por conta própria.
+ *
+ * Não é o limite da plataforma — é um teto abaixo dele, para a execução terminar
+ * FALANDO em vez de ser morta calada. Medido em 2026-09-10: uma janela de 20
+ * dias processou 4 dias úteis e morreu com "Cannot read properties of undefined
+ * (reading 'error')" — o cliente Supabase falhando por dentro ao esgotar
+ * recurso, devolvido como 500 sem corpo. O que já tinha entrado estava correto e
+ * não se perdeu; o problema era não saber onde parou.
+ *
+ * 45s é deliberadamente CURTO. O que matou a rodada de 20 dias não foi só o
+ * relógio: foi recurso (memória/conexões) acabando depois de ~4 dias úteis de
+ * trabalho. Um teto alto demais seria morto antes de chegar à continuação, e aí
+ * o encadeamento nunca aconteceria — o teto precisa disparar ANTES do ponto em
+ * que a plataforma desiste, não perto dele. Melhor três saltos curtos que uma
+ * rodada longa que morre calada.
+ */
+const TETO_EXECUCAO_MS = 45_000
+
+/**
+ * Quantas vezes a execução pode se reencadear para terminar a janela.
+ *
+ * Trava de segurança da continuação automática: se cada rodada avançasse zero
+ * dia (um erro que se repetisse na primeira fatia, por exemplo), a function se
+ * chamaria para sempre.
+ *
+ * Dimensionado pelo pior caso real: janela máxima de ~62 dias (hoje → fim do mês
+ * seguinte) com o teto curto de 45s rendendo ~2 dias por salto = ~31 saltos. 40
+ * dá folga sem virar recursão infinita — e o laço só reencadeia quando SOBROU
+ * janela, então em regime normal isso nunca é alcançado.
+ */
+const MAX_SALTOS = 40
 
 type Modo = "grade" | "execucao"
 
@@ -1163,10 +1212,11 @@ serve(async (req: Request) => {
   if (req.method !== "POST")    return json({ error: "method_not_allowed" }, 405, cors)
 
   const body = await req.json().catch(() => ({})) as {
-    data_inicio?: string; data_fim?: string; modo?: string
+    data_inicio?: string; data_fim?: string; modo?: string; salto?: number
   }
 
   const modo: Modo = body.modo === "execucao" ? "execucao" : "grade"
+  const salto = Number(body.salto) || 0
 
   const janela = resolverJanela(body, modo)
   if (!janela) {
@@ -1187,6 +1237,8 @@ serve(async (req: Request) => {
   const dias = diasDaJanela(dataInicio, dataFim)
   const fatias: Record<string, unknown>[] = []
   const total: Record<string, number> = {}
+  const inicioMs = Date.now()
+  let pararEm: string | null = null
 
   // Uma fatia por dia, e o erro de uma não contamina as outras. O catch por fatia
   // substitui o try/catch único que existia aqui: sem ele, qualquer exceção do
@@ -1194,6 +1246,17 @@ serve(async (req: Request) => {
   // pelado — foi o que aconteceu em 3 das 9 fatias do backfill de 2026-08-06, e
   // era indistinguível de falha de plataforma.
   for (const dia of dias) {
+    // Para por conta antes que o runtime mate a execução. Medido em 2026-09-10:
+    // pedindo 11/09→30/09 (20 dias), a function processou 4 dias úteis e morreu
+    // com "Cannot read properties of undefined (reading 'error')" — o cliente
+    // Supabase falhando por dentro ao esgotar recurso, num 500 SEM corpo. O que
+    // entrou estava correto, mas não havia como saber onde parou.
+    //
+    // Parar sozinho troca esse silêncio por um relatório: quem chama recebe
+    // `proximoDia` e continua dali. O sync é idempotente (não faz DELETE, e
+    // linha inalterada não gera escrita), então repetir é inofensivo.
+    if (Date.now() - inicioMs > TETO_EXECUCAO_MS) { pararEm = dia; break }
+
     try {
       const recebidos = await buscarRegistros(dia, dia)
       // null = a TiTa respondeu, mas sem conteúdo aproveitável para o dia. É o
@@ -1220,12 +1283,26 @@ serve(async (req: Request) => {
 
   const falhas = fatias.filter(f => !f.ok)
   const resumo = {
-    ok: falhas.length === 0,
+    // `ok` só é true quando a janela inteira entrou. Parada por tempo não é
+    // erro, mas também não é conclusão — quem chama precisa voltar.
+    ok: falhas.length === 0 && pararEm === null,
     modo,
     dataInicio,
     dataFim,
     diasPedidos: dias.length,
+    diasProcessados: fatias.length,
     diasComFalha: falhas.length,
+    // Presente só quando sobrou janela. É onde a próxima chamada deve começar:
+    //   {"data_inicio": <proximoDia>, "data_fim": <dataFim>}
+    ...(pararEm
+      ? {
+          incompleto: true,
+          proximoDia: pararEm,
+          restam: dias.length - fatias.length,
+          salto,
+          continuaSozinha: salto < MAX_SALTOS && fatias.length > 0,
+        }
+      : {}),
     total,
     fatias,
   }
@@ -1236,6 +1313,51 @@ serve(async (req: Request) => {
   console.log(`[sync-grade-csv] ${JSON.stringify({ ...resumo, fatias: undefined })}`)
   if (falhas.length) {
     console.error(`[sync-grade-csv] ${falhas.length}/${dias.length} fatias falharam: ${falhas.map(f => f.data).join(", ")}`)
+  }
+  // Nunca reencadear sem ter andado. Se o teto de tempo estourasse já na
+  // primeira fatia (dia patologicamente lento, ou instabilidade), a continuação
+  // recomeçaria do MESMO dia e o par rodada/salto se repetiria até MAX_SALTOS
+  // sem sincronizar nada. Parar e gritar é melhor que girar em falso.
+  const semProgresso = pararEm !== null && fatias.length === 0
+
+  if (pararEm && semProgresso) {
+    console.error(
+      `[sync-grade-csv] o teto de tempo estourou sem processar nenhum dia (${pararEm}). `
+      + `Não vou reencadear — investigue a lentidão desse dia.`,
+    )
+  } else if (pararEm && salto >= MAX_SALTOS) {
+    console.error(
+      `[sync-grade-csv] limite de ${MAX_SALTOS} saltos atingido em ${pararEm}; `
+      + `a janela ${pararEm}..${dataFim} NÃO foi sincronizada. Investigue antes de rechamar.`,
+    )
+  } else if (pararEm) {
+    console.warn(
+      `[sync-grade-csv] parada por tempo em ${pararEm} — ${fatias.length}/${dias.length} dias. `
+      + `Continuando em ${pararEm}..${dataFim} (salto ${salto + 1}/${MAX_SALTOS}).`,
+    )
+    // Continua sozinha de onde parou.
+    //
+    // Sem isto o cron diário (que manda {} e não lê a resposta) cobriria só os
+    // primeiros dias da janela e NUNCA chegaria ao fim do mês seguinte — o mês
+    // que a Ocupação de Paciente usa ficaria congelado de novo, que é
+    // exatamente o defeito que este arquivo existe para corrigir. Encadear é o
+    // que torna o cron capaz de fechar a janela inteira sem ninguém orquestrar.
+    //
+    // Sem await de propósito: a chamada é disparada e a resposta atual volta na
+    // hora. `EdgeRuntime.waitUntil` mantém o processo vivo até o fetch sair,
+    // sem prender quem chamou.
+    const continuar = fetch(`${SUPABASE_URL}/functions/v1/sync-grade-csv`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      },
+      body: JSON.stringify({ data_inicio: pararEm, data_fim: dataFim, modo, salto: salto + 1 }),
+    }).catch(e => console.error(`[sync-grade-csv] falha ao continuar em ${pararEm}: ${e}`))
+
+    const runtime = (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } }).EdgeRuntime
+    if (runtime?.waitUntil) runtime.waitUntil(continuar)
+    else await continuar
   }
 
   // 207 (Multi-Status) quando parte entrou e parte falhou: 200 mentiria e 500
