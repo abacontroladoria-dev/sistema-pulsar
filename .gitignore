@@ -6,6 +6,12 @@ dist
 LICENSE.md
 README.md
 LICENSE
+
+# `README.md` acima é padrão SEM barra, então o git o aplica em QUALQUER
+# diretório — não só na raiz. Isso ignorava calado o livro-caixa dos snippets:
+# um `git add` de arquivo ignorado é descartado em silêncio, e o commit sai
+# sem ele. Exceção cirúrgica para o único que precisa ser versionado.
+!supabase/snippets/README.md
 instalador/
 node/
 # robo-autorizador/ NAO e mais ignorado por inteiro: o toolchain do instalador
