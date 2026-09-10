@@ -4,6 +4,13 @@
 -- Não inclui 20260811100000_central_ai_mode (não aplicada nem no local)
 -- nem o bloco CRM (decisão de não aplicar).
 --
+-- ⚠ NOTA DE 2026-09-10 — a frase acima descreve a decisão de 11/08 e fica como
+-- registro histórico, mas NÃO vale mais como estado atual: o bloco CRM
+-- (20260701020000…020400) está em produção desde então. Medido por
+-- crm_diagnostico_pre_exposicao.sql em 2026-09-10 — 6 tabelas, grants
+-- completos em `authenticated`, RLS com 4 policies cada, 6 estágios semeados.
+-- Ver a seção "O bloco CRM ESTÁ em produção" no README desta pasta.
+--
 -- Cria 7 tabelas (agent_settings, appointments, conversation_states,
 -- message_grouping_queue, send_queue, tag_definitions, teams) e 5 views.
 

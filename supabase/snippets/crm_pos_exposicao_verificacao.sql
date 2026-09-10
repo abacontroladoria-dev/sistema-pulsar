@@ -1,18 +1,26 @@
--- CRM — verificação DEPOIS de expor o schema e aplicar os grants
+-- CRM — verificação DEPOIS de expor o schema
 --
--- Rode este arquivo somente após:
---   1. aplicar a migration 20260909150000_crm_grants_explicitos.sql
---   2. adicionar `crm` em Settings → API → Exposed schemas (dashboard Supabase)
+-- Rode este arquivo somente após adicionar `crm` em Settings → API →
+-- Exposed schemas (dashboard Supabase). Não há SQL a aplicar antes: o
+-- diagnóstico de 2026-09-10 mediu os grants JÁ completos em produção (6/6
+-- tabelas com DML em `authenticated`), então a migration de grants que existia
+-- para este passo era um no-op e foi removida. Ver a seção "O bloco CRM ESTÁ em
+-- produção" no README desta pasta.
 --
 -- SOMENTE LEITURA.
 
 -- ============================================================================
 -- 1. Os grants chegaram?
 --
--- ESPERADO: 6 tabelas, cada uma com "DELETE, INSERT, SELECT, UPDATE".
--- Qualquer linha com "(NENHUM)" significa que a migration não foi aplicada —
--- e o sintoma na tela será 403 em toda leitura, mesmo com o RLS correto,
--- porque o Postgres checa o grant de tabela ANTES de avaliar a policy.
+-- ESPERADO: 6 tabelas, cada uma com "DELETE, INSERT, SELECT, UPDATE" —
+-- confirmado em produção em 2026-09-10, herdado do `alter default privileges`
+-- de 20260701020000.
+--
+-- Qualquer linha com "(NENHUM)" seria uma REGRESSÃO (um revoke em algum lugar),
+-- e o sintoma na tela é 403 em toda leitura mesmo com o RLS correto, porque o
+-- Postgres checa o grant de tabela ANTES de avaliar a policy. O conserto, se um
+-- dia isso aparecer, é `grant select, insert, update, delete on all tables in
+-- schema crm to authenticated;`.
 -- ============================================================================
 select
   t.tablename,
