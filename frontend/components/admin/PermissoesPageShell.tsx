@@ -17,6 +17,8 @@ import {
   KeyRound,
   LayoutDashboard,
   LogOut,
+  Megaphone,
+  Monitor,
   Pencil,
   PlusCircle,
   RotateCcw,
@@ -90,6 +92,7 @@ const ROLE_LABELS: Record<string, string> = {
   faturamento: 'Faturamento',
   rp: 'RP',
   cronograma: 'Cronograma',
+  marketing: 'Marketing',
   // Mesmo rótulo do roleOptions em AdminUsersTable — sem ele o valor cru do
   // banco ("disponibilidade_terapeuta") vazava pra tela e estourava a linha.
   disponibilidade_terapeuta: 'Disponib. Terapeuta',
@@ -113,6 +116,9 @@ const MODULE_ICONS: Record<string, React.ElementType> = {
   auditoria_assim: ClipboardList,
   usuarios: Users,
   permissoes: KeyRound,
+  // Mesmo ícone do MenuItem em Sidebar.tsx — o módulo tem de ser reconhecível
+  // como a mesma tela nas duas listas.
+  tv_avisos: Monitor,
   cronograma_solicitacoes: UserPlus,
   cronograma_saida_profissional: LogOut,
   cronograma_ocupacao_paciente: UserCheck,
@@ -140,10 +146,14 @@ const GROUP_ICONS: Record<string, React.ElementType> = {
   Indicadores: TrendingUp,
   Cadastros: Database,
   'Relacionamento Prestador': Handshake,
+  Marketing: Megaphone,
   Administração: ShieldCheck,
 }
 
-const GROUP_ORDER = ['Pacientes', 'Terapêutico', 'Operações', 'Insumos', 'Cronograma', 'Indicadores', 'Cadastros', 'Relacionamento Prestador', 'Administração', 'Sistema', 'Geral']
+// Marketing vem imediatamente antes de Administração — a mesma posição que o
+// grupo ocupa no Sidebar. Duas telas que listam os mesmos módulos em ordens
+// diferentes obrigam quem procura um acesso a reaprender o mapa em cada uma.
+const GROUP_ORDER = ['Pacientes', 'Terapêutico', 'Operações', 'Insumos', 'Cronograma', 'Indicadores', 'Cadastros', 'Relacionamento Prestador', 'Marketing', 'Administração', 'Sistema', 'Geral']
 
 const INITIAL_OPEN = new Set(GROUP_ORDER)
 

@@ -11,6 +11,7 @@ export const roleDefaults: Record<string, string[]> = {
     'acompanhamento_laudos',
     'escala_terapeutica',
     'auditoria_assim', 'usuarios', 'permissoes', 'cco',
+    'tv_avisos',
     'preauditoria', 'outros_convenios',
     'cronograma_solicitacoes', 'cronograma_saida_profissional', 'cronograma_ocupacao_paciente',
     'cronograma_disponibilidade_interna',
@@ -74,6 +75,15 @@ export const roleDefaults: Record<string, string[]> = {
     'relacionamento_prestador_analise', 'relacionamento_prestador_rp',
     'relacionamento_prestador_individual',
   ],
+  // O setor que publica os cartazes da TV da recepção, e NADA mais. É o primeiro
+  // papel cujo trabalho não toca em dado de paciente — reaproveitar `recepcao`
+  // para "resolver o acesso" daria a fila de autorizações inteira a quem só troca
+  // uma imagem de parede. `dashboard` entra porque toda a base o tem e '/' é
+  // forçada em codigosToRotas de qualquer forma: sem ele o login cairia numa home
+  // vazia. Os mesmos papéis estão no ramo por papel da RLS de tv_avisos e das
+  // policies do bucket (20260910120100), senão a tela abriria e o upload falharia
+  // em silêncio.
+  marketing: ['dashboard', 'tv_avisos'],
   // Ocupação de Salas, Cadastro de Valores de Convênio e Reposição de Faltas
   // foram retiradas deste papel em 2026-07-24 a pedido do usuário — ficam
   // restritas a admin/diretoria (a RLS das tabelas por trás também foi
@@ -112,6 +122,13 @@ export const CODIGO_PARA_ROTAS: Record<string, string[]> = {
   auditoria_assim: ['/auditoria-assim'],
   usuarios: ['/admin'],
   permissoes: ['/admin/permissoes'],
+  // Carrossel de avisos da TV da recepção. Código PRÓPRIO porque quem opera é o
+  // MARKETING — um setor sem nenhuma outra permissão aqui, e que não pode ganhar
+  // acesso a dado de paciente só para trocar um cartaz de parede. A RLS de
+  // public.tv_avisos e as policies do bucket exigem este mesmo código
+  // (20260831150000). A rota /tv da TV em si continua PÚBLICA em proxy.ts: isto
+  // é a tela de gestão, não a de exibição.
+  tv_avisos: ['/tv-avisos'],
   cco: ['/cco'],
   // `autorizacoes` (a rota /autorizacoes) saiu em 2026-08-26: a tela foi
   // descontinuada e quem chama o responsável agora é a /solicitar. O código

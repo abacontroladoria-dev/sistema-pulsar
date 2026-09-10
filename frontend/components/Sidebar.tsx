@@ -18,6 +18,8 @@ import {
   BriefcaseBusiness,
   Star,
   KeyRound,
+  Monitor,
+  Megaphone,
   BarChart3,
   CalendarPlus,
   Database,
@@ -87,6 +89,7 @@ const pathIconMap: Record<string, any> = {
   "/admin": ShieldCheck,
   "/admin/permissoes": KeyRound,
   "/connect": Zap,
+  "/tv-avisos": Monitor,
   "/relacionamento-prestador/solicitacoes?tab=simulacao": UserPlus,
   "/relacionamento-prestador/solicitacoes?tab=novo-cron": CalendarPlus,
   "/relacionamento-prestador/solicitacoes?tab=banco": Database,
@@ -708,14 +711,35 @@ export default function Sidebar() {
             </SidebarGroup>
           )}
 
+          {/* Marketing */}
+          {/* Grupo PRÓPRIO, e não um item dentro de Administração (onde nasceu):
+              quem opera isto é o marketing, que não administra o sistema — o
+              único vizinho ali seriam Usuários e Permissões, telas que este setor
+              nunca vai abrir. E o rótulo do item diz o LUGAR ("TV da Recepção"),
+              não o meio: a única dúvida de quem prepara um cartaz é onde ele vai
+              aparecer. */}
+          {canAccess("/tv-avisos") && (
+            <SidebarGroup
+              title="Marketing"
+              icon={Megaphone}
+              defaultOpen={pathname === "/tv-avisos"}
+            >
+              <MenuItem label="TV da Recepção" icon={Monitor} path="/tv-avisos" />
+            </SidebarGroup>
+          )}
+
           {/* Administração */}
+          {/* "Usuários" é condicional, e não incondicional como já foi: sem isso
+              apareceria para quem não tem /admin. */}
           {canAccess("/admin") && (
             <SidebarGroup
               title="Administração"
               icon={ShieldCheck}
               defaultOpen={["/admin", "/admin/permissoes"].some(p => pathname === p)}
             >
-              <MenuItem label="Usuários" icon={Users} path="/admin" />
+              {canAccess("/admin") && (
+                <MenuItem label="Usuários" icon={Users} path="/admin" />
+              )}
               {canAccess("/admin/permissoes") && (
                 <MenuItem label="Permissões" icon={KeyRound} path="/admin/permissoes" />
               )}

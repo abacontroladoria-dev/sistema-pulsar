@@ -1,0 +1,237 @@
+import { getSupabaseClient } from "@/lib/supabase/client"
+
+// Avisos do carrossel da TV da recepção — ver
+// supabase/migrations/20260831150000_tv_avisos.sql.
+//
+// Bucket PÚBLICO em leitura, ao contrário de `pacientes-fotos`: o conteúdo é
+// cartaz de parede e a TV roda sem conta. Consequência prática: `getPublicUrl`
+// funciona e não expira, então não há cache de URL assinada para manter aqui.
+// A escrita continua exigindo a permissão `tv_avisos`.
+
+export const BUCKET_AVISOS = "tv-avisos"
+
+export const TAMANHO_MAXIMO_BYTES = 10 * 1024 * 1024
+export const MIMES_ACEITOS = ["image/jpeg", "image/png", "image/webp"]
+
+const EXTENSAO_POR_MIME: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+}
+
+export type AvisoTVRegistro = {
+  id: string
+  caminho: string
+  titulo: string | null
+  ordem: number
+  ativo: boolean
+  /** derivada do caminho na leitura; o banco guarda o path, nunca a URL */
+  url: string
+}
+
+/**
+ * Traduz os dois erros que esta tela previsivelmente encontra.
+ *
+ * PGRST205 é o mais importante: a migration não foi aplicada, e a mensagem crua
+ * ("Could not find the table in the schema cache") manda quem lê procurar bug no
+ * frontend. 42501 é a RLS recusando — que nesta tela significa permissão
+ * `tv_avisos` faltando, não erro de código.
+ */
+function descreverErro(error: { code?: string; message: string }): string {
+  if (error.code === "PGRST205") {
+    return "A tabela de avisos ainda não existe no banco. Aplique as migrations 20260831150000 e 20260831150100."
+  }
+  if (error.code === "42501") {
+    return "Sem permissão para gerenciar os avisos da TV (permissão `tv_avisos`)."
+  }
+  return error.message
+}
+
+/** Mesma validação que o bucket faz, mas antes de gastar o upload. */
+export function validarArquivoAviso(file: File): string | null {
+  if (!MIMES_ACEITOS.includes(file.type)) {
+    return "Formato não aceito. Use JPEG, PNG ou WebP."
+  }
+  if (file.size > TAMANHO_MAXIMO_BYTES) {
+    return "A imagem passa de 10 MB. Escolha um arquivo menor."
+  }
+  return null
+}
+
+function urlPublica(caminho: string): string {
+  const supabase = getSupabaseClient()
+  return supabase.storage.from(BUCKET_AVISOS).getPublicUrl(caminho).data.publicUrl
+}
+
+/**
+ * Lista todos os avisos, ativos e inativos — a tela de gestão precisa dos dois.
+ *
+ * A ordenação repete a de /api/tv/avisos (ordem, depois criado_em) de propósito:
+ * a lista da gestão é a mesma sequência que vai ao ar, e divergir aqui faria a
+ * prévia mostrar uma ordem que a TV não usa.
+ */
+export async function listarAvisos(): Promise<{
+  avisos: AvisoTVRegistro[]
+  error: string | null
+}> {
+  const supabase = getSupabaseClient()
+
+  const { data, error } = await supabase
+    .from("tv_avisos")
+    .select("id, caminho, titulo, ordem, ativo")
+    .order("ordem", { ascending: true })
+    .order("criado_em", { ascending: true })
+
+  if (error) {
+    // Campo a campo, e não o objeto: `PostgrestError` não é um Error de
+    // verdade e o console do Next o imprime como `{}` — o log dizia
+    // "Erro ao listar avisos da TV: {}" e escondia justamente a causa
+    // (PGRST205, tabela ausente porque a migration não foi aplicada).
+    console.error(
+      `Erro ao listar avisos da TV [${error.code}]: ${error.message}`,
+      error.hint ?? ""
+    )
+    return { avisos: [], error: descreverErro(error) }
+  }
+
+  const avisos = (data ?? []).map((a) => ({
+    id: a.id as string,
+    caminho: a.caminho as string,
+    titulo: (a.titulo as string | null) ?? null,
+    ordem: a.ordem as number,
+    ativo: a.ativo as boolean,
+    url: urlPublica(a.caminho as string),
+  }))
+
+  return { avisos, error: null }
+}
+
+/**
+ * Envia a imagem e cria a linha, já no fim da fila.
+ *
+ * O nome do arquivo é um uuid, não o nome escolhido pelo marketing: nome de
+ * arquivo aparece em log de CDN e na URL, e um "campanha-demissao-fulano.png"
+ * viraria informação pública. O `titulo` cobre a necessidade de se localizar na
+ * lista, e ele nunca sai do banco.
+ */
+export async function criarAviso(
+  file: File,
+  titulo: string
+): Promise<{ error: string | null }> {
+  const problema = validarArquivoAviso(file)
+  if (problema) return { error: problema }
+
+  const supabase = getSupabaseClient()
+  const extensao = EXTENSAO_POR_MIME[file.type] ?? "jpg"
+  const caminho = `${crypto.randomUUID()}.${extensao}`
+
+  const { error: erroUpload } = await supabase.storage
+    .from(BUCKET_AVISOS)
+    .upload(caminho, file, { upsert: false, contentType: file.type })
+
+  if (erroUpload) {
+    console.error(`Erro ao enviar aviso da TV: ${erroUpload.message}`)
+    return { error: erroUpload.message }
+  }
+
+  // Fim da fila. Ler o maior `ordem` e somar 1 tem corrida teórica (dois uploads
+  // simultâneos empatam), mas o desempate por `criado_em` na leitura resolve —
+  // é exatamente por isso que a ordenação é por (ordem, criado_em) nos dois
+  // lados. Empate não embaralha nada.
+  const { data: ultimo } = await supabase
+    .from("tv_avisos")
+    .select("ordem")
+    .order("ordem", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  const proximaOrdem = ((ultimo?.ordem as number | undefined) ?? -1) + 1
+
+  const { error: erroInsert } = await supabase
+    .from("tv_avisos")
+    .insert({ caminho, titulo: titulo.trim() || null, ordem: proximaOrdem })
+
+  if (erroInsert) {
+    console.error(
+      `Erro ao registrar aviso da TV [${erroInsert.code}]: ${erroInsert.message}`
+    )
+
+    // O objeto já subiu; sem a linha ele é órfão invisível. Limpar aqui evita
+    // acumular lixo no bucket a cada falha de RLS.
+    await supabase.storage.from(BUCKET_AVISOS).remove([caminho])
+
+    return { error: descreverErro(erroInsert) }
+  }
+
+  return { error: null }
+}
+
+export async function definirAtivo(
+  id: string,
+  ativo: boolean
+): Promise<{ error: string | null }> {
+  const supabase = getSupabaseClient()
+  const { error } = await supabase.from("tv_avisos").update({ ativo }).eq("id", id)
+
+  if (error) {
+    console.error(
+      `Erro ao ligar/desligar aviso da TV [${error.code}]: ${error.message}`
+    )
+    return { error: descreverErro(error) }
+  }
+  return { error: null }
+}
+
+/**
+ * Grava a sequência inteira, na ordem em que a lista chega.
+ *
+ * Reescrever tudo em vez de trocar dois vizinhos: as setas da UI produzem uma
+ * lista nova, e persistir só o par movido deixaria os `ordem` do resto
+ * desalinhados com o que está na tela.
+ */
+export async function salvarOrdem(
+  idsNaOrdem: string[]
+): Promise<{ error: string | null }> {
+  const supabase = getSupabaseClient()
+
+  const resultados = await Promise.all(
+    idsNaOrdem.map((id, i) =>
+      supabase.from("tv_avisos").update({ ordem: i }).eq("id", id)
+    )
+  )
+
+  const falhou = resultados.find((r) => r.error)
+  if (falhou?.error) {
+    console.error(
+      `Erro ao salvar a ordem dos avisos da TV [${falhou.error.code}]: ${falhou.error.message}`
+    )
+    return { error: descreverErro(falhou.error) }
+  }
+
+  return { error: null }
+}
+
+/** Apaga a linha e o objeto. A linha primeiro: órfão no bucket é invisível e
+ *  inofensivo, enquanto uma linha apontando para objeto apagado deixa um
+ *  quadrado quebrado na TV. */
+export async function removerAviso(
+  id: string,
+  caminho: string
+): Promise<{ error: string | null }> {
+  const supabase = getSupabaseClient()
+
+  const { error } = await supabase.from("tv_avisos").delete().eq("id", id)
+
+  if (error) {
+    console.error(
+      `Erro ao remover aviso da TV [${error.code}]: ${error.message}`
+    )
+    return { error: descreverErro(error) }
+  }
+
+  // Falhar aqui deixa um órfão no bucket, mas não pode derrubar a remoção, que
+  // já deu certo do ponto de vista da TV.
+  await supabase.storage.from(BUCKET_AVISOS).remove([caminho])
+
+  return { error: null }
+}

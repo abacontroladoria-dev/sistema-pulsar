@@ -14,6 +14,7 @@ const AVAILABLE_ROLES = [
   'autorizacao',
   'rp',
   'cronograma',
+  'marketing',
   'disponibilidade_terapeuta',
 ]
 
