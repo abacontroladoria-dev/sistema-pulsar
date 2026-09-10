@@ -30,19 +30,80 @@ const Dashboard: React.FC = () => {
   const [period, setPeriod] = useState<PeriodFilter>('today')
   const { setShowOnboarding } = useOnboarding()
 
+  // ------------------------------------------------------------------------
+  // Distingue três estados que a versão anterior confundia num só:
+  //   erro     → a requisição falhou; a tela precisa dizer isso
+  //   semDados → carregou certo, e a resposta é que não há movimento ainda
+  //   dados    → há negócios para mostrar
+  //
+  // Antes, todos os três apareciam como "24 atendimentos, 8 leads" — números
+  // fixos no código. Um dashboard que mostra o mesmo com o banco vazio, cheio
+  // ou fora do ar é pior que nenhum dashboard: alguém decide em cima dele.
+  // ------------------------------------------------------------------------
+  const [erro, setErro] = useState<string | null>(null)
+  const [semDados, setSemDados] = useState(false)
+
   useEffect(() => {
     const loadData = async () => {
       setLoading(true)
+      setErro(null)
       try {
         const days = periodDays[period]
-        const [metricsData, chartDataResponse] = await Promise.all([
-          api.fetchDashboardMetrics(days),
-          api.fetchChartData(days)
+        const resposta = await fetch(`/api/crm/metrics/?days=${days}`)
+        const corpo = await resposta.json()
+
+        if (!resposta.ok) {
+          throw new Error(corpo?.error?.message ?? 'Não foi possível carregar as métricas')
+        }
+
+        const m = corpo.data
+        setSemDados(Boolean(m.semDados))
+
+        const comoTexto = (v: number | null) => (v === null ? '—' : String(v))
+        const comoMoeda = (v: number) =>
+          new Intl.NumberFormat('pt-BR', {
+            style: 'currency', currency: 'BRL', maximumFractionDigits: 0,
+          }).format(v)
+        // Sem base de comparação não há seta — melhor um campo vazio do que
+        // uma tendência inventada.
+        const comoTendencia = (v: number | null) =>
+          v === null ? '' : `${v > 0 ? '+' : ''}${v}%`
+
+        setMetrics([
+          {
+            label: 'Novos Leads',
+            value: comoTexto(m.novosLeads.valor),
+            trend: comoTendencia(m.novosLeads.variacao),
+            trendUp: (m.novosLeads.variacao ?? 0) >= 0,
+          },
+          {
+            label: 'Negócios Abertos',
+            value: comoTexto(m.negociosAbertos.valor),
+            trend: '',
+            trendUp: true,
+          },
+          {
+            label: 'Conversões',
+            value: m.taxaConversao.valor === null ? '—' : `${m.taxaConversao.valor}%`,
+            trend: '',
+            trendUp: true,
+          },
+          {
+            label: 'Valor Ganho',
+            value: comoMoeda(m.valorGanho.valor),
+            trend: comoTendencia(m.valorGanho.variacao),
+            trendUp: (m.valorGanho.variacao ?? 0) >= 0,
+          },
         ])
-        setMetrics(metricsData)
-        setChartData(chartDataResponse)
+
+        // O gráfico de série temporal ainda não tem fonte: exigiria agregar
+        // deals por dia, o que sem dados não desenha nada de útil. Fica vazio
+        // e a tela mostra o estado explicativo em vez de uma linha reta em
+        // zero, que passaria por "queda".
+        setChartData([])
       } catch (error) {
         console.error('Erro ao carregar dashboard:', error)
+        setErro(error instanceof Error ? error.message : 'Erro ao carregar')
       } finally {
         setLoading(false)
       }
@@ -95,6 +156,26 @@ const Dashboard: React.FC = () => {
 
       <SystemHealthCard />
 
+      {/* Falha de carregamento: os números abaixo estão desatualizados ou
+          ausentes, e quem lê precisa saber disso antes de decidir. */}
+      {erro && (
+        <div className="rounded-xl border border-red-500/30 bg-red-950/30 px-4 py-3 text-sm text-red-300">
+          <span className="font-semibold">Não foi possível carregar os indicadores.</span>{' '}
+          {erro}
+        </div>
+      )}
+
+      {/* Carregou bem e a resposta é zero. Dizer POR QUE está zerado evita a
+          leitura de que o sistema quebrou — e aponta o que falta acontecer. */}
+      {!erro && semDados && (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 px-4 py-3 text-sm text-amber-200/90">
+          <span className="font-semibold">Ainda não há negócios registrados.</span>{' '}
+          Os números abaixo são reais e estão zerados porque a operação comercial
+          ainda não usa o funil do Pulsar. Assim que os primeiros leads entrarem
+          no Kanban, os indicadores passam a se preencher sozinhos.
+        </div>
+      )}
+
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-3xl font-bold tracking-tight text-white">Dashboard</h2>
@@ -134,10 +215,14 @@ const Dashboard: React.FC = () => {
             </div>
             <div className="flex items-end justify-between">
               <div className="text-3xl font-bold text-white tracking-tight">{stat.value}</div>
-              <div className={`flex items-center text-xs font-medium px-2 py-1 rounded-full ${stat.trendUp ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>
-                {stat.trendUp ? <TrendingUp className="w-3 h-3 mr-1" /> : <TrendingDown className="w-3 h-3 mr-1" />}
-                {stat.trend}
-              </div>
+              {/* Sem trend não há badge: um selo verde vazio sugeriria alta
+                  onde não existe período anterior para comparar. */}
+              {stat.trend ? (
+                <div className={`flex items-center text-xs font-medium px-2 py-1 rounded-full ${stat.trendUp ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>
+                  {stat.trendUp ? <TrendingUp className="w-3 h-3 mr-1" /> : <TrendingDown className="w-3 h-3 mr-1" />}
+                  {stat.trend}
+                </div>
+              ) : null}
             </div>
             <div className="absolute -bottom-10 -right-10 w-24 h-24 bg-white/5 blur-2xl rounded-full group-hover:bg-white/10 transition-all"></div>
           </div>
@@ -158,6 +243,20 @@ const Dashboard: React.FC = () => {
             </button>
           </div>
           <div className="h-[300px] w-full">
+            {chartData.length === 0 ? (
+              /* Série temporal sem fonte de dados ainda. Desenhar um gráfico
+                 achatado em zero pareceria queda real — o vazio explicado é
+                 mais honesto e diz o que falta acontecer. */
+              <div className="h-full flex flex-col items-center justify-center text-center px-6">
+                <Activity className="w-8 h-8 text-slate-700 mb-3" />
+                <p className="text-sm text-slate-400 font-medium">
+                  Ainda não há histórico para desenhar
+                </p>
+                <p className="text-xs text-slate-500 mt-1 max-w-xs">
+                  O gráfico aparece quando houver negócios movimentados no período.
+                </p>
+              </div>
+            ) : (
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <defs>
@@ -196,6 +295,7 @@ const Dashboard: React.FC = () => {
                 />
               </AreaChart>
             </ResponsiveContainer>
+            )}
           </div>
         </div>
 
@@ -206,6 +306,11 @@ const Dashboard: React.FC = () => {
           </div>
 
           <div className="flex-1 flex flex-col justify-center space-y-5">
+            {chartData.length === 0 && (
+              <p className="text-sm text-slate-500 text-center">
+                Nenhuma conversão registrada no período.
+              </p>
+            )}
             {chartData.slice(0, 5).map((day, i) => (
               <div key={i} className="group">
                 <div className="flex items-center justify-between mb-2">

@@ -6,8 +6,16 @@ import {
 } from 'lucide-react';
 import { Button } from './Button';
 import { api } from '@/services/api';
-import { Deal, DealActivity, TeamMember, KanbanColumn } from '@/types';
-import { getSupabaseClient } from '@/lib/supabase/client';
+import { crmApi } from '@/services/crm/client';
+// Os tipos vêm do adapter, não de @/types: aqueles eram placeholders escritos
+// para o mock (priority sem 'urgent', por exemplo) e não descrevem o que o
+// banco devolve. DealUI/KanbanColumnUI são o formato real já traduzido.
+import type { DealUI, KanbanColumnUI, DealActivityUI } from '@/services/crm/adapter';
+import { TeamMember } from '@/types';
+
+type Deal = DealUI & Record<string, any>;
+type KanbanColumn = KanbanColumnUI & Record<string, any>;
+type DealActivity = DealActivityUI & Record<string, any>;
 import { CreateDealModal } from './CreateDealModal';
 import { LostReasonModal } from './LostReasonModal';
 import { PipelineSettingsModal } from './PipelineSettingsModal';
@@ -38,14 +46,14 @@ const Kanban: React.FC = () => {
 
   const handleDealCreated = async () => {
     // Reload deals after creation
-    const data = await api.fetchPipeline();
+    const data = await crmApi.fetchPipeline();
     setDeals(data);
   };
 
   useEffect(() => {
     const loadStages = async () => {
       try {
-        const data = await api.fetchPipelineStages();
+        const data = await crmApi.fetchPipelineStages();
         setStages(data);
       } catch (error) {
         console.error("Erro ao carregar etapas", error);
@@ -55,7 +63,7 @@ const Kanban: React.FC = () => {
 
     const loadPipeline = async () => {
       try {
-        const data = await api.fetchPipeline();
+        const data = await crmApi.fetchPipeline();
         setDeals(data);
       } catch (error) {
         console.error("Erro ao carregar pipeline", error);
@@ -77,43 +85,38 @@ const Kanban: React.FC = () => {
     loadTeamMembers();
 
     // Real-time subscription for deals and stages
-    const dealsChannel = getSupabaseClient()
-      .channel('deals-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'deals'
-        },
-        async () => {
-          const data = await api.fetchPipeline();
-          setDeals(data);
-        }
-      )
-      .subscribe();
+    // ------------------------------------------------------------------
+    // Atualização por polling, não por Realtime.
+    //
+    // O código anterior assinava postgres_changes em `public.deals` e
+    // `public.pipeline_stages` — tabelas que não existem: o CRM vive no
+    // schema `crm`. A assinatura nunca disparava, e como o Realtime falha
+    // em silêncio quando a tabela não está na publicação, isso passava
+    // por "tempo real funcionando".
+    //
+    // Mesmo com o schema certo não funcionaria: nenhuma tabela do CRM está
+    // na publicação de Realtime, pelo mesmo motivo documentado em
+    // components/central/useCentralData.ts para o schema central.
+    //
+    // 15s (e não os 5s da Central) porque o Kanban é uma tela de trabalho
+    // deliberado, não um inbox: cards não mudam a cada segundo.
+    // ------------------------------------------------------------------
+    const intervalo = setInterval(async () => {
+      // Silencioso de propósito: uma falha de rede no polling não deve
+      // gerar toast a cada 15s. O erro real aparece quando o usuário age.
+      try {
+        const [novosDeals, novosStages] = await Promise.all([
+          crmApi.fetchPipeline(),
+          crmApi.fetchPipelineStages(),
+        ]);
+        setDeals(novosDeals);
+        setStages(novosStages);
+      } catch {
+        // mantém a tela com os dados anteriores
+      }
+    }, 15000);
 
-    const stagesChannel = getSupabaseClient()
-      .channel('pipeline-stages-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'pipeline_stages'
-        },
-        async () => {
-          const data = await api.fetchPipelineStages();
-          setStages(data);
-        }
-      )
-      .subscribe();
-
-    return () => {
-      const sb = getSupabaseClient();
-      sb.removeChannel(dealsChannel);
-      sb.removeChannel(stagesChannel);
-    };
+    return () => clearInterval(intervalo);
   }, []);
 
   // Load activities when deal is selected
@@ -136,8 +139,15 @@ const Kanban: React.FC = () => {
     if (!selectedDeal?.conversationId) return;
     setLoadingMessages(true);
     try {
-      const messages = await api.fetchConversationMessages(selectedDeal.conversationId, 15);
-      setConversationMessages(messages);
+      // Mensagens vêm da Central (central.messages), não do CRM — o deal só
+      // guarda o conversation_id que aponta para lá. A rota devolve
+      // created_at DESC; a UI mostra em ordem cronológica, daí o reverse.
+      const resposta = await fetch(
+        `/api/central/messages?conversationId=${selectedDeal.conversationId}&limit=15`
+      );
+      const corpo = await resposta.json();
+      if (!resposta.ok) throw new Error(corpo?.error?.message ?? 'Falha ao carregar mensagens');
+      setConversationMessages((corpo?.data ?? []).slice().reverse());
     } catch (error) {
       console.error("Erro ao carregar mensagens", error);
     } finally {
@@ -149,7 +159,7 @@ const Kanban: React.FC = () => {
     if (!selectedDeal) return;
     setLoadingActivities(true);
     try {
-      const data = await api.fetchDealActivities(selectedDeal.id);
+      const data = await crmApi.fetchDealActivities(selectedDeal.id);
       setActivities(data);
     } catch (error) {
       console.error("Erro ao carregar atividades", error);
@@ -161,7 +171,7 @@ const Kanban: React.FC = () => {
   const handleMarkWon = async () => {
     if (!selectedDeal) return;
     try {
-      await api.markDealWon(selectedDeal.id);
+      await crmApi.markDealWon(selectedDeal.id);
       toast.success("Deal marcado como ganho! Parabéns pelo fechamento!");
       setSelectedDeal(null);
     } catch (error) {
@@ -173,7 +183,7 @@ const Kanban: React.FC = () => {
   const handleMarkLost = async (reason: string) => {
     if (!selectedDeal) return;
     try {
-      await api.markDealLost(selectedDeal.id, reason);
+      await crmApi.markDealLost(selectedDeal.id, reason);
       toast.success("Deal marcado como perdido. Motivo registrado.");
       setSelectedDeal(null);
     } catch (error) {
@@ -185,7 +195,7 @@ const Kanban: React.FC = () => {
   const handleOwnerChange = async (ownerId: string) => {
     if (!selectedDeal) return;
     try {
-      await api.updateDealOwner(selectedDeal.id, ownerId);
+      await crmApi.updateDeal(selectedDeal.id, { assignedTo: ownerId });
       const member = teamMembers.find(m => m.id === ownerId);
       setSelectedDeal({ ...selectedDeal, ownerId, ownerName: member?.name });
       toast.success("Proprietário atualizado");
@@ -198,8 +208,7 @@ const Kanban: React.FC = () => {
   const handleCreateActivity = async () => {
     if (!selectedDeal || !newActivityTitle.trim()) return;
     try {
-      await api.createDealActivity({
-        dealId: selectedDeal.id,
+      await crmApi.createDealActivity(selectedDeal.id, {
         type: activeTab === 'activity' ? 'call' : activeTab === 'email' ? 'email' : 'note',
         title: newActivityTitle,
         description: newActivityDescription,
@@ -214,23 +223,24 @@ const Kanban: React.FC = () => {
     }
   };
 
-  const handleToggleActivityComplete = async (activityId: string, isCompleted: boolean) => {
-    try {
-      await api.updateDealActivity(activityId, { isCompleted: !isCompleted });
-      loadActivities();
-    } catch (error) {
-      console.error("Erro ao atualizar atividade", error);
-    }
+  // ---------------------------------------------------------------------
+  // Concluir tarefa e excluir atividade ainda não existem no backend.
+  //
+  // crm.deal_activities não tem coluna de conclusão — o `isCompleted` que a
+  // UI usava era invenção do mock. E a timeline é append-only por desenho
+  // ("appended chronologically", 20260701020100): apagar um evento apagaria
+  // auditoria.
+  //
+  // Antes estas duas chamavam mocks que retornavam sucesso sem gravar nada:
+  // a linha sumia da tela e voltava no refresh seguinte. Avisar é melhor do
+  // que fingir — quando a coluna existir, é aqui que se liga.
+  // ---------------------------------------------------------------------
+  const handleToggleActivityComplete = async (_activityId: string, _isCompleted: boolean) => {
+    toast.info("Concluir tarefa ainda não está disponível");
   };
 
-  const handleDeleteActivity = async (activityId: string) => {
-    try {
-      await api.deleteDealActivity(activityId);
-      loadActivities();
-      toast.success("Atividade excluída");
-    } catch (error) {
-      console.error("Erro ao excluir atividade", error);
-    }
+  const handleDeleteActivity = async (_activityId: string) => {
+    toast.info("A timeline do negócio é um histórico e não permite exclusão");
   };
 
   const formatCurrency = (value: number) => {
@@ -268,11 +278,11 @@ const Kanban: React.FC = () => {
 
     // Persist to database
     try {
-      await api.moveDealStage(dealId, targetStageId);
+      await crmApi.moveDealStage(dealId, targetStageId);
     } catch (error) {
       console.error('Error moving deal:', error);
       // Revert on error
-      const data = await api.fetchPipeline();
+      const data = await crmApi.fetchPipeline();
       setDeals(data);
     }
   };
@@ -524,7 +534,7 @@ const Kanban: React.FC = () => {
 
                                             if (isGanhoColumn) {
                                                 try {
-                                                    await api.markDealWon(selectedDeal.id);
+                                                    await crmApi.markDealWon(selectedDeal.id);
                                                     toast.success("Deal marcado como ganho!");
                                                     // Update local state
                                                     setDeals(deals.map(d => d.id === selectedDeal.id ? {...d, stageId: col.id, wonAt: new Date().toISOString()} : d));
@@ -542,7 +552,7 @@ const Kanban: React.FC = () => {
 
                                                 // Persist to database
                                                 try {
-                                                    await api.moveDealStage(selectedDeal.id, col.id);
+                                                    await crmApi.moveDealStage(selectedDeal.id, col.id);
                                                 } catch (error) {
                                                     console.error('Error moving deal:', error);
                                                 }
@@ -677,7 +687,9 @@ const Kanban: React.FC = () => {
                                       <p className="text-xs text-slate-500 mt-1">{activity.description}</p>
                                     )}
                                     <p className="text-[10px] text-slate-600 mt-1">
-                                      {new Date(activity.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                      {activity.createdAt
+                                        ? new Date(activity.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                                        : '—'}
                                       {activity.createdByName && ` • ${activity.createdByName}`}
                                     </p>
                                   </div>
@@ -855,7 +867,7 @@ const Kanban: React.FC = () => {
         open={isSettingsModalOpen}
         onClose={() => setIsSettingsModalOpen(false)}
         onSave={async () => {
-          const data = await api.fetchPipelineStages();
+          const data = await crmApi.fetchPipelineStages();
           setStages(data);
         }}
       />
