@@ -293,9 +293,28 @@ export default function DetalheCartao({
         </Campo>
         {/* O rótulo diz "no portal" porque `data_execucao` é o instante em que a
             ASSIM registrou, e NÃO a data do atendimento. Confundir os dois é o
-            erro que este módulo inteiro existe para caçar. */}
+            erro que este módulo inteiro existe para caçar.
+
+            Dois formatadores para o MESMO nome de campo, porque as duas espécies
+            de cartão o recebem em tipos SQL diferentes:
+
+            - a SESSÃO vem de `get_auditoria_assim_periodo`, que declara
+              `data_execucao timestamp with time zone` e já a converte
+              (`AT TIME ZONE 'America/Sao_Paulo'`) — o PostgREST devolve
+              "2026-09-02T18:38:00+00:00", com sufixo de fuso. Fatiar essa string
+              mostra UTC: a guia das 15:38 aparecia como 18:38;
+            - a GUIA órfã vem de `get_guias_orfas`, que devolve
+              `timestamp without time zone` guardando hora de São Paulo — chega
+              "2026-09-02T11:04:00", sem sufixo, e aí é `new Date()` que erraria.
+
+            É a mesma armadilha de `vinculado_em` documentada em
+            `dataHoraDeTimestamptz`: duas colunas, dois tipos, duas funções. */}
         <Campo rotulo="Autorizada em (no portal)">
-          {origem.data_execucao ? dataHoraCurta(origem.data_execucao) : null}
+          {origem.data_execucao
+            ? daSessao
+              ? dataHoraDeTimestamptz(origem.data_execucao)
+              : dataHoraCurta(origem.data_execucao)
+            : null}
         </Campo>
         {daSessao ? (
           <>
