@@ -50,7 +50,7 @@ import {
 // os dois casos com folga dos dois lados — e errar para o lado curto é o certo:
 // a recepção espera alguns segundos e chama de novo, contra um pai que nunca
 // descobre que foi chamado.
-const JANELA_RECHAMADA_MS = 90_000
+const JANELA_RECHAMADA_MS = 5_000
 
 // O banner "Desfazer lote" precisa sobreviver a um F5: a atendente lança o
 // feriado, percebe que errou a data e recarrega a página por reflexo. Duas horas
