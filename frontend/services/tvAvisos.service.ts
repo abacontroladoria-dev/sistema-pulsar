@@ -30,21 +30,55 @@ export type AvisoTVRegistro = {
 }
 
 /**
- * Traduz os dois erros que esta tela previsivelmente encontra.
+ * Erro em duas camadas: o que a pessoa faz, e o que a tecnologia precisa saber.
  *
- * PGRST205 é o mais importante: a migration não foi aplicada, e a mensagem crua
- * ("Could not find the table in the schema cache") manda quem lê procurar bug no
- * frontend. 42501 é a RLS recusando — que nesta tela significa permissão
- * `tv_avisos` faltando, não erro de código.
+ * Quem usa esta tela é do marketing ou da recepção. "Aplique as migrations
+ * 20260831150000 e 20260831150100" é acionável para quem mantém o banco e
+ * assustador para quem só queria publicar um cartaz — parece que ela quebrou
+ * alguma coisa. Mas apagar o detalhe técnico só transfere o problema: a pessoa
+ * chamada para resolver chegaria sem a informação que resolve.
+ *
+ * Então os dois viajam juntos. A tela mostra `mensagem` em destaque e `detalhe`
+ * em letra miúda embaixo, para ser lido em voz alta no chamado.
+ *
+ * PGRST205 é o caso mais provável (migration não aplicada); a mensagem crua
+ * ("Could not find the table in the schema cache") manda procurar bug no
+ * frontend. 42501 é a RLS recusando — aqui significa permissão faltando, não
+ * erro de código.
  */
-function descreverErro(error: { code?: string; message: string }): string {
+export type ErroAviso = { mensagem: string; detalhe: string | null }
+
+/**
+ * A forma de duas camadas só é usada por `listarAvisos`, cujo erro vira um
+ * painel PERMANENTE na tela e portanto tem espaço para as duas linhas. As
+ * escritas seguem devolvendo texto puro: elas aparecem em toast, que some em
+ * segundos e não é lugar de código de erro.
+ */
+function descreverErroDetalhado(error: {
+  code?: string
+  message: string
+}): ErroAviso {
   if (error.code === "PGRST205") {
-    return "A tabela de avisos ainda não existe no banco. Aplique as migrations 20260831150000 e 20260831150100."
+    return {
+      mensagem:
+        "Os avisos da TV ainda não foram liberados neste ambiente. Peça à tecnologia para concluir a instalação.",
+      detalhe:
+        "Tabela tv_avisos ausente (PGRST205). Aplicar as migrations 20260831150000 e 20260831150100.",
+    }
   }
   if (error.code === "42501") {
-    return "Sem permissão para gerenciar os avisos da TV (permissão `tv_avisos`)."
+    return {
+      mensagem:
+        "Você não tem permissão para gerenciar os avisos da TV. Peça acesso à tecnologia.",
+      detalhe: "RLS recusou a operação (42501). Falta a permissão tv_avisos.",
+    }
   }
-  return error.message
+  return { mensagem: error.message, detalhe: error.code ?? null }
+}
+
+/** Versão de uma linha, para toast. Mesma tradução, sem o detalhe técnico. */
+function descreverErro(error: { code?: string; message: string }): string {
+  return descreverErroDetalhado(error).mensagem
 }
 
 /** Mesma validação que o bucket faz, mas antes de gastar o upload. */
@@ -72,7 +106,7 @@ function urlPublica(caminho: string): string {
  */
 export async function listarAvisos(): Promise<{
   avisos: AvisoTVRegistro[]
-  error: string | null
+  error: ErroAviso | null
 }> {
   const supabase = getSupabaseClient()
 
@@ -91,7 +125,7 @@ export async function listarAvisos(): Promise<{
       `Erro ao listar avisos da TV [${error.code}]: ${error.message}`,
       error.hint ?? ""
     )
-    return { avisos: [], error: descreverErro(error) }
+    return { avisos: [], error: descreverErroDetalhado(error) }
   }
 
   const avisos = (data ?? []).map((a) => ({
@@ -250,13 +284,25 @@ export async function salvarOrdem(
   return { error: null }
 }
 
-/** Apaga a linha e o objeto. A linha primeiro: órfão no bucket é invisível e
- *  inofensivo, enquanto uma linha apontando para objeto apagado deixa um
- *  quadrado quebrado na TV. */
-export async function removerAviso(
-  id: string,
-  caminho: string
-): Promise<{ error: string | null }> {
+/**
+ * Apaga a linha. O objeto NÃO é apagado aqui — ver abaixo.
+ *
+ * Antes esta função removia o objeto do bucket logo depois da linha. Isso
+ * fechava a porta para o desfazer: a linha se recria de graça, mas os bytes,
+ * uma vez apagados, só voltam se a pessoa ainda tiver o arquivo no computador —
+ * e quem clica em "Remover" por engano normalmente não tem.
+ *
+ * A ordem antiga também estava certa pelo motivo dela (linha primeiro, porque
+ * uma linha apontando para objeto apagado deixa um quadrado quebrado na TV).
+ * Isso continua valendo; o que mudou é que o objeto simplesmente não é apagado
+ * junto. Um órfão no bucket é invisível e inofensivo — um cartaz que a pessoa
+ * não consegue recuperar, não.
+ *
+ * A limpeza definitiva é `descartarArquivoAviso`, chamada quando a janela de
+ * desfazer expira. Se a aba morrer no meio dessa janela, sobra um órfão: é o
+ * preço, e é barato.
+ */
+export async function removerAviso(id: string): Promise<{ error: string | null }> {
   const supabase = getSupabaseClient()
 
   const { error } = await supabase.from("tv_avisos").delete().eq("id", id)
@@ -268,9 +314,60 @@ export async function removerAviso(
     return { error: descreverErro(error) }
   }
 
-  // Falhar aqui deixa um órfão no bucket, mas não pode derrubar a remoção, que
-  // já deu certo do ponto de vista da TV.
-  await supabase.storage.from(BUCKET_AVISOS).remove([caminho])
+  return { error: null }
+}
+
+/**
+ * Recria a linha de um aviso removido, apontando para o objeto que ficou no
+ * bucket. É o desfazer.
+ *
+ * `ativo` e `ordem` voltam como estavam: desfazer tem de devolver o estado
+ * exato, não uma aproximação. Um cartaz que estava no ar e volta como rascunho
+ * obrigaria a pessoa a publicar de novo — e ela não pediu para tirar do ar,
+ * pediu para desfazer.
+ *
+ * O `id` NÃO é reaproveitado (o banco gera um novo). Nada aqui referencia aviso
+ * por id fora desta tela, então recriar com id novo é indistinguível para a TV,
+ * que só lê caminho e ordem.
+ */
+export async function restaurarAviso(aviso: {
+  caminho: string
+  titulo: string | null
+  ordem: number
+  ativo: boolean
+}): Promise<{ error: string | null }> {
+  const supabase = getSupabaseClient()
+
+  const { error } = await supabase.from("tv_avisos").insert({
+    caminho: aviso.caminho,
+    titulo: aviso.titulo,
+    ordem: aviso.ordem,
+    ativo: aviso.ativo,
+  })
+
+  if (error) {
+    console.error(
+      `Erro ao restaurar aviso da TV [${error.code}]: ${error.message}`
+    )
+    return { error: descreverErro(error) }
+  }
 
   return { error: null }
+}
+
+/**
+ * Apaga o objeto do bucket. Chamada só quando a janela de desfazer fecha sem
+ * ninguém desfazer — a partir daí o arquivo não serve mais a ninguém.
+ *
+ * Silenciosa de propósito: neste ponto a remoção já aconteceu aos olhos de quem
+ * usa a tela, e um erro de storage não tem nenhuma ação associada. Falhar aqui
+ * deixa um órfão invisível no bucket, que é exatamente o que já acontecia antes
+ * quando este `remove` falhava.
+ */
+export async function descartarArquivoAviso(caminho: string): Promise<void> {
+  const supabase = getSupabaseClient()
+  const { error } = await supabase.storage.from(BUCKET_AVISOS).remove([caminho])
+  if (error) {
+    console.error(`Erro ao descartar arquivo do aviso da TV: ${error.message}`)
+  }
 }
