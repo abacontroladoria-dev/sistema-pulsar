@@ -245,6 +245,73 @@ export async function medirSaudeGrade(
   return { inativas, inativasAgendadas }
 }
 
+/** Quão recente é a captura da grade de um período FUTURO. Ver `medirFrescorGrade()`. */
+export interface FrescorGrade {
+  /**
+   * Instante em que a TiTa confirmou pela última vez alguma linha do período
+   * (o `visto_em` mais recente). `null` quando o período não tem nenhuma linha.
+   */
+  visto: string | null
+  /** Horas decorridas desde `visto`. `null` junto com ele. */
+  horas: number | null
+  /**
+   * `true` quando a captura passou de `horasLimite`. É o sinal de "a tela está
+   * mostrando um retrato velho" — nunca "a agenda está parada".
+   */
+  desatualizado: boolean
+}
+
+/** Acima disto a captura é velha o bastante para a tela avisar. Ver `medirFrescorGrade()`. */
+export const HORAS_FRESCOR_GRADE = 48
+
+/**
+ * Há quanto tempo a grade de um período futuro não é reconfirmada pela TiTa.
+ *
+ * É o espelho de `medirSaudeGrade()`, que por desenho só olha o passado
+ * (`data <= hoje`): mede o que sumiu de datas já ocorridas. Nenhuma das duas
+ * enxergava a falha de 10/09/2026 — o sync da grade rodava todo dia, pedia ~60
+ * dias de uma vez, morria por falta de compute e não escrevia nada no futuro. O
+ * cron descarta a resposta HTTP, então a falha foi diária e silenciosa por 9
+ * dias, com `csv_grades_profissionais` congelado em 01/09 para toda data futura.
+ *
+ * O que isso custou, medido na janela que a Ocupação de Paciente usa (01–07/10):
+ * 134 sessões reais invisíveis (57 pacientes) e 169 horários oferecidos que já
+ * não existiam. A tela não tinha como saber — e é isso que esta função conserta.
+ *
+ * Lê `visto_em` da TABELA, não das views: nenhuma das duas projeta a coluna, e
+ * `visto_em` é justamente "a última vez que a TiTa confirmou esta linha" (ver o
+ * cabeçalho de sync-grade-csv). Uma requisição, uma linha, ordenada desc.
+ *
+ * NÃO é alarme de agenda vazia: período sem nenhuma linha devolve
+ * `desatualizado: false`, porque aí não há o que reconfirmar e o silêncio é
+ * legítimo. O alarme é só para "existe grade, e ela está velha".
+ */
+export async function medirFrescorGrade(
+  de: string, ate: string, unidade?: number, cliente?: unknown,
+  agora = new Date(), horasLimite = HORAS_FRESCOR_GRADE,
+): Promise<FrescorGrade> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sb: any = cliente ?? getSupabaseClient()
+
+  let q = sb.from(TABELA_GRADE)
+    .select("visto_em")
+    .gte("data", de)
+    .lte("data", ate)
+    .eq("ativo", true)
+    .order("visto_em", { ascending: false })
+    .limit(1)
+  if (unidade !== undefined) q = q.eq("unidade_id", unidade)
+
+  const { data, error } = await q
+  if (error) throw new Error(error.message)
+
+  const visto = (data ?? [])[0]?.visto_em ?? null
+  if (!visto) return { visto: null, horas: null, desatualizado: false }
+
+  const horas = (agora.getTime() - new Date(visto).getTime()) / 3_600_000
+  return { visto, horas, desatualizado: horas > horasLimite }
+}
+
 /** Uma opção de formulário vinda da agenda real. `id` é null para convênio (a fonte só tem nome). */
 export interface OpcaoGrade {
   id: number | null

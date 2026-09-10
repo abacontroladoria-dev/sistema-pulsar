@@ -9,6 +9,7 @@ import { CriarNovoCronogramaPacMode } from "@/components/cronograma/solicitacoes
 import { OrcamentoPacMode } from "@/components/cronograma/solicitacoes/OrcamentoPacMode"
 import { WorkspaceEmptyState } from "@/components/cronograma/ui/CronogramaWorkspace"
 import { buscarGradeComoCSVRows } from "@/lib/cronograma/gradeService"
+import { medirFrescorGrade } from "@/lib/grade/fonte"
 import { filtrarLivresSemGradeAberta } from "@/lib/cronograma/gradeTitaOcupacao"
 import { construirSuspensaoTemporaria, type SuspensaoLinkInfo } from "@/lib/cronograma/suspensaoTemporaria"
 import { getJanelaOcupacaoPaciente } from "@/lib/cronograma/helpers"
@@ -34,6 +35,9 @@ export default function OcupacaoPacientePage() {
   const [suspensaoSet, setSuspensaoSet] = useState<Set<string>>(new Set())
   const [suspensaoInfo, setSuspensaoInfo] = useState<Map<string, SuspensaoLinkInfo>>(new Map())
   const [erro, setErro] = useState<string | null>(null)
+  // Quantas horas faz que a TiTa não reconfirma a grade desta janela. Ver o
+  // aviso mais abaixo e medirFrescorGrade() em lib/grade/fonte.ts.
+  const [gradeVelhaHoras, setGradeVelhaHoras] = useState<number | null>(null)
   const fetchedRef = useRef(false)
   const [modo, setModo] = useState<ModoOcupacao>("aumentar")
 
@@ -57,6 +61,14 @@ export default function OcupacaoPacientePage() {
     // — uma consulta só, compartilhada por "Aumentar Cronograma" e "Criar Novo
     // Cronograma" (ver suspensaoTemporaria.ts). "Orçamento" não recebe: usa
     // paciente sintético ("Simulação"), sem id_paciente_pulsar real.
+    // Frescor da captura, em paralelo e sem travar a tela: uma consulta de UMA
+    // linha. Em 10/09/2026 esta janela ficou 9 dias congelada em silêncio — o
+    // sync morria todo dia e ninguém via, porque o cron descarta a resposta.
+    // Falhar aqui não pode esconder a grade, então o catch é mudo de propósito.
+    void medirFrescorGrade(janela.inicio, janela.fim, 280)
+      .then(f => setGradeVelhaHoras(f.desatualizado ? f.horas : null))
+      .catch(() => {})
+
     buscarGradeComoCSVRows(janela.inicio, janela.fim)
       .then(rows => filtrarLivresSemGradeAberta(rows, janela.inicio))
       .then(rows => {
@@ -84,6 +96,21 @@ export default function OcupacaoPacientePage() {
   return (
     <>
       {erro && <p className="pb-2 text-sm text-destructive">{erro}</p>}
+
+      {/* Grade velha é pior que grade vazia: a tela continua respondendo, com o
+          retrato de dias atrás. Some sessão que existe e oferta horário que já
+          foi ocupado — sem nada em tela, o operador liga para a família antes de
+          descobrir. Âmbar, não vermelho: a tela funciona, o dado é que atrasou. */}
+      {gradeVelhaHoras !== null && (
+        <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          <strong className="font-semibold">Grade desatualizada.</strong>{" "}
+          A TiTa não reconfirma estes dias há {Math.floor(gradeVelhaHoras / 24) >= 1
+            ? `${Math.floor(gradeVelhaHoras / 24)} dia(s)`
+            : `${Math.round(gradeVelhaHoras)} hora(s)`}
+          . Pode faltar sessão recém-remarcada e sobrar horário que já foi ocupado —
+          confira na TiTa antes de confirmar implantação.
+        </div>
+      )}
 
       {/* Alternador de modalidade — alinhado ao eixo esquerdo do conteúdo (o
           layout do dashboard já dá o p-6; nada de padding extra aqui, senão a
