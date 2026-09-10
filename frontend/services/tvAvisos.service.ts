@@ -107,7 +107,13 @@ export async function listarAvisos(): Promise<{
 }
 
 /**
- * Envia a imagem e cria a linha, já no fim da fila.
+ * Envia a imagem e cria a linha, já no fim da fila — como RASCUNHO.
+ *
+ * `ativo: false` explícito, contra o default `true` da tabela: publicar é um ato
+ * separado de enviar. Antes, escolher o arquivo já colocava o cartaz na parede da
+ * recepção em até 5 min (o poll da TV), sem ninguém confirmar — e um arquivo
+ * errado no seletor virava um erro visível para todas as famílias na sala de
+ * espera. Quem publica agora confere na prévia e clica em "Publicar na TV".
  *
  * O nome do arquivo é um uuid, não o nome escolhido pelo marketing: nome de
  * arquivo aparece em log de CDN e na URL, e um "campanha-demissao-fulano.png"
@@ -149,7 +155,12 @@ export async function criarAviso(
 
   const { error: erroInsert } = await supabase
     .from("tv_avisos")
-    .insert({ caminho, titulo: titulo.trim() || null, ordem: proximaOrdem })
+    .insert({
+      caminho,
+      titulo: titulo.trim() || null,
+      ordem: proximaOrdem,
+      ativo: false,
+    })
 
   if (erroInsert) {
     console.error(
@@ -163,6 +174,34 @@ export async function criarAviso(
     return { error: descreverErro(erroInsert) }
   }
 
+  return { error: null }
+}
+
+/**
+ * Põe no ar todos os rascunhos de uma vez — o "Publicar na TV".
+ *
+ * Recebe os ids em vez de fazer `update ... where ativo = false`: o que vai ao ar
+ * tem de ser exatamente o que a pessoa viu marcado na tela. Um rascunho que outra
+ * pessoa subiu enquanto esta conferia a lista não pode pegar carona num clique
+ * que não o incluía.
+ */
+export async function publicarAvisos(
+  ids: string[]
+): Promise<{ error: string | null }> {
+  if (ids.length === 0) return { error: null }
+
+  const supabase = getSupabaseClient()
+  const { error } = await supabase
+    .from("tv_avisos")
+    .update({ ativo: true })
+    .in("id", ids)
+
+  if (error) {
+    console.error(
+      `Erro ao publicar avisos da TV [${error.code}]: ${error.message}`
+    )
+    return { error: descreverErro(error) }
+  }
   return { error: null }
 }
 
