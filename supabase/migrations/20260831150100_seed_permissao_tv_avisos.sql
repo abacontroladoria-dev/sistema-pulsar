@@ -5,11 +5,12 @@
 -- junto. Pendurar isto em `gestao` ou `cadastros_pacientes` daria ao marketing
 -- acesso a dado de paciente para trocar um cartaz de parede.
 --
--- Grupo 'Administração' (o mesmo de Usuários e Permissões, criado em
--- 20260529110000) porque não é cadastro operacional nem tela de atendimento: é
--- configuração de um painel. Fica junto do que se administra, não do que se
--- opera — e um grupo NOVO só para esta linha apareceria sozinho na
--- /admin/permissoes.
+-- Grupo 'Marketing', que é o setor dono da tela. Esta linha nasceu em
+-- 'Administração' — na época o marketing não existia como papel e um grupo novo
+-- apareceria sozinho na /admin/permissoes com uma permissão só. Com o papel
+-- criado (20260910120000) e o grupo próprio no Sidebar, 'Administração' passou a
+-- contradizer o menu; 20260910120200 faz o UPDATE nos bancos onde este seed já
+-- rodou, e o valor aqui garante que uma aplicação limpa nasça certa.
 --
 -- ⚠️ Os grupos de permissão são ADITIVOS e a união dos modelos só é
 -- materializada no "Aplicar" de /admin/permissoes. Inserir o código aqui NÃO
@@ -18,6 +19,6 @@
 -- código explicitamente em usuarios_permissoes.
 
 INSERT INTO public.permissoes (codigo, nome, rota, grupo, descricao) VALUES
-  ('tv_avisos', 'Avisos da TV', '/tv-avisos', 'Administração',
+  ('tv_avisos', 'Avisos da TV', '/tv-avisos', 'Marketing',
    'Imagens do carrossel de avisos exibido na TV da recepção enquanto ninguém está sendo chamado')
 ON CONFLICT (codigo) DO NOTHING;

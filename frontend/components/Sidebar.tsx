@@ -19,6 +19,7 @@ import {
   Star,
   KeyRound,
   Monitor,
+  Megaphone,
   BarChart3,
   CalendarPlus,
   Database,
@@ -694,27 +695,37 @@ export default function Sidebar() {
             </SidebarGroup>
           )}
 
+          {/* Marketing */}
+          {/* Grupo PRÓPRIO, e não um item dentro de Administração (onde nasceu):
+              quem opera isto é o marketing, que não administra o sistema — o
+              único vizinho ali seriam Usuários e Permissões, telas que este setor
+              nunca vai abrir. E o rótulo do item diz o LUGAR ("TV da Recepção"),
+              não o meio: a única dúvida de quem prepara um cartaz é onde ele vai
+              aparecer. */}
+          {canAccess("/tv-avisos") && (
+            <SidebarGroup
+              title="Marketing"
+              icon={Megaphone}
+              defaultOpen={pathname === "/tv-avisos"}
+            >
+              <MenuItem label="TV da Recepção" icon={Monitor} path="/tv-avisos" />
+            </SidebarGroup>
+          )}
+
           {/* Administração */}
-          {/* A condição do grupo é a UNIÃO dos itens, não mais só /admin: o
-              marketing recebe `tv_avisos` e nada mais, e com o gate antigo o
-              grupo inteiro ficaria escondido — a tela existiria, com permissão
-              concedida, e sem nenhum caminho até ela. "Usuários" também passou a
-              ser condicional pela mesma razão: era o único item incondicional
-              aqui, e apareceria para quem não tem /admin. */}
-          {(canAccess("/admin") || canAccess("/tv-avisos")) && (
+          {/* "Usuários" é condicional, e não incondicional como já foi: sem isso
+              apareceria para quem não tem /admin. */}
+          {canAccess("/admin") && (
             <SidebarGroup
               title="Administração"
               icon={ShieldCheck}
-              defaultOpen={["/admin", "/admin/permissoes", "/tv-avisos"].some(p => pathname === p)}
+              defaultOpen={["/admin", "/admin/permissoes"].some(p => pathname === p)}
             >
               {canAccess("/admin") && (
                 <MenuItem label="Usuários" icon={Users} path="/admin" />
               )}
               {canAccess("/admin/permissoes") && (
                 <MenuItem label="Permissões" icon={KeyRound} path="/admin/permissoes" />
-              )}
-              {canAccess("/tv-avisos") && (
-                <MenuItem label="Avisos da TV" icon={Monitor} path="/tv-avisos" />
               )}
             </SidebarGroup>
           )}

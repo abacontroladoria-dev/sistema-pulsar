@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
   const body = await request.json()
   const { userId, role } = body as { userId: string; role: string }
 
-  const ROLES_VALIDAS = ['admin', 'recepcao', 'diretoria', 'terapeutico', 'faturamento', 'autorizacao', 'rp', 'cronograma', 'disponibilidade_terapeuta']
+  const ROLES_VALIDAS = ['admin', 'recepcao', 'diretoria', 'terapeutico', 'faturamento', 'autorizacao', 'rp', 'cronograma', 'disponibilidade_terapeuta', 'marketing']
 
   if (!userId || !role || !ROLES_VALIDAS.includes(role)) {
     return NextResponse.json(

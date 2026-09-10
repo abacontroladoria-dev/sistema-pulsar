@@ -40,6 +40,7 @@ const roleOptions = [
   { value: 'disponibilidade_terapeuta', label: 'Disponib. Terapeuta' },
   { value: 'diretoria', label: 'Diretoria' },
   { value: 'faturamento', label: 'Faturamento' },
+  { value: 'marketing', label: 'Marketing' },
   { value: 'recepcao', label: 'Recepção' },
   { value: 'rp', label: 'RP' },
   { value: 'terapeutico', label: 'Terapêutico' },

@@ -4,7 +4,7 @@ import { supabaseService } from '@/lib/supabase/service'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { UNIDADES_DISPONIVEIS } from '@/lib/admin/unidades'
 
-const ROLES_VALIDAS = ['admin', 'recepcao', 'diretoria', 'terapeutico', 'faturamento', 'autorizacao', 'rp', 'cronograma', 'disponibilidade_terapeuta']
+const ROLES_VALIDAS = ['admin', 'recepcao', 'diretoria', 'terapeutico', 'faturamento', 'autorizacao', 'rp', 'cronograma', 'disponibilidade_terapeuta', 'marketing']
 
 async function getCurrentUser(request: NextRequest) {
   const token = request.headers.get('authorization')?.replace('Bearer ', '')
