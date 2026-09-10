@@ -471,7 +471,7 @@ html {
 /* ─── TV de chamada — pulso da chamada ───────────────────────────────────
    Dura do sino até o fim da fala, não só o sino: é a janela inteira em que o
    pai precisa olhar pra tela, não só o segundo do "ding".
-   Cor é --color-tv-signal (laranja, #C2410C = 194,65,12), não o azul do
+   Cor sai de --color-tv-signal via color-mix (laranja), não o azul do
    accent — antes disso o momento "seu nome foi chamado" só reusava o mesmo
    azul do resto da tela em intensidades diferentes, e por isso ficava
    tímido: sem contraste de matiz, só de brilho. Laranja quente contra a tela
@@ -488,11 +488,13 @@ html {
   }
   14% {
     transform: scale(1.075);
-    box-shadow: 0 0 140px 20px rgba(194, 65, 12, 0.65);
+    box-shadow: 0 0 140px 20px
+      color-mix(in oklch, var(--color-tv-signal) 65%, transparent);
   }
   42% {
     transform: scale(1.035);
-    box-shadow: 0 0 90px 10px rgba(194, 65, 12, 0.42);
+    box-shadow: 0 0 90px 10px
+      color-mix(in oklch, var(--color-tv-signal) 42%, transparent);
   }
 }
 .tv-heartbeat {
@@ -546,6 +548,17 @@ html {
   .tv-aura,
   .tv-badge-pop {
     animation: none;
+  }
+
+  /* O carrossel de avisos continua GIRANDO — só a transição some. Parar de
+     girar esconderia cartazes de quem pediu menos movimento, e durante a espera
+     ele é a tela inteira: o certo é cortar seco entre um aviso e outro, não
+     congelar no primeiro.
+     `!important` porque o componente escreve a duração no atributo `style`
+     (CarrosselAvisos passa FADE_MS inline), e estilo inline ganha de regra de
+     folha sem ele. */
+  .tv-carrossel-slide {
+    transition-duration: 1ms !important;
   }
 }
 

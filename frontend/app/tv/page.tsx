@@ -446,6 +446,91 @@ const tempoDecorrido = (segundos: number) => {
   return `há ${h} h`
 }
 
+// `role="dialog"` + `aria-modal` prometem duas coisas ao teclado: o Tab não sai
+// do diálogo e o Esc fecha. Nenhuma das duas vem de graça no React — declarar o
+// papel sem implementá-las é pior que não declarar, porque quem navega por
+// teclado confia na promessa e cai na tela atrás sem perceber.
+//
+// Vale exatamente para o caso de uso desta tela: a recepção não opera a TV, mas
+// quem a MONTA pluga um teclado pra escolher a voz. É o único fluxo por teclado
+// que existe aqui, e é justamente o que os dois diálogos servem.
+//
+// `fechar` é lido por ref pra não re-inscrever os listeners a cada render do pai
+// (o poll de 1,5s re-renderiza esta árvore o dia inteiro).
+function useDialogoModal(
+  aberto: boolean,
+  fechar: () => void
+): React.RefObject<HTMLDivElement | null> {
+  const caixaRef = useRef<HTMLDivElement | null>(null)
+  const fecharRef = useRef(fechar)
+
+  // Em efeito, não no corpo: escrever em ref durante a render é o que o
+  // `react-hooks/refs` proíbe — no modo concorrente a render pode ser descartada
+  // e deixar o ref apontando pra um callback de uma árvore que nunca existiu.
+  useEffect(() => {
+    fecharRef.current = fechar
+  })
+
+  useEffect(() => {
+    if (!aberto) return
+
+    // Quem tinha o foco antes de abrir — pra devolver no fim. Sem isso, fechar o
+    // painel do rodapé jogaria o foco no <body> e o próximo Tab recomeçaria do
+    // topo da página, longe do botão que a pessoa acabou de usar.
+    const anterior = document.activeElement as HTMLElement | null
+
+    const focaveis = () => {
+      const raiz = caixaRef.current
+      if (!raiz) return [] as HTMLElement[]
+
+      return [
+        ...raiz.querySelectorAll<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        ),
+      ].filter((el) => !el.hasAttribute('disabled') && el.offsetParent !== null)
+    }
+
+    const aoTeclar = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        fecharRef.current()
+        return
+      }
+
+      if (e.key !== 'Tab') return
+
+      const itens = focaveis()
+      if (itens.length === 0) return
+
+      const primeiro = itens[0]
+      const ultimo = itens[itens.length - 1]
+      const atual = document.activeElement
+
+      // Ciclo manual nas pontas. O `!raiz.contains(atual)` cobre o caso de o foco
+      // ter escapado antes (clique fora, elemento removido do DOM): o próximo Tab
+      // traz de volta em vez de continuar passeando pela página de trás.
+      if (e.shiftKey && (atual === primeiro || !caixaRef.current?.contains(atual))) {
+        e.preventDefault()
+        ultimo.focus()
+      } else if (!e.shiftKey && atual === ultimo) {
+        e.preventDefault()
+        primeiro.focus()
+      }
+    }
+
+    document.addEventListener('keydown', aoTeclar)
+
+    return () => {
+      document.removeEventListener('keydown', aoTeclar)
+      // `isConnected`: devolver foco a um nó já removido do DOM não faz nada e
+      // deixaria o foco no <body> de qualquer forma.
+      if (anterior?.isConnected) anterior.focus()
+    }
+  }, [aberto])
+
+  return caixaRef
+}
+
 // O poll devolve a mesma lista o tempo todo; sem isto cada ciclo de 3s trocava a
 // identidade do array e re-renderizava a árvore inteira sem nada ter mudado.
 // A idade entra na comparação em granularidade de minuto — é o que a tela
@@ -786,7 +871,25 @@ export default function TVPage() {
             c.idade_segundos <= MAX_IDADE_ANUNCIO_S
         )
 
-        for (const c of lista) anunciados.current.add(c.id)
+        // PODADO a cada ciclo, não acumulado. Antes era só `add`, e num quiosque
+        // que fica dias aberto (o caso normal desta tela) o Set crescia sem teto:
+        // 1,5s de poll, ~57 mil ciclos por dia, todo id já visto guardado pra
+        // sempre. Recriar com o que a janela traz é O(6) — `LIMITE` na rota — e
+        // deixa a memória plana.
+        //
+        // Encolher é seguro porque quem impede o reanúncio de verdade é a
+        // `marcaDagua`, que só cresce: um id podado daqui e reintroduzido pela
+        // lista depois continua barrado por ter `chamado_em` abaixo da marca. O
+        // Set é a guarda de curto alcance — o mesmo id reaparecendo entre dois
+        // ciclos —, e pra isso a janela corrente basta.
+        //
+        // `novas` entra junto porque o anúncio é assíncrono (sino + fala): a
+        // chamada precisa continuar marcada mesmo se sair da janela antes de a
+        // fala terminar.
+        anunciados.current = new Set([
+          ...lista.map((c) => c.id),
+          ...novas.map((c) => c.id),
+        ])
 
         // Fora do `if`: a marca sobe mesmo na primeira carga e mesmo quando nada
         // é anunciado — é ela que impede a lista antiga de virar anúncio depois.
@@ -852,7 +955,11 @@ export default function TVPage() {
 
     const buscarClima = async () => {
       try {
-        const res = await fetch('/api/tv/clima/')
+        // `no-store` como nos outros dois polls. A rota já cacheia no servidor
+        // (revalidate 600), e era só isso que se queria — mas sem esta linha o
+        // cache do NAVEGADOR entra por cima, e numa aba que fica dias aberta ele
+        // pode servir uma temperatura bem mais velha que os 10 min do ciclo.
+        const res = await fetch('/api/tv/clima/', { cache: 'no-store' })
         const data = await res.json()
 
         if (!vivo) return
@@ -973,6 +1080,20 @@ export default function TVPage() {
       sentinela?.release().catch(() => {})
     }
   }, [audioLiberado])
+
+  // O modal de ativação NÃO fecha no Esc: sem o gesto de clique o navegador não
+  // destrava o áudio, então "fechar" ali deixaria a TV muda o dia inteiro com a
+  // aparência de estar funcionando. O Esc então reforça o único caminho — o
+  // mesmo `liberarAudio` do botão. Fechar sem liberar não é um estado que esta
+  // tela possa ter.
+  //
+  // A seta é necessária, não estilo: `liberarAudio` é um `const` declarado
+  // ABAIXO daqui, e passá-lo direto leria a variável na zona morta. Dentro da
+  // seta a leitura só acontece quando o Esc é pressionado, muito depois.
+  const caixaAtivacaoRef = useDialogoModal(!audioLiberado, () => liberarAudio())
+  const caixaVozRef = useDialogoModal(painelVozAberto, () =>
+    setPainelVozAberto(false)
+  )
 
   const liberarAudio = () => {
     audioLiberadoRef.current = true
@@ -1124,7 +1245,10 @@ export default function TVPage() {
           aria-labelledby="tv-audio-titulo"
           className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50"
         >
-          <div className="bg-tv-card rounded-2xl shadow-2xl p-8 flex flex-col items-center gap-4">
+          <div
+            ref={caixaAtivacaoRef}
+            className="bg-tv-card rounded-2xl shadow-2xl p-8 flex flex-col items-center gap-4"
+          >
             {/* neutro: quem carrega o accent neste modal é o botão, que é a
                 ação primária */}
             <Volume2 className="w-10 h-10 text-tv-ink-muted" strokeWidth={1.75} />
@@ -1174,7 +1298,10 @@ export default function TVPage() {
           aria-labelledby="tv-voz-titulo"
           className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50"
         >
-          <div className="bg-tv-card rounded-2xl shadow-2xl p-8 flex flex-col items-center gap-4">
+          <div
+            ref={caixaVozRef}
+            className="bg-tv-card rounded-2xl shadow-2xl p-8 flex flex-col items-center gap-4"
+          >
             <h2 id="tv-voz-titulo" className="text-2xl font-semibold text-tv-ink">
               Voz das chamadas
             </h2>
@@ -1199,10 +1326,17 @@ export default function TVPage() {
       {/* 🔷 HEADER */}
       <header className="h-[90px] flex items-center justify-between px-10 bg-tv-bar">
         <div className="flex items-center gap-4">
+          {/* width/height são as dimensões REAIS do arquivo (964x867), não o
+              tamanho na tela: servem só pra reservar a proporção antes do
+              decode. A altura continua vindo do `h-12`; sem elas o header
+              montava com 0px de largura e empurrava o título no primeiro
+              paint. */}
           <img
             src="/logo-universo-aba.png"
             alt="Universo ABA"
-            className="h-12 object-contain"
+            width={964}
+            height={867}
+            className="h-12 w-auto object-contain"
           />
 
           {/* o eyebrow "SISTEMA DE CHAMADA" saiu: 11px é ilegível a 3 m e ele só
@@ -1243,8 +1377,12 @@ export default function TVPage() {
                 aria-hidden="true"
                 className="absolute -inset-16 rounded-[64px] pointer-events-none blur-3xl tv-aura"
                 style={{
+                  // Derivado de --color-tv-signal, não o hex escrito à mão: a
+                  // aura, os anéis e o card precisam ser o MESMO laranja, e
+                  // literal repetido é como eles se separam calados quando
+                  // alguém troca o token.
                   background:
-                    'radial-gradient(closest-side, rgba(194,65,12,0.65), rgba(194,65,12,0) 72%)',
+                    'radial-gradient(closest-side, color-mix(in oklch, var(--color-tv-signal) 65%, transparent), transparent 72%)',
                 }}
               />
               <span
@@ -1631,6 +1769,8 @@ export default function TVPage() {
         <img
           src="/pulsar-lockup-tv-light.png"
           alt="Pulsar — sinais que importam"
+          width={1134}
+          height={462}
           className="h-[clamp(30px,4vh,46px)] w-auto object-contain"
         />
 

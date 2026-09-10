@@ -16,7 +16,14 @@ export type AvisoTV = {
  */
 export const DURACAO_SLIDE_MS = 12_000
 
-/** Duração do crossfade. Precisa casar com a classe `duration-` do <img>. */
+/**
+ * Duração do crossfade. Precisa casar com a classe `duration-` do <img>.
+ *
+ * Sob `prefers-reduced-motion` isto cai para 1ms via CSS (`.tv-carrossel-slide`
+ * em globals.css) — a troca vira um corte. O cartaz NÃO para de girar: parar
+ * seria esconder conteúdo de quem pediu menos movimento, e o carrossel é a
+ * única coisa na tela durante a espera. Some a transição, não a informação.
+ */
 const FADE_MS = 700
 
 /**
@@ -82,7 +89,7 @@ export const CarrosselAvisos = memo(function CarrosselAvisos({
           // `object-contain`: cartaz não pode ser cortado. O marketing desenha a
           // arte inteira, e um `cover` comeria justamente a borda onde costuma
           // estar o logo ou a data.
-          className={`absolute inset-0 w-full h-full object-contain transition-opacity duration-700 ease-out ${
+          className={`tv-carrossel-slide absolute inset-0 w-full h-full object-contain transition-opacity duration-700 ease-out ${
             i === seguro ? 'opacity-100' : 'opacity-0'
           }`}
           style={{ transitionDuration: `${FADE_MS}ms` }}
