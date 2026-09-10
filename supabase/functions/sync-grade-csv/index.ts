@@ -1,16 +1,36 @@
 // Sincroniza csv_grades_profissionais a partir da API csv_grade_profissionais da
 // TiTa. Dois modos, dois crons, duas responsabilidades que não se misturam:
 //
-//   modo "grade"    (padrão)  hoje → fim do mês seguinte, em fatias de 1 semana.
+//   modo "grade"    (padrão)  hoje → fim do mês seguinte, UM DIA POR FATIA.
 //                             Cuida da IDENTIDADE da sessão: insere o que é novo,
 //                             versiona o que mudou, inativa o que sumiu.
 //                             Cron sync-grade-csv-daily, 02:00 BRT.
 //
-//   modo "execucao"           hoje-45 → hoje, em fatias de 1 semana.
+//   modo "execucao"           hoje-45 → hoje, UM DIA POR FATIA.
 //                             Cuida do que se SABE sobre a sessão: status real e
 //                             evolução. Só faz UPDATE das colunas de execução, em
 //                             linha que já existe. Nunca insere, nunca inativa.
 //                             Cron sync-grade-execucao-daily, 04:00 BRT.
+//
+// ─── Por que UM DIA por fatia ─────────────────────────────────────────────────
+//
+// Até 2026-09-10 este cabeçalho dizia "fatias de 1 semana" e o laço NÃO EXISTIA:
+// o handler fazia uma única chamada com a janela inteira (~60 dias, ~14 mil
+// sessões). Não é carga que a Edge Function aguente — e o projeto já sabia
+// disso. O backfill de outubro (supabase/snippets/20260901_backfill_outubro_dia_a_dia.sql)
+// registra as duas tentativas anteriores: blocos de 7 dias morreram com
+// 546 WORKER_RESOURCE_LIMIT, blocos de 4 dias também. Só um dia por chamada
+// passou, e foi assim, à mão, 22 vezes, que outubro entrou.
+//
+// O efeito de não haver laço foi silencioso e durou 9 dias: o cron diário rodava,
+// pedia 60 dias, morria, e ninguém via — `net.http_post` é assíncrono e descarta
+// a resposta. Em 10/09/2026, na janela 01–07/10, isso valia 134 sessões reais
+// invisíveis para a Ocupação de Paciente (57 pacientes) e 169 horários que a tela
+// mostrava e já não existiam.
+//
+// Uma fatia que falha NÃO derruba as seguintes: cada dia é independente e o que
+// falhou vem discriminado na resposta (HTTP 207). Abortar na primeira falha foi
+// o que deixou outubro inteiro em zero.
 //
 // ─── Por que isto NÃO faz DELETE ──────────────────────────────────────────────
 //
@@ -227,6 +247,26 @@ function fimPadrao(): string {
 function diasAntes(iso: string, n: number): string {
   const [a, m, d] = iso.split("-").map(Number)
   return new Date(Date.UTC(a, m - 1, d - n)).toISOString().slice(0, 10)
+}
+
+/** Dia seguinte em ISO. UTC de propósito: aritmética de calendário, sem fuso. */
+function diaSeguinte(iso: string): string {
+  const [a, m, d] = iso.split("-").map(Number)
+  return new Date(Date.UTC(a, m - 1, d + 1)).toISOString().slice(0, 10)
+}
+
+/**
+ * Os dias da janela, um a um. Ver a nota "Por que UM DIA por fatia" no topo.
+ *
+ * Fim de semana entra: a clínica não atende, a TiTa devolve vazio e a fatia
+ * fecha em `total: 0`. Pular por dia da semana economizaria ~17 chamadas e
+ * criaria uma regra de negócio escondida no laço — se algum dia houver
+ * atendimento de sábado, ele sumiria calado.
+ */
+function diasDaJanela(inicio: string, fim: string): string[] {
+  const dias: string[] = []
+  for (let d = inicio; d <= fim; d = diaSeguinte(d)) dias.push(d)
+  return dias
 }
 
 /**
@@ -752,6 +792,12 @@ async function sincronizarGrade(
   //     só significa "foi apagado lá" se a resposta estiver inteira. Numa
   //     resposta truncada, inativar é destruir. Inserir continua liberado: dado
   //     a mais nunca foi o risco.
+  //
+  //     A guarda é uma RAZÃO (recebidos < ativos × FRACAO_MINIMA_PLAUSIVEL), não
+  //     um número absoluto, então vale igual em qualquer tamanho de janela. Com
+  //     uma fatia por dia ela ficou mais sensível, não menos: antes um dia
+  //     truncado se diluía entre os outros 59 da janela e passava do piso; agora
+  //     é avaliado sozinho, contra os ~800 ativos daquele dia.
   const naoVieram   = existentes.filter(e => !vistos.has(chave(e)))
   const protegidas  = naoVieram.filter(e => e.data === hoje).length
   const candidatas  = naoVieram.filter(e => e.data !== hoje).map(e => e.id)
@@ -1134,36 +1180,65 @@ serve(async (req: Request) => {
   }
   const { inicio: dataInicio, fim: dataFim, hoje } = janela
 
-  let recebidos: Registro[] | null
-  try {
-    recebidos = await buscarRegistros(dataInicio, dataFim)
-  } catch (e) {
-    return json({ error: e instanceof Error ? e.message : String(e) }, 502, cors)
-  }
-  if (recebidos === null) {
-    return json({ ok: true, modo, total: 0, dataInicio, dataFim }, 200, cors)
-  }
-
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
     auth: { persistSession: false },
   })
 
-  // Sem este catch, qualquer exceção do merge escapa do serve() e o runtime
-  // devolve um "Internal Server Error" pelado, sem corpo e sem causa. Foi o que
-  // aconteceu em 3 das 9 fatias do backfill de 2026-08-06: o cron não teria como
-  // distinguir isso de um problema de plataforma, e a fatia ficaria pela metade
-  // em silêncio. Agora a causa vem no corpo da resposta.
-  try {
-    const resultado = modo === "execucao"
-      ? await sincronizarExecucao(sb, recebidos, dataInicio, dataFim)
-      : await sincronizarGrade(sb, recebidos, dataInicio, dataFim, hoje)
+  const dias = diasDaJanela(dataInicio, dataFim)
+  const fatias: Record<string, unknown>[] = []
+  const total: Record<string, number> = {}
 
-    const resumo = { ok: true, dataInicio, dataFim, ...resultado }
-    console.log(`[sync-grade-csv] ${JSON.stringify(resumo)}`)
-    return json(resumo, 200, cors)
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e)
-    console.error(`[sync-grade-csv] FALHA modo=${modo} ${dataInicio}..${dataFim}: ${msg}`)
-    return json({ ok: false, erro: msg, modo, dataInicio, dataFim }, 500, cors)
+  // Uma fatia por dia, e o erro de uma não contamina as outras. O catch por fatia
+  // substitui o try/catch único que existia aqui: sem ele, qualquer exceção do
+  // merge escapava do serve() e o runtime devolvia um "Internal Server Error"
+  // pelado — foi o que aconteceu em 3 das 9 fatias do backfill de 2026-08-06, e
+  // era indistinguível de falha de plataforma.
+  for (const dia of dias) {
+    try {
+      const recebidos = await buscarRegistros(dia, dia)
+      // null = a TiTa respondeu, mas sem conteúdo aproveitável para o dia. É o
+      // caso normal de fim de semana; não é erro e não interrompe o laço.
+      if (recebidos === null) {
+        fatias.push({ data: dia, ok: true, recebidos: 0 })
+        continue
+      }
+
+      const r = modo === "execucao"
+        ? await sincronizarExecucao(sb, recebidos, dia, dia)
+        : await sincronizarGrade(sb, recebidos, dia, dia, hoje)
+
+      fatias.push({ data: dia, ok: true, ...r })
+      for (const [k, v] of Object.entries(r)) {
+        if (typeof v === "number") total[k] = (total[k] ?? 0) + v
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      console.error(`[sync-grade-csv] FALHA modo=${modo} dia=${dia}: ${msg}`)
+      fatias.push({ data: dia, ok: false, erro: msg })
+    }
   }
+
+  const falhas = fatias.filter(f => !f.ok)
+  const resumo = {
+    ok: falhas.length === 0,
+    modo,
+    dataInicio,
+    dataFim,
+    diasPedidos: dias.length,
+    diasComFalha: falhas.length,
+    total,
+    fatias,
+  }
+
+  // O cron descarta a resposta (net.http_post é assíncrono), então o log é o
+  // único lugar onde a falha de uma fatia fica visível. Ver o P1 do plano: o que
+  // fecha essa lacuna de verdade é um alarme sobre visto_em das datas futuras.
+  console.log(`[sync-grade-csv] ${JSON.stringify({ ...resumo, fatias: undefined })}`)
+  if (falhas.length) {
+    console.error(`[sync-grade-csv] ${falhas.length}/${dias.length} fatias falharam: ${falhas.map(f => f.data).join(", ")}`)
+  }
+
+  // 207 (Multi-Status) quando parte entrou e parte falhou: 200 mentiria e 500
+  // esconderia o que foi gravado com sucesso.
+  return json(resumo, falhas.length === 0 ? 200 : 207, cors)
 })
