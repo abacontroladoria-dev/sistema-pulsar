@@ -35,8 +35,8 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { api } from '@/services/api';
+import { crmApi } from '@/services/crm/client';
 import { Contact, TeamMember } from '@/types';
-import { getSupabaseClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 
 // Schema para contato existente
@@ -147,11 +147,14 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({
     if (open) {
       const loadData = async () => {
         try {
-          const [contactsData, teamData] = await Promise.all([
-            api.fetchContacts(),
+          // Contatos vêm da Central (central.contacts) — é lá que eles vivem.
+          // api.fetchContacts() devolvia [] fixo, então o seletor "contato
+          // existente" nunca listava ninguém.
+          const [respostaContatos, teamData] = await Promise.all([
+            fetch('/api/central/contacts/?limit=200').then(r => r.json()),
             api.fetchTeam(),
           ]);
-          setContacts(contactsData);
+          setContacts(respostaContatos?.data ?? []);
           setTeamMembers(teamData);
         } catch (error) {
           console.error('Error loading data:', error);
@@ -172,66 +175,109 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({
     try {
       let contactId = data.contact_mode === 'existing' ? data.contact_id : '';
 
-      // Se for novo contato, criar primeiro
+      // ------------------------------------------------------------------
+      // Novo contato: vai por /api/central/contacts.
+      //
+      // O código anterior falava com `public.contacts` e `public.deals` pelo
+      // client do browser — schemas que não existem (contatos ficam em
+      // `central`, deals em `crm`), então nunca criou contato algum.
+      //
+      // Ele também apagava o deal recém-criado pelo trigger
+      // crm.auto_create_deal_on_lead(). Isso não é mais necessário nem
+      // desejável: o trigger só dispara para contact_type = 'lead', e um
+      // contato criado aqui nasce como 'lead' de propósito — o deal que o
+      // trigger cria É o deal que este formulário quer. Apagar e recriar
+      // perderia o vínculo com a conversa de origem.
+      // ------------------------------------------------------------------
       if (data.contact_mode === 'new') {
-        // Verificar se telefone já existe
-        const { data: existingContact } = await getSupabaseClient()
-          .from('contacts')
-          .select('id')
-          .eq('phone_number', data.new_contact_phone)
-          .maybeSingle();
+        // A API exige E.164 (+5521999999999). O formulário aceita o telefone
+        // como a pessoa digita — "(21) 99999-9999" —, então normalizamos aqui.
+        // Sem DDI assume-se Brasil, que é o caso de 100% dos contatos hoje.
+        const somenteDigitos = data.new_contact_phone.replace(/\D/g, '');
+        const telefoneE164 = somenteDigitos.startsWith('55')
+          ? `+${somenteDigitos}`
+          : `+55${somenteDigitos}`;
 
-        if (existingContact) {
-          toast.error('Já existe um contato com este telefone');
+        // Barra final obrigatoria: trailingSlash:true faz POST sem barra virar
+        // 308 que NAO chega ao handler.
+        const resposta = await fetch('/api/central/contacts/', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({
+            name:         data.new_contact_name,
+            displayPhone: telefoneE164,
+            // contact_type 'lead' é o que faz o trigger
+            // crm.auto_create_deal_on_lead() criar o deal automaticamente.
+            contactType:  'lead',
+            ...(data.new_contact_email
+              ? { displayEmail: data.new_contact_email }
+              : {}),
+          }),
+        });
+
+        const corpo = await resposta.json().catch(() => null);
+
+        if (!resposta.ok) {
+          // 409 = telefone já cadastrado. É o caso comum, merece mensagem própria.
+          toast.error(
+            resposta.status === 409
+              ? 'Já existe um contato com este telefone'
+              : corpo?.error?.message ?? 'Erro ao criar contato'
+          );
           setIsSubmitting(false);
           return;
         }
 
-        // Criar novo contato (o trigger NÃO será acionado porque inserimos is_blocked = false explicitamente)
-        const { data: newContact, error: contactError } = await getSupabaseClient()
-          .from('contacts')
-          .insert({
-            name: data.new_contact_name,
-            phone_number: data.new_contact_phone,
-            email: data.new_contact_email || null,
-          })
-          .select('id')
-          .single();
-
-        if (contactError || !newContact) {
-          console.error('Error creating contact:', contactError);
-          toast.error('Erro ao criar contato');
-          setIsSubmitting(false);
-          return;
-        }
-
-        contactId = newContact.id;
+        contactId = corpo?.data?.id;
         toast.success('Contato criado com sucesso!');
-
-        // Deletar deal criado automaticamente pelo trigger (se existir)
-        await getSupabaseClient()
-          .from('deals')
-          .delete()
-          .eq('contact_id', contactId);
       }
 
-      // Parse tags
       const tagsArray = data.tags
         ? data.tags.split(',').map(t => t.trim()).filter(t => t.length > 0)
         : [];
 
-      // Criar o deal
-      await api.createDeal({
-        contact_id: contactId,
-        title: data.title,
-        company: data.company,
-        value: data.value,
-        stage: 'new',
-        priority: data.priority,
-        tags: tagsArray,
-        due_date: data.due_date ? format(data.due_date, 'yyyy-MM-dd') : undefined,
-        owner_id: data.owner_id,
-      });
+      // `company` do formulário não tem coluna correspondente em crm.deals
+      // (é clínica, não B2B). Vai para a descrição para não se perder.
+      const camposDoNegocio = {
+        title:             data.title,
+        description:       data.company || null,
+        value:             data.value,
+        priority:          data.priority,
+        tags:              tagsArray,
+        expectedCloseDate: data.due_date ? format(data.due_date, 'yyyy-MM-dd') : null,
+      };
+
+      // ------------------------------------------------------------------
+      // Contato novo entrou como 'lead', então o trigger
+      // crm.auto_create_deal_on_lead() JÁ criou um negócio para ele — e
+      // uq_open_deal_per_contact permite só um aberto por contato.
+      //
+      // Criar outro aqui bateria em 409 sempre. O certo é preencher o que o
+      // trigger criou (ele nasce com título genérico e sem valor) com o que
+      // o formulário informou.
+      //
+      // A busca é por contactId + status aberto: é exatamente a chave do
+      // índice único, então devolve no máximo um.
+      // ------------------------------------------------------------------
+      let dealDoTrigger: { id: string } | null = null;
+      if (data.contact_mode === 'new' && contactId) {
+        const busca = await fetch(
+          `/api/crm/deals?status=open&limit=1000`
+        ).then(r => r.json()).catch(() => null);
+
+        dealDoTrigger =
+          (busca?.data ?? []).find((d: any) => d.contact_id === contactId) ?? null;
+      }
+
+      if (dealDoTrigger) {
+        await crmApi.updateDeal(dealDoTrigger.id, camposDoNegocio);
+      } else {
+        await crmApi.createDeal({
+          ...camposDoNegocio,
+          contactId: contactId || null,
+          source:    'manual',
+        });
+      }
 
       toast.success('Deal criado com sucesso!');
       form.reset();
@@ -240,7 +286,9 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({
       onDealCreated();
     } catch (error) {
       console.error('Error creating deal:', error);
-      toast.error('Erro ao criar deal');
+      // A mensagem do backend é a útil: diz se foi permissão, contato com deal
+      // aberto (409) ou funil sem estágios.
+      toast.error(error instanceof Error ? error.message : 'Erro ao criar deal');
     } finally {
       setIsSubmitting(false);
     }
