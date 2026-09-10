@@ -40,6 +40,12 @@
 // dentro ao esgotar recurso, entregue como 500 SEM corpo. O que tinha entrado
 // estava correto; o que faltava era saber onde parou.
 //
+// O número 4 se repetiu EXATAMENTE na segunda tentativa (11,12,14,15/09 e depois
+// 16,17,18,19/09), inclusive com um teto de tempo de 45s que nunca chegou a
+// disparar. Isso descartou relógio como causa: o que acaba é recurso do cliente,
+// que acumula estado a cada select/insert. Daí o cliente ser criado POR FATIA e
+// as fatias guardarem só números — ver o laço no handler.
+//
 // Então o laço para sozinho em TETO_EXECUCAO_MS e dispara a continuação do ponto
 // exato (`proximoDia`), até MAX_SALTOS. Sem isso o cron diário — que manda {} e
 // não lê a resposta — cobriria só os primeiros dias e nunca alcançaria o fim do
@@ -1230,7 +1236,13 @@ serve(async (req: Request) => {
   }
   const { inicio: dataInicio, fim: dataFim, hoje } = janela
 
-  const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+  // Um cliente NOVO por fatia, criado dentro do laço. Reusar um só ao longo de
+  // ~20 dias foi o que produziu o "Cannot read properties of undefined (reading
+  // 'error')": o cliente do esm.sh acumula estado interno a cada select/insert e,
+  // depois de ~4 dias de trabalho (~900 linhas cada), quebra por dentro e devolve
+  // undefined onde deveria vir { data, error }. Medido duas vezes seguidas em
+  // 2026-09-10, sempre nos mesmos 4 dias úteis — não era relógio, era recurso.
+  const clientePorFatia = () => createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
     auth: { persistSession: false },
   })
 
@@ -1266,11 +1278,15 @@ serve(async (req: Request) => {
         continue
       }
 
+      const sb = clientePorFatia()
       const r = modo === "execucao"
         ? await sincronizarExecucao(sb, recebidos, dia, dia)
         : await sincronizarGrade(sb, recebidos, dia, dia, hoje)
 
-      fatias.push({ data: dia, ok: true, ...r })
+      // Só os números por dia. Guardar o objeto inteiro de cada fatia fazia a
+      // resposta (e a memória) crescerem com a janela — numa janela de 60 dias
+      // isso é lixo acumulado a troco de nada.
+      fatias.push({ data: dia, ok: true, recebidos: r.recebidos })
       for (const [k, v] of Object.entries(r)) {
         if (typeof v === "number") total[k] = (total[k] ?? 0) + v
       }
