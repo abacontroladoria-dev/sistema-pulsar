@@ -95,6 +95,9 @@ export const MODELOS_RELATORIOS: Record<"grade" | "pe", ModeloRelatorio> = {
       "Nome Terapia(Atividade) PDI/ABA", "Possui Tratativa", "Id Profissional Tratativa",
       "Nome Profissional Tratativa", "Criação Tratativa", "Origem Tratativa",
       "Vínculo da Evolução", "Agendamento Criado Em", "Agendamento Excluído Em",
+      // 43ª coluna, apareceu em setembro/2026. Sem ela aqui o upload manual de um
+      // CSV baixado hoje é REJEITADO: validarModeloRelatorio exige extras.length === 0.
+      "Descrição da Evolução",
     ],
   },
   pe: {
