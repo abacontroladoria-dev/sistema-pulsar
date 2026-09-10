@@ -139,14 +139,16 @@ const FRACAO_MINIMA_PLAUSIVEL = 0.8
  * recurso, devolvido como 500 sem corpo. O que já tinha entrado estava correto e
  * não se perdeu; o problema era não saber onde parou.
  *
- * 45s é deliberadamente CURTO. O que matou a rodada de 20 dias não foi só o
- * relógio: foi recurso (memória/conexões) acabando depois de ~4 dias úteis de
- * trabalho. Um teto alto demais seria morto antes de chegar à continuação, e aí
- * o encadeamento nunca aconteceria — o teto precisa disparar ANTES do ponto em
- * que a plataforma desiste, não perto dele. Melhor três saltos curtos que uma
- * rodada longa que morre calada.
+ * Deliberadamente CURTO, e afinado por medição em 2026-09-10. O que derruba a
+ * rodada não é relógio: é recurso do processo acabando depois de alguns dias de
+ * trabalho (~900 linhas cada). O teto precisa disparar ANTES desse ponto, senão
+ * a execução é morta antes de chegar à continuação e o encadeamento não acontece
+ * — foi o que aconteceu com 45s, que rendia 3 dias e morria no 4º.
+ *
+ * Com 25s a fatia fecha em 2 dias e sobra margem para o encadeamento sair. Duas
+ * rodadas curtas que continuam valem mais que uma longa que morre calada.
  */
-const TETO_EXECUCAO_MS = 45_000
+const TETO_EXECUCAO_MS = 25_000
 
 /**
  * Quantas vezes a execução pode se reencadear para terminar a janela.
@@ -156,11 +158,14 @@ const TETO_EXECUCAO_MS = 45_000
  * chamaria para sempre.
  *
  * Dimensionado pelo pior caso real: janela máxima de ~62 dias (hoje → fim do mês
- * seguinte) com o teto curto de 45s rendendo ~2 dias por salto = ~31 saltos. 40
- * dá folga sem virar recursão infinita — e o laço só reencadeia quando SOBROU
+ * seguinte) com o teto de 25s rendendo ~2 dias por salto = ~31 saltos. 45 dá
+ * folga sem virar recursão infinita — e o laço só reencadeia quando SOBROU
  * janela, então em regime normal isso nunca é alcançado.
+ *
+ * Fim de semana é fatia barata (a TiTa devolve vazio), então o número real de
+ * saltos numa janela de mês fica bem abaixo do teórico.
  */
-const MAX_SALTOS = 40
+const MAX_SALTOS = 45
 
 type Modo = "grade" | "execucao"
 
