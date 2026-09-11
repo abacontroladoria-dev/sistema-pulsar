@@ -24,6 +24,25 @@ const GRUPOS: { status: StatusPdi; rotulo: string; icone: typeof AlertOctagon; t
   { status: "Dentro do prazo", rotulo: "Dentro do prazo", icone: CircleCheck, tom: "text-emerald-600 dark:text-emerald-400" },
 ]
 
+/**
+ * O que a linha do paciente mostra à direita. Era `ID {pacienteId}` — o campo
+ * menos acionável disponível: ninguém cobra um PDI por id interno. Aqui vale a
+ * MAGNITUDE, que é o que decide quem é chamado primeiro: dias de atraso quando
+ * atrasado, dias restantes quando o prazo se aproxima, e a data de fechamento
+ * nos demais. `diasRestantes` e `prazoFechamento` já vêm prontos no ItemPdi.
+ */
+function prazoDoItem(item: ItemPdi): string {
+  const dias = item.diasRestantes
+  if (dias !== null) {
+    if (dias < 0) return `${Math.abs(dias)} ${Math.abs(dias) === 1 ? "dia" : "dias"} de atraso`
+    if (dias === 0) return "vence hoje"
+    if (dias <= 15) return `faltam ${dias} ${dias === 1 ? "dia" : "dias"}`
+  }
+  if (!item.prazoFechamento) return "sem prazo"
+  const [ano, mes, dia] = item.prazoFechamento.slice(0, 10).split("-")
+  return ano && mes && dia ? `vence ${dia}/${mes}` : "sem prazo"
+}
+
 export function AnalistaDetalheModal({
   analistaNome,
   itens,
@@ -45,9 +64,21 @@ export function AnalistaDetalheModal({
     >
       <div className="space-y-5">
         {GRUPOS.map((grupo) => {
+          // Por URGÊNCIA, não por nome: dentro de "Atrasados" o que interessa
+          // é quem está atrasado há mais tempo, não quem começa com A. Quem
+          // não tem `diasRestantes` (Aguardando Implementação) cai no fim, em
+          // ordem alfabética.
           const doGrupo = itens
             .filter((i) => i.status === grupo.status)
-            .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"))
+            .sort((a, b) => {
+              if (a.diasRestantes === null && b.diasRestantes === null) {
+                return a.nome.localeCompare(b.nome, "pt-BR")
+              }
+              if (a.diasRestantes === null) return 1
+              if (b.diasRestantes === null) return -1
+              if (a.diasRestantes !== b.diasRestantes) return a.diasRestantes - b.diasRestantes
+              return a.nome.localeCompare(b.nome, "pt-BR")
+            })
           if (doGrupo.length === 0) return null
           const Icone = grupo.icone
           return (
@@ -62,10 +93,12 @@ export function AnalistaDetalheModal({
                     <button
                       type="button"
                       onClick={() => onAbrirPaciente(item)}
-                      className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm outline-none hover:bg-muted focus-visible:bg-muted"
+                      className="flex min-h-11 w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm outline-none transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                     >
                       <span className="truncate text-foreground">{item.nome}</span>
-                      <span className="shrink-0 text-xs text-muted-foreground">ID {item.pacienteId}</span>
+                      <span className={`shrink-0 text-xs font-semibold tabular-nums ${grupo.tom}`}>
+                        {prazoDoItem(item)}
+                      </span>
                     </button>
                   </li>
                 ))}
