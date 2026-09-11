@@ -1,9 +1,29 @@
 # Padrão de detalhamento em modal
 
+**Este é o padrão de modal de detalhamento do sistema.** Modal novo que abre o
+detalhe de uma linha de lista nasce daqui — não de um desenho próprio. Decidido
+com o usuário em 11/09/2026, depois da terceira tela adotá-lo.
+
 Como a **Análise de Evolução** (`/analise-tratativas`) foi redesenhada, escrito
 para ser replicado em outra tela. Referência viva: commit `678cce7`, arquivos em
 `frontend/components/central-terapeutas/tratativas/` e
 `frontend/lib/remuneracao/evolucao.ts`.
+
+## Telas que já seguem o padrão
+
+Em ordem de adoção — a primeira é a referência, as outras mostram o que varia:
+
+| Tela | Modal | O que essa adoção ensina |
+|---|---|---|
+| Análise de Evolução (`/analise-tratativas`) | `tratativas/ModalAnaliseTerapeuta.tsx` | A referência original: as três camadas, os buckets, a partição em abas. |
+| Rem. Mês - Total (`/relacionamento-prestador/rp`) | `cronograma/remuneracao/ModalRemuneracaoRP.tsx` | Que o padrão aguenta **dinheiro** e uma fórmula de duas vias (base de sessões, depois valor). |
+| PDI - Painel por Analista (`/terapeutico/pdi-painel-analista`) | `terapeutico/pdi/AnalistaDetalheModal.tsx` | Que a **composição é opcional**: quando os status são uma partição e não uma conta, a fila de `PassoConta`/`Conector` sai e ficam header + resultado + abas. Também o caso de **modal empilhado** (ver §3.13). |
+
+Os auxiliares de apresentação (`PassoConta`, `Conector`, `ResultadoNumero`,
+`CampoDetalhe`, `paginasVisiveis`) estão **duplicados** nos três arquivos, de
+propósito e com comentário dizendo isso. A terceira adoção era o gatilho
+combinado para extrair um kit compartilhado; quando isso for feito, é nos três
+que se mexe, e esta tabela é a lista de chamada.
 
 ---
 
@@ -190,6 +210,26 @@ Trocar a entidade aberta reseta aba/página/detalhe **remontando** o modal:
 
 `useEffect` que faz `setState` para resetar viola `react-hooks/set-state-in-effect`
 e ainda pisca com o valor antigo.
+
+### 3.13 Modal empilhado sobre este precisa furar o trap de foco
+
+Quando uma linha da tabela abre **outro** modal por cima (no PDI, clicar no nome
+abre a edição do paciente), os dois não convivem sozinhos: o `Dialog` do Radix
+prende o foco na própria árvore, e o modal de cima costuma ser um
+`createPortal` para o `document.body` — fora dela. Sem guarda, o trap disputa
+cada clique e cada `Tab` com os campos do modal de cima, e um clique lá dentro
+conta como "fora" e fecha o de baixo.
+
+```tsx
+<DialogContent
+  onInteractOutside={e => e.preventDefault()}
+  onPointerDownOutside={e => e.preventDefault()}
+>
+```
+
+O empilhamento em si já funciona por `z-index` (o `Dialog` fica em `z-50`, e
+`Z_MODAL_EMPILHADO` do `ScheduleModal` é `70`) — o que falta é só desarmar o
+trap. Ver `AnalistaDetalheModal.tsx` + `PdiDetalheModal.tsx`.
 
 ---
 
