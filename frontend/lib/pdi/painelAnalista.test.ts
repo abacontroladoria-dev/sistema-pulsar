@@ -31,6 +31,7 @@ function item(over: Partial<ItemPdi> & { status: ItemPdi["status"] }): ItemPdi {
     autorizadoAmbienteNatural: false,
     elegivel: true,
     temAgendamentoPrimeiraSemanaMesSeguinte: true,
+    temAbaNaAgenda: true,
     cadastroDuplicadoTita: false,
     diasClinicos: [],
     turnoClinico: null,
@@ -183,22 +184,34 @@ test("12 · bem mais que 5 => vermelho", () => {
 
 // ─── filtrarAtivosComAutorizacaoAba ──────────────────────────────────────────
 
-test("13 · elegível E ativo => entra", () => {
-  const itens = [item({ status: "Atrasado", elegivel: true, temAgendamentoPrimeiraSemanaMesSeguinte: true })]
+// Desde 11/09/2026 a população é definida pela AGENDA (`temAbaNaAgenda`), não
+// pelo laudo (`elegivel`) — ver o comentário de `filtrarAtivosComAutorizacaoAba`.
+// Os quatro casos abaixo travam as duas regressões relatadas na auditoria.
+
+test("13 · tem ABA na agenda => entra", () => {
+  const itens = [item({ status: "Atrasado", temAbaNaAgenda: true })]
   assert.strictEqual(filtrarAtivosComAutorizacaoAba(itens).length, 1)
 })
 
-test("14 · elegível mas NÃO ativo (sem sessão na 1ª semana do mês seguinte) => fora", () => {
-  const itens = [item({ status: "Atrasado", elegivel: true, temAgendamentoPrimeiraSemanaMesSeguinte: false })]
+test("14 · laudo diz ABA mas NÃO há ABA na agenda => fora (falso positivo de 'Sem Coordenador')", () => {
+  // O caso dos 5 pacientes da auditoria de 11/09/2026: "Psicologia ABA" no
+  // relatório Órbita, agenda só com Fono/TO/Psicopedagogia. Entravam no painel
+  // e, sem Coordenador de Caso na grade, apareciam como "Sem Coordenador".
+  const itens = [item({ status: "Atrasado", elegivel: true, temAbaNaAgenda: false })]
   assert.strictEqual(filtrarAtivosComAutorizacaoAba(itens).length, 0)
 })
 
-test("15 · ativo mas NÃO elegível (tracked-só, caiu do relatório) => fora", () => {
-  const itens = [item({ status: "Atrasado", elegivel: false, temAgendamentoPrimeiraSemanaMesSeguinte: true })]
-  assert.strictEqual(filtrarAtivosComAutorizacaoAba(itens).length, 0)
+test("15 · ABA na agenda mesmo SEM laudo 'Psicologia ABA' => entra (paciente que sumia do coordenador)", () => {
+  // O caso dos 7 pacientes da auditoria: atendimento ABA real na agenda, com
+  // Coordenador de Caso, mas o laudo dizia "Aplicador ABA" / "Coordenador de
+  // Caso" / nada. Ficavam fora do painel e o coordenador perdia paciente.
+  const itens = [item({ status: "Atrasado", elegivel: false, temAbaNaAgenda: true })]
+  assert.strictEqual(filtrarAtivosComAutorizacaoAba(itens).length, 1)
 })
 
-test("16 · nem elegível nem ativo => fora", () => {
-  const itens = [item({ status: "Atrasado", elegivel: false, temAgendamentoPrimeiraSemanaMesSeguinte: false })]
+test("16 · sem ABA na agenda => fora, mesmo marcado como ativo", () => {
+  const itens = [
+    item({ status: "Atrasado", temAbaNaAgenda: false, temAgendamentoPrimeiraSemanaMesSeguinte: true }),
+  ]
   assert.strictEqual(filtrarAtivosComAutorizacaoAba(itens).length, 0)
 })

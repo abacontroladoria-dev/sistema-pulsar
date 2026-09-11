@@ -109,11 +109,25 @@ export interface ItemPdi {
    * (Especialidade "Psicologia ABA" — ver `lib/pdi/elegibilidade.ts`). `false`
    * para um paciente TRACKED-só (já tem linha em `pdi_controle_prazos`, mas
    * caiu do relatório de hoje — ver o cabeçalho de `juntar.ts`). Usado pelo
-   * "PDI - Painel por Analista" (`lib/pdi/painelAnalista.ts::filtrarAtivosComAutorizacaoAba`)
-   * para responder "tem autorização ABA?" sem depender de estar na lista por
-   * outro motivo.
+   * NÃO é mais o critério do "PDI - Painel por Analista": desde 11/09/2026 o
+   * painel pergunta "é de ABA?" à AGENDA (`temAbaNaAgenda` abaixo), a mesma
+   * fonte que define o coordenador — ver o bloco de comentário em
+   * `lib/pdi/agenda.ts` sobre a divergência laudo × agenda. Continua
+   * calculado e exposto: é o sinal de laudo, usado pela tela de Controle de
+   * Prazos e útil para cruzar autorização × execução.
    */
   elegivel: boolean
+  /**
+   * Existe alguma terapia de ABA agendada na primeira semana do mês SEGUINTE
+   * a hoje — ver `lib/pdi/agenda.ts::temTerapiaAbaPrimeiraSemanaMesSeguinte`
+   * e o bloco de comentário que explica por que a agenda substituiu o laudo
+   * como critério de "paciente de ABA" (correção de 11/09/2026).
+   *
+   * É o filtro de população do "PDI - Painel por Analista"
+   * (`lib/pdi/painelAnalista.ts::filtrarAtivosComAutorizacaoAba`). Implica
+   * `temAgendamentoPrimeiraSemanaMesSeguinte`: uma sessão de ABA é uma sessão.
+   */
+  temAbaNaAgenda: boolean
   /**
    * Existe QUALQUER sessão agendada (de qualquer terapia) na primeira semana
    * do mês SEGUINTE a hoje — ver

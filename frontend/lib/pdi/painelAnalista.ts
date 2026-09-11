@@ -41,25 +41,34 @@ import type { ItemPdi } from "@/lib/pdi/filtros"
 
 /**
  * A população do "PDI - Painel por Analista" inteiro (Painel Executivo,
- * Semáforo, PDIs por Coordenador) — pedido do usuário (05/09/2026): "precisa
- * ser o total com autorização ABA de pacientes ativos". Dois critérios, os
- * dois obrigatórios:
+ * Semáforo, PDIs por Coordenador): os pacientes de ABA ativos — pedido do
+ * usuário (05/09/2026), "precisa ser o total com autorização ABA de pacientes
+ * ativos".
  *
- *   1. `elegivel` — tem autorização ABA HOJE pelo relatório Órbita (não basta
- *      estar na lista por já ter linha em `pdi_controle_prazos`; um paciente
- *      tracked-só que caiu do relatório não conta aqui).
- *   2. `temAgendamentoPrimeiraSemanaMesSeguinte` — "ativo": tem no mínimo uma
- *      sessão agendada (de qualquer terapia, não só ABA) na primeira semana
- *      do mês seguinte, ver lib/pdi/agenda.ts. Critério do usuário,
- *      DIFERENTE de `ativoNaGrade` (janela de ~45 dias, usado pela tela de
- *      Controle de Prazos) — os dois convivem, cada um na sua tela.
+ * UM critério, desde a correção de 11/09/2026: ter terapia de ABA agendada na
+ * primeira semana do mês seguinte (`temAbaNaAgenda`, ver
+ * lib/pdi/agenda.ts::temTerapiaAbaPrimeiraSemanaMesSeguinte).
+ *
+ * A versão anterior usava `elegivel && temAgendamentoPrimeiraSemanaMesSeguinte`
+ * — ABA pelo LAUDO (relatório Órbita) e atividade pela AGENDA. Duas fontes
+ * que precisam concordar e não concordam: o painel mostrava paciente com
+ * laudo ABA sem nenhuma sessão de ABA (aparecendo eternamente em "Sem
+ * Coordenador", problema de ninguém) e escondia paciente em atendimento ABA
+ * cujo laudo não dizia exatamente "Psicologia ABA" (roubando pacientes da
+ * lista do próprio coordenador). O bloco de comentário em lib/pdi/agenda.ts
+ * traz a medição dos dois casos.
+ *
+ * O critério de "ativo" não sumiu, foi absorvido: `temAbaNaAgenda` olha a
+ * mesma janela e uma sessão de ABA já é uma sessão, então quem não tem agenda
+ * não passa. `elegivel` continua no `ItemPdi` — é o sinal de LAUDO, útil para
+ * cruzar autorização × execução, mas não define mais a população daqui.
  *
  * Aplicado no CHAMADOR (`PainelAnalistaShell.tsx`) antes de passar `itens`
  * para `calcularResumoExecutivo`/`agruparPorAnalista`/`calcularSemaforo` — as
  * três continuam genéricas, operando sobre qualquer `ItemPdi[]`.
  */
 export function filtrarAtivosComAutorizacaoAba(itens: ItemPdi[]): ItemPdi[] {
-  return itens.filter((i) => i.elegivel && i.temAgendamentoPrimeiraSemanaMesSeguinte)
+  return itens.filter((i) => i.temAbaNaAgenda)
 }
 
 /** Uma linha da tabela "PDIs por Coordenador" — um Coordenador de Caso (Analista) distinto. */

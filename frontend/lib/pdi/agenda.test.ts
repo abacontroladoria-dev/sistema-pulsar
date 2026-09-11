@@ -15,6 +15,9 @@ import {
   coordenadorDoCaso,
   coordenadoresDetalhados,
   temAgendamentoPrimeiraSemanaMesSeguinte,
+  temTerapiaAbaPrimeiraSemanaMesSeguinte,
+  PACIENTES_PLACEHOLDER,
+  TERAPIAS_ABA,
   type LinhaGradePdi,
 } from "./agenda"
 
@@ -361,4 +364,73 @@ test("40 · lista vazia => false", () => {
 test("41 · linha sem data legível é ignorada", () => {
   const rows = [linha({ terapia_nome: "Fonoaudiologia", data: null })]
   assert.strictEqual(temAgendamentoPrimeiraSemanaMesSeguinte(rows, "2026-09-04"), false)
+})
+
+// ─── temTerapiaAbaPrimeiraSemanaMesSeguinte ──────────────────────────────────
+//
+// O critério de "paciente de ABA" desde 11/09/2026 — ver o bloco laudo ×
+// agenda em agenda.ts. Casos 42-49 travam a auditoria que motivou a troca.
+
+test("42 · Aplicador ABA na janela => true", () => {
+  const rows = [linha({ terapia_nome: "Aplicador ABA (PS)", data: "2026-10-03" })]
+  assert.strictEqual(temTerapiaAbaPrimeiraSemanaMesSeguinte(rows, "2026-09-04"), true)
+})
+
+test("43 · agenda só com terapias não-ABA => false (o falso positivo da auditoria)", () => {
+  // Os 5 pacientes com "Psicologia ABA" no laudo e nenhuma ABA na agenda.
+  const rows = [
+    linha({ terapia_nome: "Fonoaudiologia", data: "2026-10-03" }),
+    linha({ terapia_nome: "Terapia Ocupacional", data: "2026-10-05" }),
+    linha({ terapia_nome: "Psicopedagogia", data: "2026-10-06" }),
+  ]
+  assert.strictEqual(temTerapiaAbaPrimeiraSemanaMesSeguinte(rows, "2026-09-04"), false)
+})
+
+test("44 · Coordenador de Caso sozinho conta como ABA", () => {
+  const rows = [linha({ terapia_nome: "Coordenador de Caso", data: "2026-10-05" })]
+  assert.strictEqual(temTerapiaAbaPrimeiraSemanaMesSeguinte(rows, "2026-09-04"), true)
+})
+
+test("45 · Supervisão ABA sozinha conta como ABA", () => {
+  const rows = [linha({ terapia_nome: "Supervisão ABA", data: "2026-10-05" })]
+  assert.strictEqual(temTerapiaAbaPrimeiraSemanaMesSeguinte(rows, "2026-09-04"), true)
+})
+
+test("46 · ambiente natural (Casa/Escola) conta como ABA", () => {
+  const rows = [linha({ terapia_nome: "Aplicador ABA Casa", data: "2026-10-02" })]
+  assert.strictEqual(temTerapiaAbaPrimeiraSemanaMesSeguinte(rows, "2026-09-04"), true)
+})
+
+test("47 · Aplicador ABA (HS) conta como ABA, apesar de ESP_CLINICO listá-lo sob Habilidades Sociais", () => {
+  const rows = [linha({ terapia_nome: "Aplicador ABA (HS)", data: "2026-10-02" })]
+  assert.strictEqual(temTerapiaAbaPrimeiraSemanaMesSeguinte(rows, "2026-09-04"), true)
+})
+
+test("48 · ABA fora da primeira semana do mês seguinte => false", () => {
+  const rows = [linha({ terapia_nome: "Aplicador ABA (PS)", data: "2026-10-08" })]
+  assert.strictEqual(temTerapiaAbaPrimeiraSemanaMesSeguinte(rows, "2026-09-04"), false)
+})
+
+test("49 · sem agenda nenhuma => false (o paciente sem sessão futura da auditoria)", () => {
+  assert.strictEqual(temTerapiaAbaPrimeiraSemanaMesSeguinte([], "2026-09-04"), false)
+})
+
+test("50 · TERAPIAS_ABA cobre as 6 siglas, Casa/Escola, Supervisão e Coordenador", () => {
+  for (const t of [
+    "Aplicador ABA (PS)", "Aplicador ABA (EF)", "Aplicador ABA (SF)",
+    "Aplicador ABA (AE)", "Aplicador ABA (AV)", "Aplicador ABA (HS)",
+    "Aplicador ABA Casa", "Aplicador ABA Escola",
+    "Supervisão ABA", "Coordenador de Caso",
+  ]) {
+    assert.ok(TERAPIAS_ABA.has(t), `esperava ${t} em TERAPIAS_ABA`)
+  }
+  // E não pode arrastar terapia não-ABA junto.
+  for (const t of ["Fonoaudiologia", "Terapia Ocupacional", "Psicologia", "Musicoterapia"]) {
+    assert.ok(!TERAPIAS_ABA.has(t), `não esperava ${t} em TERAPIAS_ABA`)
+  }
+})
+
+test("51 · placeholders de bloqueio de horário estão barrados", () => {
+  assert.ok(PACIENTES_PLACEHOLDER.has(19196)) // "Horário Bloqueado"
+  assert.ok(PACIENTES_PLACEHOLDER.has(17795)) // "Notificação Prévia"
 })

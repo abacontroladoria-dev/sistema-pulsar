@@ -51,7 +51,10 @@ import {
   temAgendamentoAmbienteNatural,
   temAgendamentoFuturo,
   temAgendamentoPrimeiraSemanaMesSeguinte,
+  temTerapiaAbaPrimeiraSemanaMesSeguinte,
   turnoClinico,
+  PACIENTES_PLACEHOLDER,
+  TERAPIAS_ABA,
   type LinhaGradePdi,
 } from "@/lib/pdi/agenda"
 import { dataImplementacaoPic, prazoFechamento, prazoRelatorio } from "@/lib/pdi/datas"
@@ -128,11 +131,19 @@ export interface RegistroPdiPrazosBruto {
 
 /**
  * Cruza relatório + cadastro + dado manual + agenda, produzindo a lista de
- * `ItemPdi` — uma linha por paciente na UNIÃO de dois conjuntos:
+ * `ItemPdi` — uma linha por paciente na UNIÃO de três conjuntos:
  *
  *   1. ELEGÍVEL hoje pelo relatório Órbita (`calcularElegibilidadePdi`);
  *   2. TRACKED — já tem linha em `pdi_controle_prazos` (`registros`), mesmo
  *      que o laudo tenha saído do relatório de hoje.
+ *   3. COM ABA NA AGENDA — tem terapia de `TERAPIAS_ABA` na grade recebida
+ *      (correção de 11/09/2026, ver o bloco sobre laudo × agenda em
+ *      lib/pdi/agenda.ts): o laudo do Órbita não é confiável como censo de
+ *      quem é de ABA, e sem este conjunto o "PDI - Painel por Analista"
+ *      perdia paciente em atendimento real.
+ *
+ * Menos os `PACIENTES_PLACEHOLDER` (pseudo-pacientes de bloqueio de horário),
+ * que são removidos da união em qualquer caso.
  *
  * Decisão do usuário (2026-09-04): a lista NUNCA MAIS perde um paciente que
  * já tem controle PDI iniciado, só porque o laudo dele parou de aparecer no
@@ -183,12 +194,26 @@ export function juntarPdi(
   }
 
   // A união: elegível hoje pelo relatório OU já tracked em pdi_controle_prazos
-  // — ver o comentário de `juntarPdi` acima.
+  // OU com terapia de ABA na agenda — ver o comentário de `juntarPdi` acima.
   const idsUniao = new Set<number>()
   for (const [id, e] of elegibilidade) {
     if (e.elegivel) idsUniao.add(id)
   }
   for (const id of porPaciente.keys()) idsUniao.add(id)
+  // 3º conjunto (11/09/2026): quem tem ABA na AGENDA. Sem isto, o paciente
+  // atendido em ABA cujo laudo não diz exatamente "Psicologia ABA" (visto:
+  // "Aplicador ABA", "Coordenador de Caso", ou sem linha ABA nenhuma) nunca
+  // chegaria ao "PDI - Painel por Analista", e o coordenador dele apareceria
+  // com menos pacientes do que tem de verdade — eram 7 casos em 11/09/2026.
+  // Ver o bloco sobre laudo × agenda em lib/pdi/agenda.ts.
+  for (const linha of linhasGrade) {
+    if (linha.paciente_id === null) continue
+    if (!linha.terapia_nome || !TERAPIAS_ABA.has(linha.terapia_nome)) continue
+    idsUniao.add(linha.paciente_id)
+  }
+  // Pseudo-pacientes de bloqueio de horário da TiTa nunca entram na lista —
+  // ver `PACIENTES_PLACEHOLDER` em lib/pdi/agenda.ts.
+  for (const id of PACIENTES_PLACEHOLDER) idsUniao.delete(id)
 
   const itens: ItemPdi[] = []
   let semCadastroPulsar = 0
@@ -262,6 +287,7 @@ export function juntarPdi(
       autorizadoAmbienteNatural: elegibilidadeDoFavorecido.autorizadoAmbienteNatural,
       elegivel: elegibilidadeDoFavorecido.elegivel,
       temAgendamentoPrimeiraSemanaMesSeguinte: temAgendamentoPrimeiraSemanaMesSeguinte(linhasDoPaciente, hoje),
+      temAbaNaAgenda: temTerapiaAbaPrimeiraSemanaMesSeguinte(linhasDoPaciente, hoje),
       cadastroDuplicadoTita: cadastrosDuplicados.has(idFavorecido),
 
       diasClinicos: diasClinicos(linhasDoPaciente),

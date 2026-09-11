@@ -7,7 +7,7 @@ import { hojeBrasiliaISO } from "@/lib/laudos/acompanhamento"
 import { calcularElegibilidadePdi } from "@/lib/pdi/elegibilidade"
 import { addDiasIso } from "@/lib/pdi/datas"
 import { juntarPdi, type PacienteParaPdi, type RegistroPdiPrazosBruto } from "@/lib/pdi/juntar"
-import type { LinhaGradePdi } from "@/lib/pdi/agenda"
+import { PACIENTES_PLACEHOLDER, TERAPIAS_ABA, type LinhaGradePdi } from "@/lib/pdi/agenda"
 import type { ItemPdi } from "@/lib/pdi/filtros"
 import type { MetaPdiPrazos } from "@/types/pdiPrazos"
 
@@ -109,6 +109,51 @@ async function buscarGradeDaJanela(
   })
 }
 
+/**
+ * Os `paciente_id` com alguma terapia de ABA agendada na primeira semana do
+ * mês SEGUINTE — a descoberta que quebra o ovo-e-galinha da correção de
+ * 11/09/2026.
+ *
+ * `buscarGradeDaJanela` acima só lê a grade de IDs que já conhecemos
+ * (elegíveis do relatório + tracked), então um paciente em atendimento de ABA
+ * cujo laudo não diz "Psicologia ABA" jamais teria a grade lida — e sem a
+ * grade não há como descobrir que ele é de ABA. Esta leitura vem ANTES, sem
+ * filtro de paciente, e devolve os IDs que faltavam para a união em
+ * `juntarPdi`.
+ *
+ * Recorte deliberadamente estreito: 7 dias e só as terapias de `TERAPIAS_ABA`
+ * (~4.050 linhas na janela inteira, medido em 11/09/2026 — a filtragem por
+ * terapia acontece aqui, em memória, porque `buscarGrade` não tem parâmetro
+ * de terapia e `refinar` com `.in()` de 12 strings não paga o próprio custo).
+ * A paginação é responsabilidade de `buscarGrade` (o `max_rows = 1000` do
+ * PostgREST trunca em silêncio — ver lib/grade/fonte.ts).
+ */
+async function buscarIdsComAbaNaAgenda(sb: ClienteSupabase, hoje: string): Promise<number[]> {
+  const [ano, mes] = hoje.slice(0, 10).split("-").map(Number)
+  const mesSeguinte = mes === 12 ? 1 : mes + 1
+  const anoDoMesSeguinte = mes === 12 ? ano + 1 : ano
+  const prefixo = `${anoDoMesSeguinte}-${String(mesSeguinte).padStart(2, "0")}`
+
+  const linhas = await buscarGrade<{ paciente_id: number | null; terapia_nome: string | null }>({
+    campos: "paciente_id, terapia_nome",
+    fonte: "base",
+    status: "Agendado",
+    de: `${prefixo}-01`,
+    ate: `${prefixo}-07`,
+    ordem: [{ coluna: "id" }],
+    cliente: sb,
+  })
+
+  const ids = new Set<number>()
+  for (const l of linhas) {
+    if (l.paciente_id === null || !l.terapia_nome) continue
+    if (!TERAPIAS_ABA.has(l.terapia_nome)) continue
+    if (PACIENTES_PLACEHOLDER.has(l.paciente_id)) continue
+    ids.add(l.paciente_id)
+  }
+  return [...ids]
+}
+
 export async function buscarControlePrazosPdi(
   cliente?: ClienteSupabase,
   agora?: Date,
@@ -138,7 +183,14 @@ export async function buscarControlePrazosPdi(
   ])
 
   const idsTracked = (registrosBrutos as unknown as RegistroPdiPrazosBruto[]).map((r) => Number(r.paciente_id))
-  const idsUniao = [...new Set([...idsElegiveis, ...idsTracked])]
+  // 3º conjunto: quem tem ABA na AGENDA mas pode não estar em nenhum dos dois
+  // acima (ver `buscarIdsComAbaNaAgenda` e o bloco laudo × agenda em
+  // lib/pdi/agenda.ts). Sem ele, o "PDI - Painel por Analista" perde paciente
+  // em atendimento real e o coordenador aparece com menos gente do que tem.
+  const idsComAba = await buscarIdsComAbaNaAgenda(sb, hoje)
+  const idsUniao = [...new Set([...idsElegiveis, ...idsTracked, ...idsComAba])].filter(
+    (id) => !PACIENTES_PLACEHOLDER.has(id),
+  )
 
   const linhasGrade = await buscarGradeDaJanela(sb, idsUniao, hoje)
 

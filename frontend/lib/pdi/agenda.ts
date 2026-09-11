@@ -19,7 +19,7 @@
 // formato de `DIAS_LIST`, ex. "Segunda-feira"; `hora_inicial`/`hora_final`
 // como "HH:MM:SS").
 
-import { ABA_EXT, DIAS_LIST, DIAS_ORD } from "@/lib/cronograma/constants"
+import { ABA_EXT, DIAS_LIST, DIAS_ORD, ESP_CLINICO, ESP_EXTERNO } from "@/lib/cronograma/constants"
 
 export interface LinhaGradePdi {
   paciente_id: number | null
@@ -227,6 +227,98 @@ export function coordenadoresDetalhados(rows: LinhaGradePdi[], hojeIso: string):
  */
 export function coordenadorDoCaso(rows: LinhaGradePdi[], hojeIso: string): number[] {
   return coordenadoresDetalhados(rows, hojeIso).map((c) => c.profissionalId)
+}
+
+// ─── Critério de "paciente de ABA" (correção de 11/09/2026) ──────────────────
+//
+// O "PDI - Painel por Analista" perguntava "este paciente é de ABA?" ao
+// relatório Órbita (`lib/pdi/elegibilidade.ts`, `Especialidade == "Psicologia
+// ABA"`) e "quem é o coordenador dele?" à AGENDA (`coordenadoresDetalhados`
+// abaixo). Duas fontes para duas perguntas que precisam concordar — e elas
+// discordam na prática, jogando o paciente no balde errado nas DUAS direções.
+// Medido em produção (relatório de 11/09/2026, janela 01–07/10):
+//
+//   • 5 pacientes com "Psicologia ABA" no laudo e NENHUMA terapia ABA na
+//     agenda (só Fono/TO/Psicopedagogia) entravam no painel e, sem
+//     Coordenador de Caso na grade, apareciam como "Sem Coordenador" — um
+//     problema que nenhum analista podia resolver, porque não eram dele.
+//   • 7 pacientes com ABA real na agenda ficavam FORA do painel porque o
+//     laudo não dizia exatamente "Psicologia ABA": vistos "Aplicador ABA"
+//     (digitação do Órbita), "Coordenador de Caso", e três sem linha ABA
+//     nenhuma. Os coordenadores deles perdiam pacientes da própria lista.
+//
+// Decisão do usuário (11/09/2026): a AGENDA passa a definir quem é de ABA —
+// a mesma fonte que já define o coordenador, então as duas nunca mais
+// discordam. O laudo (`ItemPdi.elegivel`) continua calculado e exposto, para
+// a tela de Controle de Prazos e para quem quiser cruzar laudo × execução;
+// só deixou de ser o critério DESTE painel.
+//
+// Efeito medido da troca: população 208 → 210, "Sem Coordenador" 6 → 0 (o
+// único remanescente era o placeholder 17795, hoje barrado por
+// `PACIENTES_PLACEHOLDER`), pacientes faltando 7 → 0.
+
+/**
+ * Terapias da agenda (`terapia_nome`) que caracterizam atendimento de ABA.
+ *
+ * Derivado de `ESP_CLINICO`/`ESP_EXTERNO` em lib/cronograma/constants.ts — o
+ * vocabulário de terapias é de lá, e redigitar as strings aqui criaria uma
+ * segunda lista para manter em sincronia. Cobre as 6 siglas de Aplicador ABA,
+ * Casa/Escola (`ESP_EXTERNO`), Supervisão ABA e Coordenador de Caso.
+ *
+ * `Aplicador ABA (HS)` entra EXPLICITAMENTE: em `ESP_CLINICO` ele mora sob a
+ * chave "Habilidades Sociais" (não sob "Psicologia ABA"), mas para a clínica
+ * é atendimento ABA como os outros — e `TERAPIA_TO_ESP` o lista junto dos
+ * demais "Aplicador ABA". Sem essa linha, um paciente só de HS ficaria de
+ * fora do painel.
+ */
+export const TERAPIAS_ABA: ReadonlySet<string> = new Set([
+  ...ESP_CLINICO["Psicologia ABA"],
+  ...ESP_EXTERNO["Psicologia ABA"],
+  ...ESP_CLINICO["Habilidades Sociais"],
+  ...ABA_EXT,
+])
+
+/**
+ * IDs de `paciente_id` da grade que NÃO são pessoas: pseudo-pacientes usados
+ * pela TiTa para bloquear horário na agenda. Achados na auditoria de
+ * 11/09/2026 — são os dois únicos na janela (456 e 239 linhas em 45 dias):
+ *
+ *   19196 — "Horário Bloqueado"
+ *   17795 — "Notificação Prévia"
+ *
+ * Mesmo espírito do filtro de 'Profissional Teste'/'Combinar Consulta' que a
+ * própria `vw_grade_base` já aplica do lado do profissional. Sem isso o
+ * painel mostra um "paciente" sem coordenador que ninguém pode resolver,
+ * poluindo o indicador. Barrados na junção (lib/pdi/juntar.ts), não aqui —
+ * as funções puras deste módulo não decidem quem entra na lista.
+ */
+export const PACIENTES_PLACEHOLDER: ReadonlySet<number> = new Set([19196, 17795])
+
+/**
+ * O paciente tem alguma terapia de ABA (`TERAPIAS_ABA`) agendada na primeira
+ * semana do mês SEGUINTE a `hojeIso` — o critério de "é paciente de ABA" do
+ * "PDI - Painel por Analista", ver o bloco acima.
+ *
+ * MESMA janela de `coordenadoresDetalhados`/`temAgendamentoPrimeiraSemanaMesSeguinte`
+ * (a agenda do mês seguinte já está lançada; olhar o mês corrente seria tarde
+ * demais para agir) — e é isso que faz o critério casar com a detecção de
+ * coordenador: quem tem ABA na janela é exatamente a população em que
+ * procurar um Coordenador de Caso faz sentido.
+ *
+ * Implica `temAgendamentoPrimeiraSemanaMesSeguinte` (uma sessão de ABA é uma
+ * sessão), então um paciente sem agenda nenhuma — laudo ABA ou não — fica
+ * naturalmente fora, sem precisar de filtro de "ativo" à parte.
+ */
+export function temTerapiaAbaPrimeiraSemanaMesSeguinte(rows: LinhaGradePdi[], hojeIso: string): boolean {
+  const { inicio, fim } = primeiraSemanaDoMesSeguinte(hojeIso)
+  return rows.some(
+    (r) =>
+      !!r.terapia_nome &&
+      TERAPIAS_ABA.has(r.terapia_nome) &&
+      r.data !== null &&
+      r.data >= inicio &&
+      r.data <= fim,
+  )
 }
 
 /**
