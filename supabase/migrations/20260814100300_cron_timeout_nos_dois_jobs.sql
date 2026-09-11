@@ -37,9 +37,13 @@ BEGIN
   -- ---------------------------------------------------------------------
   SELECT jobid INTO v_jobid FROM cron.job WHERE jobname = 'sync_tita_agenda';
   IF v_jobid IS NULL THEN
-    RAISE EXCEPTION 'job sync_tita_agenda nao encontrado';
-  END IF;
-
+    -- Banco NOVO (reset local, CI): estes dois jobs foram criados a mao pelo
+    -- dashboard e so existem em producao, entao aqui nao ha o que ajustar.
+    -- Abortar com EXCEPTION travava o `db reset` inteiro neste ponto e deixava
+    -- as ~160 migrations seguintes sem aplicar. Mesmo padrao tolerante de
+    -- 20260814100200 ('job ... ja nao existe').
+    RAISE NOTICE 'job sync_tita_agenda nao existe neste banco; nada a fazer';
+  ELSE
   PERFORM cron.alter_job(v_jobid, command := $cmd$
     select net.http_post(
       url := 'https://wmugemamnqxjfpxrlwes.supabase.co/functions/v1/sync_tita_agenda',
@@ -54,15 +58,15 @@ BEGIN
     );
   $cmd$);
   RAISE NOTICE 'job sync_tita_agenda: timeout 120000 aplicado';
+  END IF;
 
   -- ---------------------------------------------------------------------
   -- sync-grade-profissionais-hora  ('0 * * * 1-5')
   -- ---------------------------------------------------------------------
   SELECT jobid INTO v_jobid FROM cron.job WHERE jobname = 'sync-grade-profissionais-hora';
   IF v_jobid IS NULL THEN
-    RAISE EXCEPTION 'job sync-grade-profissionais-hora nao encontrado';
-  END IF;
-
+    RAISE NOTICE 'job sync-grade-profissionais-hora nao existe neste banco; nada a fazer';
+  ELSE
   PERFORM cron.alter_job(v_jobid, command := $cmd$
     select net.http_post(
       url := 'https://wmugemamnqxjfpxrlwes.supabase.co/functions/v1/sync-terapeutas-tita',
@@ -74,5 +78,6 @@ BEGIN
     );
   $cmd$);
   RAISE NOTICE 'job sync-grade-profissionais-hora: timeout 120000 aplicado';
+  END IF;
 END
 $do$;

@@ -52,4 +52,18 @@ SELECT cron.schedule(
 
 -- Fecha a lacuna de agora (01/10–31/10) sem esperar o primeiro disparo de
 -- amanhã: é o mesmo motivo do backfill no fim de 20260805150000.
-SELECT public.fn_sync_tita_grade();
+--
+-- Só roda onde há o segredo no Vault, isto é, em produção. Num banco novo
+-- (reset local, CI) `fn_sync_tita_grade` estoura com "segredo
+-- cron_service_role_key ausente" e trava as migrations seguintes — e mesmo que
+-- não estourasse, disparar um sync real contra a TiTa a partir de um banco
+-- local não é o que se quer. O cron agendado acima continua idêntico.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM vault.decrypted_secrets WHERE name = 'cron_service_role_key') THEN
+    PERFORM public.fn_sync_tita_grade();
+  ELSE
+    RAISE NOTICE 'cron_service_role_key ausente; backfill de fn_sync_tita_grade pulado neste banco';
+  END IF;
+END
+$$;

@@ -29,7 +29,12 @@ BEGIN
     FROM cron.job WHERE jobname = 'sync-reposicao-faltas';
 
   IF v_jobid IS NULL THEN
-    RAISE EXCEPTION 'job sync-reposicao-faltas nao encontrado';
+    -- Banco NOVO (reset local, CI): o job foi criado a mao pelo dashboard e so
+    -- existe em producao. Abortar aqui travava o `db reset` e deixava as
+    -- migrations seguintes sem aplicar; mesmo padrao tolerante de
+    -- 20260814100200 ('job ... ja nao existe').
+    RAISE NOTICE 'job sync-reposicao-faltas nao existe neste banco; nada a fazer';
+    RETURN;
   END IF;
 
   -- Idempotência: se já tem o timeout, nada a fazer.

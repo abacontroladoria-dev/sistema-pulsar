@@ -13,6 +13,23 @@
 -- `data`/`hora` como text (não date/time) pra bater exatamente com o formato
 -- já usado na consulta original (to_char(...,'DD/MM/YYYY') / 'HH24:MI:SS').
 
+-- O RENAME da tabela em si foi feito A MAO no dashboard de producao, entao
+-- nenhuma migration o executava: num banco NOVO o 20260818170000 deixa o nome
+-- antigo (cronograma_paciente_observacoes_auditoria) e todo o resto deste
+-- arquivo — e das 3 migrations seguintes — quebrava com "relation ... does not
+-- exist". Fazer o rename aqui deixa o historico reproduzivel do zero e e
+-- no-op em producao, onde a tabela ja tem o nome novo.
+DO $$
+BEGIN
+  IF to_regclass('public.aumentar_ocupacao_paciente_auditoria') IS NULL
+     AND to_regclass('public.cronograma_paciente_observacoes_auditoria') IS NOT NULL THEN
+    ALTER TABLE public.cronograma_paciente_observacoes_auditoria
+      RENAME TO aumentar_ocupacao_paciente_auditoria;
+    RAISE NOTICE 'tabela renomeada para aumentar_ocupacao_paciente_auditoria';
+  END IF;
+END
+$$;
+
 DO $$
 BEGIN
   IF EXISTS (
