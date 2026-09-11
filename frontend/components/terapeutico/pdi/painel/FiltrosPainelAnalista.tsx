@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, type ReactNode } from "react"
+import { useMemo, useState, type ReactNode } from "react"
 import * as Popover from "@radix-ui/react-popover"
 import { Check, ChevronDown, FilterX, ListFilter, Search, Users } from "lucide-react"
 import type { LinhaAnalista } from "@/lib/pdi/painelAnalista"
@@ -59,6 +59,15 @@ export function FiltrosPainelAnalista({
   const nomeAnalista = analistaId === null ? null : (linhas.find((l) => l.profissionalId === analistaId)?.nome ?? null)
   const rotuloStatus = OPCOES_STATUS.find((o) => o.chave === recorte)?.rotulo ?? "Todos os status"
 
+  // `linhas` chega ordenada por gravidade (mais atrasados primeiro, o critério
+  // da lista de prioridade) — bom para a lista, ruim para um dropdown: achar
+  // um nome ali exige ler a lista inteira em vez de pular direto para a letra.
+  // Aqui, ordem alfabética.
+  const linhasOrdenadas = useMemo(
+    () => [...linhas].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")),
+    [linhas],
+  )
+
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-card p-2 shadow-sm">
       <Suspenso
@@ -78,7 +87,7 @@ export function FiltrosPainelAnalista({
                 fechar()
               }}
             />
-            {linhas.map((l) => (
+            {linhasOrdenadas.map((l) => (
               <ItemSuspenso
                 key={l.profissionalId}
                 rotulo={l.nome}

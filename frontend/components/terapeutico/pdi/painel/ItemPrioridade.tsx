@@ -1,7 +1,6 @@
 "use client"
 
-import { ChevronRight, Hourglass, ClockAlert, AlertOctagon, UserX } from "lucide-react"
-import { getTomAvatar, ICONES, indiceIconeAvatar } from "@/lib/cadastros/avatarPastel"
+import { ChevronRight, Hourglass, ClockAlert, AlertOctagon } from "lucide-react"
 import type { LinhaAnalista } from "@/lib/pdi/painelAnalista"
 
 // Uma linha da "Prioridade de atendimento" — um Coordenador de Caso
@@ -26,6 +25,13 @@ import type { LinhaAnalista } from "@/lib/pdi/painelAnalista"
 // A moldura rose que pintava o cartão inteiro de quem tinha atraso também saiu:
 // com 8 linhas visíveis ao mesmo tempo, oito molduras vermelhas não destacam
 // nada — destacar todo mundo é destacar ninguém.
+//
+// O avatar pastel (ícone + círculo colorido) também saiu daqui. Numa lista
+// densa de 14 linhas ele não identifica ninguém — a cor não se repete de forma
+// memorável e o ícone é decorativo — e disputava a mesma faixa de altura que
+// atrasados/nome, no momento em que a linha mais precisa de espaço para o
+// número que decide a ação. `CardPdi.tsx` e o modal do coordenador continuam
+// com o avatar; aqui a identificação é só o nome, em texto maior.
 
 const TONS_SELO = {
   rose: "border-rose-300 bg-rose-500/10 text-rose-700 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-400",
@@ -45,8 +51,6 @@ export function ItemPrioridade({
   onAbrir: () => void
 }) {
   const semCoordenador = linha.profissionalId === 0
-  const Icone = ICONES[indiceIconeAvatar(linha.profissionalId)]
-  const tom = getTomAvatar(linha.profissionalId)
 
   return (
     <li>
@@ -74,25 +78,13 @@ export function ItemPrioridade({
           semCoordenador ? "border-dashed border-border bg-muted/20" : "border-border bg-card"
         }`}
       >
-        {/* Ícone pastel, não inicial — decisão do repositório (28/08/2026), a
-            mesma de CardPdi.tsx. "Sem Coordenador de Caso" não é uma pessoa:
-            ganha o `UserX` em âmbar, que é o que ele significa. */}
-        {semCoordenador ? (
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-dashed border-amber-400 bg-amber-500/10">
-            <UserX className="h-5 w-5 text-amber-600 dark:text-amber-400" aria-hidden="true" />
-          </span>
-        ) : (
-          <span
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
-            style={{ backgroundColor: tom.bg, color: tom.fg }}
-            aria-hidden="true"
-          >
-            <Icone className="h-5 w-5" strokeWidth={1.75} />
-          </span>
-        )}
-
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[15px] font-semibold text-foreground" title={linha.nome}>
+          <span
+            className={`block truncate text-[15px] font-semibold ${
+              semCoordenador ? "text-amber-700 dark:text-amber-400" : "text-foreground"
+            }`}
+            title={linha.nome}
+          >
             {linha.nome}
           </span>
           {/* Contexto, não sinal: o total de pacientes não distingue ninguém

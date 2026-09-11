@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { AlertCircle, RotateCw } from "lucide-react"
+import { AlertCircle, Info, RotateCw } from "lucide-react"
 import { useHeader } from "@/contexts/HeaderContext"
 import { norm, type ItemPdi } from "@/lib/pdi/filtros"
 import type { MetaPdiPrazos } from "@/types/pdiPrazos"
@@ -386,11 +386,22 @@ export function PainelAnalistaShell() {
         />
       </div>
 
+      {/* A proveniência inteira (arquivo, linhas lidas, elegíveis) era um
+          recibo de engenheiro sempre visível — nome de arquivo interno e uma
+          seta de pipeline não são informação para quem coordena atendimento.
+          Fica atrás de um <details>: quem precisa depurar ainda encontra; o
+          resto da tela não carrega esse peso. */}
       {meta && (
-        <p className="text-xs text-muted-foreground">
-          Relatório <span className="font-semibold">{meta.arquivoNome}</span> · {meta.linhasLidas} linhas lidas →{" "}
-          {meta.itens} elegíveis · calculado em {meta.hoje.split("-").reverse().join("/")}
-        </p>
+        <details className="group text-xs text-muted-foreground">
+          <summary className="inline-flex cursor-pointer list-none items-center gap-1 outline-none [&::-webkit-details-marker]:hidden hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
+            <Info className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            Detalhes do relatório
+          </summary>
+          <p className="mt-1.5">
+            Relatório <span className="font-semibold">{meta.arquivoNome}</span> · {meta.linhasLidas} linhas lidas →{" "}
+            {meta.itens} elegíveis · calculado em {meta.hoje.split("-").reverse().join("/")}
+          </p>
+        </details>
       )}
 
       {analistaAberto && (

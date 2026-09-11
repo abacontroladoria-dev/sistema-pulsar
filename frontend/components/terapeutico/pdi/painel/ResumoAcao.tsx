@@ -46,6 +46,15 @@ export function ResumoAcao({
 }) {
   const info = SEMAFORO_INFO[semaforo]
   const semAtraso = !semNumeros && resumo.atrasados === 0
+  // O card inteiro é o gatilho de clique — sem selo próprio dizendo isso, o
+  // `title` é quem carrega a dica para quem passa o mouse; `aria-pressed` já
+  // avisa quem usa leitor de tela.
+  const dicaHero =
+    semNumeros || semAtraso
+      ? undefined
+      : recorte === "atrasados"
+        ? "Clique para limpar o filtro"
+        : "Clique para filtrar a lista"
 
   return (
     <section className="grid grid-cols-1 gap-3 lg:grid-cols-[1.4fr_1fr_1fr]" aria-label="Resumo do dia">
@@ -66,6 +75,7 @@ export function ResumoAcao({
         // mais do que como "vazio".
         disabled={semNumeros}
         aria-pressed={recorte === "atrasados"}
+        title={dicaHero}
         className={`flex min-h-11 flex-col justify-between gap-3 rounded-2xl border p-4 text-left shadow-sm transition-all duration-200 ease-out enabled:hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default motion-reduce:transition-none ${
           semNumeros
             ? "border-border bg-muted/20"
@@ -127,24 +137,6 @@ export function ResumoAcao({
             </span>
           </span>
         </span>
-
-        {/* Chip de ESTADO, não de navegação. Antes era uma pílula sólida com
-            seta — gramática de link — dentro de um <button>: prometia levar a
-            algum lugar e entregava um filtro numa lista trezentos pixels
-            abaixo, às vezes fora da dobra, de modo que o clique parecia não
-            fazer nada. Agora diz o que o card faz e, quando ativo, o que ele
-            está fazendo; a rolagem até a lista é de quem trata o recorte. */}
-        {!semNumeros && !semAtraso && (
-          <span
-            className={`inline-flex w-fit items-center gap-1.5 rounded-lg border px-2 py-1 text-[11px] font-semibold ${
-              recorte === "atrasados"
-                ? "border-rose-400 bg-rose-500/15 text-rose-700 dark:border-rose-700 dark:text-rose-300"
-                : "border-rose-200 text-rose-700 dark:border-rose-900 dark:text-rose-400"
-            }`}
-          >
-            {recorte === "atrasados" ? "Filtrando atrasados · clique para limpar" : "Clique para filtrar a lista"}
-          </span>
-        )}
       </button>
 
       <CardSecundario

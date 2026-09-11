@@ -38,18 +38,17 @@ export function ListaPrioridade({
   onAbrir: (profissionalId: number) => void
 }) {
   return (
-    <section aria-label="Prioridade de atendimento" className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+    <section aria-label="Coordenadores" className="rounded-2xl border border-border bg-card p-4 shadow-sm">
       <div className="mb-3 flex items-start gap-2.5">
         <Users className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" aria-hidden="true" />
         <div className="min-w-0">
-          <h2 className="text-base font-bold text-foreground">Prioridade de atendimento</h2>
-          {/* O texto anterior dizia só "maior volume de PDI atrasados" e ficava
-              incompleto: gravidade é o desempate (ver a ordenação em
-              PainelAnalistaShell.tsx). Quem visse 2 atrasados à frente de 6
-              concluiria que a ordem estava errada. */}
-          <p className="text-xs text-muted-foreground">
-            Mais PDI atrasados primeiro; em caso de empate, o atraso mais antigo
-          </p>
+          {/* O título dizia "Prioridade de atendimento" sem dizer QUEM está na
+              lista — quem abre a tela precisa nomear o conteúdo antes de ler a
+              regra de ordenação. O subtítulo trazia a regra de desempate por
+              extenso ("em caso de empate, o atraso mais antigo"): correta, mas
+              letra miúda de manual, não a primeira frase que alguém lê. */}
+          <h2 className="text-base font-bold text-foreground">Coordenadores</h2>
+          <p className="text-xs text-muted-foreground">Do mais atrasado ao mais em dia</p>
         </div>
       </div>
 
