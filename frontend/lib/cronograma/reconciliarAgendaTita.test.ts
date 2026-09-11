@@ -36,8 +36,9 @@ const DE = "2026-10-01"
 const ATE = "2026-10-07"
 
 /** Linha de vw_grade_base como buscarGradeComoCSVRows a entrega. */
-function csvRow(hora: string, status: string, terapia = "Aplicador ABA (PS)"): CsvRow {
+function csvRow(hora: string, status: string, terapia = "Aplicador ABA (PS)", titaId: number | null = 3569319): CsvRow {
   return {
+    TitaAgendamentoId: titaId,
     PacienteId: DAVI,
     ProfissionalId: 8795,
     "Nome Favorecido": "Davi Lucca Alves Da Silva",
@@ -52,10 +53,14 @@ function csvRow(hora: string, status: string, terapia = "Aplicador ABA (PS)"): C
   } as unknown as CsvRow
 }
 
-/** Linha da agenda_tita. */
-function agenda(hora: string, terapia = "Aplicador ABA (PS)", data = SEGUNDA) {
+/** Linha da agenda_tita. `ativo: false` é a memória de um agendamento baixado. */
+function agenda(
+  hora: string, terapia = "Aplicador ABA (PS)", data = SEGUNDA,
+  titaId = 3624424, ativo = true,
+) {
   return {
-    tita_agendamento_id: 3624424,
+    ativo,
+    tita_agendamento_id: titaId,
     paciente_id: DAVI,
     paciente_nome: "Davi Lucca Alves Da Silva",
     data_atendimento: data,
@@ -78,8 +83,15 @@ beforeEach(() => {
 
 describe("o caso Davi Lucca (10:00 → 10:40)", () => {
   it("troca o horário velho do CSV pelo que a agenda_tita afirma", async () => {
-    const cRows = [csvRow("10:00", "Agendado"), csvRow("11:20", "Agendado", "Musicoterapia")]
-    linhasAgenda = [agenda("10:40"), agenda("11:20", "Musicoterapia")]
+    const cRows = [csvRow("10:00", "Agendado"), csvRow("11:20", "Agendado", "Musicoterapia", 2012133)]
+    linhasAgenda = [
+      // Como está em produção: o 3569319 (10:00) foi inativado e o 3624424
+      // (10:40) entrou no lugar. A linha inativa precisa vir na leitura, senão
+      // o 10:00 do CSV pareceria desconhecido e sobreviveria junto.
+      agenda("10:00", "Aplicador ABA (PS)", SEGUNDA, 3569319, false),
+      agenda("10:40"),
+      agenda("11:20", "Musicoterapia", SEGUNDA, 2012133),
+    ]
 
     const out = await reconciliarAgendadosComAgendaTita(cRows, DE, ATE)
     const horas = out.map(r => r.HI_str).sort()
@@ -114,7 +126,10 @@ describe("slot Livre nunca é tocado", () => {
       csvRow("10:00", "Agendado"),
       csvRow("09:20", "Livre"),
     ]
-    linhasAgenda = [agenda("10:40")]
+    linhasAgenda = [
+      agenda("10:00", "Aplicador ABA (PS)", SEGUNDA, 3569319, false), // baixado
+      agenda("10:40"),
+    ]
 
     const out = await reconciliarAgendadosComAgendaTita(cRows, DE, ATE)
     const livres = out.filter(r => r["Status do Agendamento"] === "Livre").map(r => r.HI_str)
@@ -140,6 +155,38 @@ describe("fail-open", () => {
 
     const out = await reconciliarAgendadosComAgendaTita(cRows, DE, ATE)
     expect(out).toEqual(cRows)
+  })
+})
+
+describe("o que a agenda_tita não conhece continua valendo", () => {
+  it("preserva sessão do CSV cujo agendamento não existe na agenda_tita", async () => {
+    // Caso real medido em 2026-09-11, com os dois pipelines já sincronizados:
+    // 3 Equoterapias na "Unid. Terceirizada" existem no CSV e não têm linha
+    // nenhuma na agenda_tita. Substituir o bloco inteiro as apagaria, e a tela
+    // passaria a ofertar horário em cima de sessão real.
+    const equo = csvRow("10:00", "Agendado", "Equoterapia", 3624317)
+    const cRows = [csvRow("10:00", "Agendado"), equo]
+    linhasAgenda = [
+      agenda("10:00", "Aplicador ABA (PS)", SEGUNDA, 3569319, false), // baixado
+      agenda("10:40"),
+    ]
+
+    const out = await reconciliarAgendadosComAgendaTita(cRows, DE, ATE)
+    const terapias = out.map(r => r.Terapia).sort()
+
+    // A Equoterapia sobrevive; o horário velho (3569319) é substituído.
+    expect(terapias).toEqual(["Aplicador ABA (PS)", "Equoterapia"])
+    expect(out.find(r => r.Terapia === "Equoterapia")?.HI_str).toBe("10:00")
+    expect(out.find(r => r.Terapia === "Aplicador ABA (PS)")?.HI_str).toBe("10:40")
+  })
+
+  it("não duplica quando a agenda_tita conhece o agendamento", async () => {
+    const cRows = [csvRow("10:00", "Agendado", "Aplicador ABA (PS)", 3624424)]
+    linhasAgenda = [agenda("10:40")] // mesmo tita_agendamento_id 3624424
+
+    const out = await reconciliarAgendadosComAgendaTita(cRows, DE, ATE)
+    expect(out).toHaveLength(1)
+    expect(out[0].HI_str).toBe("10:40")
   })
 })
 

@@ -87,6 +87,7 @@ function paraCsvRow(l: LinhaAgenda): CsvRow {
   const data = String(l.data_atendimento ?? "").slice(0, 10)
   return {
     CsvGradeId:              undefined,
+    TitaAgendamentoId:       l.tita_agendamento_id ?? null,
     PacienteId:              l.paciente_id ?? null,
     ProfissionalId:          l.profissional_id ?? null,
     "Nome Favorecido":       fixMojibake(l.paciente_nome),
@@ -121,21 +122,26 @@ export async function reconciliarAgendadosComAgendaTita(
 ): Promise<CsvRow[]> {
   const sb = getSupabaseClient()
 
-  const linhas: LinhaAgenda[] = []
+  // Lê ATIVAS E INATIVAS. As ativas são a agenda; as inativas são a memória de
+  // que o pipeline JÁ VIU aquele agendamento e o baixou — é o que distingue
+  // "esta sessão foi remarcada/cancelada" de "este pipeline nunca soube dela".
+  // Sem as inativas, o horário velho do CSV (3569319, inativado na agenda_tita)
+  // pareceria desconhecido e seria preservado junto do novo: a tela mostraria a
+  // sessão duas vezes, às 10:00 e às 10:40.
+  const linhas: (LinhaAgenda & { ativo: boolean })[] = []
   try {
     for (let from = 0; ; from += PAGE) {
       const { data, error } = await sb
         .from(TABELA)
-        .select(CAMPOS)
+        .select(`${CAMPOS}, ativo`)
         .eq("clinica_id", UNIDADE)
-        .eq("ativo", true)
         .gte("data_atendimento", de)
         .lte("data_atendimento", ate)
         .order("id")
         .range(from, from + PAGE - 1)
 
       if (error) throw new Error(error.message)
-      const pagina = (data ?? []) as unknown as LinhaAgenda[]
+      const pagina = (data ?? []) as unknown as (LinhaAgenda & { ativo: boolean })[]
       linhas.push(...pagina)
       if (pagina.length < PAGE) break
     }
@@ -161,9 +167,40 @@ export async function reconciliarAgendadosComAgendaTita(
   }
 
   const livres = cRows.filter(r => r["Status do Agendamento"] !== "Agendado")
+  // Só as ATIVAS viram sessão na tela — a inativa serve apenas como memória do
+  // que o pipeline conhece (ver `idsConhecidos` abaixo).
   const agendados = linhas
-    .filter(l => l.data_atendimento && l.hora_inicial)
+    .filter(l => l.ativo && l.data_atendimento && l.hora_inicial)
     .map(paraCsvRow)
 
-  return [...livres, ...agendados]
+  // O que o CSV tem e a agenda_tita não conhece CONTINUA valendo.
+  //
+  // Os dois pipelines não cobrem exatamente o mesmo universo: medido em
+  // 2026-09-11, com os dois já sincronizados, a janela 01–07/10 tinha 3 sessões
+  // de Equoterapia na "Unid. Terceirizada - Equoterapia em Movimento (Campo
+  // Grande)" que existem no CSV e não têm NENHUMA linha na agenda_tita — nem
+  // ativa nem inativa. Não é atraso: é alcance diferente.
+  //
+  // Substituir o bloco `Agendado` inteiro apagaria essas sessões da tela, e a
+  // Ocupação de Paciente passaria a ofertar horário em cima delas — o mesmo
+  // defeito que esta reconciliação existe para corrigir, só que na direção
+  // oposta. Então a agenda_tita corrige o que ela CONHECE (casando por
+  // tita_agendamento_id) e se cala sobre o resto.
+  // Todo agendamento que a agenda_tita já viu, ativo OU inativo.
+  const idsConhecidos = new Set(
+    linhas.map(l => l.tita_agendamento_id).filter((id): id is number => id !== null),
+  )
+  const idDe = (r: CsvRow): number | null => {
+    const v = (r as unknown as Record<string, unknown>).TitaAgendamentoId
+    return typeof v === "number" ? v : null
+  }
+  const desconhecidasDaAgenda = cRows.filter(r => {
+    if (r["Status do Agendamento"] !== "Agendado") return false
+    const id = idDe(r)
+    // Sem id não há como cruzar — preserva, que é o lado seguro.
+    if (id === null) return true
+    return !idsConhecidos.has(id)
+  })
+
+  return [...livres, ...agendados, ...desconhecidasDaAgenda]
 }
