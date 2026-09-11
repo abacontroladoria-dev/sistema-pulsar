@@ -49,10 +49,13 @@ export function PdiDetalheModal({
   hoje,
   onFechar,
   onSalvo,
+  zIndex,
 }: {
   item: ItemPdi
   /** `meta.hoje` do servidor — mesma base usada pela lista para status/prioridade. */
   hoje: string
+  /** Repassado ao ScheduleModal para empilhar sobre outro modal já aberto (ver PainelAnalistaShell). */
+  zIndex?: number
   onFechar: () => void
   /** Devolve o item atualizado para a lista não precisar recarregar tudo. */
   onSalvo: (atualizado: ItemPdi) => void
@@ -144,6 +147,7 @@ export function PdiDetalheModal({
           </>
         }
         maxWidth={640}
+        zIndex={zIndex}
         onClose={onFechar}
         footer={
           <>
