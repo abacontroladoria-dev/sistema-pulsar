@@ -30,6 +30,23 @@ export type AuditoriaAssimItem = {
   motivo_glosa: string | null
   teve_token: boolean | null
   token: string | null
+  /**
+   * O campo `biofacial` do extrato da ASSIM — COMO a validação foi feita, ou por
+   * que não pôde ser. Chega já resolvido pela precedência vínculo → posicional
+   * que a RPC aplica (`COALESCE(vin.biofacial, mt.biofacial)`), como `guia` e
+   * `status_assim` também chegam: a regra mora no SQL, não duplicada aqui.
+   *
+   * Texto CRU e truncado em 25 chars pelo extrato ('8-DISPOSITIVO INDISPONIVEL'
+   * tem 26 e chega cortado), de vocabulário não fechado. Só o número antes do
+   * primeiro '-' é estável — comparar SEMPRE por prefixo (`dispositivoIndisponivel`
+   * em situacoes.ts), nunca pelo rótulo inteiro e nunca pelo texto de
+   * `forma_validacao_do_biofacial`, que devolve 'Token' quando o `8-` veio com
+   * token e faria o predicado perder justamente esses casos.
+   *
+   * Nulo quando a ASSIM não respondeu e nas linhas de falta, sintetizadas no
+   * serviço.
+   */
+  biofacial: string | null
   criado_por: string | null
   forma_autorizacao: string | null
   horario_autorizacao: string | null

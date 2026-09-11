@@ -21,7 +21,7 @@ function sessao(p: Partial<AuditoriaAssimItem>): AuditoriaAssimItem {
     status_assim: null, codigo_erro: null, descricao_erro: null, data_execucao: null,
     situacao: null, prioridade: null, dias_atraso: null, possui_autorizacao: null,
     possui_solicitacao: null, observacao: null, motivo_glosa: null, teve_token: null,
-    token: null, criado_por: null, forma_autorizacao: null, horario_autorizacao: null,
+    token: null, biofacial: null, criado_por: null, forma_autorizacao: null, horario_autorizacao: null,
     guia_origem: null,
     observacao_manual: null, observacao_manual_atualizado_em: null,
     observacao_manual_atualizado_por_nome: null, token_conferido: null,

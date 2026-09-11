@@ -66,6 +66,9 @@ export async function listarFaltasAuditoria(data: string): Promise<AuditoriaAssi
       motivo_glosa: null,
       teve_token: null,
       token: null,
+      // Falta não tem autorização, logo não tem linha no relatório da ASSIM de
+      // onde o biofacial viria.
+      biofacial: null,
       criado_por: null,
       forma_autorizacao: null,
       horario_autorizacao: null,

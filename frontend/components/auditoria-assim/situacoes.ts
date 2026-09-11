@@ -73,12 +73,16 @@ export function ehGlosa(situacao: string | null): boolean {
 /**
  * Existe papel para a recepção conferir nesta sessão?
  *
- * Filipeta e erro de reconhecimento facial são os dois casos que deixam papel
- * — mas só quando a autorização SAIU. As duas fontes não têm a mesma autoridade
- * sobre isso:
+ * Três casos deixam papel: filipeta, erro de reconhecimento facial e dispositivo
+ * indisponível — mas só quando a autorização SAIU. As fontes não têm a mesma
+ * autoridade sobre isso:
  *
  * - `teve_token` vem de `autorizacoes_assim`, o relatório da ASSIM. Existir
  *   token ali já é prova de que a autorização saiu, então não precisa de gate.
+ * - `biofacial` vem do MESMO relatório, e também é resposta da ASSIM: o `8-`
+ *   (dispositivo indisponível) é a CAUSA de a filipeta existir — sem
+ *   dispositivo, a ASSIM cai no #checkBday e emite o papel (20260903000000).
+ *   Por ser resposta e não intenção, também não leva gate.
  * - `forma_autorizacao` guarda o que a RECEPÇÃO escolheu no modal do robô
  *   (`OPCOES_VALIDACAO` em robo-autorizador/rpa.js) — intenção registrada ANTES
  *   de a ASSIM responder. Diz "tentei validar por reconhecimento facial e deu
@@ -113,12 +117,38 @@ export function ehGlosa(situacao: string | null): boolean {
  */
 const LIBERACOES = ['Liberado', 'Liberado *']
 
+/**
+ * O `biofacial` do extrato chega TRUNCADO em 25 chars ('8-DISPOSITIVO
+ * INDISPONIVEL' tem 26) e o vocabulário não é fechado: o único pedaço estável é
+ * o número antes do primeiro '-'. Mesma forma do
+ * `split_part(btrim(...), '-', 1) = '8'` que get_tokens_mensal usa na Semente 4
+ * e no WHERE final — as duas pontas decidem sobre o MESMO papel e não podem
+ * divergir.
+ *
+ * Compara o campo INTEIRO antes do '-', não `startsWith('8')`: um código futuro
+ * como '80-' casaria por `startsWith` e não é dispositivo indisponível.
+ */
+export function dispositivoIndisponivel(biofacial: string | null | undefined): boolean {
+  return (biofacial ?? '').trim().split('-')[0] === '8'
+}
+
 export function temPapelParaConferir(item: {
   teve_token?: boolean | null
   forma_autorizacao?: string | null
   status_assim?: string | null
+  biofacial?: string | null
 }): boolean {
   if (item.teve_token) return true
+  // Sem dispositivo, a ASSIM emite a filipeta: o papel é consequência do `8-`, e
+  // o token é consequência do papel — por isso este ramo NÃO olha `teve_token` e
+  // não passa pelo gate de recusa. `biofacial` é campo do RELATÓRIO (resposta),
+  // não do modal da recepção (intenção); só `forma_autorizacao` opina sobre fato
+  // que a ASSIM ainda não confirmou, e por isso só ele carrega o gate.
+  //
+  // Caso real: ADRIAN ARAUJO NERY, 01/09/2026 10:00, guia 5665, biofacial
+  // '8-DISPOSITIVO INDISPONIVEL', token vazio, status Liberado — papel existia,
+  // a Conferência de Filipetas já o cobrava e esta linha não o oferecia.
+  if (dispositivoIndisponivel(item.biofacial)) return true
   if (!/reconhecimento\s+facial/i.test(item.forma_autorizacao ?? '')) return false
   // Nulo = sem resposta = desconhecido, e desconhecido mantém o botão.
   return item.status_assim == null || LIBERACOES.includes(item.status_assim)
