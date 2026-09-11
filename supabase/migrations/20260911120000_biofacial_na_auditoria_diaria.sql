@@ -73,10 +73,34 @@
 -- função interna sem o mesmo RETURNS TABLE no wrapper derruba a tela diária com
 -- "structure of query does not match function result type".
 --
--- Nenhuma das duas funções tem `proconfig` hoje (verificado em
--- 20260910130000:329-332 e :703-706 — só get_tokens_mensal usa
--- `SET statement_timeout TO '30s'`). Nada a replicar aqui, e nada a acrescentar:
--- ganhar um timeout que não existia seria mudança de comportamento não pedida.
+-- Nenhuma das duas funções tem `proconfig` hoje (medido em 2026-09-11: nulo nas
+-- duas; só get_tokens_mensal tem `statement_timeout=30s`). Nada a replicar aqui,
+-- e nada a acrescentar: ganhar um timeout que não existia seria mudança de
+-- comportamento não pedida.
+--
+-- POR QUE DROP E NÃO `CREATE OR REPLACE`
+-- As colunas de um `RETURNS TABLE` são parâmetros OUT, e trocar a assinatura por
+-- REPLACE é recusado com 42P13 ("cannot change return type of existing
+-- function"). Acrescentar `biofacial` exige DROP + CREATE. Mesmo caminho que
+-- 20260825010000:64-65 e 20260828190000:47-48 já percorreram em produção, com
+-- estes mesmos chamadores no ar.
+--
+-- A ORDEM IMPORTA: o wrapper primeiro, a função de período depois — o inverso
+-- deixaria o wrapper apontando para uma função inexistente. E o DROP APAGA OS
+-- GRANTS, por isso os `GRANT EXECUTE ... TO anon, authenticated` são re-emitidos
+-- ao fim de cada CREATE. Sem eles a tela inteira responde 403.
+--
+-- Sem CASCADE, de propósito: as 5 funções que chamam estas duas
+-- (detect_r2_sessao_sem_autorizacao, get_candidatas_vinculo,
+-- fn_alertas_avaliar_assim, reclassificar_situacao,
+-- refresh_auditoria_assim_resumo) selecionam COLUNAS NOMEADAS e sobrevivem à
+-- coluna nova; chamada dentro de corpo de função não registra dependência em
+-- pg_depend, então nada bloqueia o DROP. Se o DROP reclamar de dependência, é
+-- porque surgiu uma VIEW nova sobre a função — pare e investigue, não force
+-- CASCADE.
+
+DROP FUNCTION IF EXISTS public.get_auditoria_assim(date);
+DROP FUNCTION IF EXISTS public.get_auditoria_assim_periodo(date, date);
 
 CREATE OR REPLACE FUNCTION public.get_auditoria_assim_periodo(p_data_inicio date, p_data_fim date)
  RETURNS TABLE(bloco_id text, paciente_id text, paciente_nome text, empresa text, matricula text, dep text, carteirinha text, data_atendimento date, hora_inicial time without time zone, codigo_tuss text, convenio_nome text, terapias text, profissionais text, quantidade_sessoes bigint, guia text, status_assim text, codigo_erro text, descricao_erro text, data_execucao timestamp with time zone, autorizacao_updated_at timestamp with time zone, diferenca_minutos numeric, situacao text, prioridade integer, dias_atraso integer, possui_autorizacao boolean, possui_solicitacao boolean, observacao text, motivo_glosa text, teve_token boolean, token text, biofacial text, criado_por text, forma_autorizacao text, horario_autorizacao timestamp without time zone, guia_origem text, reclassificacao_situacao_anterior text, reclassificacao_justificativa text, reclassificacao_por text, reclassificacao_em timestamp with time zone)
