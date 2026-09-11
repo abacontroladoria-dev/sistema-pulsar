@@ -1,8 +1,8 @@
 "use client"
 
-import { Lightbulb, Users } from "lucide-react"
+import { Users } from "lucide-react"
 import type { ResumoExecutivoPdi } from "@/lib/pdi/painelAnalista"
-import type { RecortePainel } from "./tipos"
+import { SELECIONADO, type RecortePainel } from "./tipos"
 
 // A coluna lateral: onde foram parar os dois números que saíram da fileira de
 // cards do topo. "Dentro do prazo" e "Ativos com Autorização ABA" são
@@ -74,10 +74,11 @@ export function DistribuicaoGeral({
                   // caminho de volta para "todos" seria o seletor de Status ou o
                   // botão Limpar, e nenhum dos dois está aqui.
                   onClick={() => onRecorte(ativo ? "totalPacientes" : fatia.chave)}
-                  disabled={semNumeros || vazio}
+                  disabled={semNumeros}
                   aria-pressed={ativo}
-                  className={`w-full rounded-lg px-2 py-1.5 text-left transition-colors duration-150 enabled:hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default motion-reduce:transition-none ${
-                    ativo ? "bg-muted" : ""
+                  title={vazio ? `Nenhum paciente em "${fatia.rotulo}"` : undefined}
+                  className={`w-full rounded-lg border px-2 py-1.5 text-left transition-colors duration-150 enabled:hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default motion-reduce:transition-none ${
+                    ativo ? SELECIONADO : "border-transparent"
                   }`}
                 >
                   <span className="flex items-baseline justify-between gap-2">
@@ -104,6 +105,13 @@ export function DistribuicaoGeral({
             )
           })}
         </ul>
+        {/* Estava só em comentário no código: as três fatias não somam o total,
+            e "Próximos do prazo" não aparece aqui porque tem card próprio no
+            topo. Quem soma as barras e não chega a 100% precisa ler isso na
+            tela, não no fonte. */}
+        <p className="mt-2 border-t border-border pt-2 text-[11px] leading-relaxed text-muted-foreground">
+          Cada fatia é sobre o total; elas não somam 100%. “Próximos do prazo” fica no card do topo.
+        </p>
       </section>
 
       {/* O "Total de Pacientes" da planilha original. O rótulo diz de onde o
@@ -120,17 +128,6 @@ export function DistribuicaoGeral({
             {semNumeros ? "—" : total}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">ativos com autorização ABA</p>
-        </div>
-      </section>
-
-      <section aria-label="Dica" className="flex gap-2.5 rounded-2xl border border-border bg-muted/30 p-4">
-        <Lightbulb className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden="true" />
-        <div className="min-w-0">
-          <p className="text-sm font-bold text-foreground">Dica</p>
-          <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-            Comece pelos analistas do topo da lista: eles têm mais PDI atrasados e, em caso de empate, o atraso mais
-            antigo.
-          </p>
         </div>
       </section>
     </div>

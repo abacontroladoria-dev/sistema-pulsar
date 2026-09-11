@@ -220,6 +220,31 @@ export function PainelAnalistaShell() {
 
   const filtroAtivo = recorte !== "totalPacientes" || busca.trim() !== "" || analistaFiltrado !== null
 
+  // Recortar pelos cards do topo mexia numa lista que, num laptop, pode estar
+  // inteira abaixo da dobra: o clique parecia não fazer nada. Quem recorta pelo
+  // seletor de Status já está ao lado da lista, mas passa pelo mesmo caminho —
+  // e rolar até o resultado nunca atrapalha quem já o está vendo.
+  const listaRef = useRef<HTMLDivElement>(null)
+
+  const aplicarRecorte = useCallback((r: RecortePainel) => {
+    setRecorte(r)
+    if (r !== "totalPacientes") {
+      // `scrollIntoView` não respeita prefers-reduced-motion sozinho.
+      const suave = !window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      listaRef.current?.scrollIntoView({ block: "start", behavior: suave ? "smooth" : "auto" })
+    }
+  }, [])
+
+  // Pacientes com mais de um Coordenador de Caso contam para CADA um (ver o
+  // cabeçalho de lib/pdi/painelAnalista.ts) — então a soma das linhas excede,
+  // legitimamente, o total do painel. Sem isto em algum lugar, quem somasse os
+  // selos chegaria a um número que não fecha com "N ativos com autorização ABA"
+  // e abriria chamado. Só aparece quando o caso existe de fato.
+  const comDoisCoordenadores = useMemo(
+    () => itensPainel.filter((i) => i.coordenadores.length > 1).length,
+    [itensPainel],
+  )
+
   const limparFiltros = useCallback(() => {
     setRecorte("totalPacientes")
     setBusca("")
@@ -239,8 +264,12 @@ export function PainelAnalistaShell() {
     setRightContent(
       <div className="flex items-center gap-2">
         {atualizadoEm && !erro && (
-          <span className="hidden whitespace-nowrap text-xs text-muted-foreground sm:inline">
-            Atualizado às{" "}
+          /* O "Atualizado às" estava em `hidden sm:inline` e sumia justamente
+             no celular, que é onde o dado mais envelhece sem ninguém ver — a
+             carga é um robô noturno. No estreito fica só a hora, com o rótulo
+             no `title` e no `sr-only`. */
+          <span className="whitespace-nowrap text-xs text-muted-foreground" title="Horário da última atualização">
+            <span className="sr-only sm:not-sr-only">Atualizado às </span>
             {atualizadoEm.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
           </span>
         )}
@@ -323,13 +352,13 @@ export function PainelAnalistaShell() {
         semaforo={semaforo}
         semNumeros={semNumeros}
         recorte={recorte}
-        onRecorte={setRecorte}
+        onRecorte={aplicarRecorte}
       />
 
       <FiltrosPainelAnalista
         linhas={linhas}
         recorte={recorte}
-        onRecorte={setRecorte}
+        onRecorte={aplicarRecorte}
         busca={busca}
         onBusca={setBusca}
         analistaId={analistaFiltrado}
@@ -339,20 +368,21 @@ export function PainelAnalistaShell() {
         desabilitado={semNumeros}
       />
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div ref={listaRef} className="grid scroll-mt-4 grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
         <ListaPrioridade
           linhas={linhas}
           visiveis={linhasVisiveis}
           piorAtrasoPorAnalista={piorAtrasoPorAnalista}
           carregando={carregando}
           erro={erro}
+          comDoisCoordenadores={comDoisCoordenadores}
           onAbrir={setAnalistaAbertoId}
         />
         <DistribuicaoGeral
           resumo={resumo}
           semNumeros={semNumeros}
           recorte={recorte}
-          onRecorte={setRecorte}
+          onRecorte={aplicarRecorte}
         />
       </div>
 

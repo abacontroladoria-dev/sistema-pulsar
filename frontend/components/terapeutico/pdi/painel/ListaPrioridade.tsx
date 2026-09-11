@@ -24,6 +24,7 @@ export function ListaPrioridade({
   piorAtrasoPorAnalista,
   carregando,
   erro,
+  comDoisCoordenadores,
   onAbrir,
 }: {
   /** Todas as linhas, antes do filtro — distingue "não há dados" de "o filtro não achou". */
@@ -32,6 +33,8 @@ export function ListaPrioridade({
   piorAtrasoPorAnalista: Map<number, number>
   carregando: boolean
   erro: string | null
+  /** Quantos pacientes têm mais de um Coordenador de Caso — 0 esconde a nota. */
+  comDoisCoordenadores: number
   onAbrir: (profissionalId: number) => void
 }) {
   return (
@@ -40,15 +43,22 @@ export function ListaPrioridade({
         <Users className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" aria-hidden="true" />
         <div className="min-w-0">
           <h2 className="text-base font-bold text-foreground">Prioridade de atendimento</h2>
+          {/* O texto anterior dizia só "maior volume de PDI atrasados" e ficava
+              incompleto: gravidade é o desempate (ver a ordenação em
+              PainelAnalistaShell.tsx). Quem visse 2 atrasados à frente de 6
+              concluiria que a ordem estava errada. */}
           <p className="text-xs text-muted-foreground">
-            Analistas ordenados por maior volume de PDI atrasados
+            Mais PDI atrasados primeiro; em caso de empate, o atraso mais antigo
           </p>
         </div>
       </div>
 
       {carregando ? (
         <ul className="grid grid-cols-1 gap-2 lg:grid-cols-2">
-          {Array.from({ length: 8 }).map((_, i) => (
+          {/* Tantos quanto a última carga trouxe — com 8 fixos a página pulava
+              de altura a cada Atualizar, já que o estado real são ~14 linhas.
+              Na primeira carga ainda não há o que saber: 8 é o palpite. */}
+          {Array.from({ length: linhas.length || 8 }).map((_, i) => (
             <li key={i} className="flex items-center gap-3 rounded-xl border border-border p-3">
               <div className="h-10 w-10 shrink-0 animate-pulse rounded-full bg-muted motion-reduce:animate-none" />
               <div className="min-w-0 flex-1">
@@ -92,6 +102,19 @@ export function ListaPrioridade({
             {visiveis.length === 1 ? "analista" : "analistas"}
             {visiveis.length !== linhas.length && ` de ${linhas.length}`}
           </p>
+          {/* A soma dos selos excede o total do painel de propósito — e quem
+              somar e não fechar vai suspeitar do número, não da regra. Só
+              aparece quando o caso existe; no dia em que ninguém tem dois
+              coordenadores, a linha não tem o que explicar. */}
+          {comDoisCoordenadores > 0 && (
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              {comDoisCoordenadores}{" "}
+              {comDoisCoordenadores === 1
+                ? "paciente tem mais de um Coordenador de Caso e conta para cada um"
+                : "pacientes têm mais de um Coordenador de Caso e contam para cada um"}
+              .
+            </p>
+          )}
         </>
       )}
     </section>
