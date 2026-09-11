@@ -14,8 +14,14 @@ import type { LinhaAnalista } from "@/lib/pdi/painelAnalista"
 // olhos era justamente o que não decide nada — todo coordenador tem entre 15 e
 // 18 pacientes, e essa contagem não distingue ninguém.
 //
-// Aqui o total de pacientes é texto secundário, ao lado do nome, e o sinal
-// forte é o selo de atrasados somado à POSIÇÃO na lista (o rank à esquerda).
+// Aqui o total de pacientes é texto secundário e o sinal forte é o NÚMERO DE
+// ATRASADOS, em coluna própria à direita do nome.
+//
+// A primeira versão desta linha punha os três status como selos de forma
+// idêntica, lado a lado. Não era hierarquia: eram quatro elementos empatados
+// (nome, total, e três selos iguais) e nada dizia por onde começar — o mesmo
+// erro do cartão antigo, só que menor. Agora atrasados tem tamanho próprio, e
+// "próximos"/"aguardando" são marcas de ícone e número.
 //
 // A moldura rose que pintava o cartão inteiro de quem tinha atraso também saiu:
 // com 8 linhas visíveis ao mesmo tempo, oito molduras vermelhas não destacam
@@ -86,40 +92,42 @@ export function ItemPrioridade({
         )}
 
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-bold text-foreground" title={linha.nome}>
+          <span className="block truncate text-[15px] font-semibold text-foreground" title={linha.nome}>
             {linha.nome}
           </span>
-          {/* Contexto, não sinal: pequeno e cinza, de propósito. */}
-          <span className="block text-xs text-muted-foreground">
+          {/* Contexto, não sinal: o total de pacientes não distingue ninguém
+              (todo coordenador tem 15-18), então fica pequeno e cinza. */}
+          <span className="block truncate text-[11px] text-muted-foreground">
             {linha.total} {linha.total === 1 ? "paciente" : "pacientes"}
           </span>
-          <span className="mt-1.5 flex flex-wrap gap-1">
-            <Selo
-              valor={linha.atrasados}
-              rotuloSingular="atrasado"
-              rotuloPlural="atrasados"
-              icone={AlertOctagon}
-              tom={linha.atrasados > 0 ? "rose" : "neutro"}
-              // `piorAtraso` é o MENOR `diasRestantes` (negativo para quem já
-              // passou do prazo) — vai para a tela em módulo. "pior -38d" seria
-              // negativo qualificando um conceito já negativo ("atrasados"), e
-              // ainda contradiria o modal que abre desta mesma linha, que diz
-              // "38 dias de atraso" para o mesmo paciente.
-              sufixo={linha.atrasados > 0 && piorAtraso !== null ? `pior ${Math.abs(piorAtraso)}d` : undefined}
-            />
-            <Selo
+        </span>
+
+        {/* ATRASADOS tem coluna própria e tamanho próprio. Antes era um selo
+            entre três de forma idêntica: a linha tinha quatro elementos
+            empatados e nada dizia por onde começar. Os outros dois viram marca
+            — ícone e número, sem palavra — porque o rótulo repetido três vezes
+            por linha, com duas colunas de lista, quebrava e crescia a linha. */}
+        <span className="flex shrink-0 items-center gap-2.5">
+          <span
+            className={`flex min-w-9 flex-col items-center ${
+              linha.atrasados > 0 ? "text-rose-600 dark:text-rose-400" : "text-muted-foreground"
+            }`}
+          >
+            <span className="text-xl font-extrabold leading-none tabular-nums">{linha.atrasados}</span>
+            <span className="mt-0.5 text-[10px] font-semibold leading-none">atrasados</span>
+          </span>
+          <span className="flex flex-col gap-1">
+            <Marca
               valor={linha.proximoPrazo}
-              rotuloSingular="próximo"
-              rotuloPlural="próximos"
               icone={ClockAlert}
               tom={linha.proximoPrazo > 0 ? "amber" : "neutro"}
+              rotulo={`${linha.proximoPrazo} próximos do prazo`}
             />
-            <Selo
+            <Marca
               valor={linha.aguardandoImplementacao}
-              rotuloSingular="aguardando"
-              rotuloPlural="aguardando"
               icone={Hourglass}
               tom={linha.aguardandoImplementacao > 0 ? "sky" : "neutro"}
+              rotulo={`${linha.aguardandoImplementacao} aguardando implementação`}
             />
           </span>
         </span>
@@ -131,35 +139,36 @@ export function ItemPrioridade({
 }
 
 /**
- * Um selo de status. Aqui os três aparecem SEMPRE, inclusive zerados (em
- * cinza) — ao contrário do cartão antigo, que os escondia quando valiam 0.
- * Numa lista de linhas alinhadas, a ausência de um selo desalinhava as colunas
- * e obrigava a reler o rótulo de cada um; com posição fixa, a mesma coluna
- * quer dizer a mesma coisa em todas as linhas e o zero cinza é informação.
+ * Um dos dois status de apoio: ícone e número, sem palavra. As duas aparecem
+ * SEMPRE, inclusive zeradas em cinza — numa lista de linhas alinhadas a
+ * ausência desalinharia as colunas e obrigaria a reler cada linha; com posição
+ * fixa, a mesma altura quer dizer a mesma coisa em todas, e o zero cinza é
+ * informação.
+ *
+ * O rótulo escrito saiu porque a linha inteira já tem um `aria-label` que diz
+ * tudo por extenso — e porque "aguardando" repetido em catorze linhas ocupava
+ * a largura que o nome do coordenador precisa. Aqui o ícone é o rótulo, com o
+ * texto no `title` para quem passar o mouse.
  */
-function Selo({
+function Marca({
   valor,
-  rotuloSingular,
-  rotuloPlural,
   icone: Icone,
   tom,
-  sufixo,
+  rotulo,
 }: {
   valor: number
-  rotuloSingular: string
-  rotuloPlural: string
   icone: typeof AlertOctagon
   tom: keyof typeof TONS_SELO
-  /** Ex.: "pior 38d" — a MAGNITUDE, sempre em módulo. */
-  sufixo?: string
+  /** Só para o `title` — a linha inteira já se anuncia pelo aria-label. */
+  rotulo: string
 }) {
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${TONS_SELO[tom]}`}
+      title={rotulo}
+      className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[11px] font-semibold ${TONS_SELO[tom]}`}
     >
       <Icone className="h-3 w-3 shrink-0" aria-hidden="true" />
-      <span className="tabular-nums">{valor}</span> {valor === 1 ? rotuloSingular : rotuloPlural}
-      {sufixo && <span className="font-bold tabular-nums">· {sufixo}</span>}
+      <span className="w-3 text-center tabular-nums">{valor}</span>
     </span>
   )
 }

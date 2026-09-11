@@ -1,8 +1,8 @@
 "use client"
 
-import { AlertOctagon, ArrowRight, ClockAlert, Hourglass } from "lucide-react"
+import { AlertOctagon, ClockAlert, Hourglass } from "lucide-react"
 import type { ResumoExecutivoPdi, Semaforo } from "@/lib/pdi/painelAnalista"
-import type { RecortePainel } from "./tipos"
+import { SELECIONADO, type RecortePainel } from "./tipos"
 
 // Os três cards do topo do "PDI — Painel por Analista". Substituem a fileira de
 // cinco cards de peso igual (`lg:grid-cols-5`), em que "Ativos com Autorização
@@ -59,15 +59,20 @@ export function ResumoAcao({
         // Clicar de novo no card já ativo desfaz o recorte — mesma regra dos
         // KPIs da tela irmã (FiltrosPdi.tsx) e das fatias da Distribuição.
         onClick={() => onRecorte(recorte === "atrasados" ? "totalPacientes" : "atrasados")}
-        disabled={semNumeros || semAtraso}
+        // Só fica inerte quando não há número NENHUM. Antes ficava desabilitado
+        // também no dia sem atraso — o maior elemento da tela virava um bloco
+        // cinza-esverdeado sem cursor e sem explicação justamente no dia que o
+        // desenho deveria premiar, e "desabilitado" se lê como "quebrado" muito
+        // mais do que como "vazio".
+        disabled={semNumeros}
         aria-pressed={recorte === "atrasados"}
-        className={`flex min-h-11 flex-col justify-between gap-4 rounded-2xl border p-5 text-left shadow-sm transition-all duration-200 ease-out enabled:hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default motion-reduce:transition-none ${
+        className={`flex min-h-11 flex-col justify-between gap-3 rounded-2xl border p-4 text-left shadow-sm transition-all duration-200 ease-out enabled:hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default motion-reduce:transition-none ${
           semNumeros
             ? "border-border bg-muted/20"
             : semAtraso
               ? "border-emerald-300 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/25"
               : "border-rose-300 bg-rose-50 dark:border-rose-900 dark:bg-rose-950/25"
-        } ${recorte === "atrasados" ? "ring-2 ring-ring ring-offset-2 ring-offset-background" : ""}`}
+        } ${recorte === "atrasados" ? SELECIONADO : ""}`}
       >
         <span className="flex items-center gap-2">
           <AlertOctagon
@@ -97,7 +102,7 @@ export function ResumoAcao({
             cada atualização relia também o rótulo estático. */}
         <span aria-live="polite" className="flex flex-wrap items-end gap-x-4 gap-y-2">
           <span
-            className={`text-5xl font-extrabold leading-none tabular-nums ${
+            className={`text-[32px] font-extrabold leading-none tabular-nums ${
               semNumeros
                 ? "text-muted-foreground"
                 : semAtraso
@@ -107,18 +112,37 @@ export function ResumoAcao({
           >
             {semNumeros ? "—" : resumo.atrasados}
           </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-lg font-bold leading-tight text-foreground">PDI atrasados</span>
+          {/* `min-w-full sm:min-w-0` mantém número e substantivo juntos: com
+              `flex-wrap`, no estreito o rótulo subia para a linha do numeral e
+              se descolava do número. Aqui ele ocupa a linha inteira abaixo, de
+              propósito. O denominador vem para cá porque a coluna lateral, onde
+              ele mora, desce para depois de vinte linhas em qualquer tela menor
+              que `lg` — e o número de atrasados sem o total não diz nada. */}
+          <span className="min-w-full flex-1 sm:min-w-0">
+            <span className="block text-[15px] font-bold leading-tight text-foreground">
+              PDI atrasados{!semNumeros && resumo.totalPacientes > 0 && ` de ${resumo.totalPacientes}`}
+            </span>
             <span className="block text-xs text-muted-foreground">
               {semNumeros ? "Números indisponíveis" : `Casos que já ultrapassaram o prazo · ${info.regra}`}
             </span>
           </span>
         </span>
 
+        {/* Chip de ESTADO, não de navegação. Antes era uma pílula sólida com
+            seta — gramática de link — dentro de um <button>: prometia levar a
+            algum lugar e entregava um filtro numa lista trezentos pixels
+            abaixo, às vezes fora da dobra, de modo que o clique parecia não
+            fazer nada. Agora diz o que o card faz e, quando ativo, o que ele
+            está fazendo; a rolagem até a lista é de quem trata o recorte. */}
         {!semNumeros && !semAtraso && (
-          <span className="inline-flex w-fit items-center gap-1.5 rounded-lg bg-rose-600 px-3 py-2 text-[13px] font-semibold text-white dark:bg-rose-700">
-            Ver atrasados
-            <ArrowRight className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <span
+            className={`inline-flex w-fit items-center gap-1.5 rounded-lg border px-2 py-1 text-[11px] font-semibold ${
+              recorte === "atrasados"
+                ? "border-rose-400 bg-rose-500/15 text-rose-700 dark:border-rose-700 dark:text-rose-300"
+                : "border-rose-200 text-rose-700 dark:border-rose-900 dark:text-rose-400"
+            }`}
+          >
+            {recorte === "atrasados" ? "Filtrando atrasados · clique para limpar" : "Clique para filtrar a lista"}
           </span>
         )}
       </button>
@@ -175,26 +199,28 @@ function CardSecundario({
   recorte: RecortePainel
   onRecorte: (r: RecortePainel) => void
 }) {
-  // Recortar por um status que ninguém tem esconderia a lista inteira e não
-  // sobraria nada para ver — o card fica inerte, como já ficava antes.
+  // Recortar por um status que ninguém tem esvazia a lista — e é exatamente
+  // isso que a lista sabe dizer ("Nenhum analista neste recorte"), com palavras
+  // melhores do que um botão morto. O card fica clicável mesmo em zero.
   const vazio = !semNumeros && valor === 0
 
   return (
     <button
       type="button"
       onClick={() => onRecorte(recorte === chave ? "totalPacientes" : chave)}
-      disabled={semNumeros || vazio}
+      disabled={semNumeros}
       aria-pressed={recorte === chave}
-      className={`flex min-h-11 flex-col justify-between gap-3 rounded-2xl border border-border bg-card p-5 text-left shadow-sm transition-all duration-200 ease-out enabled:hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default motion-reduce:transition-none ${
-        recorte === chave ? "ring-2 ring-ring ring-offset-2 ring-offset-background" : ""
+      title={vazio ? `Nenhum paciente ${titulo}` : undefined}
+      className={`flex min-h-11 flex-col justify-between gap-2 rounded-2xl border bg-card p-4 text-left shadow-sm transition-all duration-200 ease-out enabled:hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default motion-reduce:transition-none ${
+        recorte === chave ? SELECIONADO : "border-border"
       }`}
     >
-      <Icone className={`h-5 w-5 shrink-0 ${semNumeros ? "text-muted-foreground" : tom}`} aria-hidden="true" />
+      <Icone className={`h-4 w-4 shrink-0 ${semNumeros ? "text-muted-foreground" : tom}`} aria-hidden="true" />
       <span className="flex flex-wrap items-end gap-x-3 gap-y-1">
-        <span className={`text-4xl font-extrabold leading-none tabular-nums ${semNumeros ? "text-muted-foreground" : "text-foreground"}`}>
+        <span className={`text-2xl font-extrabold leading-none tabular-nums ${semNumeros ? "text-muted-foreground" : "text-foreground"}`}>
           {semNumeros ? "—" : valor}
         </span>
-        <span className="text-[15px] font-semibold leading-tight text-foreground">{titulo}</span>
+        <span className="text-[13px] font-semibold leading-tight text-foreground">{titulo}</span>
       </span>
       <span className="text-xs text-muted-foreground">{apoio}</span>
     </button>
