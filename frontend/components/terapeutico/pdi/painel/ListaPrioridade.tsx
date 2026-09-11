@@ -40,11 +40,8 @@ export function ListaPrioridade({
         <Users className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" aria-hidden="true" />
         <div className="min-w-0">
           <h2 className="text-base font-bold text-foreground">Prioridade de atendimento</h2>
-          {/* A ordem e a dupla contagem viviam só em comentário de código. Quem
-              somasse as linhas e passasse do total do topo concluía que o
-              painel estava quebrado. */}
           <p className="text-xs text-muted-foreground">
-            Analistas ordenados por maior volume de PDI atrasados · paciente com dois coordenadores conta para os dois
+            Analistas ordenados por maior volume de PDI atrasados
           </p>
         </div>
       </div>

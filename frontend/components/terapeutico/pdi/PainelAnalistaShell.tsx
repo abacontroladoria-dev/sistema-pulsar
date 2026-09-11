@@ -348,7 +348,12 @@ export function PainelAnalistaShell() {
           erro={erro}
           onAbrir={setAnalistaAbertoId}
         />
-        <DistribuicaoGeral resumo={resumo} semNumeros={semNumeros} />
+        <DistribuicaoGeral
+          resumo={resumo}
+          semNumeros={semNumeros}
+          recorte={recorte}
+          onRecorte={setRecorte}
+        />
       </div>
 
       {meta && (

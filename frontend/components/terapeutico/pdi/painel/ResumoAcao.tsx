@@ -56,7 +56,9 @@ export function ResumoAcao({
           rótulo diz "Sem atrasos". */}
       <button
         type="button"
-        onClick={() => onRecorte("atrasados")}
+        // Clicar de novo no card já ativo desfaz o recorte — mesma regra dos
+        // KPIs da tela irmã (FiltrosPdi.tsx) e das fatias da Distribuição.
+        onClick={() => onRecorte(recorte === "atrasados" ? "totalPacientes" : "atrasados")}
         disabled={semNumeros || semAtraso}
         aria-pressed={recorte === "atrasados"}
         className={`flex min-h-11 flex-col justify-between gap-4 rounded-2xl border p-5 text-left shadow-sm transition-all duration-200 ease-out enabled:hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default motion-reduce:transition-none ${
@@ -180,7 +182,7 @@ function CardSecundario({
   return (
     <button
       type="button"
-      onClick={() => onRecorte(chave)}
+      onClick={() => onRecorte(recorte === chave ? "totalPacientes" : chave)}
       disabled={semNumeros || vazio}
       aria-pressed={recorte === chave}
       className={`flex min-h-11 flex-col justify-between gap-3 rounded-2xl border border-border bg-card p-5 text-left shadow-sm transition-all duration-200 ease-out enabled:hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default motion-reduce:transition-none ${
