@@ -7,10 +7,7 @@ import { PainelAnalistaShell } from "@/components/terapeutico/pdi/PainelAnalista
 export default function PdiPainelAnalistaPage() {
   const { setHeader } = useHeader()
   useEffect(() => {
-    setHeader(
-      "PDI - Painel por Analista",
-      "Dashboard por Coordenador de Caso — PDIs atrasados, próximos do prazo e em andamento",
-    )
+    setHeader("PDI — Painel por Analista", "Priorize os casos que precisam da sua atenção")
     return () => setHeader("", "")
   }, [setHeader])
 
