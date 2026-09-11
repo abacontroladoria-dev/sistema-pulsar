@@ -12,22 +12,35 @@ import { SELECIONADO, type RecortePainel } from "./tipos"
 // contexto de verdade.
 //
 // O banner "Indicador Geral (Semáforo)" que existia acima foi ABSORVIDO por
-// este card: a moldura passa a ser a cor do semáforo e `regra` vira a linha de
-// apoio. Era um bloco inteiro de largura total dizendo, com outras palavras, o
-// que o número de atrasados já dizia.
+// este card: a moldura passa a ser a cor do semáforo, e o rótulo, o seu nome.
+// Era um bloco inteiro de largura total dizendo, com outras palavras, o que o
+// número de atrasados já dizia.
+//
+// As linhas de apoio em cinza saíram dos três cards pelo mesmo motivo. Diziam
+// "Casos que já ultrapassaram o prazo · de 1 a 5 PDIs atrasados" sob o número de
+// atrasados, "Casos que vencem em breve" sob "próximos do prazo" e "PDI
+// aprovados, em fila de implementação" sob "aguardando implementação": os três
+// eram o rótulo reescrito em voz de manual. Cada card fica com número e
+// substantivo — é o que se lê em um relance, e é para isso que eles existem. A
+// única que sobrou é "Números indisponíveis", que não repete nada: é o estado
+// que o "—" no lugar do número não consegue nomear sozinho.
 //
 // Cada card continua RECORTANDO a lista abaixo (`aria-pressed` + `onRecorte`),
 // exatamente como os cinco antigos — a interação não mudou, só a hierarquia.
 
 /**
  * A moldura do card de ação carrega o semáforo: os limites (0 / 1-5 / >5) são
- * de `calcularSemaforo`, 1:1 com a planilha original. `regra` explica o limite
- * em palavras, para o estado não depender de enxergar a cor.
+ * de `calcularSemaforo`, 1:1 com a planilha original. O rótulo nomeia o estado
+ * em palavras, para ele não depender de enxergar a cor.
+ *
+ * A `regra` por extenso ("de 1 a 5 PDIs atrasados") saiu da linha de apoio: era
+ * a definição do limite escrita ao lado do número que já a satisfaz — letra
+ * miúda de manual no elemento de maior prioridade da tela.
  */
-const SEMAFORO_INFO: Record<Semaforo, { rotulo: string; regra: string }> = {
-  verde: { rotulo: "Sem atrasos", regra: "nenhum PDI atrasado" },
-  amarelo: { rotulo: "Atenção", regra: "de 1 a 5 PDIs atrasados" },
-  vermelho: { rotulo: "Acima do limite", regra: "mais de 5 PDIs atrasados" },
+const SEMAFORO_INFO: Record<Semaforo, { rotulo: string }> = {
+  verde: { rotulo: "Sem atrasos" },
+  amarelo: { rotulo: "Atenção" },
+  vermelho: { rotulo: "Acima do limite" },
 }
 
 export function ResumoAcao({
@@ -132,9 +145,7 @@ export function ResumoAcao({
             <span className="block text-[15px] font-bold leading-tight text-foreground">
               PDI atrasados{!semNumeros && resumo.totalPacientes > 0 && ` de ${resumo.totalPacientes}`}
             </span>
-            <span className="block text-xs text-muted-foreground">
-              {semNumeros ? "Números indisponíveis" : `Casos que já ultrapassaram o prazo · ${info.regra}`}
-            </span>
+            {semNumeros && <span className="block text-xs text-muted-foreground">Números indisponíveis</span>}
           </span>
         </span>
       </button>
@@ -143,7 +154,6 @@ export function ResumoAcao({
         chave="proximoPrazo"
         valor={resumo.proximoPrazo}
         titulo="próximos do prazo"
-        apoio="Casos que vencem em breve"
         icone={ClockAlert}
         tom="text-amber-600 dark:text-amber-400"
         semNumeros={semNumeros}
@@ -154,7 +164,6 @@ export function ResumoAcao({
         chave="aguardandoImplementacao"
         valor={resumo.aguardandoImplementacao}
         titulo="aguardando implementação"
-        apoio="PDI aprovados, em fila de implementação"
         icone={Hourglass}
         tom="text-sky-600 dark:text-sky-400"
         semNumeros={semNumeros}
@@ -174,7 +183,6 @@ function CardSecundario({
   chave,
   valor,
   titulo,
-  apoio,
   icone: Icone,
   tom,
   semNumeros,
@@ -184,7 +192,6 @@ function CardSecundario({
   chave: RecortePainel
   valor: number
   titulo: string
-  apoio: string
   icone: typeof ClockAlert
   tom: string
   semNumeros: boolean
@@ -214,7 +221,6 @@ function CardSecundario({
         </span>
         <span className="text-[13px] font-semibold leading-tight text-foreground">{titulo}</span>
       </span>
-      <span className="text-xs text-muted-foreground">{apoio}</span>
     </button>
   )
 }

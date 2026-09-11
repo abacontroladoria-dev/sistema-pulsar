@@ -245,11 +245,19 @@ export function filtrosAlterados(f: FiltrosPdi): boolean {
   return false
 }
 
-/** Sem acento, minúsculo — para "Joao" casar com "João". Igual a lib/laudos/filtros.ts. */
+/**
+ * Sem acento, minúsculo — para "Joao" casar com "João". Igual a
+ * lib/laudos/filtros.ts.
+ *
+ * A classe é escrita com escapes (\u0300-\u036f), não com os sinais
+ * combinantes literais: escritos literalmente eles são marcas invisíveis
+ * penduradas no `[`, que qualquer reencode do arquivo pode degradar sem erro de
+ * compilação — a busca simplesmente pararia de ignorar acento, calada.
+ */
 export function norm(v: string): string {
   return v
     .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
+    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .trim()
 }

@@ -131,7 +131,7 @@ export function filtrosAlterados(f: FiltrosLaudos): boolean {
 export function norm(v: string): string {
   return v
     .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
+    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .trim()
 }
