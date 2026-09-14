@@ -206,7 +206,22 @@ export function SalaEditModal({ sala, todasSalas, onClose, onSaved }: SalaEditMo
     setSaving(true)
     setError(null)
     try {
-      const payload: SalaInput = { ...form, horarios_customizados: horariosCustomizados }
+      // `horarios_customizados` só entra no payload quando há override de fato
+      // — ou quando a sala JÁ tinha algum e ele precisa ser zerado. Mandar o
+      // campo sempre (inclusive `{}`) acopla toda a edição de sala a esse
+      // recurso opcional: em 2026-09-14 a coluna não existia em produção (a
+      // migration 20260908095723 tinha sido pulada) e o PostgREST rejeitava o
+      // request INTEIRO antes de emitir o UPDATE — capacidade, nome, status e
+      // dias pararam de salvar por causa de um campo que ninguém estava
+      // usando. Omitir quando não há nada a gravar mantém a falha contida ao
+      // recurso que a causou.
+      const tinhaOverrides = Object.keys(sala?.horarios_customizados ?? {}).length > 0
+      const payload: SalaInput = {
+        ...form,
+        ...((Object.keys(horariosCustomizados).length > 0 || tinhaOverrides)
+          ? { horarios_customizados: horariosCustomizados }
+          : {}),
+      }
       if (sala) await atualizarSala(sala.id, payload)
       else await criarSala(payload)
       onSaved()
