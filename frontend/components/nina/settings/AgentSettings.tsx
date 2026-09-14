@@ -13,7 +13,6 @@ import {
   VozApiError,
   type AiMode,
 } from '@/services/connect/voz';
-import { useCompanySettings } from '@/hooks/nina/useCompanySettings';
 
 // ============================================================================
 // Aba "Agente" das Configurações.
@@ -87,15 +86,6 @@ interface Rascunho {
 }
 
 const AgentSettings = forwardRef<AgentSettingsRef>((_props, ref) => {
-  // A diretoria edita o texto do agente, e só ele: a rota recusa (403) qualquer
-  // outro campo vindo de um `director`, e a recusa é do corpo inteiro. Se a tela
-  // continuasse mandando os três campos sempre, salvar o prompt falharia por
-  // causa de `aiMode` e `agendamentoPorIa` que a pessoa nem pode mexer. Daí o
-  // papel ser lido aqui e não só no servidor — é o que mantém o submit coerente
-  // com o que a tela deixa editar.
-  const { centralRole } = useCompanySettings();
-  const soPrompt = centralRole === 'director';
-
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando]     = useState(false);
   const [erro, setErro]             = useState<string | null>(null);
@@ -130,15 +120,11 @@ const AgentSettings = forwardRef<AgentSettingsRef>((_props, ref) => {
     if (!rascunho) return;
     setSalvando(true);
     try {
-      const cfg = await salvarConfiguracao(
-        soPrompt
-          ? { systemPrompt: rascunho.systemPrompt.trim() || null }
-          : {
-              aiMode:           rascunho.aiMode,
-              agendamentoPorIa: rascunho.agendamentoPorIa,
-              systemPrompt:     rascunho.systemPrompt.trim() || null,
-            },
-      );
+      const cfg = await salvarConfiguracao({
+        aiMode:           rascunho.aiMode,
+        agendamentoPorIa: rascunho.agendamentoPorIa,
+        systemPrompt:     rascunho.systemPrompt.trim() || null,
+      });
       setRascunho({
         aiMode:           cfg.aiMode,
         agendamentoPorIa: cfg.agendamentoPorIa,
@@ -155,7 +141,7 @@ const AgentSettings = forwardRef<AgentSettingsRef>((_props, ref) => {
     } finally {
       setSalvando(false);
     }
-  }, [rascunho, soPrompt]);
+  }, [rascunho]);
 
   useImperativeHandle(ref, () => ({
     save:     salvar,
@@ -192,21 +178,6 @@ const AgentSettings = forwardRef<AgentSettingsRef>((_props, ref) => {
   return (
     <TooltipProvider>
       <div className="space-y-6">
-        {/* Estado em leitura, e não escondido: a diretoria precisa saber em que
-            modo o agente está para escrever um prompt coerente com ele. */}
-        {soPrompt && (
-          <div className="rounded-xl border border-slate-700 bg-slate-800/40 p-4">
-            <p className="flex items-start gap-2 text-xs text-slate-300">
-              <Info className="w-4 h-4 shrink-0 mt-0.5 text-slate-400" />
-              <span>
-                Você pode editar o <strong className="text-white">prompt do sistema</strong>.
-                A autonomia do agente e o agendamento pela IA aparecem aqui como
-                referência, mas só um administrador pode alterá-los.
-              </span>
-            </p>
-          </div>
-        )}
-
         {/* ---------------------------------------------------------------- */}
         {/* Autonomia — a decisão de negócio, não a marca do modelo.        */}
         {/* ---------------------------------------------------------------- */}
@@ -229,13 +200,12 @@ const AgentSettings = forwardRef<AgentSettingsRef>((_props, ref) => {
                   type="button"
                   role="radio"
                   aria-checked={ativo}
-                  disabled={soPrompt}
                   onClick={() => setRascunho({ ...rascunho, aiMode: id })}
                   className={`flex flex-col items-center gap-1 p-3 rounded-lg border transition-all ${
                     ativo
                       ? 'bg-cyan-500/15 border-cyan-500 text-cyan-200'
-                      : 'bg-slate-950/50 border-slate-800 text-slate-400'
-                  } ${soPrompt ? 'opacity-60 cursor-not-allowed' : !ativo ? 'hover:bg-slate-800' : ''}`}
+                      : 'bg-slate-950/50 border-slate-800 text-slate-400 hover:bg-slate-800'
+                  }`}
                 >
                   <Icone className="w-5 h-5" />
                   <span className="text-xs font-medium">{rotulo}</span>
@@ -294,9 +264,8 @@ const AgentSettings = forwardRef<AgentSettingsRef>((_props, ref) => {
               <input
                 type="checkbox"
                 checked={rascunho.agendamentoPorIa}
-                disabled={soPrompt}
                 onChange={e => setRascunho({ ...rascunho, agendamentoPorIa: e.target.checked })}
-                className="sr-only peer disabled:cursor-not-allowed"
+                className="sr-only peer"
               />
               <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-cyan-500/50 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:inset-s-0.5 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-cyan-500" />
             </label>

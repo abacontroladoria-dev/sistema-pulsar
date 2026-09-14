@@ -22,8 +22,11 @@ export async function GET() {
   try {
     const { user, supabase } = await extractUser()
 
-    if (user.centralRole !== 'admin') {
-      return forbidden('Apenas administradores podem consultar as vozes da conta')
+    // Mesmos papéis de /api/central/agent-settings: quem pode gravar a chave
+    // da ElevenLabs precisa poder verificar se ela funciona — é esta rota que
+    // responde "a chave é válida", e sem ela a aba de APIs fica meio muda.
+    if (user.centralRole !== 'admin' && user.centralRole !== 'director') {
+      return forbidden('Apenas administradores e diretoria podem consultar as vozes da conta')
     }
 
     const service = createAgentSettingsService(supabase)

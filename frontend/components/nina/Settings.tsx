@@ -11,21 +11,16 @@ import { useOnboardingStatus } from '@/hooks/nina/useOnboardingStatus';
 const Settings: React.FC<{ setShowOnboarding?: (show: boolean) => void }> = ({ setShowOnboarding = () => {} }) => {
   const { companyName, isAdmin, centralRole } = useCompanySettings();
 
-  // Três estados de permissão nesta tela, e não dois. O director edita o prompt
-  // do agente (RLS em 20260914190000, recorte por campo na rota), mas continua
-  // sem nada na aba de APIs — onde mora a chave da ElevenLabs. Tratá-lo como
-  // "somente leitura", como era antes, escondia o botão Salvar e deixava a aba
-  // do Agente editável e insalvável.
-  const podeEditarAgente = isAdmin || centralRole === 'director';
+  // A diretoria tem a página inteira, igual ao admin — as duas abas, incluindo
+  // a chave da ElevenLabs em APIs (gravável, nunca legível). Houve uma etapa
+  // intermediária em que director só editava o prompt do agente; o recorte por
+  // aba e por campo saiu junto com ela.
+  const podeEditar = isAdmin || centralRole === 'director';
   const agentRef = useRef<AgentSettingsRef>(null);
   const apiRef = useRef<ApiSettingsRef>(null);
   const [activeTab, setActiveTab] = useState('agent');
 
-  // Permissão por aba: 'apis' segue exclusiva de admin.
-  const podeSalvarAqui =
-    activeTab === 'agent' ? podeEditarAgente :
-    activeTab === 'apis'  ? isAdmin :
-    false;
+  const podeSalvarAqui = activeTab !== 'docs' && podeEditar;
   const { resetWizard } = useOnboardingStatus();
 
   const handleReopenOnboarding = () => {
@@ -87,10 +82,7 @@ const Settings: React.FC<{ setShowOnboarding?: (show: boolean) => void }> = ({ s
           <h2 className="text-3xl font-bold tracking-tight text-white">Configurações</h2>
           <p className="text-sm text-slate-400 mt-1">
             Central de controle da sua instância {companyName}.
-            {!isAdmin && podeEditarAgente && (
-              <span className="ml-2 text-amber-400">(Você edita o prompt do agente)</span>
-            )}
-            {!podeEditarAgente && (
+            {!podeEditar && (
               <span className="ml-2 text-amber-400">(Somente leitura)</span>
             )}
           </p>
@@ -112,7 +104,7 @@ const Settings: React.FC<{ setShowOnboarding?: (show: boolean) => void }> = ({ s
               <>
                 <Shield className="w-3 h-3 mr-1" /> Admin
               </>
-            ) : podeEditarAgente ? (
+            ) : podeEditar ? (
               <>
                 <Shield className="w-3 h-3 mr-1" /> Diretoria
               </>
@@ -189,11 +181,7 @@ const Settings: React.FC<{ setShowOnboarding?: (show: boolean) => void }> = ({ s
           {activeTab !== 'docs' && !podeSalvarAqui && (
             <div className="flex items-center gap-2 text-sm text-amber-400">
               <Lock className="w-4 h-4" />
-              {/* Quem pode salvar na aba do Agente mas não nesta precisa saber
-                  que o bloqueio é DESTA aba, e não da tela toda. */}
-              {podeEditarAgente
-                ? 'Esta aba é exclusiva de administradores'
-                : 'Apenas administradores podem editar'}
+              Apenas administradores e diretoria podem editar
             </div>
           )}
         </div>

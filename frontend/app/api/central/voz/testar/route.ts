@@ -25,8 +25,11 @@ export async function POST(request: Request) {
   try {
     const { user, supabase } = await extractUser()
 
-    if (user.centralRole !== 'admin') {
-      return forbidden('Apenas administradores podem gerar áudio de teste')
+    // Mesmos papéis de /api/central/agent-settings. Ouvir a voz antes de ela
+    // falar com um responsável é parte de configurar a aba de APIs, que a
+    // diretoria agora administra por inteiro.
+    if (user.centralRole !== 'admin' && user.centralRole !== 'director') {
+      return forbidden('Apenas administradores e diretoria podem gerar áudio de teste')
     }
 
     const raw = await request.json().catch(() => null)
