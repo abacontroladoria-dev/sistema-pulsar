@@ -199,6 +199,27 @@ export function agoraMenos30MinIso(): string {
 }
 
 /**
+ * A carteirinha que serve como IDENTIDADE — ou nada.
+ *
+ * O agrupamento da listagem usa a carteirinha como chave de paciente, e o
+ * cadastro do TiTa aceita o preenchimento vazio na forma `000000.0000000.00`.
+ * Uma carteirinha assim é pior que carteirinha nenhuma: sendo igual entre
+ * pacientes diferentes, ela os FUNDE numa linha só — o nome exibido vira o do
+ * primeiro que o mês encontra e os demais somem da tela, e qualquer autorização
+ * que chegue com essa matrícula cai no irmão errado. Visto em 2026-09 com
+ * Benicio e Helena Asta Moraes: uma linha só, com o nome do Benicio e a
+ * contagem somada dos dois — a Helena não existia na tela.
+ *
+ * Devolvendo `null`, a chave cai no fallback `nome:<nome>` — que separa os
+ * homônimos-por-defeito sem custo, porque uma carteirinha zerada também não
+ * casa autorização nenhuma (`autorizacoes_assim.matricula` nunca a traz).
+ */
+export function carteirinhaUtil(valor: string | null | undefined): string | null {
+  if (!valor) return null
+  return /[1-9]/.test(valor) ? valor : null
+}
+
+/**
  * O placar de um conjunto de sessões contra um conjunto de autorizações.
  *
  * Pura de propósito: a listagem chama isto uma vez por paciente do período e o
@@ -723,8 +744,9 @@ export function useAnaliseReincidencia(dataInicial: string, pacienteInicial: str
     // sessões que TÊM carteirinha antes de qualquer agrupamento.
     const carteirinhaPorNome = new Map<string, string>()
     for (const s of sessoesDoMes) {
-      if (s.paciente_nome && s.carteirinha && !carteirinhaPorNome.has(s.paciente_nome)) {
-        carteirinhaPorNome.set(s.paciente_nome, s.carteirinha)
+      const c = carteirinhaUtil(s.carteirinha)
+      if (s.paciente_nome && c && !carteirinhaPorNome.has(s.paciente_nome)) {
+        carteirinhaPorNome.set(s.paciente_nome, c)
       }
     }
 
@@ -748,7 +770,7 @@ export function useAnaliseReincidencia(dataInicial: string, pacienteInicial: str
 
     for (const s of sessoesDoMes) {
       const nome = s.paciente_nome ?? '(sem nome)'
-      const carteirinha = s.carteirinha ?? carteirinhaPorNome.get(nome) ?? null
+      const carteirinha = carteirinhaUtil(s.carteirinha) ?? carteirinhaPorNome.get(nome) ?? null
       const item = abrir(carteirinha ?? `nome:${nome}`, nome)
       if (carteirinha) item.carteirinhas.add(carteirinha)
       if (s.paciente_id) item.pacienteIds.add(s.paciente_id)
@@ -766,12 +788,13 @@ export function useAnaliseReincidencia(dataInicial: string, pacienteInicial: str
     for (const a of autorizacoesDoMes) {
       // Guia de paciente sem sessão nenhuma no mês abre linha própria: é
       // exatamente o caso de "autorização sobrando" que nenhuma tela mostrava.
-      const alvo = a.matricula ? porCarteirinha.get(a.matricula) : undefined
+      const matricula = carteirinhaUtil(a.matricula)
+      const alvo = matricula ? porCarteirinha.get(matricula) : undefined
       const item =
-        alvo ?? abrir(a.matricula ?? `nome:${a.paciente_nome ?? '(sem nome)'}`, a.paciente_nome ?? '(sem nome)')
-      if (!alvo && a.matricula) {
-        item.carteirinhas.add(a.matricula)
-        porCarteirinha.set(a.matricula, item)
+        alvo ?? abrir(matricula ?? `nome:${a.paciente_nome ?? '(sem nome)'}`, a.paciente_nome ?? '(sem nome)')
+      if (!alvo && matricula) {
+        item.carteirinhas.add(matricula)
+        porCarteirinha.set(matricula, item)
       }
       item.autorizacoes.push(a)
     }
