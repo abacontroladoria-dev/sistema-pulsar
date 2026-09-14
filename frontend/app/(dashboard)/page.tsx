@@ -14,7 +14,7 @@ import { getSupabaseClient } from "@/lib/supabase/client"
 import { useHeader } from "@/contexts/HeaderContext"
 import KpiCard from "@/components/home/KpiCard"
 import FluxoOperacionalCard from "@/components/home/FluxoOperacional"
-import { buildSlotData, FluxoSlotPoint } from "@/components/home/FluxoOperacional/data"
+import { fitToTimeSlots, FluxoSlotPoint } from "@/components/home/FluxoOperacional/data"
 import PulsarHubCard from "@/components/dashboard/PulsarHubCard"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -127,8 +127,15 @@ export default function Home() {
       setLoadingKpi(true)
 
       try {
-        const { data: kpiData, error: kpiError } = await supabase
-          .rpc("get_dashboard_kpis")
+        // Ambas leem tabelas-cache alimentadas pelo cron `refresh-dashboard-kpis`
+        // (migration 20260914140000): custo trivial, sem varredura da grade.
+        const [
+          { data: kpiData, error: kpiError },
+          { data: slotRows },
+        ] = await Promise.all([
+          supabase.rpc("get_dashboard_kpis"),
+          supabase.rpc("get_fluxo_slots"),
+        ])
 
         if (kpiError) {
           console.warn("[KPI] View não disponível, usando valores padrão:", kpiError?.message)
@@ -174,7 +181,11 @@ export default function Home() {
         setFaltasPaciente(faltas)
         setTerapeutas(terapeutas)
         setTerapeutasIndisponiveis(indisponiveis)
-        setSlotData([])
+
+        // A cache traz um registro por horario existente na grade de hoje —
+        // inclusive fora da malha de 40 min. fitToTimeSlots devolve os 13 slots
+        // do grafico sem perder nenhum atendimento.
+        setSlotData(fitToTimeSlots(slotRows ?? []))
 
       } catch (err) {
         console.warn("[KPI] Erro ao carregar KPIs:", err)
