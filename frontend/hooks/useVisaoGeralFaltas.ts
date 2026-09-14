@@ -40,7 +40,7 @@ export function useVisaoGeralFaltas(semanaInicio: string) {
         // listar isso como pendência de reposição enche a tela de trabalho que
         // não existe. `or` com `is.null` porque tipo_falta é NULL nas faltas
         // antigas, e um filtro `neq` sozinho descartaria todas elas.
-        .or('tipo_falta.is.null,tipo_falta.neq.unidade')
+        .or('tipo_falta.is.null,tipo_falta.neq.unidade_fechada')
         .is('falta_revertida_em', null)
         .gte('data_atendimento', semanaInicio)
         .lte('data_atendimento', semanaFim)

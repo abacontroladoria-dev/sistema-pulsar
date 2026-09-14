@@ -273,7 +273,7 @@ const unidades = [
   const [loteJustificativa, setLoteJustificativa] = useState('')
   // Fixo: o lote existe para os casos em que a clínica não abriu. Ver o bloco
   // explicativo no modal, onde o seletor de tipo deliberadamente não existe.
-  const loteTipo = 'unidade' as const
+  const loteTipo = 'unidade_fechada' as const
   const [loteUnidade, setLoteUnidade] = useState('')
   const [loteHorario, setLoteHorario] = useState('')
   const [loteConvenio, setLoteConvenio] = useState('')

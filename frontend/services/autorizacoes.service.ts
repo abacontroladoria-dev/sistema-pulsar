@@ -260,6 +260,18 @@ export async function listarCentralAutorizacoes(data: string): Promise<Record<st
 // Ver supabase/migrations/20260908100100_registrar_falta_em_lote.sql.
 // ============================================================================
 
+// Quem faltou. Espelha o CHECK `chk_tipo_falta` do banco
+// (20260914180000_tipo_falta_blindagem_e_rename.sql) — se um valor for
+// acrescentado lá, acrescente aqui, e o compilador aponta quem precisa tratá-lo.
+//
+// `types/database.ts` tipa a coluna como `string | null`, então é ESTE union que
+// dá a rede de segurança no frontend. Antes dele, um valor divergente não
+// quebrava nada: só sumia silenciosamente dos filtros e dos badges.
+export type TipoFalta =
+  | 'paciente'         // o paciente não veio
+  | 'terapeuta'        // o profissional não veio
+  | 'unidade_fechada'  // a clínica não abriu: ninguém faltou
+
 export type MotivoFalta =
   | 'feriado'
   | 'ponto_facultativo'
@@ -279,10 +291,10 @@ export type FaltaLoteParams = {
   data: string                       // 'YYYY-MM-DD', direto do <input type="date">
   motivo: MotivoFalta
   justificativa: string
-  // 'unidade' = a clínica não abriu (feriado, ponto facultativo, falta de
-  // energia). Não é ausência de ninguém: fica fora da assiduidade do paciente e
-  // da fila de reposição. É o padrão do lote.
-  tipoFalta?: 'paciente' | 'terapeuta' | 'unidade'
+  // 'unidade_fechada' = a clínica não abriu (feriado, ponto facultativo, falta
+  // de energia). Não é ausência de ninguém: fica fora da assiduidade do paciente
+  // e da fila de reposição. É o padrão do lote.
+  tipoFalta?: TipoFalta
   unidade?: string | null            // null = todas
   horario?: string | null            // 'HH:MM', null = todos
   convenioNome?: string | null       // null = todos
@@ -316,7 +328,7 @@ function paramsParaRpc(p: FaltaLoteParams, dryRun: boolean) {
     p_data:          p.data,
     p_motivo:        p.motivo,
     p_justificativa: p.justificativa,
-    p_tipo_falta:    p.tipoFalta ?? 'unidade',
+    p_tipo_falta:    p.tipoFalta ?? 'unidade_fechada',
     // String vazia é o valor das opções "Todas as unidades" / "Todos os
     // horários" / "Todos os convênios"; o banco espera NULL para "sem filtro".
     p_unidade:       p.unidade || null,
