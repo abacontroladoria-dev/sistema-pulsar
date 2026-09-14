@@ -84,7 +84,7 @@ export default function OcupacaoPacientePage() {
     // paciente sintético ("Simulação"), sem id_paciente_pulsar real.
     buscarGradeComoCSVRows(janela.inicio, janela.fim)
       .then(rows => reconciliarAgendadosComAgendaTita(rows, janela.inicio, janela.fim))
-      .then(rows => filtrarLivresSemGradeAberta(rows, janela.inicio))
+      .then(rows => filtrarLivresSemGradeAberta(rows, janela.inicio, janela.fim))
       .then(rows => {
         setCRows(rows)
         void construirSuspensaoTemporaria(rows).then(({ set, info }) => {

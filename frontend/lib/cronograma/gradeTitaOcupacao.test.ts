@@ -19,17 +19,20 @@ let linhasGrade: Array<{
 }> = []
 
 // Mock do cliente: só precisa honrar o encadeamento usado por buscarGrade
-// (select→eq→gte→in→order→range) e devolver { data, error } no fim.
+// (select→eq→gte→lte→in→order→range) e devolver { data, error } no fim.
+// `count` vem junto porque a primeira página é pedida com { count: "exact" } —
+// é ele que permite disparar as páginas seguintes em paralelo.
 vi.mock("@/lib/supabase/client", () => ({
   getSupabaseClient: () => {
     const thenable = {
       select: () => thenable,
       eq: () => thenable,
       gte: () => thenable,
+      lte: () => thenable,
       in: () => thenable,
       order: () => thenable,
       // Uma página só: a paginação para quando linhas.length < PAGE (1000).
-      range: async () => ({ data: linhasGrade, error: null }),
+      range: async () => ({ data: linhasGrade, error: null, count: linhasGrade.length }),
     }
     return { from: () => thenable }
   },

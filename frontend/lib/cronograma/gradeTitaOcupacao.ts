@@ -136,17 +136,44 @@ interface Grade {
 }
 
 /**
- * Lê a grade da TiTa de `desde` em diante e monta os três índices de uma vez.
+ * Lê a grade da TiTa na janela [`desde`, `ate`] e monta os três índices de uma vez.
  *
  * Sem filtro de status na consulta (a C2 precisa das linhas 'Livre' também):
  * é a MESMA consulta de antes menos um `.eq`, então não há custo de rede extra.
  *
  * Restringe aos profissionais recebidos porque a tabela tem ~22 mil linhas no
- * horizonte visível e só interessam os que têm alguma vaga a oferecer — sem
- * esse recorte seriam ~18 páginas de ida e volta para descartar a maior parte
- * no cliente.
+ * horizonte visível e só interessam os que têm alguma vaga a oferecer.
+ *
+ * ── Por que existe um TETO de data, e não só o piso ──────────────────────────
+ *
+ * Até 2026-09-14 esta consulta era só `.gte("data", desde)`, aberta até o fim
+ * do horizonte. Medido em produção naquele dia, com a janela de 7 dias que a
+ * Ocupação de Paciente usa (01–07/10): 17.506 linhas, 18 páginas SERIAIS a
+ * ~3,06s cada — cerca de 55 segundos só nesta etapa, antes de a tela ter um
+ * único nome de paciente para mostrar. O recorte por profissional sozinho não
+ * segurava: quem tem vaga numa semana tem grade em todas as outras também, e a
+ * consulta trazia o horizonte inteiro de cada um deles.
+ *
+ * O teto é seguro porque nenhum dos três índices é consultado fora da janela:
+ * `naGrade` e `comprometidos` só são perguntados para `dia(r.Data)` de linhas
+ * de `cRows`, e `cRows` já vem recortado na janela pelo chamador.
+ *
+ * `profissionaisLidos` é o único índice com semântica de "vi este profissional
+ * em ALGUM lugar", e ele continua correto sob o teto: a C2 o usa para se abster
+ * quando o profissional não aparece na grade, e um profissional sem NENHUMA
+ * linha na janela é exatamente o caso em que a abstenção deve valer. Antes, uma
+ * linha em dezembro o marcava como "lido" e ligava a regra para uma semana em
+ * que ele pode não ter grade alguma — o teto torna a abstenção mais fiel à
+ * janela, não menos.
+ *
+ * ── Por que as páginas vão em paralelo ───────────────────────────────────────
+ *
+ * `count: "exact"` na primeira página dá o total, e as demais são disparadas de
+ * uma vez em vez de uma esperar a outra. Com o teto acima a janela típica cabe
+ * em poucas páginas; o paralelo é o que impede que um pico de volume volte a
+ * virar dezenas de idas e voltas em série.
  */
-async function buscarGrade(desde: string, profissionaisIds: number[]): Promise<Grade> {
+async function buscarGrade(desde: string, ate: string, profissionaisIds: number[]): Promise<Grade> {
   const grade: Grade = {
     comprometidos: new Set<ChaveSlot>(),
     naGrade: new Set<ChaveData>(),
@@ -156,20 +183,24 @@ async function buscarGrade(desde: string, profissionaisIds: number[]): Promise<G
   if (profissionaisIds.length === 0) return grade
 
   const sb = getSupabaseClient()
-  let from = 0
-  for (;;) {
-    const { data, error } = await sb
+
+  const pagina = (from: number, comTotal: boolean) => {
+    const q = sb
       .from("grade_profissionais_tita")
-      .select("profissional_id, data, hora_inicial, status_agendamento")
+      .select(
+        "profissional_id, data, hora_inicial, status_agendamento",
+        comTotal ? { count: "exact" } : undefined,
+      )
       .eq("id_unidade", UNIDADE)
       .gte("data", desde)
+      .lte("data", ate)
       .in("profissional_id", profissionaisIds)
       .order("id")
       .range(from, from + PAGE - 1)
+    return q
+  }
 
-    if (error) throw new Error(`grade_profissionais_tita: ${error.message}`)
-
-    const linhas = (data ?? []) as LinhaGrade[]
+  const indexar = (linhas: LinhaGrade[]) => {
     for (const l of linhas) {
       if (l.profissional_id == null || !l.data || !l.hora_inicial) continue
       grade.linhas++
@@ -179,8 +210,36 @@ async function buscarGrade(desde: string, profissionaisIds: number[]): Promise<G
         grade.comprometidos.add(chaveSlot(l.profissional_id, dowDe(l.data), l.hora_inicial))
       }
     }
-    if (linhas.length < PAGE) break
-    from += PAGE
+  }
+
+  const { data, error, count } = await pagina(0, true)
+  if (error) throw new Error(`grade_profissionais_tita: ${error.message}`)
+  const primeira = (data ?? []) as LinhaGrade[]
+  indexar(primeira)
+
+  // `count` nulo (o PostgREST pode não devolvê-lo) cai no laço serial de antes,
+  // que é lento mas nunca perde linha — o paralelo é otimização, não requisito.
+  if (count == null) {
+    if (primeira.length === PAGE) {
+      for (let from = PAGE; ; from += PAGE) {
+        const { data: d, error: e } = await pagina(from, false)
+        if (e) throw new Error(`grade_profissionais_tita: ${e.message}`)
+        const linhas = (d ?? []) as LinhaGrade[]
+        indexar(linhas)
+        if (linhas.length < PAGE) break
+      }
+    }
+    return grade
+  }
+
+  const restantes: number[] = []
+  for (let from = PAGE; from < count; from += PAGE) restantes.push(from)
+  if (restantes.length) {
+    const respostas = await Promise.all(restantes.map(from => pagina(from, false)))
+    for (const { data: d, error: e } of respostas) {
+      if (e) throw new Error(`grade_profissionais_tita: ${e.message}`)
+      indexar((d ?? []) as LinhaGrade[])
+    }
   }
 
   return grade
@@ -207,16 +266,27 @@ async function buscarGrade(desde: string, profissionaisIds: number[]): Promise<G
  * Linha sem ProfissionalId é mantida: sem o id não há como consultar a grade, e
  * derrubar por precaução esconderia vaga boa sem evidência nenhuma.
  */
-export async function filtrarLivresSemGradeAberta(cRows: CsvRow[], desde: string): Promise<CsvRow[]> {
+export async function filtrarLivresSemGradeAberta(
+  cRows: CsvRow[],
+  desde: string,
+  // Teto da janela. Opcional para não quebrar chamador antigo; quando ausente,
+  // é derivado da maior data presente em `cRows` — que é o fim real da janela,
+  // já que nenhuma linha fora dela é consultada. Ver a nota em `buscarGrade`.
+  ate?: string,
+): Promise<CsvRow[]> {
   const idsComVaga = new Set<number>()
+  let maiorData = ""
   for (const r of cRows) {
+    const d = dia(r.Data)
+    if (d && d > maiorData) maiorData = d
     if (r["Status do Agendamento"] !== "Livre") continue
     const id = r.ProfissionalId
     if (typeof id === "number") idsComVaga.add(id)
   }
   if (idsComVaga.size === 0) return cRows
 
-  const grade = await buscarGrade(desde, [...idsComVaga])
+  const teto = ate || maiorData || desde
+  const grade = await buscarGrade(desde, teto, [...idsComVaga])
 
   // A policy de grade_profissionais_tita só libera SELECT para `authenticated`
   // (ver 20260524120000_grade_profissionais_rls_policy.sql). Sessão anônima não
@@ -230,7 +300,7 @@ export async function filtrarLivresSemGradeAberta(cRows: CsvRow[], desde: string
     console.warn(
       "[gradeTitaOcupacao] Nenhuma linha lida de grade_profissionais_tita — regras C1/C2 desligadas. "
       + "Se a tela está oferecendo horário ocupado ou sem grade, verifique se a sessão está autenticada (RLS).",
-      JSON.stringify({ desde, profissionais: idsComVaga.size }),
+      JSON.stringify({ desde, ate: teto, profissionais: idsComVaga.size }),
     )
     return cRows
   }

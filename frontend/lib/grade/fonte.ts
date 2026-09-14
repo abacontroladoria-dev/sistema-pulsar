@@ -148,14 +148,18 @@ export interface BuscaGrade {
 export async function buscarGrade<T>(cfg: BuscaGrade): Promise<T[]> {
   const sb = cfg.cliente ?? getSupabaseClient()
   const view = VIEW_POR_FONTE[cfg.fonte ?? "atendimentos"]
-  const todas: T[] = []
 
-  let from = 0
-  while (true) {
-    const tamanho = cfg.limite ? Math.min(PAGE, cfg.limite - todas.length) : PAGE
-    if (tamanho <= 0) break
-
-    let q: QueryGrade = sb.from(view).select(cfg.campos)
+  // `count: "exact"` só na primeira página: com o total em mãos, as demais são
+  // disparadas de uma vez em vez de uma esperar a outra. Medido em 2026-09-14
+  // na janela de 7 dias da Ocupação de Paciente (4.068 linhas, 5 páginas): as
+  // idas seriais somavam ~3,7s, com a última página só começando depois de a
+  // quarta voltar. Nenhuma delas depende do resultado da anterior — o `range` é
+  // calculado por aritmética, não pelo que veio antes.
+  const montar = (from: number, tamanho: number, comTotal: boolean) => {
+    let q: QueryGrade = sb.from(view).select(
+      cfg.campos,
+      comTotal ? { count: "exact" } : undefined,
+    )
 
     if (cfg.de) q = q.gte("data", cfg.de)
     if (cfg.ate) q = q.lte("data", cfg.ate)
@@ -166,15 +170,54 @@ export async function buscarGrade<T>(cfg: BuscaGrade): Promise<T[]> {
 
     for (const o of cfg.ordem ?? []) q = q.order(o.coluna, { ascending: !o.desc })
 
-    const { data, error } = await q.range(from, from + tamanho - 1)
-    if (error) throw new Error(error.message)
-
-    const linhas = (data ?? []) as T[]
-    todas.push(...linhas)
-    if (linhas.length < tamanho) break
-    from += tamanho
+    return q.range(from, from + tamanho - 1)
   }
 
+  const primeiroTamanho = cfg.limite ? Math.min(PAGE, cfg.limite) : PAGE
+  if (primeiroTamanho <= 0) return []
+
+  const { data, error, count } = await montar(0, primeiroTamanho, true)
+  if (error) throw new Error(error.message)
+
+  const primeira = (data ?? []) as T[]
+  // Acabou na primeira página: o caso comum das consultas pequenas.
+  if (primeira.length < primeiroTamanho) return primeira
+
+  // Quanto ainda há a buscar. `limite` continua sendo teto duro; sem ele, o
+  // alvo é o total que o servidor informou.
+  const alvo = cfg.limite ?? count ?? 0
+
+  // `count` nulo (o PostgREST pode omiti-lo) cai no laço serial de antes, que é
+  // lento mas nunca perde linha — o paralelo é otimização, não requisito.
+  if (cfg.limite == null && count == null) {
+    const todas: T[] = [...primeira]
+    for (let from = PAGE; ; from += PAGE) {
+      const { data: d, error: e } = await montar(from, PAGE, false)
+      if (e) throw new Error(e.message)
+      const linhas = (d ?? []) as T[]
+      todas.push(...linhas)
+      if (linhas.length < PAGE) break
+    }
+    return todas
+  }
+
+  const faixas: { from: number; tamanho: number }[] = []
+  for (let from = primeira.length; from < alvo; from += PAGE) {
+    faixas.push({ from, tamanho: Math.min(PAGE, alvo - from) })
+  }
+  if (!faixas.length) return primeira
+
+  const respostas = await Promise.all(
+    faixas.map(f => montar(f.from, f.tamanho, false)),
+  )
+
+  // Concatena na ORDEM das faixas, não na de chegada — `cfg.ordem` só vale se
+  // as páginas forem remontadas na sequência em que foram pedidas.
+  const todas: T[] = [...primeira]
+  for (const { data: d, error: e } of respostas) {
+    if (e) throw new Error(e.message)
+    todas.push(...((d ?? []) as T[]))
+  }
   return todas
 }
 

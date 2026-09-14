@@ -130,20 +130,44 @@ export async function reconciliarAgendadosComAgendaTita(
   // sessão duas vezes, às 10:00 e às 10:40.
   const linhas: (LinhaAgenda & { ativo: boolean })[] = []
   try {
-    for (let from = 0; ; from += PAGE) {
-      const { data, error } = await sb
+    // `count: "exact"` na primeira página e as demais em paralelo: nenhuma
+    // depende do resultado da anterior (o `range` é aritmética pura), e em série
+    // a janela de 7 dias custava ~1,26s POR PÁGINA em 2026-09-14. Ordem de
+    // concatenação preservada, que é o que faz o `.order("id")` continuar valendo.
+    const pagina = (from: number, comTotal: boolean) =>
+      sb
         .from(TABELA)
-        .select(`${CAMPOS}, ativo`)
+        .select(`${CAMPOS}, ativo`, comTotal ? { count: "exact" } : undefined)
         .eq("clinica_id", UNIDADE)
         .gte("data_atendimento", de)
         .lte("data_atendimento", ate)
         .order("id")
         .range(from, from + PAGE - 1)
 
-      if (error) throw new Error(error.message)
-      const pagina = (data ?? []) as unknown as (LinhaAgenda & { ativo: boolean })[]
-      linhas.push(...pagina)
-      if (pagina.length < PAGE) break
+    const { data, error, count } = await pagina(0, true)
+    if (error) throw new Error(error.message)
+    const primeira = (data ?? []) as unknown as (LinhaAgenda & { ativo: boolean })[]
+    linhas.push(...primeira)
+
+    if (primeira.length === PAGE) {
+      if (count == null) {
+        // Sem total, volta ao laço serial: lento, mas nunca perde linha.
+        for (let from = PAGE; ; from += PAGE) {
+          const { data: d, error: e } = await pagina(from, false)
+          if (e) throw new Error(e.message)
+          const p = (d ?? []) as unknown as (LinhaAgenda & { ativo: boolean })[]
+          linhas.push(...p)
+          if (p.length < PAGE) break
+        }
+      } else {
+        const faixas: number[] = []
+        for (let from = PAGE; from < count; from += PAGE) faixas.push(from)
+        const respostas = await Promise.all(faixas.map(f => pagina(f, false)))
+        for (const { data: d, error: e } of respostas) {
+          if (e) throw new Error(e.message)
+          linhas.push(...((d ?? []) as unknown as (LinhaAgenda & { ativo: boolean })[]))
+        }
+      }
     }
   } catch (e) {
     // Fail-open: sem a agenda_tita, o CSV sozinho ainda é melhor que tela vazia.
