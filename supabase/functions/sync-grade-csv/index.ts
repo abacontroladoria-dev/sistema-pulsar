@@ -158,14 +158,24 @@ const TETO_EXECUCAO_MS = 25_000
  * chamaria para sempre.
  *
  * Dimensionado pelo pior caso real: janela máxima de ~62 dias (hoje → fim do mês
- * seguinte) com o teto de 25s rendendo ~2 dias por salto = ~31 saltos. 45 dá
- * folga sem virar recursão infinita — e o laço só reencadeia quando SOBROU
- * janela, então em regime normal isso nunca é alcançado.
+ * seguinte). O número original (45) supunha o teto de 25s rendendo ~2 dias por
+ * salto, logo ~31 saltos, com folga.
+ *
+ * Essa suposição não se sustentou. Medido em 2026-09-14, com o sync repondo a
+ * janela congelada de 10/09: uma fatia de UM dia futuro (2026-10-29, chamada
+ * isolada) levou 88s. A 88s/dia o teto de 25s dispara logo depois do primeiro
+ * dia, e cada salto rende 1 dia — não 2. Uma janela de 48 dias precisa então de
+ * ~48 saltos, e parava em 45 sem fechar o mês: o mesmo sintoma que o
+ * encadeamento existe para evitar, só que num lugar diferente.
+ *
+ * 70 cobre a janela máxima de ~62 dias a um dia por salto, com folga. Continua
+ * sendo trava contra recursão infinita (o laço só reencadeia quando SOBROU
+ * janela E a rodada andou pelo menos um dia — ver `semProgresso` no handler).
  *
  * Fim de semana é fatia barata (a TiTa devolve vazio), então o número real de
- * saltos numa janela de mês fica bem abaixo do teórico.
+ * saltos numa janela de mês fica abaixo do teórico.
  */
-const MAX_SALTOS = 45
+const MAX_SALTOS = 70
 
 type Modo = "grade" | "execucao"
 
