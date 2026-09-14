@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { Toaster } from 'sonner'
 import { getSupabaseClient } from '@/lib/supabase/client'
 import { OnboardingProvider } from '@/contexts/OnboardingContext'
 import { CompanySettingsProvider } from '@/hooks/nina/useCompanySettings'
@@ -53,6 +54,12 @@ export default function ConnectLayout({
             <Sidebar />
             <main className="flex-1 overflow-auto">{children}</main>
           </div>
+          {/* Toaster do sonner. O layout raiz monta o da react-hot-toast, que é
+              outra biblioteca: as telas do Connect chamam `toast` do sonner, e
+              sem este provider toda confirmação de "salvo" era descartada em
+              silêncio. `richColors` diferencia sucesso de erro sem depender só
+              do texto. */}
+          <Toaster position="top-right" theme="dark" richColors closeButton />
         </OnboardingProvider>
       </CompanySettingsProvider>
     </AuthProvider>

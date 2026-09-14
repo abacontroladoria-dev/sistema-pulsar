@@ -1,5 +1,5 @@
-import React, { useRef, useState } from 'react';
-import { Shield, Bot, Plug, Loader2, Save, RotateCcw, BookOpen, Lock } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Shield, Bot, Plug, Loader2, Save, RotateCcw, BookOpen, Lock, Check } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import AgentSettings, { AgentSettingsRef } from './settings/AgentSettings';
 import ApiSettings, { ApiSettingsRef } from './settings/ApiSettings';
@@ -33,11 +33,40 @@ const Settings: React.FC<{ setShowOnboarding?: (show: boolean) => void }> = ({ s
     setShowOnboarding(true);
   };
 
+  // Confirmação inline, ao lado do botão. O toast aparece no canto oposto da
+  // tela e passa despercebido justamente quando mais importa — depois de um
+  // texto longo, com o olhar ainda no campo. Este selo fica onde a pessoa
+  // acabou de clicar. `salvoEm` guarda o instante para reiniciar o timer a
+  // cada novo salvamento, em vez de um boolean que o segundo clique não muda.
+  const [salvoEm, setSalvoEm] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (salvoEm === null) return;
+    const t = setTimeout(() => setSalvoEm(null), 4000);
+    return () => clearTimeout(t);
+  }, [salvoEm]);
+
+  // Estado próprio, e não `agentRef.current?.isSaving`: valor lido de ref não
+  // dispara render, então o botão nunca chegava a mostrar "Salvando...". Quem
+  // conhece o instante do clique é este componente.
+  const [salvando, setSalvando] = useState(false);
+
   const handleSave = async () => {
-    if (activeTab === 'agent') {
-      await agentRef.current?.save();
-    } else if (activeTab === 'apis') {
-      await apiRef.current?.save();
+    // O `save()` das abas relança o erro depois de exibir o toast vermelho:
+    // sem o catch, a exceção sobe como unhandled rejection e — pior — o selo
+    // de "salvo" apareceria para uma gravação que falhou.
+    setSalvando(true);
+    try {
+      if (activeTab === 'agent') {
+        await agentRef.current?.save();
+      } else if (activeTab === 'apis') {
+        await apiRef.current?.save();
+      }
+      setSalvoEm(Date.now());
+    } catch {
+      setSalvoEm(null);
+    } finally {
+      setSalvando(false);
     }
   };
 
@@ -49,9 +78,7 @@ const Settings: React.FC<{ setShowOnboarding?: (show: boolean) => void }> = ({ s
     }
   };
 
-  const isSaving = activeTab === 'agent'
-    ? agentRef.current?.isSaving
-    : apiRef.current?.isSaving;
+  const isSaving = salvando;
 
   return (
     <div className="p-8 w-full h-full overflow-y-auto bg-slate-950 text-slate-50 custom-scrollbar">
@@ -98,7 +125,11 @@ const Settings: React.FC<{ setShowOnboarding?: (show: boolean) => void }> = ({ s
         </div>
       </div>
 
-      <Tabs defaultValue="agent" className="w-full" onValueChange={setActiveTab}>
+      <Tabs
+        defaultValue="agent"
+        className="w-full"
+        onValueChange={tab => { setActiveTab(tab); setSalvoEm(null); }}
+      >
         <div className="flex items-center justify-between mb-8">
           <TabsList>
             <TabsTrigger value="agent" className="gap-2">
@@ -116,7 +147,17 @@ const Settings: React.FC<{ setShowOnboarding?: (show: boolean) => void }> = ({ s
           </TabsList>
 
           {activeTab !== 'docs' && podeSalvarAqui && (
-            <div className="flex gap-3">
+            <div className="flex gap-3 items-center">
+              {salvoEm !== null && !isSaving && (
+                <span
+                  role="status"
+                  aria-live="polite"
+                  className="flex items-center gap-1.5 text-sm text-emerald-400"
+                >
+                  <Check className="w-4 h-4" />
+                  Alterações salvas
+                </span>
+              )}
               <Button
                 variant="ghost"
                 onClick={handleCancel}
