@@ -72,6 +72,8 @@ type Aviso = {
   matricula: string | null;
   recepcionista: string | null;
   tentativas: number;
+  /** Instante em que o trigger depositou o aviso na outbox. Vira o carimbo do rodapé. */
+  criado_em: string | null;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -188,6 +190,45 @@ function formatarData(iso: string | null): string | null {
 }
 
 /**
+ * O carimbo de origem: `#<id da outbox> · <quando o aviso nasceu>`.
+ *
+ * POR QUE ISTO EXISTE (14/09/2026). O canal recebeu o MESMO aviso duas vezes com
+ * quatro dias de intervalo — conteúdo idêntico byte a byte, ambos assinados como
+ * ClickBot. A outbox provou que o Pulsar publicou uma vez só (linha 6340,
+ * `enviado_em` só em 10/09, `tentativas`=0), então a republicação aconteceu
+ * DEPOIS do nosso POST, dentro do Zapier. Nada na mensagem permitia perceber isso
+ * a olho: duas cópias idênticas são indistinguíveis de duas glosas iguais.
+ *
+ * O `id` da outbox é a chave certa porque é ESTÁVEL — sobrevive à republicação,
+ * já que o texto inteiro é reemitido como está. Dois avisos com o mesmo `#id` são
+ * necessariamente a mesma mensagem duas vezes; dois `#id` diferentes são duas
+ * glosas de verdade, ainda que os campos coincidam. A pergunta "isto é duplicata?"
+ * passa a se responder olhando o canal, sem ir ao banco nem aos logs do Zapier.
+ *
+ * O horário é de São Paulo. `criado_em` é `timestamptz` (UTC), ao contrário de
+ * `horario_autorizacao`, que já é hora de parede — imprimi-lo cru erraria em 3h e
+ * o carimbo contradiria a linha "Quando" logo acima.
+ */
+function carimboOrigem(a: Aviso): string | null {
+  if (!a.criado_em) return `#${a.id}`;
+
+  const d = new Date(a.criado_em);
+  if (Number.isNaN(d.getTime())) return `#${a.id}`;
+
+  const partes = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(d);
+
+  return `#${a.id} · ${partes.replace(",", "")}`;
+}
+
+/**
  * Monta a mensagem.
  *
  * A HIERARQUIA, E POR QUE ELA É ASSIM (redesenhada em 2026-08-28, depois do
@@ -298,6 +339,16 @@ function montarMensagem(a: Aviso, codigos: Map<string, string>): string {
   if (a.recepcionista) {
     linhas.push("");
     linhas.push(`_Solicitado por ${a.recepcionista}_`);
+  }
+
+  // O carimbo fecha a mensagem, no menor peso visual possível: quem lê o canal
+  // para trabalhar não precisa dele, e quem investiga uma duplicata precisa
+  // exatamente dele. Colado à linha do solicitante quando ela existe — são as
+  // duas informações de procedência, não merecem um respiro entre si.
+  const carimbo = carimboOrigem(a);
+  if (carimbo) {
+    if (!a.recepcionista) linhas.push("");
+    linhas.push(`_${carimbo}_`);
   }
 
   return linhas.join("\n");

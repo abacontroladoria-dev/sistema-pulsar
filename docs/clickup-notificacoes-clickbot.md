@@ -173,6 +173,32 @@ recebeu **duas mensagens marcando três pessoas**.
 Regra: **entrega incerta não cai no fallback.** Reenviar por via das dúvidas
 duplica, e duplicata com menção é pior que atraso.
 
+### Nem toda duplicata é nossa
+
+Em 14/09/2026 o canal recebeu o mesmo aviso duas vezes com **quatro dias** de
+intervalo, idêntico byte a byte e as duas cópias assinadas como ClickBot. Não foi
+o Pulsar: a outbox tinha uma linha só, `enviado_em` num único instante e
+`tentativas = 0`.
+
+Dois sinais separam os casos, e vale checá-los nesta ordem antes de mexer no
+código:
+
+| | duplicata do fallback | republicação no Zapier |
+|---|---|---|
+| intervalo | segundos, mesma rodada | qualquer um |
+| autor da 2ª | **conta pessoal** | ClickBot |
+| resumo do cron | `fallback_direto` / `zapier_incerto` | limpo |
+
+Duas mensagens ambas como ClickBot significam que **as duas passaram pelo
+Zapier** — e o único componente entre a função e o canal capaz de reemitir
+sozinho, preservando `send_as_bot`, é o action run. Confirma-se no Zap history da
+conexão, procurando dois runs de `createChatMessage` com o mesmo `comment_text`.
+
+Por isso a mensagem termina com `_#<id da outbox> · <data>_`. O `id` é estável e
+viaja junto no texto republicado: **mesmo `#id` = mesma mensagem duas vezes;
+`#id` diferentes = duas glosas de verdade**, ainda que todos os campos
+coincidam. Sem ele, responder "isto é duplicata?" exigia ir ao banco.
+
 ### `markdown: true`
 
 É o equivalente ao `content_format: "text/md"` do caminho direto. Sem ele, o
