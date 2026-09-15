@@ -1,4 +1,5 @@
 import type {
+  AIMode,
   Conversation,
   PaginatedResult,
 } from '../types/central.types'
@@ -148,6 +149,38 @@ export class ConversationService {
       toUserId,
       previousAssignee,
       actorId,
+    })
+  }
+
+  // -------------------------------------------------------------------------
+  // setAiMode
+  // A chave Maia / Atendente do inbox. Decide POR CONVERSA quem responde, sem
+  // tocar no ai_mode da organização — a recepcionista assume UMA conversa, não
+  // desliga a atendente da clínica inteira.
+  //
+  // `null` devolve a conversa ao padrão da inbox/org, e não é sinônimo de 'off':
+  // 'off' é "esta conversa foi desligada" e sobrevive a qualquer mudança de
+  // padrão; null é "nunca foi tocada". Ver 20260915220000.
+  //
+  // Não usa requireActive: faz sentido religar a Maia numa conversa que acabou
+  // de ser resolvida e o responsável reabriu escrevendo de novo. O que torna a
+  // conversa elegível a turno é o worker, não este método.
+  //
+  // A auditoria é o ponto todo deste método existir — sem ela, "a Maia parou de
+  // responder esse contato" fica sem dono nem horário.
+  // -------------------------------------------------------------------------
+  async setAiMode(conversationId: string, aiMode: AIMode | null, actorId: string): Promise<void> {
+    const conv      = await this.getById(conversationId)
+    const anterior  = conv.ai_mode
+
+    await this.conv.updateAiMode(conversationId, aiMode)
+
+    void this.audit.insert({
+      organization_id: conv.organization_id,
+      conversation_id: conversationId,
+      event_type:      'conversation.ai_mode_changed',
+      performed_by:    actorId,
+      payload:         { de: anterior, para: aiMode },
     })
   }
 

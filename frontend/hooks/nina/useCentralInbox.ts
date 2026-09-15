@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type {
+  AIMode,
   Conversation,
   Message,
   Contact,
@@ -76,6 +77,11 @@ async function buscar<T>(url: string, signal: AbortSignal): Promise<T> {
 interface DetalheConversa extends Conversation {
   contact:         Contact | null
   recentMessages:  Message[]
+  // Herança já resolvida pelo servidor. `ai_mode` da conversa pode ser NULL
+  // ("ninguém decidiu, vale o padrão da clínica") e só o backend enxerga o
+  // agent_settings — resolver isso aqui daria uma segunda resposta possível.
+  aiModeEfetivo:   AIMode
+  aiModeOrigem:    'conversa' | 'padrao'
 }
 
 function classificar(e: unknown): InboxErro {
@@ -83,6 +89,18 @@ function classificar(e: unknown): InboxErro {
     return { tipo: 'sem_acesso', mensagem: e.message }
   }
   return { tipo: 'rede', mensagem: (e as Error).message }
+}
+
+// Quem responde a conversa aberta.
+export interface ModoIa {
+  // Já com a herança resolvida — é isto que o botão deve refletir.
+  modo:       AIMode
+  // 'padrao' = ninguém decidiu nesta conversa; vale o ai_mode da clínica.
+  origem:     'conversa' | 'padrao'
+  // O valor cru da coluna, que `origem` já resume. Fica exposto porque desligar
+  // e voltar ao padrão são ações diferentes, e só quem tem o valor cru sabe
+  // qual delas está em vigor.
+  daConversa: AIMode | null
 }
 
 export interface UseCentralInbox {
@@ -95,6 +113,9 @@ export interface UseCentralInbox {
   erro:          InboxErro
   enviar:        (texto: string) => Promise<void>
   enviando:      boolean
+  modoIa:        ModoIa | null
+  definirModoIa: (modo: AIMode | null) => Promise<void>
+  salvandoModo:  boolean
 }
 
 export function useCentralInbox(): UseCentralInbox {
@@ -105,6 +126,8 @@ export function useCentralInbox(): UseCentralInbox {
   const [loadingChat, setLoadingChat]     = useState(false)
   const [erro, setErro]                   = useState<InboxErro>(null)
   const [enviando, setEnviando]           = useState(false)
+  const [modoIa, setModoIa]               = useState<ModoIa | null>(null)
+  const [salvandoModo, setSalvandoModo]   = useState(false)
 
   // Só a PRIMEIRA carga acende `loading`. As recargas do polling são silenciosas
   // — piscar a lista a cada 5s a tornaria inutilizável.
@@ -157,7 +180,13 @@ export function useCentralInbox(): UseCentralInbox {
     // recentMessages vem DESC (message.repository.ts usa ascending:false). A
     // tela lê de cima para baixo — a inversão acontece UMA vez, aqui na borda.
     const cronologicas = [...(d.recentMessages ?? [])].reverse()
-    return toUIConversation(d, d.contact ?? null, cronologicas)
+    return {
+      chat: toUIConversation(d, d.contact ?? null, cronologicas),
+      // Fora do NinaConversation de propósito: são campos do `central` que a
+      // tela do Nina não tem, e enfiá-los no tipo da UI misturaria os dois
+      // vocabulários que o adapter existe para manter separados.
+      modo: { modo: d.aiModeEfetivo, origem: d.aiModeOrigem, daConversa: d.ai_mode },
+    }
   }, [])
 
   useEffect(() => {
@@ -174,9 +203,10 @@ export function useCentralInbox(): UseCentralInbox {
 
     async function carregar() {
       try {
-        const chat = await carregarDetalhe(selectedId!, controller.signal)
+        const { chat, modo } = await carregarDetalhe(selectedId!, controller.signal)
         if (!vivo) return
         setActiveChat(chat)
+        setModoIa(modo)
         setErro(null)
       } catch (e) {
         if (!vivo || (e as Error).name === 'AbortError') return
@@ -196,6 +226,9 @@ export function useCentralInbox(): UseCentralInbox {
     // Limpa o chat anterior: mostrar as mensagens de outra pessoa enquanto o
     // novo carrega já é confusão suficiente para o operador responder errado.
     setActiveChat(null)
+    // Pelo mesmo motivo: o botão mostrando "Maia" da conversa anterior enquanto
+    // a nova carrega convida a recepcionista a desligar a IA da pessoa errada.
+    setModoIa(null)
   }, [])
 
   // ------------------------------------------------------------------------
@@ -228,14 +261,48 @@ export function useCentralInbox(): UseCentralInbox {
       // Refetch em vez de empurrar a resposta na lista local: o poll de 5s
       // sobrescreveria o otimismo e as duas versões divergiriam por segundos.
       const controller = new AbortController()
-      setActiveChat(await carregarDetalhe(selectedId, controller.signal))
+      const { chat, modo } = await carregarDetalhe(selectedId, controller.signal)
+      setActiveChat(chat)
+      setModoIa(modo)
     } finally {
       setEnviando(false)
+    }
+  }, [selectedId, carregarDetalhe])
+
+  // ------------------------------------------------------------------------
+  // Chave Maia / Atendente
+
+  const definirModoIa = useCallback(async (modo: AIMode | null) => {
+    if (!selectedId) return
+
+    setSalvandoModo(true)
+    try {
+      const res = await fetch(`/api/central/conversations/${selectedId}`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ action: 'set_ai_mode', aiMode: modo }),
+      })
+
+      if (!res.ok) {
+        const json = await res.json().catch(() => null)
+        throw new Error(json?.error?.message ?? `A troca falhou com ${res.status}.`)
+      }
+
+      // Refetch em vez de atualizar o estado local: a herança é resolvida no
+      // servidor, então mandar `null` aqui não diz qual modo passou a valer —
+      // só o backend sabe o que o agent_settings responde.
+      const controller = new AbortController()
+      const { chat, modo: atual } = await carregarDetalhe(selectedId, controller.signal)
+      setActiveChat(chat)
+      setModoIa(atual)
+    } finally {
+      setSalvandoModo(false)
     }
   }, [selectedId, carregarDetalhe])
 
   return {
     conversations, activeChat, selectedId, select,
     loading, loadingChat, erro, enviar, enviando,
+    modoIa, definirModoIa, salvandoModo,
   }
 }

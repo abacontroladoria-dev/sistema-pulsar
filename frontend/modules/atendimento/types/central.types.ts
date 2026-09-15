@@ -141,7 +141,12 @@ export interface Conversation {
   priority:         string | null
   intent:           string | null
   sentiment:        string | null
-  ai_mode:          AIMode
+  // NULL = ninguém decidiu nada nesta conversa; vale o ai_mode de
+  // agent_settings (inbox vence org). Ver 20260915220000: a coluna deixou de
+  // ser `not null default 'off'` justamente porque "nunca foi tocada" e
+  // "desligada de propósito" precisam ser distinguíveis — sem isso, o padrão da
+  // organização não alcançaria conversa nenhuma.
+  ai_mode:          AIMode | null
   last_message_at:  string | null
   resolved_at:      string | null
   archived_at:      string | null

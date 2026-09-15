@@ -5,7 +5,7 @@ import {
   Search, MessageSquare, Loader2, Mail, Phone, Users, Info, X, Bot, User, Pause, Brain, Plus, Send, Play, Check, CheckCheck, ShieldAlert, AlertCircle, WifiOff
 } from 'lucide-react'
 import { ConversationStatus, MessageDirection } from '@/types/nina'
-import { useCentralInbox } from '@/hooks/nina/useCentralInbox'
+import { useCentralInbox, type ModoIa } from '@/hooks/nina/useCentralInbox'
 import { iniciais, rotuloTipoContato, type NinaMessage } from './adapters/centralToNina'
 import { Button } from './Button'
 import { toast } from 'sonner'
@@ -14,6 +14,7 @@ const ChatInterface: React.FC = () => {
   const {
     conversations, activeChat, selectedId, select,
     loading, erro, enviar, enviando,
+    modoIa, definirModoIa, salvandoModo,
   } = useCentralInbox()
 
   const [inputText, setInputText] = useState('')
@@ -46,7 +47,7 @@ const ChatInterface: React.FC = () => {
 
   const renderStatusBadge = (status: ConversationStatus) => {
     const config = {
-      nina: { label: 'Nina', icon: Bot, color: 'bg-violet-500/20 text-violet-400 border-violet-500/30' },
+      nina: { label: 'Maia', icon: Bot, color: 'bg-violet-500/20 text-violet-400 border-violet-500/30' },
       human: { label: 'Humano', icon: User, color: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' },
       paused: { label: 'Pausado', icon: Pause, color: 'bg-amber-500/20 text-amber-400 border-amber-500/30' }
     }
@@ -57,6 +58,23 @@ const ChatInterface: React.FC = () => {
         {label}
       </span>
     )
+  }
+
+  // A chave Maia / Atendente. Grava SEMPRE um valor explícito na conversa, nos
+  // dois sentidos — nunca `null`.
+  //
+  // `null` existe e significa "seguir o padrão da clínica", mas não é o que um
+  // clique quer dizer. Quem clica em "Maia" quer a Maia atendendo ESTA pessoa;
+  // se isso gravasse null e o agent_settings estivesse em 'off', o botão voltaria
+  // sozinho para Atendente e pareceria quebrado. A herança serve para a conversa
+  // que ninguém tocou, e é só isso.
+  const handleTrocarModo = async (ligar: boolean) => {
+    try {
+      await definirModoIa(ligar ? 'autonomous' : 'off')
+      toast.success(ligar ? 'A Maia voltou a atender esta conversa.' : 'A Maia parou. O atendimento é seu.')
+    } catch (err) {
+      toast.error((err as Error).message)
+    }
   }
 
   const handleSendMessage = async (e?: React.FormEvent) => {
@@ -198,11 +216,22 @@ const ChatInterface: React.FC = () => {
                 <div className="ml-3">
                   <h2 className="text-sm font-bold text-slate-100 flex items-center gap-2">
                     {activeChat.contactName}
-                    {renderStatusBadge(activeChat.status)}
+                    {/* A badge sai de `ai_mode` cru e não enxerga a herança
+                        (o adapter não conhece o agent_settings). A chave ao
+                        lado mostra o modo efetivo e é a fonte a acreditar;
+                        suprimir a badge aqui evita as duas se contradizerem
+                        numa conversa que segue o padrão da clínica. */}
+                    {modoIa?.origem === 'conversa' && renderStatusBadge(activeChat.status)}
                   </h2>
                   <p className="text-xs text-cyan-500 font-medium">{activeChat.contactPhone}</p>
                 </div>
               </div>
+
+              <ChaveAtendimento
+                modo={modoIa}
+                salvando={salvandoModo}
+                aoTrocar={handleTrocarModo}
+              />
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar relative z-0">
@@ -233,7 +262,7 @@ const ChatInterface: React.FC = () => {
                         <div className="flex items-center mt-1.5 gap-1.5 text-[10px] px-1">
                           {msg.isAiDraft && (
                             <span className="text-violet-400 font-medium">
-                              Sugestão da Nina — não enviada
+                              Sugestão da Maia — não enviada
                             </span>
                           )}
                           <span className="text-slate-500 opacity-60">{msg.timestamp}</span>
@@ -387,6 +416,98 @@ const Avatar: React.FC<{ url: string; nome: string }> = ({ url, nome }) => {
   return (
     <div className="w-full h-full rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400 text-xs font-semibold">
       {iniciais(nome)}
+    </div>
+  )
+}
+
+// ----------------------------------------------------------------------------
+// Chave Maia / Atendente
+//
+// Quem responde ESTA conversa. Dois estados, porque é a pergunta que a
+// recepcionista faz ao assumir um atendimento: continua a máquina, ou sou eu?
+//
+// Os DOIS lados ficam visíveis, num trilho só, em vez de um botão que alterna.
+// Um botão que alterna obriga a ler o rótulo e adivinhar se ele diz o estado
+// atual ou a ação — a dúvida mais cara possível num controle que decide se a IA
+// fala com o paciente. Com os dois lados na tela, o pintado é o que vale e o
+// apagado é para onde se vai.
+//
+// `assisted` (a IA escreve, um humano envia) existe no banco e o worker o
+// respeita, mas o trilho não o produz: o rascunho ainda não tem lugar nesta
+// tela, e oferecer um estado cujo resultado não aparece em canto nenhum seria
+// pior que não oferecer. Quando ele estiver em vigor, cai no lado "Maia" —
+// quem conduz é a IA.
+//
+// O lado pintado é o modo EFETIVO, já com a herança resolvida pelo servidor —
+// uma conversa que ninguém tocou segue o padrão da clínica, e é esse padrão que
+// precisa aparecer aqui. Ver 20260915220000.
+// ----------------------------------------------------------------------------
+const ChaveAtendimento: React.FC<{
+  modo:     ModoIa | null
+  salvando: boolean
+  aoTrocar: (ligar: boolean) => void
+}> = ({ modo, salvando, aoTrocar }) => {
+  // Enquanto o detalhe não chegou não há o que mostrar. Um trilho desenhado com
+  // palpite pisca para o outro lado quando a resposta chega.
+  if (!modo) return null
+
+  const ativa = modo.modo === 'autonomous' || modo.modo === 'assisted'
+
+  const base = 'px-3 py-1 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors disabled:cursor-wait'
+
+  return (
+    <div className="flex items-center gap-2 shrink-0">
+      {modo.origem === 'padrao' && (
+        <span className="text-[10px] text-slate-500 hidden sm:inline">
+          padrão da clínica
+        </span>
+      )}
+
+      {/* `group` para o trilho inteiro esmaecer enquanto o PATCH está no ar,
+          sem que cada lado precise saber disso. */}
+      <div
+        role="group"
+        aria-label="Quem atende esta conversa"
+        className={`flex items-center gap-0.5 p-0.5 rounded-lg bg-slate-800/60 border border-slate-700/60 ${
+          salvando ? 'opacity-60' : ''
+        }`}
+      >
+        <button
+          type="button"
+          onClick={() => !ativa && aoTrocar(true)}
+          disabled={salvando}
+          aria-pressed={ativa}
+          title="A Maia responde esta conversa automaticamente."
+          className={`${base} ${
+            ativa
+              ? 'bg-violet-500/25 text-violet-200'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'
+          }`}
+        >
+          {salvando && !ativa
+            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            : <Bot className="w-3.5 h-3.5" />}
+          Maia
+        </button>
+
+        <button
+          type="button"
+          onClick={() => ativa && aoTrocar(false)}
+          disabled={salvando}
+          aria-pressed={!ativa}
+          title="A Maia para. O atendimento passa a ser humano."
+          className={`${base} ${
+            !ativa
+              ? 'bg-emerald-500/25 text-emerald-200'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'
+          }`}
+        >
+          {salvando && ativa
+            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            : <User className="w-3.5 h-3.5" />}
+          Atendente
+        </button>
+      </div>
     </div>
   )
 }

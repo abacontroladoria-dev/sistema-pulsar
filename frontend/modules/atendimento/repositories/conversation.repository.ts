@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type {
+  AIMode,
   Conversation,
   ConversationStatus,
   PaginatedResult,
@@ -178,6 +179,19 @@ export class ConversationRepository {
 
     if (error) throw error
     return (data ?? []) as Conversation[]
+  }
+
+  // Escreve a decisão de IA DESTA conversa. `null` devolve a conversa ao padrão
+  // da inbox/organização — não é o mesmo que 'off', que é uma decisão de
+  // desligar. Ver 20260915220000.
+  async updateAiMode(id: string, aiMode: AIMode | null): Promise<void> {
+    const { error } = await (this.supabase as any)
+      .schema('central')
+      .from('conversations')
+      .update({ ai_mode: aiMode })
+      .eq('id', id)
+
+    if (error) throw error
   }
 
   async updateAssignee(id: string, userId: string | null): Promise<void> {

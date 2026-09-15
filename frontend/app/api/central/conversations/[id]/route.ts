@@ -3,6 +3,8 @@ import { extractUser }             from '@/lib/central/auth'
 import { mapCentralError }         from '@/lib/central/errors'
 import { ok, noContent, badRequest, forbidden } from '@/lib/central/response'
 import { parsePatchConversationBody } from '@/modules/atendimento/dto/conversation.dto'
+import { lerAgentSettings }    from '@/modules/atendimento/agente/agent-settings'
+import { resolverModoEfetivo } from '@/modules/atendimento/agente/modo-efetivo'
 import {
   createConversationService,
   createMessageService,
@@ -28,7 +30,7 @@ export async function GET(_request: NextRequest, ctx: Ctx) {
     if (conversation.organization_id !== user.orgId) return forbidden()
 
     // Carrega dados relacionados em paralelo
-    const [contact, channelResult, inboxResult, messages] = await Promise.all([
+    const [contact, channelResult, inboxResult, messages, settings] = await Promise.all([
       contactService.getById(user.orgId, conversation.contact_id).catch(() => null),
 
       (supabase as any)
@@ -46,10 +48,24 @@ export async function GET(_request: NextRequest, ctx: Ctx) {
         .maybeSingle(),
 
       msgService.list({ conversationId: id, limit: 20 }),
+
+      // O padrão da clínica, para resolver a herança AQUI. A tela precisa saber
+      // quem de fato está respondendo: com `ai_mode` NULL na conversa, quem
+      // manda é o agent_settings, e um botão que resolvesse isso sozinho no
+      // cliente mostraria "Atendente" numa conversa que a Maia está atendendo.
+      lerAgentSettings(supabase, user.orgId, conversation.inbox_id).catch(() => null),
     ])
+
+    const efetivo = resolverModoEfetivo(
+      conversation.ai_mode,
+      // Sem settings legível, falha fechada — mesma regra do worker.
+      settings?.ai_mode ?? 'off',
+    )
 
     return ok({
       ...conversation,
+      aiModeEfetivo: efetivo.modo,
+      aiModeOrigem:  efetivo.origem,
       contact:        contact ?? null,
       channel:        channelResult.data  ?? null,
       inbox:          inboxResult.data    ?? null,
@@ -62,7 +78,7 @@ export async function GET(_request: NextRequest, ctx: Ctx) {
 
 // PATCH /api/central/conversations/[id]
 // Executa uma ação de ciclo de vida na conversa.
-// Payload: { action: 'assign'|'transfer'|'resolve'|'archive'|'reopen', ...campos por action }
+// Payload: { action: 'assign'|'transfer'|'resolve'|'archive'|'reopen'|'set_ai_mode', ...campos por action }
 export async function PATCH(request: NextRequest, ctx: Ctx) {
   try {
     const { user, supabase } = await extractUser()
@@ -95,6 +111,11 @@ export async function PATCH(request: NextRequest, ctx: Ctx) {
         break
       case 'reopen':
         await service.reopen(id, user.id)
+        break
+      // A chave Maia / Atendente do inbox. `aiMode: null` devolve a conversa ao
+      // padrão da inbox/org — não é o mesmo que 'off'.
+      case 'set_ai_mode':
+        await service.setAiMode(id, parsed.data.aiMode, user.id)
         break
     }
 

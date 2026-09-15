@@ -12,6 +12,8 @@ import { montarContexto, LIMITE_HISTORICO } from '../agente/contexto'
 import { executarTurno } from '../agente/orquestrador'
 import { FerramentasAgente } from '../agente/ferramentas'
 import { openAiProvider } from '../llm/openai.provider'
+import { lerAgentSettings } from '../agente/agent-settings'
+import { resolverModoEfetivo } from '../agente/modo-efetivo'
 
 // ============================================================================
 // Worker de agrupamento — o miolo do pipeline
@@ -222,6 +224,17 @@ async function processarContato(
   // 5. Configuração da atendente para esta organização.
   const settings = await lerAgentSettings(supabase, orgId, canal.inbox_id)
 
+  // ...e a decisão DESTA conversa, que vence a da organização quando existe.
+  //
+  // `conversations.ai_mode` é NULL enquanto ninguém mexeu no botão Maia/Atendente
+  // desta conversa — aí vale o padrão da inbox/org. Quando tem valor, alguém
+  // decidiu por esta conversa (a recepcionista assumindo, ou a própria IA
+  // escalando em escalarParaHumano) e essa decisão não pode ser sobrescrita pelo
+  // padrão: era exatamente o defeito que 20260915220000 corrige — escalar não
+  // segurava nada, porque o turno seguinte relia o agent_settings e voltava a
+  // responder por cima do humano recém-chamado.
+  const { modo: aiMode, origem } = resolverModoEfetivo(conversation.ai_mode, settings.ai_mode)
+
   // `ai_mode` tem TRÊS estados (20260811100000), e confundir dois deles é o
   // erro mais caro possível aqui:
   //
@@ -234,16 +247,16 @@ async function processarContato(
   // mensagem já entregue ao responsável, que a revisão humana que ela
   // configurou nunca aconteceu. Por isso o switch é explícito e o default é
   // fechado: um valor novo na coluna não pode virar "envia".
-  if (settings.ai_mode === 'off') {
+  if (aiMode === 'off') {
     // Desligada de propósito. A mensagem está gravada e visível na Central para
     // um humano responder — que é exatamente o que 'off' significa.
-    return { tipo: 'silencio', detalhe: 'ai_mode=off; aguardando atendimento humano' }
+    return { tipo: 'silencio', detalhe: `ai_mode=off (${origem}); aguardando atendimento humano` }
   }
 
-  if (settings.ai_mode !== 'assisted' && settings.ai_mode !== 'autonomous') {
+  if (aiMode !== 'assisted' && aiMode !== 'autonomous') {
     return {
       tipo: 'silencio',
-      detalhe: `ai_mode='${settings.ai_mode}' desconhecido; nada enviado por segurança`,
+      detalhe: `ai_mode='${aiMode}' desconhecido; nada enviado por segurança`,
     }
   }
 
@@ -302,7 +315,7 @@ async function processarContato(
 
   switch (resultado.tipo) {
     case 'responder':
-      if (settings.ai_mode === 'assisted') {
+      if (aiMode === 'assisted') {
         // Rascunho: grava a resposta na conversa SEM enfileirar envio. A
         // recepcionista lê, corrige se quiser, e envia pela Central. É o que
         // 'assisted' promete, e é o modo com que se deve estrear em produção.
@@ -414,34 +427,6 @@ function nomeDoPerfil(itens: ItemFila[]): string | null {
   return null
 }
 
-async function lerAgentSettings(
-  supabase: SupabaseClient,
-  orgId: string,
-  inboxId: string,
-): Promise<{ ai_mode: string; ai_scheduling_enabled: boolean; system_prompt: string | null }> {
-  // Configuração da inbox vence a da organização; a da org é o padrão. É o que
-  // o par de índices únicos parciais de agent_settings já previa.
-  const { data, error } = await supabase
-    .schema('central')
-    .from('agent_settings')
-    .select('ai_mode, ai_scheduling_enabled, system_prompt, inbox_id')
-    .eq('organization_id', orgId)
-    .or(`inbox_id.eq.${inboxId},inbox_id.is.null`)
-    .order('inbox_id', { ascending: false, nullsFirst: false })
-    .limit(1)
-    .maybeSingle()
-
-  if (error) throw error
-
-  if (!data) {
-    // Sem configuração é DESLIGADA, não ligada. Falha fechada: uma instalação
-    // sem seed não deve começar a responder pacientes sozinha.
-    return { ai_mode: 'off', ai_scheduling_enabled: false, system_prompt: null }
-  }
-
-  return data as { ai_mode: string; ai_scheduling_enabled: boolean; system_prompt: string | null }
-}
-
 // Modo 'assisted': a resposta existe na conversa mas NÃO sai. Fica como
 // outbound 'pending' e sem passar pela send_queue — a recepcionista a vê na
 // Central e decide. `sent_by_ai` marca a autoria, para ninguém confundir
@@ -487,6 +472,12 @@ async function enfileirarEnvio(
 
 // Marca a conversa para atendimento humano e deixa o motivo registrado. Sem
 // isto, "escalar" seria só uma palavra no log.
+//
+// O `ai_mode = 'off'` aqui só passou a ter efeito em 20260915220000: até então o
+// worker lia apenas o agent_settings da organização, então o turno seguinte
+// voltava a responder por cima do humano que tinha acabado de ser chamado.
+// Agora a conversa vence o padrão, e 'off' segura de verdade até alguém religar
+// pela chave Maia / Atendente no inbox.
 async function escalarParaHumano(
   supabase: SupabaseClient,
   conversationId: string,

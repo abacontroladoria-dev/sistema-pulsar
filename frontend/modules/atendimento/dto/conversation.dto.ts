@@ -1,4 +1,5 @@
-import type { ConversationStatus } from '../types/central.types'
+import { isAIMode } from '../types/central.types'
+import type { AIMode, ConversationStatus } from '../types/central.types'
 
 type ParseResult<T> = { ok: true; data: T } | { ok: false; errors: string[] }
 
@@ -7,7 +8,7 @@ const isUUID    = (v: unknown): v is string => typeof v === 'string' && UUID_RE.
 const isISODate = (v: unknown): v is string => typeof v === 'string' && !isNaN(new Date(v).getTime())
 
 const VALID_STATUSES: ConversationStatus[] = ['open', 'assigned', 'waiting', 'resolved', 'archived']
-const VALID_ACTIONS = ['assign', 'transfer', 'resolve', 'archive', 'reopen'] as const
+const VALID_ACTIONS = ['assign', 'transfer', 'resolve', 'archive', 'reopen', 'set_ai_mode'] as const
 export type PatchAction = typeof VALID_ACTIONS[number]
 
 // ----------------------------------------------------------------------------
@@ -100,6 +101,9 @@ export type PatchConversationBody =
   | { action: 'resolve' }
   | { action: 'archive' }
   | { action: 'reopen' }
+  // null é um valor LEGÍTIMO, não "não informado": devolve a conversa ao padrão
+  // da inbox/organização, em vez de desligar a IA nela. Ver 20260915220000.
+  | { action: 'set_ai_mode'; aiMode: AIMode | null }
 
 export function parsePatchConversationBody(body: unknown): ParseResult<PatchConversationBody> {
   if (!body || typeof body !== 'object') return { ok: false, errors: ['Body inválido'] }
@@ -114,6 +118,20 @@ export function parsePatchConversationBody(body: unknown): ParseResult<PatchConv
     if (!isUUID(b.toUserId)) {
       return { ok: false, errors: ['toUserId é obrigatório (UUID) para assign e transfer'] }
     }
+  }
+
+  if (action === 'set_ai_mode') {
+    // `null` explícito no corpo = herdar o padrão. Campo AUSENTE é erro: sem
+    // essa distinção, um corpo malformado desligaria a herança em silêncio,
+    // que é a diferença entre "esta conversa segue o padrão" e "esta conversa
+    // foi decidida" — e essa segunda não pode acontecer por acidente.
+    if (!('aiMode' in b)) {
+      return { ok: false, errors: ['aiMode é obrigatório para set_ai_mode (use null para herdar o padrão)'] }
+    }
+    if (b.aiMode !== null && !isAIMode(b.aiMode)) {
+      return { ok: false, errors: ['aiMode deve ser off, assisted, autonomous ou null'] }
+    }
+    return { ok: true, data: { action, aiMode: b.aiMode as AIMode | null } }
   }
 
   if (action === 'assign') {

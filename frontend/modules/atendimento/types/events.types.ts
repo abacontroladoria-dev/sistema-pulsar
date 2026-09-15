@@ -28,6 +28,11 @@ export type ConversationEventType =
   | 'conversation.resolved'
   | 'conversation.archived'
   | 'conversation.reopened'
+  // Chave Maia / Atendente: quem passou esta conversa da IA para gente (ou de
+  // volta), e quando. payload: { de, para } com os ai_mode, onde null significa
+  // "seguindo o padrão da inbox/org". performed_by ausente = foi a própria IA
+  // escalando (escalarParaHumano), não um operador.
+  | 'conversation.ai_mode_changed'
   // Mensagens
   | 'message.received'
   | 'message.sent'
