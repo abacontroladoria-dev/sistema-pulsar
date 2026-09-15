@@ -49,17 +49,20 @@ estático que viajasse no browser estaria no bundle do parceiro, ou seja, públi
 | `limite`   | 1–1000  | 500 | Tamanho da página. |
 | `agendamento_id` | lista de inteiros | — | Consulta pontual: só estes `tita_agendamento_id`. Máx. 200. |
 | `paciente_id` | lista de inteiros | — | Consulta pontual: só estes pacientes. Máx. 200. |
+| `data_de` | `YYYY-MM-DD` | — | Sessões a partir deste dia (inclusive). |
+| `data_ate` | `YYYY-MM-DD` | — | Sessões até este dia (inclusive). |
 
 Limite de **60 requisições por minuto** por token. Ao estourar, a resposta é
 `429` com `Retry-After`.
 
 ### Os dois modos de uso
 
-**Modo sincronização** — sem filtro por id, com `desde`/`desde_id`. É como manter
+**Modo sincronização** — sem filtro nenhum, com `desde`/`desde_id`. É como manter
 sua base em dia: você recebe tudo que mudou, inclusive estornos.
 
-**Modo consulta pontual** — com `agendamento_id` e/ou `paciente_id`. É como
-perguntar "esse agendamento faltou?".
+**Modo consulta pontual** — com qualquer filtro (`agendamento_id`,
+`paciente_id`, `data_de`, `data_ate`). É como perguntar "esse agendamento
+faltou?" ou "quais faltas houve em setembro?".
 
 ```
 # um agendamento
@@ -73,18 +76,57 @@ perguntar "esse agendamento faltou?".
 
 # os dois juntos restringem (E, não OU)
 /api/integracao/faltas/?paciente_id=11556&agendamento_id=1887765
+
+# um mês fechado — para reconciliar competência
+/api/integracao/faltas/?data_de=2026-09-01&data_ate=2026-09-30
+
+# um dia específico: os dois iguais
+/api/integracao/faltas/?data_de=2026-09-07&data_ate=2026-09-07
+
+# um lado aberto: de 10/09 em diante
+/api/integracao/faltas/?data_de=2026-09-10
+
+# data combina com id — todas as faltas desse paciente em setembro
+/api/integracao/faltas/?paciente_id=11556&data_de=2026-09-01&data_ate=2026-09-30
 ```
 
-#### ⚠️ O filtro por id ignora o cursor — de propósito
+#### Sobre as datas
 
-Quando você passa `agendamento_id` ou `paciente_id`, os parâmetros
-`desde`/`desde_id` são **descartados** e a resposta traz o estado atual daqueles
-ids, sempre. A resposta também **não traz** `proximo_desde`/`proximo_desde_id`.
+`data_de`/`data_ate` filtram **`data_atendimento`** — o dia em que a sessão
+aconteceria, não quando o registro mudou no Pulsar. Quem filtra por "quando
+mudou" é o cursor `desde`.
 
-Isso existe para que a resposta vazia tenha um significado só:
+A diferença aparece assim: uma falta de 01/09 corrigida hoje tem
+`data_atendimento = 2026-09-01` e `atualizado_em = hoje`. Ela entra em
+`?data_de=2026-09-01&data_ate=2026-09-30` e **não** entra num `desde` de uma hora
+atrás, se não tiver mudado de novo nesse intervalo.
 
-> `"faltas": []` sob filtro por id significa **"não há falta para esse id"** —
-> e nunca "há, mas não mudou desde o seu cursor".
+O intervalo é **fechado nos dois lados** (`data_de <= dia <= data_ate`). Formato
+`YYYY-MM-DD` apenas — data com fuso é recusada com `400`, porque
+`2026-09-01T00:00:00-03:00` viraria 31/08 em UTC e tiraria um dia do seu
+intervalo sem avisar.
+
+`data_de` **não libera histórico** anterior à data de corte do seu token: o corte
+é sempre o mais restritivo. Pedir julho com corte em setembro devolve `[]`, não
+erro. Se precisar de mais passado, peça — é um ajuste do nosso lado.
+
+Intervalo invertido (`data_de` depois de `data_ate`) é **`400`**, não resposta
+vazia: `[]` ali seria lido como "não houve falta no período" quando a verdade é
+que os parâmetros estão trocados.
+
+#### ⚠️ Qualquer filtro ignora o cursor — de propósito
+
+Quando você passa **qualquer** um dos quatro filtros (`agendamento_id`,
+`paciente_id`, `data_de`, `data_ate`), os parâmetros `desde`/`desde_id` são
+**descartados** e a resposta traz o estado atual do que você pediu, sempre. A
+resposta também **não traz** `proximo_desde`/`proximo_desde_id`.
+
+É uma regra só, para não haver o que decorar: **filtro = consulta pontual**.
+
+Isso existe para que a resposta vazia tenha um significado único:
+
+> `"faltas": []` sob filtro significa **"não há falta que satisfaça o que você
+> pediu"** — e nunca "há, mas não mudou desde o seu cursor".
 
 Se o filtro compusesse com o cursor, perguntar "o agendamento X faltou?" com um
 cursor antigo guardado devolveria `[]` para uma falta que existe, e você
@@ -288,7 +330,7 @@ Sem a chave, não há como você casar do lado de lá.
 | HTTP | Quando |
 |------|--------|
 | 401 | Token ausente, malformado, inexistente ou revogado. Mensagem sempre igual, de propósito. |
-| 400 | `desde` não é ISO 8601, `desde_id` não é inteiro, `limite` fora de 1–1000, ou mais de 200 ids em `agendamento_id`/`paciente_id`. |
+| 400 | `desde` não é ISO 8601; `desde_id` não é inteiro; `limite` fora de 1–1000; mais de 200 ids em `agendamento_id`/`paciente_id`; `data_de`/`data_ate` fora de `YYYY-MM-DD` ou com intervalo invertido. |
 | 429 | Mais de 60 requisições por minuto. Respeite o `Retry-After`. |
 | 500 | Falha na consulta. O detalhe fica no log do Pulsar, não na resposta. |
 
@@ -315,7 +357,8 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 - Migrations: `20260914160000_codigo_justificativa_falta.sql`,
   `20260914170000_integracao_faltas_view_e_rpc.sql`,
   `20260915120000_integracao_faltas_hardening.sql`,
-  `20260915140000_integracao_faltas_filtro_por_id.sql`
+  `20260915140000_integracao_faltas_filtro_por_id.sql`,
+  `20260915160000_integracao_faltas_filtro_por_data.sql`
 - Gerar/revogar token, mudar a data de corte:
   `supabase/snippets/integracao_faltas_provisionar.sql`
 - Vigiar a cobertura: `supabase/snippets/faltas_integracao_cobertura.sql`

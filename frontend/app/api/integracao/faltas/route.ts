@@ -84,6 +84,39 @@ function extrairIds(
   return { ids }
 }
 
+// `data_de`/`data_ate` são datas civis (o dia da sessão), não instantes: aceitar
+// só `YYYY-MM-DD` evita que um ISO com fuso (`2026-09-01T00:00:00-03:00`) seja
+// convertido silenciosamente para o dia anterior em UTC. `Date.parse` aceitaria
+// as duas formas e a diferença apareceria como uma linha a mais ou a menos na
+// borda do intervalo — o tipo de erro que ninguém atribui ao fuso.
+const DATA_ISO = /^\d{4}-\d{2}-\d{2}$/
+
+function extrairData(
+  params: URLSearchParams,
+  nome: string
+): { data?: string; erro?: string } {
+  const bruto = params.get(nome)
+  if (bruto === null) return {}
+
+  const valor = bruto.trim()
+  if (valor === '') {
+    return { erro: `\`${nome}\` veio vazio; omita o parâmetro para não filtrar` }
+  }
+
+  if (!DATA_ISO.test(valor)) {
+    return { erro: `\`${nome}\` deve ser uma data no formato YYYY-MM-DD` }
+  }
+
+  // O formato passa mas a data pode não existir (2026-02-30, 2026-13-01).
+  // Comparar de volta pega isso: o Date normaliza 02-30 para 03-02.
+  const d = new Date(`${valor}T00:00:00Z`)
+  if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== valor) {
+    return { erro: `\`${nome}\` não é uma data válida: ${valor}` }
+  }
+
+  return { data: valor }
+}
+
 function extrairToken(request: NextRequest): string | null {
   const header = request.headers.get('authorization')
   if (!header) return null
@@ -140,7 +173,34 @@ export async function GET(request: NextRequest) {
     return Response.json({ erro: paciente.erro }, { status: 400 })
   }
 
-  const filtrandoPorId = agendamento.ids !== undefined || paciente.ids !== undefined
+  // Filtro por data da sessão (`data_atendimento`), intervalo fechado nos dois
+  // lados. Passar os dois iguais é o "dia específico".
+  const dataDe = extrairData(params, 'data_de')
+  if (dataDe.erro) {
+    return Response.json({ erro: dataDe.erro }, { status: 400 })
+  }
+
+  const dataAte = extrairData(params, 'data_ate')
+  if (dataAte.erro) {
+    return Response.json({ erro: dataAte.erro }, { status: 400 })
+  }
+
+  // Intervalo invertido é erro, não resposta vazia: `[]` aqui seria lido como
+  // "não houve falta no período" quando a verdade é "os parâmetros estão
+  // trocados". A RPC também barra (22023); esta checagem só dá a mensagem boa.
+  if (dataDe.data && dataAte.data && dataDe.data > dataAte.data) {
+    return Response.json(
+      { erro: `\`data_de\` (${dataDe.data}) é posterior a \`data_ate\` (${dataAte.data})` },
+      { status: 400 }
+    )
+  }
+
+  // Qualquer filtro desliga o cursor — id ou data, a regra é uma só.
+  const filtrando =
+    agendamento.ids !== undefined ||
+    paciente.ids !== undefined ||
+    dataDe.data !== undefined ||
+    dataAte.data !== undefined
 
   const limiteBruto = params.get('limite')
   const limite = limiteBruto ? Number(limiteBruto) : 500
@@ -197,6 +257,8 @@ export async function GET(request: NextRequest) {
     p_limite: limite,
     p_agendamento_ids: agendamento.ids ?? null,
     p_paciente_ids: paciente.ids ?? null,
+    p_data_de: dataDe.data ?? null,
+    p_data_ate: dataAte.data ?? null,
   })
 
   if (error) {
@@ -207,12 +269,17 @@ export async function GET(request: NextRequest) {
       return Response.json({ erro: 'token invalido' }, { status: 401 })
     }
 
-    // '22023' é o teto de ids da RPC. A rota já barra antes, então chegar aqui
-    // significa divergência entre os dois limites — devolver 400 mantém a culpa
-    // no chamador em vez de acusar falha do serviço.
+    // '22023' é como a RPC recusa parâmetro inválido (teto de ids, intervalo de
+    // datas invertido). A rota já barra os dois antes, então chegar aqui
+    // significa divergência entre as duas validações — devolver 400 mantém a
+    // culpa no chamador em vez de acusar falha do serviço.
+    //
+    // A mensagem da RPC é repassada porque ela é escrita por nós e não contém
+    // entrada do chamador além das datas que ele mesmo enviou — diferente do
+    // erro genérico do PostgREST, que fica só no log pelo motivo abaixo.
     if (error.code === '22023') {
       return Response.json(
-        { erro: `no maximo ${MAX_IDS} ids por chamada` },
+        { erro: error.message || 'parametro invalido' },
         { status: 400 }
       )
     }
@@ -238,7 +305,7 @@ export async function GET(request: NextRequest) {
   // sincronização seguinte faria pular tudo que mudou nesse intervalo.
   //
   // `tem_mais` continua valendo nos dois modos: significa "a página encheu".
-  const cursor = filtrandoPorId
+  const cursor = filtrando
     ? {}
     : {
         proximo_desde: ultima?.atualizado_em ?? desde,
