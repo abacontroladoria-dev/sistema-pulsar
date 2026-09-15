@@ -19,7 +19,7 @@ import {
 } from "@/services/salas.service"
 import { normTxt, NOME_PARA_TERAPIA_ID, PACS_ADMIN } from "@/lib/cronograma/constants"
 import { construirIndiceExclusividadeTerapia, verificarExclusividade } from "@/lib/cronograma/exclusividadeTerapia"
-import type { Sala, SalaTerapiaExclusiva } from "@/lib/cronograma/salasTypes"
+import type { AlocacaoSala, Sala, SalaTerapiaExclusiva } from "@/lib/cronograma/salasTypes"
 import type { AlocacaoAtual } from "@/hooks/useOcupacaoSalas"
 
 interface ConfirmacaoPendente {
@@ -45,13 +45,49 @@ interface AlocarSessaoModalProps {
     turno: "Manhã" | "Tarde",
     excetoAlocacaoId?: string,
   ) => AlocacaoAtual | null
+  /**
+   * A alocação como está HOJE, quando se está editando uma (`alocacaoId`).
+   * Serve só para poder desfazer a edição sem consulta nova — a página já tem
+   * essa lista em memória. Opcional: sem ela, editar apenas não oferece
+   * desfazer.
+   */
+  alocacaoAtual?: AlocacaoSala | null
   onClose: () => void
-  onSaved: () => void
+  /**
+   * Chamado depois de gravar. Recebe o que aconteceu para o chamador poder
+   * confirmar em tela e oferecer desfazer — o parâmetro é OPCIONAL, então
+   * `() => void` continua válido e nenhum chamador existente quebrou.
+   */
+  onSaved: (resultado?: ResultadoAlocacao) => void
   /** Já carregados pela página (useOcupacaoSalas) — evita refazer essas consultas a cada abertura do modal. */
   salasTodas: Sala[]
   exclusividades: SalaTerapiaExclusiva[]
   profissionaisTodos: ProfissionalOpcao[]
   terapiasTodas: string[]
+  /** Passe Z_MODAL_EMPILHADO quando o modal abrir A PARTIR de outra camada que continua montada (ex.: o drawer de alocação do detalhe da sala). */
+  zIndex?: number
+}
+
+/**
+ * O que acabou de acontecer, para o chamador confirmar em tela e desfazer.
+ *
+ * `desfazer` já vem pronto porque só aqui se sabe qual é a operação inversa —
+ * e ela usa os MESMOS services da ida (`criarAlocacao`/`atualizarAlocacao`/
+ * `excluirAlocacao`), sem endpoint novo. Cada desfazer também passa pela
+ * trilha de auditoria, como qualquer outra escrita.
+ *
+ * `desfazer` é `null` no caso "mover": mover faz duas escritas (atualiza uma
+ * alocação e exclui outra), então o inverso exigiria recriar uma linha
+ * apagada com id novo. Prometer desfazer e entregar outra coisa é pior que
+ * não oferecer — nesse caso só confirma.
+ */
+export interface ResultadoAlocacao {
+  acao: "criada" | "editada" | "excluida" | "movida"
+  profissional: string
+  diaLabel: string
+  turno: "Manhã" | "Tarde"
+  salaNome: string
+  desfazer: (() => Promise<void>) | null
 }
 
 const INPUT_CLS = "w-full rounded-lg border border-border bg-card px-2.5 py-1.5 text-sm text-foreground"
@@ -66,8 +102,8 @@ const semTerapiaAdmin = (terapias: string[]) => terapias.filter(t => !TERAPIAS_A
 export function AlocarSessaoModal({
   sala, dow, turno, diaLabel, alocacaoId,
   profissionalInicial = "", terapiaInicial = "",
-  encontrarAlocacaoDoProfissional, onClose, onSaved,
-  salasTodas, exclusividades, profissionaisTodos, terapiasTodas: terapiasTodasBruto,
+  encontrarAlocacaoDoProfissional, alocacaoAtual, onClose, onSaved,
+  salasTodas, exclusividades, profissionaisTodos, terapiasTodas: terapiasTodasBruto, zIndex,
 }: AlocarSessaoModalProps) {
   const [profissional, setProfissional] = useState(profissionalInicial)
   const [profissionalId, setProfissionalId] = useState<number | null>(null)
@@ -161,19 +197,43 @@ export function AlocarSessaoModal({
     try {
       const terapiaNome = terapia.trim() || null
       const terapiaId = terapiaNome ? NOME_PARA_TERAPIA_ID[normTxt(terapiaNome)] ?? null : null
+      const comum = { profissional: nome, diaLabel, turno, salaNome: sala.nome_exibicao }
+      let resultado: ResultadoAlocacao
+
       if (conflito) {
         await atualizarAlocacao(conflito.alocacao.id, {
           sala_id: sala.id, dow, turno, profissional_nome: nome, profissional_id: profissionalId, terapia_nome: terapiaNome, terapia_id: terapiaId,
         })
         if (alocacaoId && alocacaoId !== conflito.alocacao.id) await excluirAlocacao(alocacaoId)
+        // Duas escritas, uma delas um DELETE: sem desfazer (ver ResultadoAlocacao).
+        resultado = { ...comum, acao: "movida", desfazer: null }
       } else if (alocacaoId) {
+        // O estado anterior vem por prop, da lista que `useOcupacaoSalas` já
+        // tem em memória — desfazer sem consulta nova e sem service novo.
+        const anterior = alocacaoAtual ?? null
         await atualizarAlocacao(alocacaoId, {
           sala_id: sala.id, dow, turno, profissional_nome: nome, profissional_id: profissionalId, terapia_nome: terapiaNome, terapia_id: terapiaId,
         })
+        resultado = {
+          ...comum,
+          acao: "editada",
+          desfazer: anterior
+            ? async () => {
+                await atualizarAlocacao(alocacaoId, {
+                  sala_id: anterior.sala_id, dow: anterior.dow, turno: anterior.turno,
+                  profissional_nome: anterior.profissional_nome, profissional_id: anterior.profissional_id,
+                  terapia_nome: anterior.terapia_nome, terapia_id: anterior.terapia_id,
+                })
+              }
+            : null,
+        }
       } else {
-        await criarAlocacao({ sala_id: sala.id, dow, turno, profissional_nome: nome, profissional_id: profissionalId, terapia_nome: terapiaNome, terapia_id: terapiaId })
+        const criada = await criarAlocacao({ sala_id: sala.id, dow, turno, profissional_nome: nome, profissional_id: profissionalId, terapia_nome: terapiaNome, terapia_id: terapiaId })
+        // O inverso de criar é excluir — e `criarAlocacao` já devolve o id.
+        resultado = { ...comum, acao: "criada", desfazer: () => excluirAlocacao(criada.id) }
       }
-      onSaved()
+
+      onSaved(resultado)
       onClose()
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro ao salvar alocação.")
@@ -210,9 +270,15 @@ export function AlocarSessaoModal({
 
   function handleExcluir() {
     if (!alocacaoId) return
+    const anterior = alocacaoAtual ?? null
     setConfirmacao({
       title: "Excluir alocação?",
-      description: "Confirma que deseja excluir esta alocação? Esta ação não pode ser desfeita.",
+      // Antes dizia "não pode ser desfeita". Com o desfazer do aviso isso
+      // deixaria de ser verdade — e um texto que mente sobre reversibilidade
+      // faz o usuário hesitar na ação certa.
+      description: anterior
+        ? "Confirma que deseja excluir esta alocação? Você poderá desfazer logo em seguida, pelo aviso de confirmação."
+        : "Confirma que deseja excluir esta alocação?",
       confirmLabel: "Excluir",
       confirmColor: "#dc2626",
       onConfirm: async () => {
@@ -221,7 +287,23 @@ export function AlocarSessaoModal({
         setError(null)
         try {
           await excluirAlocacao(alocacaoId)
-          onSaved()
+          onSaved({
+            acao: "excluida",
+            profissional: anterior?.profissional_nome ?? profissional.trim(),
+            diaLabel, turno, salaNome: sala.nome_exibicao,
+            // O inverso de excluir é recriar com os MESMOS dados. O id novo é
+            // diferente, e tudo bem: a alocação é identificada por
+            // sala+dia+turno+profissional, não pelo id.
+            desfazer: anterior
+              ? async () => {
+                  await criarAlocacao({
+                    sala_id: anterior.sala_id, dow: anterior.dow, turno: anterior.turno,
+                    profissional_nome: anterior.profissional_nome, profissional_id: anterior.profissional_id,
+                    terapia_nome: anterior.terapia_nome, terapia_id: anterior.terapia_id,
+                  })
+                }
+              : null,
+          })
           onClose()
         } catch (e) {
           setError(e instanceof Error ? e.message : "Erro ao excluir alocação.")
@@ -237,6 +319,7 @@ export function AlocarSessaoModal({
       title={alocacaoId ? "Editar / mover alocação" : "Alocar sessão livre"}
       subtitle={`${sala.unidade_nome} · ${sala.nome_exibicao} · ${diaLabel} · ${turno}`}
       maxWidth={480}
+      zIndex={zIndex}
       onClose={onClose}
       footer={
         <>

@@ -6,30 +6,19 @@
 // checkboxes em vez de um <select> nativo, que só permite uma opção por vez.
 
 import { useEffect, useRef, useState } from "react"
-import { ChevronDown, Filter, Search, X } from "lucide-react"
+import { ChevronDown, Filter, Search, SlidersHorizontal } from "lucide-react"
 import { normTxt } from "@/lib/cronograma/constants"
 import { CAPACIDADE_LABEL_CURTO } from "@/lib/cronograma/salasTypes"
 import { useStatusLabels } from "@/hooks/useStatusLabels"
+import { contarFiltrosSecundarios, SALAS_FILTROS_VAZIO, type SalasFiltrosState } from "@/lib/cronograma/salasView"
 import type { SalaCapacidade, SalaStatus, SalaComOcupacao } from "@/lib/cronograma/salasTypes"
 
-export interface SalasFiltrosState {
-  unidade: string[]
-  nucleo: string[]
-  andar: string[]
-  capacidade: SalaCapacidade[]
-  turno: ("Manhã" | "Tarde")[]
-  status: SalaStatus[]
-  /** Busca livre por nome de profissional alocado (ignora acentos/maiúsculas) */
-  profissional: string
-  /** Só mostra slots com pelo menos uma alocação sem cruzamento real (card com "—" em vez de "X/Y") */
-  semSessao: boolean
-  /** Só mostra salas com pelo menos uma regra cadastrada em "Exclusividade de salas com terapias" */
-  comExclusividade: boolean
-}
-
-export const SALAS_FILTROS_VAZIO: SalasFiltrosState = {
-  unidade: [], nucleo: [], andar: [], capacidade: [], turno: [], status: [], profissional: "", semSessao: false, comExclusividade: false,
-}
+// O estado do filtro mora em lib/cronograma/salasView.ts (camada 1) porque
+// `chipsDeFiltro` precisa do tipo e um módulo puro não pode importar de um
+// arquivo de UI. Re-exportado aqui para os imports existentes continuarem
+// válidos — nenhum chamador precisou mudar.
+export { SALAS_FILTROS_VAZIO }
+export type { SalasFiltrosState }
 
 interface MultiSelectFiltroProps {
   label: string
@@ -49,8 +38,18 @@ function MultiSelectFiltro({ label, values, options, onChange, labelFor }: Multi
     function aoClicarFora(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setAberto(false)
     }
+    // Mesmo handler de Escape que o MaisFiltros já usava — antes só o popover
+    // de baixo fechava com Esc e estes não, o que é uma inconsistência que o
+    // usuário de teclado sente na mesma barra.
+    function aoTeclar(e: KeyboardEvent) {
+      if (e.key === "Escape") setAberto(false)
+    }
     document.addEventListener("mousedown", aoClicarFora)
-    return () => document.removeEventListener("mousedown", aoClicarFora)
+    document.addEventListener("keydown", aoTeclar)
+    return () => {
+      document.removeEventListener("mousedown", aoClicarFora)
+      document.removeEventListener("keydown", aoTeclar)
+    }
   }, [aberto])
 
   function alternar(opcao: string) {
@@ -74,19 +73,27 @@ function MultiSelectFiltro({ label, values, options, onChange, labelFor }: Multi
         type="button"
         onClick={() => setAberto(v => !v)}
         aria-expanded={aberto}
+        aria-haspopup="true"
+        // O nome acessível precisa carregar o VALOR escolhido: visualmente o
+        // funil verde diz "tem filtro aqui", mas isso não chega ao leitor de
+        // tela, que ouvia só "Unidade".
+        aria-label={`${label}: ${resumo}`}
         title={resumo}
-        className="flex h-9 items-center gap-1.5 whitespace-nowrap rounded-lg border border-border bg-card px-2.5 text-sm text-foreground"
+        className="flex h-9 items-center gap-1.5 whitespace-nowrap rounded-lg border border-border bg-card px-2.5 text-sm text-foreground transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <Filter
           size={15}
           className={values.length ? "shrink-0 fill-emerald-500 text-emerald-500" : "shrink-0 text-muted-foreground"}
           strokeWidth={2.25}
         />
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</span>
+        {/* Sem uppercase tracked-out: caixa alta em rótulo de filtro só
+            aumenta a mancha e reduz a legibilidade — e, com o valor escolhido
+            invisível no botão, o rótulo é tudo o que o usuário tem para ler. */}
+        <span className="text-[13px] text-muted-foreground">{label}</span>
         <ChevronDown size={14} className="shrink-0 text-muted-foreground" />
       </button>
       {aberto && (
-        <div className="absolute left-0 top-full z-20 mt-1 max-h-64 min-w-[200px] overflow-auto rounded-lg border border-border bg-card p-1.5 shadow-lg">
+        <div className="absolute left-0 top-full z-20 mt-1 max-h-64 min-w-50 overflow-auto rounded-lg border border-border bg-card p-1.5 shadow-lg">
           {options.length === 0 && <div className="px-2 py-1 text-xs text-muted-foreground">Nenhuma opção</div>}
           {options.map(o => (
             <label key={o} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-sm hover:bg-muted/60">
@@ -116,6 +123,107 @@ interface SalasFiltrosProps {
 const CAPACIDADE_OPCOES: SalaCapacidade[] = ["unico", "duplo", "multiplo"]
 const TURNO_OPCOES = ["Manhã", "Tarde"] as const
 
+/**
+ * Filtros secundários num popover. A escolha de quais ficam escondidos seguiu o
+ * uso: unidade/núcleo/status respondem "onde e em que estado", que é como se
+ * procura uma sala; andar/capacidade/turno refinam depois de já ter achado.
+ *
+ * O contador `(N)` no botão não é decoração — sem ele um filtro ativo some da
+ * vista e o usuário conclui que a sala desapareceu do sistema. A tira de chips
+ * (FiltrosChips) é a segunda rede de proteção.
+ */
+function MaisFiltros({ value, andares, onSet }: {
+  value: SalasFiltrosState
+  andares: string[]
+  onSet: <K extends keyof SalasFiltrosState>(key: K, v: SalasFiltrosState[K]) => void
+}) {
+  const [aberto, setAberto] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  const ativos = contarFiltrosSecundarios(value)
+
+  // Mesmo mousedown + ref do MultiSelectFiltro acima — não inventar um segundo
+  // mecanismo de "fechar ao clicar fora" na mesma barra.
+  useEffect(() => {
+    if (!aberto) return
+    function aoClicarFora(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setAberto(false)
+    }
+    function aoTeclar(e: KeyboardEvent) {
+      if (e.key === "Escape") setAberto(false)
+    }
+    document.addEventListener("mousedown", aoClicarFora)
+    document.addEventListener("keydown", aoTeclar)
+    return () => {
+      document.removeEventListener("mousedown", aoClicarFora)
+      document.removeEventListener("keydown", aoTeclar)
+    }
+  }, [aberto])
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setAberto(v => !v)}
+        aria-expanded={aberto}
+        aria-haspopup="true"
+        className="flex h-9 items-center gap-1.5 whitespace-nowrap rounded-lg border border-border bg-card px-2.5 text-sm text-foreground transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <SlidersHorizontal size={14} className="shrink-0 text-muted-foreground" />
+        Mais filtros
+        {ativos > 0 && (
+          <span className="rounded-full bg-slate-900 px-1.5 text-[10px] font-bold tabular-nums text-white dark:bg-white dark:text-slate-900">
+            {ativos}
+          </span>
+        )}
+      </button>
+      {aberto && (
+        // z-50 porque a barra de filtros é sticky z-40 — sem isso o popover
+        // nasce atrás do próprio container.
+        <div className="absolute right-0 top-full z-50 mt-1 flex w-64 flex-col gap-3 rounded-xl border border-border bg-card p-3 shadow-lg">
+          <MultiSelectFiltro label="Andar" values={value.andar} options={andares} onChange={v => onSet("andar", v)} />
+          <MultiSelectFiltro
+            label="Capacidade"
+            values={value.capacidade}
+            options={CAPACIDADE_OPCOES}
+            onChange={v => onSet("capacidade", v as SalaCapacidade[])}
+            labelFor={o => CAPACIDADE_LABEL_CURTO[o as SalaCapacidade]}
+          />
+          <MultiSelectFiltro
+            label="Turno"
+            values={value.turno}
+            options={[...TURNO_OPCOES]}
+            onChange={v => onSet("turno", v as ("Manhã" | "Tarde")[])}
+          />
+          <button
+            type="button"
+            onClick={() => onSet("semSessao", !value.semSessao)}
+            aria-pressed={value.semSessao}
+            className={`flex h-9 items-center justify-center whitespace-nowrap rounded-lg border px-2.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+              value.semSessao
+                ? "border-amber-400 bg-amber-100 text-amber-800 dark:border-amber-500 dark:bg-amber-950/40 dark:text-amber-300"
+                : "border-border bg-card text-muted-foreground hover:bg-muted/50"
+            }`}
+          >
+            Alocação sem sessão
+          </button>
+          <button
+            type="button"
+            onClick={() => onSet("comExclusividade", !value.comExclusividade)}
+            aria-pressed={value.comExclusividade}
+            className={`flex h-9 items-center justify-center whitespace-nowrap rounded-lg border px-2.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+              value.comExclusividade
+                ? "border-blue-400 bg-blue-100 text-blue-800 dark:border-blue-500 dark:bg-blue-950/40 dark:text-blue-300"
+                : "border-border bg-card text-muted-foreground hover:bg-muted/50"
+            }`}
+          >
+            Sala com exclusividade
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function SalasFiltros({ value, onChange, unidades, nucleos, andares }: SalasFiltrosProps) {
   const { labels: statusLabels } = useStatusLabels()
   const statusOpcoes = Object.keys(statusLabels)
@@ -124,38 +232,24 @@ export function SalasFiltros({ value, onChange, unidades, nucleos, andares }: Sa
     onChange({ ...value, [key]: v })
   }
 
-  const temFiltroAtivo = value.unidade.length > 0 || value.nucleo.length > 0 || value.andar.length > 0
-    || value.capacidade.length > 0 || value.turno.length > 0 || value.status.length > 0 || value.profissional
-    || value.semSessao || value.comExclusividade
-
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card/60 p-2">
-      <div className="flex h-9 items-center gap-1.5 rounded-lg border border-border bg-card px-2.5">
+    <div className="flex flex-wrap items-center gap-2">
+      {/* O anel vai no CONTAINER (`focus-within`), não no input: o input tem
+          `outline-none` e é o controle mais usado da tela — sem isto ele era o
+          único elemento genuinamente invisível ao foco de teclado. */}
+      <div className="flex h-9 min-w-0 flex-1 items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 focus-within:ring-2 focus-within:ring-ring sm:max-w-64 sm:flex-none">
         <Search size={13} className="shrink-0 text-muted-foreground" />
         <input
           type="text"
           value={value.profissional}
           onChange={e => set("profissional", e.target.value)}
-          placeholder="Profissional..."
-          className="w-[150px] bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
+          placeholder="Buscar profissional..."
+          aria-label="Buscar profissional"
+          className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
         />
       </div>
       <MultiSelectFiltro label="Unidade" values={value.unidade} options={unidades} onChange={v => set("unidade", v)} />
       <MultiSelectFiltro label="Núcleo" values={value.nucleo} options={nucleos} onChange={v => set("nucleo", v)} />
-      <MultiSelectFiltro label="Andar" values={value.andar} options={andares} onChange={v => set("andar", v)} />
-      <MultiSelectFiltro
-        label="Capacidade"
-        values={value.capacidade}
-        options={CAPACIDADE_OPCOES}
-        onChange={v => set("capacidade", v as SalaCapacidade[])}
-        labelFor={o => CAPACIDADE_LABEL_CURTO[o as SalaCapacidade]}
-      />
-      <MultiSelectFiltro
-        label="Turno"
-        values={value.turno}
-        options={[...TURNO_OPCOES]}
-        onChange={v => set("turno", v as ("Manhã" | "Tarde")[])}
-      />
       <MultiSelectFiltro
         label="Status"
         values={value.status}
@@ -163,40 +257,7 @@ export function SalasFiltros({ value, onChange, unidades, nucleos, andares }: Sa
         onChange={v => set("status", v as SalaStatus[])}
         labelFor={o => statusLabels[o]?.label_curto ?? o}
       />
-      <div className="mx-1 h-6 w-px shrink-0 bg-border" aria-hidden />
-      <button
-        type="button"
-        onClick={() => set("semSessao", !value.semSessao)}
-        aria-pressed={value.semSessao}
-        className={`flex h-9 items-center whitespace-nowrap rounded-lg border px-2.5 text-sm font-semibold transition-colors ${
-          value.semSessao
-            ? "border-amber-400 bg-amber-100 text-amber-800 dark:border-amber-500 dark:bg-amber-950/40 dark:text-amber-300"
-            : "border-border bg-card text-muted-foreground hover:bg-muted/50"
-        }`}
-      >
-        Alocação sem sessão
-      </button>
-      <button
-        type="button"
-        onClick={() => set("comExclusividade", !value.comExclusividade)}
-        aria-pressed={value.comExclusividade}
-        className={`flex h-9 items-center whitespace-nowrap rounded-lg border px-2.5 text-sm font-semibold transition-colors ${
-          value.comExclusividade
-            ? "border-blue-400 bg-blue-100 text-blue-800 dark:border-blue-500 dark:bg-blue-950/40 dark:text-blue-300"
-            : "border-border bg-card text-muted-foreground hover:bg-muted/50"
-        }`}
-      >
-        Sala com exclusividade
-      </button>
-      {temFiltroAtivo && (
-        <button
-          type="button"
-          onClick={() => onChange(SALAS_FILTROS_VAZIO)}
-          className="flex h-9 items-center gap-1 whitespace-nowrap rounded-lg border border-border px-2.5 text-xs font-semibold text-muted-foreground hover:bg-muted/50"
-        >
-          <X size={12} /> Limpar filtros
-        </button>
-      )}
+      <MaisFiltros value={value} andares={andares} onSet={set} />
     </div>
   )
 }

@@ -32,19 +32,28 @@ export function SegmentedTabs<T extends string>({
   value, onChange, tabs, className = "", ariaLabel, size = "sm",
 }: SegmentedTabsProps<T>) {
   return (
-    <div role="tablist" aria-label={ariaLabel} className={`inline-flex flex-wrap gap-1.5 ${className}`}>
+    // `group` + `aria-pressed`, NÃO `tablist`/`tab`.
+    //
+    // O contrato ARIA de tablist exige `role="tabpanel"` com `aria-controls`
+    // apontando para ele e navegação por setas com roving tabindex. Nada disso
+    // existe em nenhum dos 11 consumidores: o leitor de tela anunciava "aba 1
+    // de 4" e as setas não faziam nada — uma promessa que a marcação não
+    // cumpria. `aria-pressed` descreve honestamente o que estes botões são.
+    <div role="group" aria-label={ariaLabel} className={`inline-flex flex-wrap gap-1.5 ${className}`}>
       {tabs.map(t => {
         const active = t.value === value
         return (
           <button
             key={t.value}
             type="button"
-            role="tab"
-            aria-selected={active}
+            aria-pressed={active}
             onClick={() => onChange(t.value)}
-            className={`inline-flex items-center gap-1 rounded-full font-semibold border transition-colors ${SIZE_CLS[size]} ${
+            className={`inline-flex min-h-11 items-center gap-1 rounded-full font-semibold border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-0 ${SIZE_CLS[size]} ${
               active
-                ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900 border-slate-900 dark:border-white"
+                // Navy da marca (B.navy) em vez de slate-900, o primário
+                // default de template. No dark inverte para branco: navy sobre
+                // fundo escuro não se destaca.
+                ? "bg-[#222847] text-white border-[#222847] dark:bg-white dark:text-slate-900 dark:border-white"
                 : "bg-transparent text-foreground border-border hover:bg-muted/50"
             }`}
           >

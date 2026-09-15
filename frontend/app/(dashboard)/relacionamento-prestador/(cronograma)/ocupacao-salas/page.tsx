@@ -1,57 +1,98 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
-import { DoorOpen, Eye, History, Loader2, Plus, Settings2, ShieldCheck } from "lucide-react"
+// Ocupação de Salas — shell da tela. Carrega os dados uma vez e alterna entre
+// a LISTA (cards/lista compacta/mapa), o DETALHE de uma sala e o relatório de
+// REGULARIZAÇÕES, tudo na mesma rota.
+//
+// Por que o detalhe não é uma rota `[id]`: `useOcupacaoSalas` dispara 5
+// consultas pesadas num único efeito — uma delas já estourou statement timeout
+// (ver o comentário no hook) — e não existe cache. Uma rota irmã remontaria o
+// hook a cada sala aberta. Aqui lista e detalhe dividem os mesmos dados, e um
+// `recarregarAlocacoes()` depois de salvar atualiza os dois de uma vez. A URL
+// (`?sala=`, `?view=`) preserva deep-link e o Back do browser.
+
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react"
+import { useRouter, useSearchParams, usePathname } from "next/navigation"
+import toast from "react-hot-toast"
+import { DoorOpen, Plus } from "lucide-react"
 import { useHeader } from "@/contexts/HeaderContext"
-import { SegmentedTabs } from "@/components/cronograma/ui/SegmentedTabs"
-import { StatCard } from "@/components/cronograma/ui/StatCard"
 import { useOcupacaoSalas } from "@/hooks/useOcupacaoSalas"
 import { resumoOcupacaoDeItens } from "@/lib/cronograma/salas"
-import { SalasFiltros, SALAS_FILTROS_VAZIO, aplicarFiltrosSala, salaTemProfissional, type SalasFiltrosState } from "@/components/cronograma/salas/SalasFiltros"
-import { SalasGridView } from "@/components/cronograma/salas/SalasGridView"
-import { SalasHeatmapView } from "@/components/cronograma/salas/SalasHeatmapView"
+import { aplicarFiltrosSala, salaTemProfissional } from "@/components/cronograma/salas/SalasFiltros"
+import { SalasListaView, SalasSeletorDeVista, type ModoLista } from "@/components/cronograma/salas/SalasListaView"
+import { SalaDetalheView } from "@/components/cronograma/salas/SalaDetalheView"
+import { AlocacaoDrawer } from "@/components/cronograma/salas/AlocacaoDrawer"
 import { RegularizacoesView } from "@/components/cronograma/salas/RegularizacoesView"
 import { SalaEditModal } from "@/components/cronograma/salas/SalaEditModal"
+import { AlocarSessaoModal, type ResultadoAlocacao } from "@/components/cronograma/salas/AlocarSessaoModal"
 import { GerenciarCategoriasModal } from "@/components/cronograma/salas/GerenciarCategoriasModal"
 import { ExclusividadeTerapiaModal } from "@/components/cronograma/salas/ExclusividadeTerapiaModal"
 import { HistoricoAuditoriaModal } from "@/components/cronograma/salas/HistoricoAuditoriaModal"
-import { DIAS_DISPONIVEIS_PADRAO, STATUS_SLOT_EXCLUIDO, type Sala, type SalaComOcupacao, type SlotOcupacaoSala } from "@/lib/cronograma/salasTypes"
-import { DOW_PT } from "@/lib/cronograma/ocupacaoConst"
+import { MenuAcoesSalas } from "@/components/cronograma/salas/MenuAcoesSalas"
+import { Z_MODAL_EMPILHADO } from "@/components/cronograma/ui/ScheduleModal"
+import { STATUS_SLOT_EXCLUIDO, type Sala, type SlotOcupacaoSala } from "@/lib/cronograma/salasTypes"
+import {
+  agruparPorDiasDisponiveis,
+  salaTemInconsistencia,
+  seguePadraoSemanal,
+  SALAS_FILTROS_VAZIO,
+  type AlocacaoNaCelula,
+  type CelulaGradeSala,
+  type SalasFiltrosState,
+} from "@/lib/cronograma/salasView"
 
-/** true se a sala segue o padrão Seg-Sex, dia inteiro (ou não tem `dias_disponiveis` cadastrado) — usado para separar a grade principal (largura fixa) de uma seção à parte para salas fora do padrão (ex.: só quarta e sábado, ou sábado meio período), sem alargar a tabela de ninguém. */
-function seguePadraoSemanal(sala: Sala): boolean {
-  const dias = sala.dias_disponiveis?.length ? sala.dias_disponiveis : DIAS_DISPONIVEIS_PADRAO
-  if (dias.length !== DIAS_DISPONIVEIS_PADRAO.length) return false
-  return dias.every(d => {
-    const padrao = DIAS_DISPONIVEIS_PADRAO.find(p => p.dow === d.dow)
-    return !!padrao && d.turnos.length === 2 && d.turnos.includes("Manhã") && d.turnos.includes("Tarde")
-  })
-}
-
-/** Agrupa salas fora do padrão pelo conjunto exato de DIAS que atendem (ignora diferença de turno dentro do dia — a célula de um turno ausente já aparece vazia sozinha) — cada grupo vira uma mini-tabela com só essas colunas (ex.: só Qua+Sáb), nunca a semana inteira. */
-function agruparPorDiasDisponiveis(itens: SalaComOcupacao[]): { chave: string; dias: { dow: number; label: string }[]; itens: SalaComOcupacao[] }[] {
-  const grupos = new Map<string, { dias: { dow: number; label: string }[]; itens: SalaComOcupacao[] }>()
-  itens.forEach(item => {
-    const dows = [...new Set((item.sala.dias_disponiveis?.length ? item.sala.dias_disponiveis : DIAS_DISPONIVEIS_PADRAO).map(d => d.dow))].sort((a, b) => a - b)
-    const chave = dows.join(",")
-    if (!grupos.has(chave)) grupos.set(chave, { dias: dows.map(dow => ({ dow, label: DOW_PT[dow] ?? String(dow) })), itens: [] })
-    grupos.get(chave)!.itens.push(item)
-  })
-  return [...grupos.entries()].map(([chave, g]) => ({ chave, ...g }))
-}
-
-type ViewTab = "grade" | "mapa" | "regularizacoes"
-
+// `useSearchParams` exige um boundary de Suspense, senão o `next build` falha.
 export default function OcupacaoSalasPage() {
+  return (
+    <Suspense fallback={null}>
+      <OcupacaoSalasConteudo />
+    </Suspense>
+  )
+}
+
+// O <Toaster/> do root layout fixa `background: '#3A8FB7'` para todo toast, o
+// que faria confirmação e erro saírem idênticos. Sobrescrever por chamada (o
+// default global serve 41 arquivos e não é nosso para mudar).
+const TOAST_OK = { background: "#0f766e", color: "#fff", fontSize: "13px", maxWidth: "none" }
+const TOAST_ERRO = { background: "#be123c", color: "#fff", fontSize: "13px", maxWidth: "none" }
+
+/** Verbo da confirmação — no escopo do módulo porque não depende de nada do render. */
+const ACAO_VERBO: Record<ResultadoAlocacao["acao"], string> = {
+  criada: "alocada", editada: "atualizada", excluida: "removida", movida: "movida",
+}
+
+/** Estado de abertura do AlocarSessaoModal, seja a partir da grade ou do drawer. */
+interface ModalAlocacao {
+  sala: Sala
+  dow: number
+  turno: "Manhã" | "Tarde"
+  diaLabel: string
+  alocacaoId?: string
+  profissionalInicial?: string
+  terapiaInicial?: string | null
+}
+
+function OcupacaoSalasConteudo() {
   const { setHeader } = useHeader()
   useEffect(() => {
     setHeader("Ocupação de Salas", "Cadastro estrutural de salas cruzado com a agenda real")
     return () => setHeader("", "")
   }, [setHeader])
 
-  const { salas, alocacoes, linhas, turnosBloqueioAdmin, exclusividades, profissionaisTodos, terapiasTodas, salasComOcupacao, loading, error, recarregarSalas, recarregarAlocacoes, encontrarAlocacaoDoProfissional } = useOcupacaoSalas()
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const salaDetalheId = searchParams.get("sala")
+  const view = searchParams.get("view")
+  const emRegularizacoes = view === "regularizacoes"
+  const modo: ModoLista =
+    view === "lista" || view === "mapa" || view === "regularizacoes" ? view : "cards"
 
-  const [tab, setTab] = useState<ViewTab>("grade")
+  const {
+    salas, alocacoes, linhas, turnosBloqueioAdmin, exclusividades, profissionaisTodos, terapiasTodas,
+    salasComOcupacao, loading, error, recarregarSalas, recarregarAlocacoes, encontrarAlocacaoDoProfissional,
+  } = useOcupacaoSalas()
+
   const [filtros, setFiltros] = useState<SalasFiltrosState>(SALAS_FILTROS_VAZIO)
   const [editando, setEditando] = useState<Sala | null | "novo">(null)
   const [isolada, setIsolada] = useState<{ id: string; nome: string } | null>(null)
@@ -59,21 +100,38 @@ export default function OcupacaoSalasPage() {
   const [gerenciandoCategorias, setGerenciandoCategorias] = useState(false)
   const [gerenciandoExclusividade, setGerenciandoExclusividade] = useState(false)
   const [verHistorico, setVerHistorico] = useState(false)
+  const [drawer, setDrawer] = useState<{ celula: CelulaGradeSala; alocacao: AlocacaoNaCelula } | null>(null)
+  const [modalAlocacao, setModalAlocacao] = useState<ModalAlocacao | null>(null)
 
   const unidades = useMemo(() => [...new Set(salasComOcupacao.map(s => s.sala.unidade_nome))].sort(), [salasComOcupacao])
   const nucleos = useMemo(() => [...new Set(salasComOcupacao.map(s => s.sala.nucleo).filter((n): n is string => !!n))].sort(), [salasComOcupacao])
   const andares = useMemo(() => [...new Set(salasComOcupacao.map(s => s.sala.andar).filter((n): n is string => !!n))].sort(), [salasComOcupacao])
   const salasComExclusividade = useMemo(() => new Set(exclusividades.map(e => e.sala_id)), [exclusividades])
 
+  function irPara(params: { sala?: string | null; view?: string | null }) {
+    const next = new URLSearchParams(searchParams.toString())
+    for (const [chave, valor] of Object.entries(params)) {
+      if (valor === null) next.delete(chave)
+      else if (valor !== undefined) next.set(chave, valor)
+    }
+    const qs = next.toString()
+    // `push`, não `replace`: o Back do browser precisa fechar o detalhe.
+    router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+  }
+
   function alternarIsolarSala(salaId: string, nome: string) {
     setIsolada(prev => (prev?.id === salaId ? null : { id: salaId, nome }))
+  }
+
+  function abrirEdicaoSala(salaId: string) {
+    setEditando(salasComOcupacao.find(s => s.sala.id === salaId)?.sala ?? null)
   }
 
   const filtradas = useMemo(() => {
     return salasComOcupacao
       .filter(item => (isolada ? item.sala.id === isolada.id : true))
       .filter(item => aplicarFiltrosSala(filtros, item.sala) && salaTemProfissional(item, filtros.profissional))
-      .filter(item => !somenteInconsistentes || item.slots.some((s: SlotOcupacaoSala) => s.inconsistente || s.violaExclusividade))
+      .filter(item => !somenteInconsistentes || salaTemInconsistencia(item))
       .filter(item => !filtros.comExclusividade || salasComExclusividade.has(item.sala.id))
       .map(item => {
         let slots = item.slots
@@ -88,25 +146,20 @@ export default function OcupacaoSalasPage() {
   // entram na grade/mapa principal — iriam aparecer "furadas" nos dias que não
   // atendem, ou forçar uma coluna de sábado pra todas as outras salas. Ganham
   // uma seção própria abaixo, agrupada pelo conjunto exato de dias que usam.
+  // Nos CARDS isso não é problema: cada card mostra os próprios dias.
   const filtradasPadrao = useMemo(() => filtradas.filter(item => seguePadraoSemanal(item.sala)), [filtradas])
   const gruposEspeciais = useMemo(() => agruparPorDiasDisponiveis(filtradas.filter(item => !seguePadraoSemanal(item.sala))), [filtradas])
 
-  // Os 4 cards respondem aos filtros atuais (unidade/núcleo/andar/capacidade/
-  // turno/status/profissional/isolada) — calculados sobre `filtradas`, a mesma
-  // lista que já alimenta a Grade e o Mapa de calor. Antes usavam
-  // salasComOcupacao/resumoUnidades (agregado de TODAS as unidades, sem
-  // nenhuma relação com o filtro selecionado na tela).
-  const totalSalas = filtradas.length
-  const totalBloqueadas = filtradas.filter(s => s.sala.status === "bloqueada").length
+  // Os indicadores respondem aos filtros atuais — calculados sobre `filtradas`,
+  // a mesma lista que alimenta os cards/grade/mapa.
+  // "Bloqueadas" saiu da tira de indicadores: era uma contagem que o filtro de
+  // Status já responde, competindo por espaço com o que é acionável.
   const resumoFiltrado = useMemo(() => resumoOcupacaoDeItens(filtradas), [filtradas])
-  const totalInconsistencias = resumoFiltrado.inconsistencias
 
   // Ocupação REAL (granular, por sessão/bloco de 40min) do recorte filtrado —
   // mesmo critério de exclusão (STATUS_SLOT_EXCLUIDO) e mesma soma de
-  // slot.blocos usados em calcularResumoUnidades (salas.ts), só que sobre
-  // `filtradas` em vez de agrupado por unidade. Não usa resumoFiltrado.pct
-  // (esse é o binário "sala tem alguém alocado", que é o que já aparece em
-  // "Salas que contém profissional" na aba Ocupação Clínica).
+  // slot.blocos usados em calcularResumoUnidades (salas.ts). Não usa
+  // resumoFiltrado.pct (esse é o binário "sala tem alguém alocado").
   const pctGranularFiltrado = useMemo(() => {
     let blocosTotal = 0, blocosPreenchidos = 0
     filtradas.forEach(item => {
@@ -119,156 +172,247 @@ export default function OcupacaoSalasPage() {
     return blocosTotal > 0 ? blocosPreenchidos / blocosTotal : null
   }, [filtradas])
 
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatCard tone="slate" icon={<DoorOpen size={15} />} label="Salas cadastradas">
-          <div className="text-2xl font-black text-foreground">{totalSalas}</div>
-        </StatCard>
-        <StatCard tone="blue" icon={<DoorOpen size={15} />} label="Ocupação real do filtro">
-          <div className="text-2xl font-black text-foreground">{pctGranularFiltrado !== null ? `${Math.round(pctGranularFiltrado * 100)}%` : "—"}</div>
-        </StatCard>
-        <StatCard tone="red" icon={<DoorOpen size={15} />} label="Salas bloqueadas">
-          <div className="text-2xl font-black text-foreground">{totalBloqueadas}</div>
-        </StatCard>
-        <button type="button" onClick={() => setSomenteInconsistentes(v => !v)} className="text-left" aria-pressed={somenteInconsistentes}>
-          <StatCard tone="amber" icon={<DoorOpen size={15} />} label="Alocações inconsistentes" className={somenteInconsistentes ? "ring-2 ring-inset ring-amber-500" : ""}>
-            <div className="text-2xl font-black text-foreground">{totalInconsistencias}</div>
-          </StatCard>
-        </button>
-      </div>
+  // A sala do detalhe sai da lista COMPLETA, não da filtrada: um link salvo
+  // deve abrir mesmo que os filtros atuais escondam aquela sala.
+  const itemDetalhe = useMemo(
+    () => (salaDetalheId ? salasComOcupacao.find(s => s.sala.id === salaDetalheId) ?? null : null),
+    [salaDetalheId, salasComOcupacao],
+  )
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <SegmentedTabs
-          value={tab}
-          onChange={setTab}
-          ariaLabel="Visão de ocupação de salas"
-          tabs={[
-            { value: "grade", label: "Grade" },
-            { value: "mapa", label: "Mapa de calor" },
-            { value: "regularizacoes", label: "Regularizações" },
-          ]}
-        />
-        <div className="flex items-center gap-3">
-          {isolada && (
+  // Se a alocação aberta no drawer deixou de existir (excluída no modal), o
+  // drawer fecha. Derivado em render, nunca num efeito.
+  const drawerValido = useMemo(() => {
+    if (!drawer || !itemDetalhe) return null
+    const existe = itemDetalhe.slots.some(s => s.alocacoes.some(a => a.alocacaoId === drawer.alocacao.alocacaoId))
+    return existe ? drawer : null
+  }, [drawer, itemDetalhe])
+
+  // ─── Confirmação do que foi gravado ────────────────────────────────────────
+  //
+  // Antes, salvar fechava o modal e a grade redesenhava em silêncio: o momento
+  // de MAIOR risco da tela (alocar errado põe criança e terapeuta em salas
+  // diferentes) era o de menor feedback, e o usuário reabria a célula só para
+  // conferir. Agora a confirmação nomeia o que mudou e oferece desfazer.
+  //
+  // O <Toaster/> já existe no root layout (react-hot-toast), então não há mount
+  // novo. O default global pinta TODO toast de azul (#3A8FB7), o que faria
+  // sucesso e erro parecerem iguais — daí o `style` por chamada.
+  const [avisoAcessivel, setAvisoAcessivel] = useState("")
+
+  const confirmarAlocacao = useCallback(async (resultado?: ResultadoAlocacao) => {
+    await recarregarAlocacoes()
+    if (!resultado) return
+
+    const frase = `${resultado.profissional} ${ACAO_VERBO[resultado.acao]} · ${resultado.diaLabel} ${resultado.turno} · ${resultado.salaNome}`
+    // A confirmação não pode ser só visual.
+    setAvisoAcessivel(frase)
+
+    const desfazer = resultado.desfazer
+    toast.success(
+      t => (
+        <span className="flex items-center gap-3">
+          <span>{frase}</span>
+          {desfazer && (
             <button
               type="button"
-              onClick={() => setIsolada(null)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted/50"
+              onClick={async () => {
+                toast.dismiss(t.id)
+                try {
+                  await desfazer()
+                  await recarregarAlocacoes()
+                  setAvisoAcessivel("Alteração desfeita.")
+                  toast.success("Alteração desfeita.", { style: TOAST_OK })
+                } catch (e) {
+                  const msg = e instanceof Error ? e.message : "Não foi possível desfazer."
+                  setAvisoAcessivel(msg)
+                  toast.error(msg, { style: TOAST_ERRO })
+                }
+              }}
+              className="shrink-0 rounded-md bg-white/20 px-2 py-1 text-xs font-bold underline-offset-2 hover:bg-white/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
             >
-              <Eye size={13} /> Mostrando só <strong className="font-semibold text-foreground">{isolada.nome}</strong> · voltar para todas
+              Desfazer
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => setVerHistorico(true)}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-semibold text-foreground hover:bg-muted/50"
-          >
-            <History size={14} /> Histórico
-          </button>
-          <button
-            type="button"
-            onClick={() => setGerenciandoCategorias(true)}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-semibold text-foreground hover:bg-muted/50"
-          >
-            <Settings2 size={14} /> Gerenciar categorias
-          </button>
-          <button
-            type="button"
-            onClick={() => setGerenciandoExclusividade(true)}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-semibold text-foreground hover:bg-muted/50"
-          >
-            <ShieldCheck size={14} /> Exclusividade de salas com terapias
-          </button>
+        </span>
+      ),
+      // Mais que o padrão (~4s): decidir desfazer leva mais tempo que ler.
+      { duration: 8000, style: TOAST_OK },
+    )
+  }, [recarregarAlocacoes])
+
+  function abrirModalDeAlocacao(celula: CelulaGradeSala, alocacao?: AlocacaoNaCelula) {
+    if (!itemDetalhe) return
+    setModalAlocacao({
+      sala: itemDetalhe.sala,
+      dow: celula.dow,
+      turno: celula.turno,
+      diaLabel: celula.diaLabel,
+      alocacaoId: alocacao?.alocacaoId,
+      profissionalInicial: alocacao?.profissionalNome,
+      terapiaInicial: alocacao?.terapiaNome,
+    })
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* O toast é visual; isto diz a mesma coisa a quem usa leitor de tela. */}
+      <span aria-live="polite" className="sr-only">{avisoAcessivel}</span>
+
+      {/* Uma faixa só: o que esta tela É à esquerda, o que se FAZ com ela à
+          direita, num eixo de alinhamento apenas.
+          Antes eram cinco botões de peso igual numa linha e o contexto ("89
+          salas · 33%") numa faixa órfã logo abaixo — três eixos brigando e
+          nada dizendo o que era mais importante. Das cinco, três são de
+          manutenção rara e foram para o menu "⋯"; Regularizações é uma VIEW e
+          foi para junto de Cards/Lista/Mapa, onde sempre pertenceu. */}
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-border pb-3">
+        {!emRegularizacoes && !salaDetalheId ? (
+          <h2 className="flex flex-wrap items-baseline gap-x-2 text-sm text-muted-foreground">
+            <span className="flex items-center gap-2 text-[15px] font-semibold text-foreground">
+              <DoorOpen size={15} className="text-muted-foreground" aria-hidden />
+              {filtradas.length} {filtradas.length === 1 ? "sala" : "salas"}
+            </span>
+            {pctGranularFiltrado !== null && (
+              <span>{Math.round(pctGranularFiltrado * 100)}% de ocupação por bloco de 40 min</span>
+            )}
+          </h2>
+        ) : (
+          <span />
+        )}
+
+        <div className="flex flex-wrap items-center gap-2">
+          {/* O seletor de vistas mora aqui, e não junto dos filtros: somado a
+              eles ele estourava a largura e quebrava os controles em duas
+              linhas. Aqui em cima sobrava espaço. */}
+          {!salaDetalheId && <SalasSeletorDeVista modo={modo} onModo={m => irPara({ view: m === "cards" ? null : m })} />}
+          <span className="mx-1 hidden h-5 w-px bg-border sm:block" aria-hidden />
+          <MenuAcoesSalas
+            onHistorico={() => setVerHistorico(true)}
+            onCategorias={() => setGerenciandoCategorias(true)}
+            onExclusividade={() => setGerenciandoExclusividade(true)}
+          />
           <button
             type="button"
             onClick={() => setEditando("novo")}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-slate-800 dark:bg-white dark:text-slate-900"
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#222847] px-3 text-sm font-semibold text-white transition-colors hover:bg-[#2d3459] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-white dark:text-slate-900"
           >
-            <Plus size={14} /> Nova sala
+            <Plus size={14} aria-hidden /> Nova sala
           </button>
         </div>
       </div>
 
-      {tab !== "regularizacoes" && (
-        <div className="sticky top-0 z-40 -mx-6 -mt-1 bg-background px-6 pt-1 pb-2 shadow-[0_1px_0_theme(colors.border)]">
-          <SalasFiltros value={filtros} onChange={setFiltros} unidades={unidades} nucleos={nucleos} andares={andares} />
-        </div>
-      )}
-
-      {loading && (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Loader2 size={14} className="animate-spin" /> Carregando salas e agenda...
-        </div>
-      )}
-      {error && <div className="text-sm font-semibold text-rose-600 dark:text-rose-400">{error}</div>}
-
-      {!loading && !error && tab === "grade" && (
-        <>
-          {filtradasPadrao.length === 0 && gruposEspeciais.length > 0 ? null : (
-          <SalasGridView
-            salas={filtradasPadrao}
-            onEditarSala={id => setEditando(salasComOcupacao.find(s => s.sala.id === id)?.sala ?? null)}
-            onIsolarSala={alternarIsolarSala}
-            salaIsoladaId={isolada?.id ?? null}
-            encontrarAlocacaoDoProfissional={encontrarAlocacaoDoProfissional}
-            onRecarregar={recarregarAlocacoes}
-            buscaProfissional={filtros.profissional}
-            salasComExclusividade={salasComExclusividade}
-            salasTodas={salas}
+      {salaDetalheId ? (
+        itemDetalhe ? (
+          // `key` faz o estado interno (aba, drawer) nascer limpo ao trocar de
+          // sala — sem useEffect de reset.
+          <SalaDetalheView
+            key={itemDetalhe.sala.id}
+            item={itemDetalhe}
             exclusividades={exclusividades}
-            profissionaisTodos={profissionaisTodos}
-            terapiasTodas={terapiasTodas}
+            onVoltar={() => irPara({ sala: null })}
+            onEditarSala={() => setEditando(itemDetalhe.sala)}
+            onEditarAlocacao={(celula, alocacao) => abrirModalDeAlocacao(celula, alocacao)}
+            onNovaAlocacao={celula => abrirModalDeAlocacao(celula)}
+            onVerAlocacao={(celula, alocacao) => setDrawer({ celula, alocacao })}
           />
+        ) : loading ? null : (
+          // Mesmo vazio pontilhado dos outros — o âmbar avulso daqui era um
+          // tratamento que não existia em nenhum outro lugar da tela, e âmbar
+          // já significa "precisa de atenção" no vocabulário da página.
+          <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border py-16 text-center">
+            <p className="text-sm font-semibold text-foreground">Sala não encontrada</p>
+            <p className="max-w-xs text-xs text-muted-foreground">
+              Ela pode ter sido excluída ou o link está desatualizado.
+            </p>
+            <button
+              type="button"
+              onClick={() => irPara({ sala: null })}
+              className="mt-1 inline-flex min-h-11 items-center rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-0"
+            >
+              Voltar para a lista
+            </button>
+          </div>
+        )
+      ) : (
+        <SalasListaView
+          modo={modo}
+          filtradas={filtradas}
+          filtradasPadrao={filtradasPadrao}
+          gruposEspeciais={gruposEspeciais}
+          filtros={filtros}
+          onFiltros={setFiltros}
+          unidades={unidades}
+          nucleos={nucleos}
+          andares={andares}
+          somenteInconsistentes={somenteInconsistentes}
+          onToggleInconsistentes={() => setSomenteInconsistentes(v => !v)}
+          isolada={isolada}
+          onLimparIsolada={() => setIsolada(null)}
+          onIsolarSala={alternarIsolarSala}
+          totalInconsistencias={resumoFiltrado.inconsistencias}
+          onRecarregarTudo={() => { void recarregarSalas(); void recarregarAlocacoes() }}
+          loading={loading}
+          error={error}
+          onVerDetalhes={id => irPara({ sala: id })}
+          onEditarSala={abrirEdicaoSala}
+          salasComExclusividade={salasComExclusividade}
+          salasTodas={salas}
+          exclusividades={exclusividades}
+          profissionaisTodos={profissionaisTodos}
+          terapiasTodas={terapiasTodas}
+          encontrarAlocacaoDoProfissional={encontrarAlocacaoDoProfissional}
+          onRecarregarAlocacoes={recarregarAlocacoes}
+        >
+          {/* Regularizações é a 4ª vista, mas usa `alocacoes`+`linhas` direto e
+              ignora os filtros de sala. Vem como filho para ficar ABAIXO do
+              seletor (o caminho de volta continua visível) sem passar pelos
+              filtros que não se aplicam a ela. */}
+          {emRegularizacoes && (
+            <RegularizacoesView
+              alocacoes={alocacoes}
+              linhas={linhas}
+              turnosBloqueioAdmin={turnosBloqueioAdmin}
+              onVerNaGrade={nome => {
+                setFiltros(f => ({ ...f, profissional: nome }))
+                irPara({ view: "lista", sala: null })
+              }}
+            />
           )}
-          {gruposEspeciais.map(grupo => (
-            <div key={grupo.chave} className="flex flex-col gap-2">
-              <h3 className="text-xs font-bold uppercase text-muted-foreground">
-                Salas com dias diferenciados ({grupo.dias.map(d => d.label).join(" + ")})
-              </h3>
-              <SalasGridView
-                salas={grupo.itens}
-                dias={grupo.dias}
-                onEditarSala={id => setEditando(salasComOcupacao.find(s => s.sala.id === id)?.sala ?? null)}
-                onIsolarSala={alternarIsolarSala}
-                salaIsoladaId={isolada?.id ?? null}
-                encontrarAlocacaoDoProfissional={encontrarAlocacaoDoProfissional}
-                onRecarregar={recarregarAlocacoes}
-                buscaProfissional={filtros.profissional}
-                salasComExclusividade={salasComExclusividade}
-                salasTodas={salas}
-                exclusividades={exclusividades}
-                profissionaisTodos={profissionaisTodos}
-                terapiasTodas={terapiasTodas}
-              />
-            </div>
-          ))}
-        </>
+        </SalasListaView>
       )}
-      {!loading && !error && tab === "mapa" && (
-        <>
-          {filtradasPadrao.length === 0 && gruposEspeciais.length > 0 ? null : (
-          <SalasHeatmapView salas={filtradasPadrao} onIsolarSala={alternarIsolarSala} salaIsoladaId={isolada?.id ?? null} salasComExclusividade={salasComExclusividade} />
-          )}
-          {gruposEspeciais.map(grupo => (
-            <div key={grupo.chave} className="flex flex-col gap-2">
-              <h3 className="text-xs font-bold uppercase text-muted-foreground">
-                Salas com dias diferenciados ({grupo.dias.map(d => d.label).join(" + ")})
-              </h3>
-              <SalasHeatmapView salas={grupo.itens} dias={grupo.dias} onIsolarSala={alternarIsolarSala} salaIsoladaId={isolada?.id ?? null} salasComExclusividade={salasComExclusividade} />
-            </div>
-          ))}
-        </>
+
+      {drawerValido && itemDetalhe && (
+        <AlocacaoDrawer
+          sala={itemDetalhe.sala}
+          celula={drawerValido.celula}
+          alocacao={drawerValido.alocacao}
+          onEditar={() => abrirModalDeAlocacao(drawerValido.celula, drawerValido.alocacao)}
+          onClose={() => setDrawer(null)}
+        />
       )}
-      {!loading && !error && tab === "regularizacoes" && (
-        <RegularizacoesView
-          alocacoes={alocacoes}
-          linhas={linhas}
-          turnosBloqueioAdmin={turnosBloqueioAdmin}
-          onVerNaGrade={nome => {
-            setFiltros(f => ({ ...f, profissional: nome }))
-            setTab("grade")
-          }}
+
+      {/* Empilha sobre o drawer, que continua montado atrás. */}
+      {modalAlocacao && (
+        <AlocarSessaoModal
+          sala={modalAlocacao.sala}
+          dow={modalAlocacao.dow}
+          turno={modalAlocacao.turno}
+          diaLabel={modalAlocacao.diaLabel}
+          alocacaoId={modalAlocacao.alocacaoId}
+          profissionalInicial={modalAlocacao.profissionalInicial}
+          terapiaInicial={modalAlocacao.terapiaInicial}
+          encontrarAlocacaoDoProfissional={encontrarAlocacaoDoProfissional}
+          // Estado atual da alocação, da lista já em memória — é o que permite
+          // desfazer uma edição/exclusão sem consulta nem service novo.
+          alocacaoAtual={modalAlocacao.alocacaoId ? alocacoes.find(a => a.id === modalAlocacao.alocacaoId) ?? null : null}
+          onClose={() => setModalAlocacao(null)}
+          onSaved={confirmarAlocacao}
+          salasTodas={salas}
+          exclusividades={exclusividades}
+          profissionaisTodos={profissionaisTodos}
+          terapiasTodas={terapiasTodas}
+          // Fica acima do drawer, que continua montado atrás.
+          zIndex={drawerValido ? Z_MODAL_EMPILHADO : undefined}
         />
       )}
 

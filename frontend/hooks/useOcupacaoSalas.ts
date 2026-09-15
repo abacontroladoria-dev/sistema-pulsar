@@ -144,15 +144,27 @@ export function useOcupacaoSalas(inicio?: string, fim?: string): UseOcupacaoSala
     [salas, alocacoes, linhas, indiceExclusividade, nomeDaSalaPorId],
   )
 
-  const resumoUnidades = useMemo(
-    () => calcularResumoUnidades(salas, alocacoes, linhas, exclusividades),
-    [salas, alocacoes, linhas, exclusividades],
-  )
+  // `resumoUnidades` e `dashboardPacientes` são caros e só interessam a DUAS
+  // das sete telas que usam este hook: UnidadeDashboardShell e
+  // PacientesDashboardShell. `calcularResumoUnidades` em particular refaz
+  // `calcularOcupacaoDaSala` para TODAS as salas (salas.ts) — o mesmo cálculo
+  // que `salasComOcupacao` acabou de fazer, o mais pesado da tela. Calculá-lo
+  // adiantado fazia Ocupação de Salas, Previsão de Receitas, Simulação e
+  // Sugestões pagarem duas vezes por um número que nenhuma delas lê.
+  //
+  // Os getters abaixo mantêm o cálculo memoizado (a referência só muda quando
+  // as dependências mudam, então `useMemo`/`useEffect` de quem consome
+  // continuam estáveis), mas ele só roda na primeira LEITURA da propriedade.
+  // Para quem lê, o comportamento é idêntico ao de antes.
+  const calcResumoUnidades = useMemo(() => {
+    let cache: ResumoUnidadeSalas[] | null = null
+    return () => (cache ??= calcularResumoUnidades(salas, alocacoes, linhas, exclusividades))
+  }, [salas, alocacoes, linhas, exclusividades])
 
-  const dashboardPacientes = useMemo(
-    () => calcularDashboardPacientes(linhas),
-    [linhas],
-  )
+  const calcDashboardPacientes = useMemo(() => {
+    let cache: DashboardPacientesGeral | null = null
+    return () => (cache ??= calcularDashboardPacientes(linhas))
+  }, [linhas])
 
   const encontrarAlocacaoDoProfissional = useMemo(() => {
     return (profissionalNome: string, dow: number, turno: "Manhã" | "Tarde", excetoAlocacaoId?: string): AlocacaoAtual | null => {
@@ -179,8 +191,8 @@ export function useOcupacaoSalas(inicio?: string, fim?: string): UseOcupacaoSala
     profissionaisTodos,
     terapiasTodas,
     salasComOcupacao,
-    resumoUnidades,
-    dashboardPacientes,
+    get resumoUnidades() { return calcResumoUnidades() },
+    get dashboardPacientes() { return calcDashboardPacientes() },
     loading,
     error,
     recarregar: () => setRefreshKey(k => k + 1),

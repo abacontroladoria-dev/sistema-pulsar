@@ -74,11 +74,13 @@ interface SalasGridViewProps {
   terapiasTodas: string[]
   /** Colunas de dia da tabela — default Seg-Sex. Usado para renderizar salas com `dias_disponiveis` fora do padrão numa instância própria desta view, com só as colunas que elas usam. */
   dias?: readonly { dow: number; label: string }[]
+  /** Quando presente, o nome da sala vira link para a view de detalhe. Opcional: sem ele a tabela funciona exatamente como antes. */
+  onVerDetalhes?: (id: string) => void
 }
 
 export function SalasGridView({
   salas, onEditarSala, onIsolarSala, salaIsoladaId, encontrarAlocacaoDoProfissional, onRecarregar, buscaProfissional = "", salasComExclusividade,
-  salasTodas, exclusividades, profissionaisTodos, terapiasTodas, dias = DIAS_PADRAO,
+  salasTodas, exclusividades, profissionaisTodos, terapiasTodas, dias = DIAS_PADRAO, onVerDetalhes,
 }: SalasGridViewProps) {
   const [modal, setModal] = useState<ModalState | null>(null)
 
@@ -179,7 +181,18 @@ export function SalasGridView({
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1">
-                          <span className="truncate font-semibold text-foreground" title={sala.nome_exibicao}>{sala.nome_exibicao}</span>
+                          {onVerDetalhes ? (
+                            <button
+                              type="button"
+                              onClick={() => onVerDetalhes(sala.id)}
+                              title={`Ver detalhes de ${sala.nome_exibicao}`}
+                              className="truncate rounded font-semibold text-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                              {sala.nome_exibicao}
+                            </button>
+                          ) : (
+                            <span className="truncate font-semibold text-foreground" title={sala.nome_exibicao}>{sala.nome_exibicao}</span>
+                          )}
                           {salasComExclusividade.has(sala.id) && (
                             <span title="Sala com exclusividade cadastrada (Exclusividade de salas com terapias)">
                               <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-blue-600 dark:text-blue-400" strokeWidth={2.5} />
