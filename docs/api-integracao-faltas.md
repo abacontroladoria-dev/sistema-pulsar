@@ -11,7 +11,7 @@ não mantém fila de entrega e não fica refém da disponibilidade do outro lado
 ## Endpoint
 
 ```
-GET https://<host-do-pulsar>/api/integracao/faltas
+GET https://orbitaautomacao.com.br/api/integracao/faltas
 Authorization: Bearer <token>
 ```
 
@@ -238,11 +238,11 @@ Sem a chave, não há como você casar do lado de lá.
 ```bash
 # Primeira carga
 curl -s -H "Authorization: Bearer $TOKEN" \
-  "https://<host>/api/integracao/faltas?limite=500"
+  "https://orbitaautomacao.com.br/api/integracao/faltas?limite=500"
 
 # Incremental
 curl -s -H "Authorization: Bearer $TOKEN" \
-  "https://<host>/api/integracao/faltas?desde=2026-09-14T00:00:00Z&desde_id=3377324"
+  "https://orbitaautomacao.com.br/api/integracao/faltas?desde=2026-09-14T00:00:00Z&desde_id=3377324"
 ```
 
 ---
