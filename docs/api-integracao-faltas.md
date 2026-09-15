@@ -188,7 +188,7 @@ coluna `id agendamento` no CSV `csv_grade_profissionais`.
 Se o seu sistema lê a API do TiTa, você **já tem esse número**. É só casar pelo
 id, sem depender de nome de paciente, data ou horário.
 
-Verificado em produção (2026-09-14): 8.036 faltas com a chave e 8.036 valores
+Verificado em produção (2026-09-15): 8.171 faltas com a chave e 8.171 valores
 distintos — **a chave é única**, não repete.
 
 ---
@@ -265,9 +265,9 @@ paciente em todos os cálculos internos, e o seu sistema deveria fazer o mesmo.
 
 | | Linhas | |
 |---|---|---|
-| Faltas reais (paciente + terapeuta) | 997 | 75% |
+| Faltas reais (paciente + terapeuta) | 1.019 | 75% |
 | **`unidade_fechada` — a clínica não abriu** | **336** | **25%** |
-| Total | 1.333 | |
+| Total | 1.367 | |
 
 As 336 vêm de um único dia: o feriado de 07/09. Um feriado derruba a agenda
 inteira de uma vez, então esse padrão vai se repetir a cada data comemorativa.
@@ -286,6 +286,39 @@ codigo_justificativa !== 113         // 113 = Feriado/Recesso Clínica
 Enviamos em vez de omitir porque o dado é útil: ele explica uma agenda vazia,
 justifica a ausência sem cobrança, e evita que alguém do seu lado vá procurar o
 que aconteceu naquele dia. Mas a decisão de contá-lo ou não é sua.
+
+---
+
+## Sessão combinada: duas linhas, uma ausência
+
+Alguns pacientes têm **duas terapias no mesmo horário**, com profissionais
+diferentes — por exemplo "Aplicador ABA (AE)" e "Coordenador de Caso" às 11:20.
+No TiTa isso são **dois agendamentos**, cada um com seu `id`.
+
+Do lado do Pulsar a recepção registra **uma** falta: o paciente não veio uma vez.
+Mas como você precisa marcar os dois agendamentos, a API entrega **uma linha por
+agendamento**:
+
+```json
+{ "tita_agendamento_id": 3195192, "terapia_nome": "Aplicador ABA (AE)",
+  "profissional_id": 8742,  "codigo_justificativa": 102, "ativa": true,
+  "data_atendimento": "2026-09-10", "horario": "11:20:00" }
+
+{ "tita_agendamento_id": 3535628, "terapia_nome": "Coordenador de Caso",
+  "profissional_id": 10981, "codigo_justificativa": 102, "ativa": true,
+  "data_atendimento": "2026-09-10", "horario": "11:20:00" }
+```
+
+Cada linha traz **o profissional da sua própria sessão** e o `terapia_nome`
+específico — não a lista combinada.
+
+**As duas compartilham `justificativa` e `codigo_justificativa`**, porque é a
+mesma ausência descrita duas vezes. Se você contar assiduidade do paciente,
+**são duas linhas mas uma falta só**: agrupe por (paciente, data, horário) antes
+de somar, ou o número dele fica inflado.
+
+Nada muda no seu upsert: a chave continua sendo `tita_agendamento_id`, e ela
+segue única — cada linha aponta para um agendamento distinto.
 
 ---
 
@@ -320,8 +353,16 @@ agendamento é alterado ou removido lá, a versão antiga deixa de ter profissio
 associado. A falta continua sendo enviada, só sem esse campo — preferimos
 entregá-la incompleta a escondê-la.
 
-**~0,2% das faltas recentes não têm `tita_agendamento_id`** e não são enviadas.
-Sem a chave, não há como você casar do lado de lá.
+**Faltas cujo agendamento foi excluído no TiTa não são enviadas.** É o único caso
+restante de falta sem `tita_agendamento_id` — cerca de 3 por mês. Acontece assim:
+uma rotina remove o agendamento do TiTa, e minutos depois a recepção registra a
+falta do que ainda via na tela. A sessão existiu e o atendimento foi cobrado como
+ausência do nosso lado, mas o agendamento correspondente não existe mais para
+você casar, então preferimos não enviar a inventar uma chave.
+
+Se notar um buraco na sua base — uma falta que a clínica relata e você não
+recebeu — este é o primeiro motivo a considerar; é só perguntar que conferimos a
+sessão específica.
 
 ---
 
@@ -358,7 +399,9 @@ curl -s -H "Authorization: Bearer $TOKEN" \
   `20260914170000_integracao_faltas_view_e_rpc.sql`,
   `20260915120000_integracao_faltas_hardening.sql`,
   `20260915140000_integracao_faltas_filtro_por_id.sql`,
-  `20260915160000_integracao_faltas_filtro_por_data.sql`
+  `20260915160000_integracao_faltas_filtro_por_data.sql`,
+  `20260915180000_integracao_faltas_sessao_combinada.sql`,
+  `20260915200000_revoke_execute_fn_agendamentos.sql`
 - Gerar/revogar token, mudar a data de corte:
   `supabase/snippets/integracao_faltas_provisionar.sql`
 - Vigiar a cobertura: `supabase/snippets/faltas_integracao_cobertura.sql`
