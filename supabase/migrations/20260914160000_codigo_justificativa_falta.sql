@@ -101,11 +101,15 @@ IMMUTABLE
 SET search_path = public
 AS $$
   SELECT CASE p_motivo
-           WHEN 'feriado'           THEN 113
-           WHEN 'ponto_facultativo' THEN 113
-           WHEN 'falta_energia'     THEN 108
-           WHEN 'evento_climatico'  THEN 108
-           ELSE 113
+           WHEN 'feriado'           THEN 113  -- Feriado/Recesso Clínica
+           WHEN 'ponto_facultativo' THEN 113  -- idem: calendário
+           WHEN 'falta_energia'     THEN 108  -- Logística/deslocamento/clima
+           WHEN 'evento_climatico'  THEN 108  -- idem: clima
+           -- 'outro' e qualquer valor novo: 109 (Pendência Administrativa).
+           -- NÃO cai em 113 de propósito — "Outro" é justamente o fechamento que
+           -- ninguém classificou (dedetização, obra, greve), e rotulá-lo como
+           -- "Feriado" no sistema parceiro afirmaria um fato falso.
+           ELSE 109
          END::smallint;
 $$;
 

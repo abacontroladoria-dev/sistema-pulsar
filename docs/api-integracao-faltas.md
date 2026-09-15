@@ -132,11 +132,21 @@ A recepcionista escolhe no ato do registro, na mesma lista que o seu sistema usa
 | 112 | Solicitação de liberação por parte do responsável |
 | 113 | Feriado / Recesso Clínica |
 
-Três casos são derivados pelo sistema, sem perguntar nada:
+Alguns casos são derivados pelo sistema, sem perguntar nada. Quando a clínica não
+abre, a recepção escolhe o motivo do fechamento e o código sai dele:
 
-- `tipo_falta = 'terapeuta'` → sempre **106**
-- feriado / ponto facultativo → **113**
-- falta de energia / evento climático → **108**
+| Situação no Pulsar | Código |
+|---|---|
+| `tipo_falta = 'terapeuta'` | **106** Falta do profissional |
+| Feriado / ponto facultativo | **113** Feriado / Recesso Clínica |
+| Falta de energia / evento climático | **108** Logística / deslocamento / clima |
+| Outro motivo de fechamento | **109** Pendência Administrativa |
+
+O último merece nota: "Outro" é o fechamento que ninguém classificou
+(dedetização, obra, greve de transporte). Ele **não** vai como 113 — dizer
+"Feriado" num dia que não é feriado afirmaria um fato que você pode conferir
+contra o calendário e não encontrar. 109 é o mais próximo de "a clínica não pôde
+abrir por uma questão interna".
 
 Faltas registradas antes desta funcionalidade receberam o código pelo mesmo
 critério; as de paciente ficaram em **102**, que é literalmente o que o texto

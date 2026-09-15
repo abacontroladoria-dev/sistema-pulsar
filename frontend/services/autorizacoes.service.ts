@@ -324,8 +324,13 @@ export const CODIGOS_JUSTIFICATIVA_FALTA: {
   { codigo: 113, rotulo: 'Feriado / Recesso Clínica' },
 ]
 
-// Derivados pelo sistema, nunca oferecidos no seletor de falta do paciente:
-// 106 é falta do profissional (o tipo já diz) e 113/108 vêm do motivo do lote.
+// Fora do seletor de falta do paciente: 106 é falta do profissional (o tipo já
+// diz) e 113 é a clínica fechada, que só o lote produz.
+//
+// 108 e 109 FICAM na lista de propósito, mesmo sendo também derivados do motivo
+// do lote: os dois descrevem situações que acontecem com um paciente individual
+// (108 = não conseguiu chegar; 109 = pendência administrativa dele). Escondê-los
+// tiraria da recepção dois motivos legítimos por uma coincidência de mapeamento.
 export const CODIGOS_JUSTIFICATIVA_PACIENTE = CODIGOS_JUSTIFICATIVA_FALTA
   .filter((c) => c.codigo !== 106 && c.codigo !== 113)
 
