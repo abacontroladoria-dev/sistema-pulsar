@@ -46,7 +46,10 @@ function SalaCardBase({ resumo, temExclusividade, statusLabel, statusCarregando,
     // Sem `hover:shadow`: o DESIGN.md define o sistema como flat — mudança de
     // estado é cor e opacidade, nunca elevação. O hover agora escurece a borda.
     <div
-      className={`group relative flex flex-col rounded-xl border bg-card p-4 transition-colors ${
+      // `h-full` para o card ocupar a altura da linha da grade: sem isso o
+      // `mt-auto` do rodapé não tem espaço livre para empurrar e os botões
+      // voltam a seguir o conteúdo.
+      className={`group relative flex h-full flex-col rounded-xl border bg-card p-4 transition-colors ${
         temInconsistencia
           ? "border-rose-300 dark:border-rose-800"
           : "border-border hover:border-slate-300 dark:hover:border-slate-600"
@@ -139,7 +142,12 @@ function SalaCardBase({ resumo, temExclusividade, statusLabel, statusCarregando,
 
       {/* 5 — a semana em relance. Cor nunca carrega a informação sozinha: o
           aria-label diz o mesmo em prosa e cada bolinha tem title. */}
-      <div className="mt-3 flex items-center gap-1.5" role="img" aria-label={descreverResumoSemanal(dias)}>
+      {/* `mt-auto` AQUI, não no rodapé: a folga variável de cada card (a faixa
+          "Precisa de atenção" existe só em alguns) precisa ser absorvida ACIMA
+          da semana. Com o mt-auto no rodapé, a folga caía entre a semana e a
+          linha divisória, e a fileira de dias ficava colada na linha num card e
+          longe dela no vizinho. */}
+      <div className="mt-auto flex items-center gap-1.5 pt-3" role="img" aria-label={descreverResumoSemanal(dias)}>
         {dias.map(d => (
           <span key={d.dow} className="flex flex-1 flex-col items-center gap-1">
             <span className="text-[10px] font-medium text-muted-foreground">{d.label}</span>
@@ -155,7 +163,10 @@ function SalaCardBase({ resumo, temExclusividade, statusLabel, statusCarregando,
           borda e lia-se como link, não como ação. A hierarquia entre elas fica
           no PREENCHIMENTO, não na ausência de forma — "Ver detalhes" é o que a
           maioria das visitas quer (consultar), editar é o caso secundário. */}
-      <div className="mt-4 grid grid-cols-2 gap-2 border-t border-border pt-3">
+      {/* Margem fixa: quem absorve a folga variável do card é a fileira de dias
+          acima (o `mt-auto` dela). Daqui para baixo o espaçamento é constante,
+          então semana → linha → botões guardam a mesma distância em todo card. */}
+      <div className="mt-3 grid grid-cols-2 gap-2 border-t border-border pt-3">
         <button
           type="button"
           onClick={() => onEditarSala(sala.id)}
@@ -166,7 +177,10 @@ function SalaCardBase({ resumo, temExclusividade, statusLabel, statusCarregando,
         <button
           type="button"
           onClick={() => onVerDetalhes(sala.id)}
-          className="inline-flex min-h-9 items-center justify-center rounded-lg bg-[#222847] px-2.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#2d3459] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-white dark:text-slate-900"
+          // `B.steel`, não `B.navy`: o navy é a cor da identidade e a 14.4:1
+          // lê como quase-preto — num card claro ele pesava como um bloco de
+          // texto. O aço é azul de verdade e mantém 6.89:1 com branco.
+          className="inline-flex min-h-9 items-center justify-center rounded-lg bg-[#2B5E86] px-2.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#24506F] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-white dark:text-slate-900"
         >
           Ver detalhes
         </button>

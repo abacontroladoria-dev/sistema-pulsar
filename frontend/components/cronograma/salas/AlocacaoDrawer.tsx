@@ -42,7 +42,7 @@ export function AlocacaoDrawer({ sala, celula, alocacao, onEditar, onClose }: Al
         <button
           type="button"
           onClick={onEditar}
-          className="inline-flex min-h-11 items-center rounded-lg bg-[#222847] px-3 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-[#2d3459] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-white dark:text-slate-900"
+          className="inline-flex min-h-11 items-center rounded-lg bg-[#2B5E86] px-3 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-[#24506F] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-white dark:text-slate-900"
         >
           Editar alocação
         </button>

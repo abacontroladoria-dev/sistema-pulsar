@@ -350,7 +350,7 @@ export function AlocarSessaoModal({
               : !profissionalValido && profissional.trim() ? "Selecione um profissional real da lista de sugestões"
               : undefined
             }
-            className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50 dark:bg-white dark:text-slate-900"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-[#2B5E86] px-3 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-[#24506F] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 dark:bg-white dark:text-slate-900"
           >
             {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Salvar alocação
           </button>

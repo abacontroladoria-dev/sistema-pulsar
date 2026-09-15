@@ -215,7 +215,7 @@ function PorSalasTab({ salas, linhas, onChanged }: TabProps) {
               type="button"
               onClick={handleSalvar}
               disabled={salvando}
-              className="inline-flex shrink-0 items-center justify-center gap-1.5 self-end rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50 dark:bg-white dark:text-slate-900"
+              className="inline-flex shrink-0 items-center justify-center gap-1.5 self-end rounded-lg bg-[#2B5E86] px-3 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-[#24506F] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 dark:bg-white dark:text-slate-900"
             >
               {salvando ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Salvar
             </button>

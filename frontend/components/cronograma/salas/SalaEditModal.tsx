@@ -44,7 +44,10 @@ const DIAS_SEMANA: { dow: number; label: string }[] = [
 
 // O anel de foco vive aqui para cobrir de uma vez os cinco inputs/textarea
 // que usam esta classe — antes nenhum deles tinha qualquer estado de foco.
-const INPUT_CLS = "w-full rounded-lg border border-border bg-card px-2.5 py-1.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+// `h-9` em vez de padding: com altura fixa os campos de uma linha da grade
+// ficam na mesma linha de base mesmo quando um deles é o gatilho do MiniSelect
+// (um `<button>`, que mede diferente de um `<input>` com o mesmo padding).
+const INPUT_CLS = "h-9 w-full rounded-lg border border-border bg-card px-2.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 
 /** Uma linha do editor de "Horários personalizados" — vira uma entrada em `horarios_customizados` no submit. `id` é só chave de React (a chave real gravada é dow+turno). */
 interface OverrideRow {
@@ -319,7 +322,7 @@ export function SalaEditModal({ sala, todasSalas, onClose, onSaved }: SalaEditMo
             type="button"
             onClick={handleSalvar}
             disabled={saving || !valido}
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#222847] px-3 text-sm font-semibold text-white transition-colors hover:bg-[#2d3459] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 dark:bg-white dark:text-slate-900"
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#2B5E86] px-3 text-sm font-semibold text-white transition-colors hover:bg-[#24506F] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 dark:bg-white dark:text-slate-900"
           >
             {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Salvar
           </button>
@@ -342,9 +345,10 @@ export function SalaEditModal({ sala, todasSalas, onClose, onSaved }: SalaEditMo
       )}
 
       {/* Metade e metade, empilhado abaixo de lg.
-          A divisão NÃO é por assunto, é por ALTURA: à esquerda o que tem
-          tamanho fixo (endereço e identificação, 7 campos curtos); à direita
-          tudo que CRESCE — dias, as N linhas de horário e as observações.
+          A divisão NÃO é por assunto, é por ALTURA: à esquerda tudo que tem
+          tamanho FIXO (localização, identificação e a grade de dias — 7 campos
+          curtos mais seis pastilhas); à direita o que CRESCE, que são as N
+          linhas de horário personalizado e as observações.
           Foi assim que o scroll sumiu: antes os horários ficavam numa faixa
           embaixo, e cada linha nova empurrava o modal para além da viewport. */}
       <div className="grid grid-cols-1 items-start gap-x-8 gap-y-5 lg:grid-cols-2">
@@ -413,10 +417,10 @@ export function SalaEditModal({ sala, todasSalas, onClose, onSaved }: SalaEditMo
                       {n}
                     </button>
                   ))}
-        </div>
-            )}
-          </div>
-        </Secao>
+                </div>
+              )}
+            </div>
+          </Secao>
 
         <Secao titulo="Identificação">
           <div className="grid grid-cols-2 gap-3">
@@ -441,13 +445,12 @@ export function SalaEditModal({ sala, todasSalas, onClose, onSaved }: SalaEditMo
             </Campo>
           </div>
         </Secao>
-        </div>
 
-        {/* `@container`: a linha de horário mede a COLUNA, não a viewport.
-            Com `sm:` ela virava grade assim que a janela passava de 640px,
-            mesmo quando a coluna tinha metade disso, e estourava. */}
-        <div className="@container flex flex-col gap-5">
-          <Secao titulo="Disponibilidade">
+        {/* Disponibilidade fica à ESQUERDA: é curta e de altura fixa (seis
+            pastilhas), então equilibra os 7 campos curtos contra a coluna
+            direita, que é a única que cresce. Antes a esquerda terminava no
+            meio da altura e sobrava um vazio do tamanho de uma seção. */}
+        <Secao titulo="Disponibilidade">
             <div className="flex flex-col gap-3">
               <Campo label="Dias e turnos de atendimento *">
                 <div className="flex flex-wrap items-center gap-2.5">
@@ -473,9 +476,9 @@ export function SalaEditModal({ sala, todasSalas, onClose, onSaved }: SalaEditMo
                           </button>
                         )
                       })}
-        </div>
-                ))}
-              </div>
+                    </div>
+                  ))}
+                </div>
               {!diasPadrao && (
                 <span className="text-[11px] text-muted-foreground">
                   Fora do padrão Seg-Sex dia inteiro — esta sala aparece numa seção separada da grade principal
@@ -484,22 +487,34 @@ export function SalaEditModal({ sala, todasSalas, onClose, onSaved }: SalaEditMo
             </Campo>
           </div>
         </Secao>
+        </div>
 
-        <Secao titulo="Horários personalizados">
+        {/* `@container`: a linha de horário mede a COLUNA, não a viewport.
+            Com `sm:` ela virava grade assim que a janela passava de 640px,
+            mesmo quando a coluna tinha metade disso, e estourava. */}
+        <div className="@container flex flex-col gap-5">
+          <Secao titulo="Horários personalizados">
           <div className="flex flex-col gap-3">
-            <Campo label="Ajuste o horário de um dia e turno específicos (opcional)">
+            <div className="flex flex-col gap-1.5">
+              {/* Antes isto era um `Campo` com o rótulo "Ajuste o horário de um
+                  dia e turno específicos (opcional)" — uma frase de doze
+                  palavras na posição de um rótulo, entre o título da seção e o
+                  cabeçalho das colunas. Três níveis de título antes do primeiro
+                  controle. O apoio vira uma linha curta, e só. */}
+              <p className="text-xs text-muted-foreground">
+                Opcional. Quando um dia e turno fogem do horário padrão da sala.
+              </p>
               <div className="flex flex-col gap-1.5">
-                {/* Cabeçalho uma vez, não por linha: antes os seis controles
-                    ficavam soltos e só a posição dizia o que era cada um. Com
-                    a largura do modal novo eles cabem em colunas alinhadas. */}
+                {/* Cabeçalho uma vez, não por linha. Quatro trilhas, não seis:
+                    "das / até / duração" viraram um bloco só — três colunas de
+                    ~74px dentro de meia coluna de modal era o ponto em que a
+                    linha estourava e refluía. */}
                 {overridesAtivos.length > 0 && (
-                  <div className="hidden grid-cols-[64px_78px_1fr_74px_auto_26px] items-center gap-1.5 px-2 text-[10px] font-semibold text-muted-foreground @md:grid">
+                  <div className="hidden grid-cols-[68px_84px_1fr_auto] items-center gap-2 px-2 text-[11px] font-semibold text-muted-foreground @md:grid">
                     <span>Dia</span>
                     <span>Turno</span>
-                    <span>Das / até</span>
-                    <span>Duração</span>
+                    <span>Horário e duração</span>
                     <span className="text-right">Sessões</span>
-                    <span />
                   </div>
                 )}
                 {overridesAtivos.map(o => {
@@ -508,7 +523,7 @@ export function SalaEditModal({ sala, todasSalas, onClose, onSaved }: SalaEditMo
                   return (
                     <div
                       key={o.id}
-                      className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/20 px-2 py-1.5 @md:grid @md:grid-cols-[64px_78px_1fr_74px_auto_26px]"
+                      className="group/linha relative flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/20 px-2 py-1.5 pr-8 @md:grid @md:grid-cols-[68px_84px_1fr_auto]"
                     >
                       {/* Só dias que ainda têm ALGUM turno livre (ou o próprio
                           dia desta linha). Sem isso dava para pôr duas linhas
@@ -539,30 +554,37 @@ export function SalaEditModal({ sala, todasSalas, onClose, onSaved }: SalaEditMo
                           .map(t => ({ value: t, label: t }))}
                         onChange={v => atualizarOverride(o.id, { turno: v as "Manhã" | "Tarde" })}
                       />
-                      <span className="flex items-center gap-1.5">
+                      {/* Uma trilha só para a faixa de tempo: início, fim e
+                          duração são a MESMA decisão ("de quando a quando, de
+                          quantos em quantos minutos"), e separá-las em três
+                          colunas fazia a linha pedir ~490px de piso. */}
+                      <span className="flex flex-wrap items-center gap-1.5">
                         <TimeField ariaLabel="Horário inicial" value={o.inicio} onChange={v => atualizarOverride(o.id, { inicio: v })} />
-                        <span className="text-[11px] text-muted-foreground">até</span>
+                        <span className="text-xs text-muted-foreground">até</span>
                         <TimeField ariaLabel="Horário final" value={o.fim} onChange={v => atualizarOverride(o.id, { fim: v })} />
+                        <span className="ml-1 flex items-center gap-1">
+                          <input
+                            type="number"
+                            min={5}
+                            step={5}
+                            aria-label="Minutos por sessão"
+                            className="h-8 w-14 rounded-md border border-border bg-card px-1.5 text-xs text-foreground [appearance:textfield] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                            value={o.duracaoMin}
+                            onChange={e => atualizarOverride(o.id, { duracaoMin: Number(e.target.value) })}
+                          />
+                          <span className="text-xs text-muted-foreground">min</span>
+                        </span>
                       </span>
-                      <span className="flex items-center gap-1">
-                        <input
-                          type="number"
-                          min={5}
-                          step={5}
-                          aria-label="Minutos por sessão"
-                          className="w-14 rounded-md border border-border bg-card px-1.5 py-1 text-[11px] text-foreground [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                          value={o.duracaoMin}
-                          onChange={e => atualizarOverride(o.id, { duracaoMin: Number(e.target.value) })}
-                        />
-                        <span className="text-[11px] text-muted-foreground">min</span>
-                      </span>
-                      <span className={`text-right text-[11px] font-semibold tabular-nums ${horarios.length > 0 ? "text-foreground" : "text-rose-600 dark:text-rose-400"}`}>
+                      <span className={`text-right text-xs font-semibold tabular-nums ${horarios.length > 0 ? "text-foreground" : "text-rose-600 dark:text-rose-400"}`}>
                         {horarios.length > 0 ? horarios.length : "confira"}
                       </span>
+                      {/* Fora da grade, ancorado no canto: como sexta trilha ele
+                          roubava 26px de largura de TODA linha para um alvo que
+                          se usa uma vez. O `pr-8` da linha reserva o espaço. */}
                       <button
                         type="button"
                         onClick={() => removerOverride(o.id)}
-                        className="justify-self-end rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-rose-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:hover:text-rose-400"
+                        className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-rose-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:hover:text-rose-400"
                         aria-label="Remover este horário personalizado"
                       >
                         <Trash2 size={13} />
@@ -579,7 +601,7 @@ export function SalaEditModal({ sala, todasSalas, onClose, onSaved }: SalaEditMo
                   + Adicionar horário personalizado
                 </button>
               </div>
-            </Campo>
+            </div>
           </div>
         </Secao>
 
@@ -596,7 +618,9 @@ export function SalaEditModal({ sala, todasSalas, onClose, onSaved }: SalaEditMo
             </Campo>
             <Campo label="Observações">
               <textarea
-                className={`${INPUT_CLS} min-h-16 resize-y`}
+                // `h-auto` cancela o `h-9` do INPUT_CLS: aqui a altura é do
+                // conteúdo, não da linha de campo.
+                className={`${INPUT_CLS} h-auto min-h-16 resize-y py-1.5`}
                 value={form.observacoes ?? ""}
                 onChange={e => set("observacoes", e.target.value)}
               />
@@ -652,8 +676,11 @@ function Secao({ titulo, children }: { titulo: string; children: React.ReactNode
   return (
     <div className="flex flex-col gap-2.5">
       {/* Sem uppercase tracked-out: mesma decisão dos rótulos de filtro da
-          página — caixa alta espaçada só aumenta a mancha e custa legibilidade. */}
-      <h3 className="border-b border-border pb-1 text-[13px] font-bold text-foreground">{titulo}</h3>
+          página — caixa alta espaçada só aumenta a mancha e custa legibilidade.
+          Sem `border-b` também: numa grade de duas colunas os traços das seções
+          caem em alturas diferentes de cada lado, e o modal ganha quatro réguas
+          que não alinham com nada. O peso do título já separa os grupos. */}
+      <h3 className="text-[13px] font-bold text-foreground">{titulo}</h3>
       {children}
     </div>
   )
@@ -711,7 +738,7 @@ function MiniSelect({
   // ocupa uma coluna de grade, e sem isso encolhia até o conteúdo, desalinhando
   // das colunas vizinhas e do cabeçalho.
   const triggerCls = compact
-    ? "w-full rounded-md border border-border bg-card px-1.5 py-1 text-[11px]"
+    ? "h-8 w-full rounded-md border border-border bg-card px-2 text-xs"
     : INPUT_CLS
 
   return (
@@ -789,7 +816,7 @@ function TimeField({ value, onChange, ariaLabel }: { value: string; onChange: (v
         maxLength={5}
         value={value}
         onChange={e => handleChange(e.target.value)}
-        className="w-17.5 rounded-md border border-border bg-card py-1 pl-5 pr-1.5 text-[11px] text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="h-8 w-18 rounded-md border border-border bg-card pl-5.5 pr-1.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       />
     </div>
   )

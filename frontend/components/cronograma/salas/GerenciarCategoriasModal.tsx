@@ -233,7 +233,7 @@ function NucleosTab({ onChanged, podeEditar }: { onChanged: () => void; podeEdit
             type="button"
             onClick={handleAdicionar}
             disabled={salvando || !novoNome.trim()}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50 dark:bg-white dark:text-slate-900"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[#2B5E86] px-3 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-[#24506F] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 dark:bg-white dark:text-slate-900"
           >
             <Plus size={14} /> Adicionar
           </button>
@@ -551,7 +551,7 @@ function StatusForm({
           type="button"
           onClick={onSalvar}
           disabled={salvando || !form.label.trim() || !form.label_curto.trim()}
-          className="inline-flex items-center gap-1 rounded-lg bg-slate-900 px-2.5 py-1 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-50 dark:bg-white dark:text-slate-900"
+          className="inline-flex items-center gap-1 rounded-lg bg-[#2B5E86] px-2.5 py-1 text-xs font-semibold text-white transition-colors hover:bg-[#24506F] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 dark:bg-white dark:text-slate-900"
         >
           <Save size={12} /> Salvar
         </button>

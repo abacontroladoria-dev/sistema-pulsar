@@ -6,6 +6,13 @@ export const B = {
   lime: "#CFDE9C",
   pink: "#DD8CB8",
   navy: "#222847",
+  // Primária de ação. O navy é a cor da IDENTIDADE (ícone, sidebar, capa de
+  // PDF) e a 14.4:1 ele lê como quase-preto: um botão cheio dele pesa como
+  // texto, não como ação. Este é o meio-termo entre `navy` e `blue` — azul de
+  // verdade, e ainda 6.89:1 com branco (AA folgado no tamanho 12px dos cards).
+  // O `blue` da marca NÃO serve aqui: a 3.52:1 ele reprova com texto branco.
+  steel: "#2B5E86",
+  steelHover: "#24506F",
   green: "#3aaa5c",
   red: "#e05555",
   yellow: "#F2C94C",
