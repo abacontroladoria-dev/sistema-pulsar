@@ -142,15 +142,37 @@ Faltas registradas antes desta funcionalidade receberam o código pelo mesmo
 critério; as de paciente ficaram em **102**, que é literalmente o que o texto
 livre daquela época dizia ("n vem", "faltou").
 
-### Atenção com `tipo_falta = 'unidade_fechada'`
+### ⚠️ `tipo_falta = 'unidade_fechada'` — leia antes de importar
 
-São dias em que **a clínica não abriu** (feriado, recesso, falta de energia). O
-paciente não faltou. O Pulsar mantém essas linhas fora da assiduidade do paciente
-em todos os cálculos internos.
+São dias em que **a clínica não abriu** (feriado, recesso, falta de energia).
+**O paciente não faltou.** O Pulsar mantém essas linhas fora da assiduidade do
+paciente em todos os cálculos internos, e o seu sistema deveria fazer o mesmo.
 
-Elas são enviadas porque existem e afetam a agenda, mas **não devem contar como
-falta do paciente** no seu sistema. O volume não é pequeno: um único feriado gera
-centenas de linhas de uma vez (07/09/2026 gerou 336).
+**Isso é um quarto da carga.** Na primeira sincronização (corte 2026-09-01):
+
+| | Linhas | |
+|---|---|---|
+| Faltas reais (paciente + terapeuta) | 997 | 75% |
+| **`unidade_fechada` — a clínica não abriu** | **336** | **25%** |
+| Total | 1.333 | |
+
+As 336 vêm de um único dia: o feriado de 07/09. Um feriado derruba a agenda
+inteira de uma vez, então esse padrão vai se repetir a cada data comemorativa.
+
+Se o seu sistema tratar essas linhas como falta do paciente, **o número de
+faltas dele fica 33% acima do real** já na primeira carga — e cada paciente
+atendido naquele dia leva uma falta que nunca aconteceu.
+
+Filtrar é uma linha. Qualquer um destes serve:
+
+```
+tipo_falta !== 'unidade_fechada'     // recomendado: explícito
+codigo_justificativa !== 113         // 113 = Feriado/Recesso Clínica
+```
+
+Enviamos em vez de omitir porque o dado é útil: ele explica uma agenda vazia,
+justifica a ausência sem cobrança, e evita que alguém do seu lado vá procurar o
+que aconteceu naquele dia. Mas a decisão de contá-lo ou não é sua.
 
 ---
 
