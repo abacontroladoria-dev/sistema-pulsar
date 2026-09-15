@@ -307,14 +307,52 @@ export default function CentralTerapeuticaPage() {
       .maybeSingle()
     if (perfil?.nome) nomeUsuario = perfil.nome
 
+    // 'cancelado', NÃO 'pendente'. Reverter uma falta é devolver a sessão para
+    // alguém decidir — mas 'pendente' não é estado de espera, é a FILA DE
+    // TRABALHO do robô, e tem dois consumidores automáticos:
+    //
+    //   robo_buscar_tarefa   polling curto, pega linha do próprio machine_id
+    //   sync_assim_results   cron de 5 min, promove 'pendente' -> 'concluido'
+    //
+    // Como esta função não toca em `machine_id`, a linha carrega a máquina real
+    // de quem lançou a falta — então o robô a reivindicava em ~1 segundo e
+    // re-solicitava a autorização sozinho. Medido em produção: das 44 faltas já
+    // revertidas, 34 (77%) terminaram em 'concluido'. Não era exceção, era o
+    // comportamento padrão.
+    //
+    // 'cancelado' tem mostrar_na_tela = true em listar_central_autorizacoes, e
+    // `ativo` na /solicitar só desabilita 'processando'/'pendente' — então a
+    // sessão reaparece na lista com o botão Autorizar habilitado, e o reprocesso
+    // já existe (solicitar/page.tsx:826 trata 'erro' e 'cancelado' no mesmo
+    // ramo). Nenhum consumidor automático lê 'cancelado'.
+    //
+    // Isto alinha a reversão individual com reverter_falta_em_lote
+    // (20260908100100:518-525), que resolveu este mesmo problema em 08/09 — o
+    // caminho individual é que tinha ficado para trás.
+    const agora = new Date().toISOString()
+
     const { error } = await supabase.from('fila_autorizacoes').update({
-      status: 'pendente',
+      status: 'cancelado',
       tipo_falta: null,
       terapia_falta: null,
       justificativa_falta: null,
+      // motivo_falta e falta_lote_id entram junto porque o lote já os limpa
+      // (20260908100100:561-567); sem isso a linha revertida ficava carregando
+      // o motivo do fechamento e o vínculo com um lote que não vale mais.
+      motivo_falta: null,
+      falta_lote_id: null,
       falta_revertida_por_nome: nomeUsuario,
-      falta_revertida_em: new Date().toISOString(),
-    }).eq('id', atendimento.id)
+      falta_revertida_em: agora,
+      // O selo de 'cancelado' na /solicitar lê `cancelado_por_nome`
+      // (solicitar/page.tsx:2253). Sem preencher, o card apareceria como
+      // "Cancelada" seco — enganoso para quem acabou de reverter uma falta.
+      cancelado_por_nome: nomeUsuario,
+      cancelado_em: agora,
+    })
+      .eq('id', atendimento.id)
+      // Mesma guarda do lote (20260908100100:569): se alguém já corrigiu a linha
+      // à mão entre a tela carregar e o clique, a reversão não atropela.
+      .eq('status', 'falta')
 
     if (error) throw error
 
