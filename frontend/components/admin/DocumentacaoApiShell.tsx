@@ -56,6 +56,19 @@ export default function DocumentacaoApiShell() {
 
         {/* ── Capa ──────────────────────────────────────────── */}
         <header className="doc-capa mb-10 border-b border-slate-200 pb-8">
+          {/* Lockup do Pulsar. Só a variante clara: este documento é feito para
+              virar papel, e no papel o fundo é sempre branco — a variante escura
+              do Sidebar não tem uso aqui.
+
+              `h-9 w-auto` em vez de largura fixa porque o arquivo é 1920x768
+              com ~40% de margem transparente embutida (ver Sidebar.tsx): travar
+              pela altura da arte é o único jeito de a marca sair do mesmo
+              tamanho aqui e lá. */}
+          <img
+            src="/pulsar-lockup-1920-transparent.png"
+            alt="Pulsar"
+            className="doc-marca mb-6 h-9 w-auto"
+          />
           <p className="mb-4 flex items-center gap-2 font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">
             <span className="h-1.5 w-1.5 rounded-full bg-[#E6357E]" />
             Documentação de integração &middot; v1.0
@@ -864,6 +877,17 @@ const cssImpressao = `
   .doc-secao { break-inside: auto; }
   .doc-pre, .doc-tabela, .doc-aviso, .doc-endpoint,
   .doc-numeros, table, pre { break-inside: avoid; }
+
+  /* A capa é a primeira página: a marca não pode ser separada do título. */
+  .doc-capa { break-inside: avoid; break-after: avoid; }
+
+  /* O lockup é PNG com transparência e um ponto rosa que é o único acento da
+     marca. Sem preservar cor, o navegador o imprime em escala de cinza. */
+  .doc-marca {
+    height: 11mm;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
 
   /* Cores chapadas precisam ser explicitamente preservadas. */
   .doc-endpoint, .doc-aviso, .doc-numeros * {
