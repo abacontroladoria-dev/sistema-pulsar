@@ -34,20 +34,27 @@ with novo as (
          encode(extensions.gen_random_bytes(32), 'hex')  as token
 )
 insert into public.integracao_tokens
-       (parceiro, token_hash, escopo, data_corte, criado_por_nome, observacao)
+       (parceiro, token_hash, escopo, data_corte, expira_em, criado_por_nome, observacao)
 select parceiro,
        encode(sha256(convert_to(token, 'UTF8')), 'hex'),
        'faltas',
        date '2026-09-01',
+       now() + interval '1 year',   -- null = sem prazo; prefira um prazo
        '<seu nome>',
        '<para que serve / com quem falar>'
   from novo
 returning id,
           parceiro,
           data_corte,
+          expira_em,
           (select token from novo) as token,
           'ANOTE AGORA - nao aparece de novo' as aviso;
 */
+
+-- Sobre `expira_em`: um token sem prazo vazado vale para sempre ate alguem
+-- notar. Com prazo, o pior caso tem fim. Renovar e o bloco 1 de novo (gera
+-- token novo) ou um update do prazo:
+--   update public.integracao_tokens set expira_em = now() + interval '1 year' where id = <id>;
 
 
 -- ============================================================
@@ -63,6 +70,7 @@ select id,
        data_corte,
        criado_em::date                           as criado,
        criado_por_nome,
+       coalesce(expira_em::text, 'sem prazo') as expira,
        coalesce(ultimo_uso_em::text, 'nunca usou') as ultimo_uso,
        observacao
   from public.integracao_tokens

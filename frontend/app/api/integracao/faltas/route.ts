@@ -1,5 +1,3 @@
-import { createHash } from 'node:crypto'
-
 import type { NextRequest } from 'next/server'
 
 import { checkRateLimit } from '@/lib/rate-limit'
@@ -61,18 +59,6 @@ export async function GET(request: NextRequest) {
     )
   }
 
-  // Chaveado pelo TOKEN, não pelo IP: o limite deve seguir o parceiro (que pode
-  // trocar de IP ou vir de vários), e chavear por IP faria o Map in-memory de
-  // lib/rate-limit crescer sem limite com IP novo — ele não tem expurgo ativo.
-  // O hash evita deixar o segredo em memória como chave de um Map.
-  const chaveLimite = `integracao:faltas:${createHash('sha256').update(token).digest('hex')}`
-  if (checkRateLimit(chaveLimite, LIMITE_REQ, JANELA_MS)) {
-    return Response.json(
-      { erro: 'limite de requisicoes excedido' },
-      { status: 429, headers: { 'Retry-After': String(JANELA_MS / 1000) } }
-    )
-  }
-
   const params = request.nextUrl.searchParams
 
   // Cursor composto. `desde` sozinho não basta: milhares de faltas compartilham
@@ -105,6 +91,45 @@ export async function GET(request: NextRequest) {
     )
   }
 
+  // ── 1. Autenticar ANTES do rate limit ────────────────────────────────────
+  //
+  // O rate limit é chaveado pelo ID DO PARCEIRO, e é por isso que a
+  // autenticação vem primeiro. A versão anterior chaveava pelo token do
+  // request, antes de autenticar — e como `lib/rate-limit.ts` é um Map de
+  // processo cujo `cleanupRateLimitStore()` nunca é chamado, um atacante SEM
+  // TOKEN VÁLIDO variava o token a cada request e crescia o heap para sempre:
+  // medido em 292 bytes por request, ~31 min de flood a 1k req/s para 512 MB.
+  //
+  // Chaveando pelo id, a cardinalidade do Map é o número de parceiros
+  // cadastrados — não o que o atacante digita. O vetor fecha por construção.
+  //
+  // Autenticar numa chamada separada (e não reaproveitar a consulta) é o que
+  // faz o limite valer também quando a consulta devolveria ZERO linhas: um
+  // cursor no futuro retorna vazio sempre, e seria um caminho livre de limite.
+  const auth = await supabaseService.rpc('integracao_identificar', { p_token: token })
+
+  if (auth.error) {
+    if (auth.error.code === '28000') {
+      return Response.json({ erro: 'token invalido' }, { status: 401 })
+    }
+    console.error('[integracao/faltas] falha ao identificar', { code: auth.error.code })
+    return Response.json({ erro: 'servico indisponivel' }, { status: 500 })
+  }
+
+  const parceiroId = (auth.data as { parceiro_id: number }[] | null)?.[0]?.parceiro_id
+  if (parceiroId === undefined) {
+    return Response.json({ erro: 'token invalido' }, { status: 401 })
+  }
+
+  // ── 2. Rate limit por parceiro ───────────────────────────────────────────
+  if (checkRateLimit(`integracao:faltas:${parceiroId}`, LIMITE_REQ, JANELA_MS)) {
+    return Response.json(
+      { erro: 'limite de requisicoes excedido' },
+      { status: 429, headers: { 'Retry-After': String(JANELA_MS / 1000) } }
+    )
+  }
+
+  // ── 3. A consulta ────────────────────────────────────────────────────────
   const { data, error } = await supabaseService.rpc('integracao_faltas', {
     p_token: token,
     p_desde: desde,
@@ -120,7 +145,11 @@ export async function GET(request: NextRequest) {
       return Response.json({ erro: 'token invalido' }, { status: 401 })
     }
 
-    console.error('[integracao/faltas] falha na consulta', error)
+    // Só o código do erro vai ao log. A mensagem/detalhe do PostgREST pode
+    // carregar conteúdo influenciado pelo chamador (um token com byte inválido,
+    // por exemplo, volta como erro de driver), e isso é poluição de log que o
+    // atacante escolhe. O diagnóstico real fica no log do Postgres.
+    console.error('[integracao/faltas] falha na consulta', { code: error.code })
     return Response.json({ erro: 'servico indisponivel' }, { status: 500 })
   }
 
