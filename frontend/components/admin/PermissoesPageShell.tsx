@@ -20,6 +20,7 @@ import {
   Megaphone,
   Monitor,
   Pencil,
+  Plug,
   PlusCircle,
   RotateCcw,
   Save,
@@ -116,6 +117,9 @@ const MODULE_ICONS: Record<string, React.ElementType> = {
   auditoria_assim: ClipboardList,
   usuarios: Users,
   permissoes: KeyRound,
+  // Mesmo ícone do MenuItem em Sidebar.tsx — o módulo tem de ser reconhecível
+  // como a mesma tela nas duas listas.
+  api_integracao: Plug,
   // Mesmo ícone do MenuItem em Sidebar.tsx — o módulo tem de ser reconhecível
   // como a mesma tela nas duas listas.
   tv_avisos: Monitor,

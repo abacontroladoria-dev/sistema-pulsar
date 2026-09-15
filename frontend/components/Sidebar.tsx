@@ -18,6 +18,7 @@ import {
   BriefcaseBusiness,
   Star,
   KeyRound,
+  Plug,
   Monitor,
   Megaphone,
   BarChart3,
@@ -88,6 +89,7 @@ const pathIconMap: Record<string, any> = {
   "/cco": BarChart3,
   "/admin": ShieldCheck,
   "/admin/permissoes": KeyRound,
+  "/admin/api": Plug,
   "/connect": Zap,
   "/tv-avisos": Monitor,
   "/relacionamento-prestador/solicitacoes?tab=simulacao": UserPlus,
@@ -735,13 +737,16 @@ export default function Sidebar() {
             <SidebarGroup
               title="Administração"
               icon={ShieldCheck}
-              defaultOpen={["/admin", "/admin/permissoes"].some(p => pathname === p)}
+              defaultOpen={["/admin", "/admin/permissoes", "/admin/api"].some(p => pathname === p)}
             >
               {canAccess("/admin") && (
                 <MenuItem label="Usuários" icon={Users} path="/admin" />
               )}
               {canAccess("/admin/permissoes") && (
                 <MenuItem label="Permissões" icon={KeyRound} path="/admin/permissoes" />
+              )}
+              {canAccess("/admin/api") && (
+                <MenuItem label="API" icon={Plug} path="/admin/api" />
               )}
             </SidebarGroup>
           )}

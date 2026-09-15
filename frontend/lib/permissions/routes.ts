@@ -10,7 +10,7 @@ export const roleDefaults: Record<string, string[]> = {
     'dashboard', 'atendimentos', 'autorizacoes_avulsas', 'gestao',
     'acompanhamento_laudos',
     'escala_terapeutica',
-    'auditoria_assim', 'usuarios', 'permissoes', 'cco',
+    'auditoria_assim', 'usuarios', 'permissoes', 'api_integracao', 'cco',
     'tv_avisos',
     'preauditoria', 'outros_convenios',
     'cronograma_solicitacoes', 'cronograma_saida_profissional', 'cronograma_ocupacao_paciente',
@@ -122,6 +122,12 @@ export const CODIGO_PARA_ROTAS: Record<string, string[]> = {
   auditoria_assim: ['/auditoria-assim'],
   usuarios: ['/admin'],
   permissoes: ['/admin/permissoes'],
+  // Documentação da API de integração de faltas (parceiros externos). Código
+  // PRÓPRIO, e não uma segunda rota dentro de `usuarios`: quem consulta o
+  // contrato da API para passar a um dev externo não é necessariamente quem
+  // administra contas, e o inverso também vale. A tela é somente leitura — não
+  // mostra token, não chama o endpoint, não escreve nada.
+  api_integracao: ['/admin/api'],
   // Carrossel de avisos da TV da recepção. Código PRÓPRIO porque quem opera é o
   // MARKETING — um setor sem nenhuma outra permissão aqui, e que não pode ganhar
   // acesso a dado de paciente só para trocar um cartaz de parede. A RLS de
