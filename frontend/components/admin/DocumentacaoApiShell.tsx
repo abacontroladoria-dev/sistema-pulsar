@@ -844,9 +844,20 @@ const cssImpressao = `
 @media print {
   @page { size: A4; margin: 16mm 15mm 17mm; }
 
-  /* 1. Esconde o chrome do app. Os seletores alcançam o layout do dashboard
-        (sidebar, header do shell, sino, barra de impersonação) — esta tela não
-        controla esses elementos, mas precisa removê-los do papel. */
+  /* 1. Esconde o chrome do app. Esta tela não controla esses elementos, mas
+        precisa removê-los do papel.
+
+        A regra que faz o trabalho pesado é a do posicionamento fixo: no papel
+        não existe viewport, então nada pode estar ancorado a ela — um elemento
+        fixo sai carimbado numa coordenada arbitraria da primeira pagina. E
+        assim que o sino de alertas (uma div fixed, sem tag semantica) e a barra
+        de impersonacao somem sem eu precisar nomear cada um. Nomea-los seria
+        pior: o proximo elemento fixo que alguem acrescentar ao layout voltaria
+        a aparecer aqui, e ninguem lembraria desta tela.
+
+        Todo o conteudo deste documento e estatico, entao a varredura por classe
+        nao tem como remover nada que devesse ser impresso. */
+  [class*="fixed"],
   aside,
   nav,
   header:not(.doc-capa),
