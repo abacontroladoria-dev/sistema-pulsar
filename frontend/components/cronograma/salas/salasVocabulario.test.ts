@@ -110,41 +110,39 @@ describe("cor de unidade não colide com cor de estado", () => {
     // Uma unidade em âmbar leria como "precisa de atenção"; em rosa, como
     // conflito. É o mesmo erro que a crítica pegou, num eixo novo.
     for (const u of [...UNIDADES_CONHECIDAS, "Unidade Que Não Existe"]) {
-      const { faixa, texto } = corDaUnidade(u)
+      const { chip } = corDaUnidade(u)
       for (const familia of FAMILIAS_DE_ESTADO) {
-        expect(faixa, `faixa de ${u}`).not.toContain(familia)
-        expect(texto, `texto de ${u}`).not.toContain(familia)
+        expect(chip, `chip de ${u}`).not.toContain(familia)
       }
     }
   })
 
   it("cada unidade conhecida tem cor própria", () => {
-    const faixas = UNIDADES_CONHECIDAS.map(u => corDaUnidade(u).faixa)
-    expect(new Set(faixas).size).toBe(UNIDADES_CONHECIDAS.length)
+    const chips = UNIDADES_CONHECIDAS.map(u => corDaUnidade(u).chip)
+    expect(new Set(chips).size).toBe(UNIDADES_CONHECIDAS.length)
   })
 
   it("unidade desconhecida cai no neutro, não numa cor emprestada", () => {
     const desconhecida = corDaUnidade("Filial Nova")
-    expect(desconhecida.faixa).toContain("slate")
+    expect(desconhecida.chip).toContain("muted")
     // Não pode reusar a cor de uma unidade conhecida: duas unidades com o
     // mesmo tom desfazem o agrupamento que a faixa existe para dar.
     for (const u of UNIDADES_CONHECIDAS) {
-      expect(desconhecida.faixa).not.toBe(corDaUnidade(u).faixa)
+      expect(desconhecida.chip).not.toBe(corDaUnidade(u).chip)
     }
   })
 
   it("nulo não quebra", () => {
-    expect(corDaUnidade(null).faixa).toBeTruthy()
-    expect(corDaUnidade(undefined).faixa).toBeTruthy()
+    expect(corDaUnidade(null).chip).toBeTruthy()
+    expect(corDaUnidade(undefined).chip).toBeTruthy()
   })
 
   it("toda cor de unidade tem contraparte dark", () => {
     for (const u of [...UNIDADES_CONHECIDAS, "Outra"]) {
-      const { faixa, texto } = corDaUnidade(u)
-      expect(faixa, `faixa de ${u}`).toContain("dark:")
-      // Tokens semânticos (`text-muted-foreground`) já viram no tema; só as
-      // escalas fixas de paleta precisam do par explícito.
-      if (texto.includes("-700")) expect(texto, `texto de ${u}`).toContain("dark:")
+      const { chip } = corDaUnidade(u)
+      // Tokens semânticos (`bg-muted`) já viram no tema; só as escalas fixas
+      // de paleta precisam do par explícito.
+      if (chip.includes("-100")) expect(chip, `chip de ${u}`).toContain("dark:")
     }
   })
 })

@@ -42,7 +42,9 @@ const DIAS_SEMANA: { dow: number; label: string }[] = [
   { dow: 6, label: "Sáb" },
 ]
 
-const INPUT_CLS = "w-full rounded-lg border border-border bg-card px-2.5 py-1.5 text-sm text-foreground"
+// O anel de foco vive aqui para cobrir de uma vez os cinco inputs/textarea
+// que usam esta classe — antes nenhum deles tinha qualquer estado de foco.
+const INPUT_CLS = "w-full rounded-lg border border-border bg-card px-2.5 py-1.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 
 /** Uma linha do editor de "Horários personalizados" — vira uma entrada em `horarios_customizados` no submit. `id` é só chave de React (a chave real gravada é dow+turno). */
 interface OverrideRow {
@@ -198,8 +200,26 @@ export function SalaEditModal({ sala, todasSalas, onClose, onSaved }: SalaEditMo
   const numeroJaUsado = andarPreenchido && form.numero_sala.trim() !== ""
     && numerosUsadosNoAndar.some(n => normNumeroSala(n) === normNumeroSala(form.numero_sala))
 
-  const valido = form.unidade_nome.trim() && andarPreenchido && form.numero_sala.trim() && form.nome_exibicao.trim() && !numeroJaUsado
-    && (form.dias_disponiveis?.length ?? 0) > 0
+  /**
+   * O que impede o salvamento, em prosa. Antes `valido` era uma conjunção de
+   * seis condições e o botão só ficava opaco — num modal largo o campo que
+   * falta pode estar na outra metade da tela, e o usuário concluía que "o
+   * sistema não salva".
+   */
+  const pendencias: string[] = []
+  if (!form.unidade_nome.trim()) pendencias.push("Unidade")
+  if (!andarPreenchido) pendencias.push("Andar")
+  if (!form.numero_sala.trim()) pendencias.push("Número da sala")
+  if (form.nome_exibicao.trim() === "") pendencias.push("Nome de exibição")
+  if (numeroJaUsado) pendencias.push("um número de sala que ainda não exista neste andar")
+  if ((form.dias_disponiveis?.length ?? 0) === 0) pendencias.push("ao menos um dia de atendimento")
+  // Linha de horário que não gera sessão nenhuma seria DESCARTADA em silêncio
+  // pelo filtro do payload — o usuário salvava, reabria e ela não estava lá.
+  if (overridesAtivos.some(o => gerarHorarios(o.inicio, o.fim, o.duracaoMin).length === 0)) {
+    pendencias.push("corrigir os horários personalizados marcados em vermelho")
+  }
+
+  const valido = pendencias.length === 0
 
   async function handleSalvar() {
     if (!valido) return
@@ -252,30 +272,46 @@ export function SalaEditModal({ sala, todasSalas, onClose, onSaved }: SalaEditMo
   return (
     <ScheduleModal
       title={sala ? `Editar ${sala.nome_exibicao}` : "Nova sala"}
-      subtitle="Cadastro estrutural de sala — cruzado automaticamente com a agenda pela referência de nome."
+      // O subtítulo dizia "cruzado ... pela referência de nome", e isso era
+      // falso: `salas.ts:94` cruza por normNumeroSala(numero_sala), e
+      // `sala_nome_referencia` não é lido por nenhuma lógica (só aparece no
+      // rótulo da auditoria). O campo de maior consequência da tela é o
+      // Número — o cabeçalho precisa dizer isso.
+      subtitle="Cadastro estrutural de sala — a agenda é cruzada por Unidade + Número da sala."
       // Largo, na linguagem de docs/padrao-detalhamento-modal.md (max-w-350).
-      // Em 560px as quatro seções viravam uma coluna estreita e alta, com
-      // rolagem para ver "Disponibilidade" — sendo que os campos são curtos e
-      // cabem lado a lado de sobra.
-      maxWidth={1180}
+      // 1280 e não 1180: a linha de horário personalizado tem ~490px de piso
+      // (seis trilhas + gaps) e agora vive em MEIA coluna — a ~1108px úteis
+      // ela ficava na borda do estouro.
+      maxWidth={1280}
       onClose={onClose}
       footer={
         <>
+          {/* Bloco à esquerda: o destrutivo e o aviso do que falta. O `mr-auto`
+              aqui é o que empurra Cancelar/Salvar para a direita e mantém o
+              Excluir longe da primária — antes os três ficavam colados. */}
+          <div className="mr-auto flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
           {sala && (
             <button
               type="button"
               onClick={() => setConfirmandoExclusao(true)}
               disabled={saving}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-rose-300 px-3 py-1.5 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50 dark:border-rose-800 dark:text-rose-400"
+              // Longe do Salvar: ação destrutiva não fica a 8px da primária.
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-rose-300 px-3 text-sm font-semibold text-rose-700 transition-colors hover:bg-rose-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 disabled:opacity-50 dark:border-rose-800 dark:text-rose-400"
             >
               <Trash2 size={14} /> Excluir
             </button>
           )}
+          {!valido && (
+            <span className="text-[11px] text-muted-foreground">
+              Falta preencher: <span className="font-semibold text-foreground">{pendencias.join(", ")}</span>
+            </span>
+          )}
+          </div>
           <button
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="rounded-lg border border-border px-3 py-1.5 text-sm font-semibold text-foreground hover:bg-muted/50"
+            className="inline-flex h-9 items-center rounded-lg border border-border px-3 text-sm font-semibold text-foreground transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             Cancelar
           </button>
@@ -305,13 +341,20 @@ export function SalaEditModal({ sala, todasSalas, onClose, onSaved }: SalaEditMo
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-x-8 gap-y-5 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
+      {/* Metade e metade, empilhado abaixo de lg.
+          A divisão NÃO é por assunto, é por ALTURA: à esquerda o que tem
+          tamanho fixo (endereço e identificação, 7 campos curtos); à direita
+          tudo que CRESCE — dias, as N linhas de horário e as observações.
+          Foi assim que o scroll sumiu: antes os horários ficavam numa faixa
+          embaixo, e cada linha nova empurrava o modal para além da viewport. */}
+      <div className="grid grid-cols-1 items-start gap-x-8 gap-y-5 lg:grid-cols-2">
         <div className="flex flex-col gap-5">
           <Secao titulo="Localização">
             <div className="grid grid-cols-2 gap-3">
               <Campo label="Unidade *">
                 <MiniSelect
                   value={form.unidade_nome}
+                  aria-label="Unidade"
                   placeholder="Selecione..."
                   options={UNIDADES.map(u => ({ value: u, label: u }))}
                   onChange={v => set("unidade_nome", v)}
@@ -320,6 +363,7 @@ export function SalaEditModal({ sala, todasSalas, onClose, onSaved }: SalaEditMo
               <Campo label="Núcleo">
                 <MiniSelect
                   value={form.nucleo ?? ""}
+                  aria-label="Núcleo"
                   placeholder="Nenhum"
                   options={nucleos.map(n => ({ value: n, label: n }))}
                   onChange={v => set("nucleo", v)}
@@ -382,6 +426,7 @@ export function SalaEditModal({ sala, todasSalas, onClose, onSaved }: SalaEditMo
             <Campo label="Capacidade *">
               <MiniSelect
                 value={form.capacidade}
+                aria-label="Capacidade"
                 options={Object.entries(CAPACIDADE_LABEL).map(([k, l]) => ({ value: k, label: l }))}
                 onChange={v => set("capacidade", v as SalaCapacidade)}
               />
@@ -389,6 +434,7 @@ export function SalaEditModal({ sala, todasSalas, onClose, onSaved }: SalaEditMo
             <Campo label="Status">
               <MiniSelect
                 value={form.status ?? ""}
+                aria-label="Status"
                 options={(Object.keys(statusLabels) as SalaStatus[]).map(k => ({ value: k, label: statusLabels[k].label }))}
                 onChange={v => set("status", v as SalaStatus)}
               />
@@ -397,7 +443,10 @@ export function SalaEditModal({ sala, todasSalas, onClose, onSaved }: SalaEditMo
         </Secao>
         </div>
 
-        <div className="flex flex-col gap-5">
+        {/* `@container`: a linha de horário mede a COLUNA, não a viewport.
+            Com `sm:` ela virava grade assim que a janela passava de 640px,
+            mesmo quando a coluna tinha metade disso, e estourava. */}
+        <div className="@container flex flex-col gap-5">
           <Secao titulo="Disponibilidade">
             <div className="flex flex-col gap-3">
               <Campo label="Dias e turnos de atendimento *">
@@ -433,14 +482,18 @@ export function SalaEditModal({ sala, todasSalas, onClose, onSaved }: SalaEditMo
                 </span>
               )}
             </Campo>
+          </div>
+        </Secao>
 
-            <Campo label="Horários personalizados (opcional)">
+        <Secao titulo="Horários personalizados">
+          <div className="flex flex-col gap-3">
+            <Campo label="Ajuste o horário de um dia e turno específicos (opcional)">
               <div className="flex flex-col gap-1.5">
                 {/* Cabeçalho uma vez, não por linha: antes os seis controles
                     ficavam soltos e só a posição dizia o que era cada um. Com
                     a largura do modal novo eles cabem em colunas alinhadas. */}
                 {overridesAtivos.length > 0 && (
-                  <div className="hidden grid-cols-[76px_92px_1fr_88px_auto_28px] items-center gap-2 px-2 text-[10px] font-semibold text-muted-foreground sm:grid">
+                  <div className="hidden grid-cols-[64px_78px_1fr_74px_auto_26px] items-center gap-1.5 px-2 text-[10px] font-semibold text-muted-foreground @md:grid">
                     <span>Dia</span>
                     <span>Turno</span>
                     <span>Das / até</span>
@@ -455,29 +508,41 @@ export function SalaEditModal({ sala, todasSalas, onClose, onSaved }: SalaEditMo
                   return (
                     <div
                       key={o.id}
-                      className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/20 px-2 py-1.5 sm:grid sm:grid-cols-[76px_92px_1fr_88px_auto_28px]"
+                      className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/20 px-2 py-1.5 @md:grid @md:grid-cols-[64px_78px_1fr_74px_auto_26px]"
                     >
+                      {/* Só dias que ainda têm ALGUM turno livre (ou o próprio
+                          dia desta linha). Sem isso dava para pôr duas linhas
+                          em Seg/Manhã: as duas apareciam, mas o
+                          `Object.fromEntries` do payload guardava só a última
+                          — duas linhas na tela, uma no banco. */}
                       <MiniSelect
                         compact
+                        aria-label="Dia da semana"
                         value={String(o.dow)}
-                        options={diasAtuais.map(d => ({ value: String(d.dow), label: DIAS_SEMANA.find(s => s.dow === d.dow)?.label ?? String(d.dow) }))}
+                        options={diasAtuais
+                          .filter(d => d.dow === o.dow || d.turnos.some(t => !combinacaoJaUsada(d.dow, t, o.id)))
+                          .map(d => ({ value: String(d.dow), label: DIAS_SEMANA.find(s => s.dow === d.dow)?.label ?? String(d.dow) }))}
                         onChange={v => {
                           const novoDow = Number(v)
                           const turnosNovoDia = diasAtuais.find(d => d.dow === novoDow)?.turnos ?? []
-                          const novoTurno = turnosNovoDia.includes(o.turno) ? o.turno : (turnosNovoDia[0] ?? o.turno)
+                          const livres = turnosNovoDia.filter(t => !combinacaoJaUsada(novoDow, t, o.id))
+                          const novoTurno = livres.includes(o.turno) ? o.turno : (livres[0] ?? turnosNovoDia[0] ?? o.turno)
                           atualizarOverride(o.id, { dow: novoDow, turno: novoTurno })
                         }}
                       />
                       <MiniSelect
                         compact
+                        aria-label="Turno"
                         value={o.turno}
-                        options={turnosDoDia.map(t => ({ value: t, label: t }))}
+                        options={turnosDoDia
+                          .filter(t => t === o.turno || !combinacaoJaUsada(o.dow, t, o.id))
+                          .map(t => ({ value: t, label: t }))}
                         onChange={v => atualizarOverride(o.id, { turno: v as "Manhã" | "Tarde" })}
                       />
                       <span className="flex items-center gap-1.5">
-                        <TimeField value={o.inicio} onChange={v => atualizarOverride(o.id, { inicio: v })} />
+                        <TimeField ariaLabel="Horário inicial" value={o.inicio} onChange={v => atualizarOverride(o.id, { inicio: v })} />
                         <span className="text-[11px] text-muted-foreground">até</span>
-                        <TimeField value={o.fim} onChange={v => atualizarOverride(o.id, { fim: v })} />
+                        <TimeField ariaLabel="Horário final" value={o.fim} onChange={v => atualizarOverride(o.id, { fim: v })} />
                       </span>
                       <span className="flex items-center gap-1">
                         <input
@@ -519,8 +584,8 @@ export function SalaEditModal({ sala, todasSalas, onClose, onSaved }: SalaEditMo
         </Secao>
 
         <Secao titulo="Outras informações">
-          <div className="grid grid-cols-2 gap-3">
-            <Campo label="Referência na agenda" className="col-span-2">
+          <div className="flex flex-col gap-3">
+            <Campo label="Referência na agenda">
               <input
                 className={INPUT_CLS}
                 value={form.sala_nome_referencia ?? ""}
@@ -529,15 +594,15 @@ export function SalaEditModal({ sala, todasSalas, onClose, onSaved }: SalaEditMo
               />
               <span className="text-[11px] text-muted-foreground">Informativo — o cruzamento com a agenda usa Unidade + Número da sala, não este campo.</span>
             </Campo>
-            <Campo label="Observações" className="col-span-2">
+            <Campo label="Observações">
               <textarea
-                className={`${INPUT_CLS} min-h-[64px] resize-y`}
+                className={`${INPUT_CLS} min-h-16 resize-y`}
                 value={form.observacoes ?? ""}
                 onChange={e => set("observacoes", e.target.value)}
               />
             </Campo>
             {sala && exclusividades.length > 0 && (
-              <Campo label="Exclusividade de terapia" className="col-span-2">
+              <Campo label="Exclusividade de terapia">
                 <div className="flex flex-wrap gap-1.5 rounded-lg border border-border bg-muted/30 px-2.5 py-2">
                   {exclusividades
                     .slice()
@@ -555,10 +620,14 @@ export function SalaEditModal({ sala, todasSalas, onClose, onSaved }: SalaEditMo
         </Secao>
         </div>
       </div>
+
       {confirmandoExclusao && sala && (
         <ConfirmDialog
           title="Excluir sala?"
-          description={`Excluir a sala "${sala.nome_exibicao}"? Esta ação não pode ser desfeita.`}
+          // `arquivarSala`, não DELETE: a sala sai das listas mas o histórico
+          // dela continua existindo. Dizer "não pode ser desfeita" era assustar
+          // com a coisa errada.
+          description={`A sala "${sala.nome_exibicao}" sai das listas e da grade. O histórico dela é mantido.`}
           confirmLabel="Excluir"
           confirmColor="#dc2626"
           onConfirm={confirmarExclusao}
@@ -599,11 +668,19 @@ function Secao({ titulo, children }: { titulo: string; children: React.ReactNode
  */
 function MiniSelect({
   value, onChange, options, placeholder = "Selecione...", permiteVazio = false, compact = false, className = "",
+  "aria-label": ariaLabel,
 }: {
   value: string
   onChange: (v: string) => void
   options: { value: string; label: string }[]
   placeholder?: string
+  /**
+   * Nome acessível. Obrigatório na prática: o `Campo` que envolve este
+   * componente renderiza um `<label>`, e `<label>` NÃO nomeia um `<button>` —
+   * só nomeia controles nativos. Sem isto o leitor de tela anunciava apenas o
+   * valor atual ("Selecione...", "Nenhum"), sem dizer de que campo se trata.
+   */
+  "aria-label"?: string
   /** Mostra "Nenhum"/placeholder como opção clicável na lista (ex.: Núcleo, que aceita ficar vazio). */
   permiteVazio?: boolean
   /** Densidade reduzida (texto 11px) — usada nas linhas estreitas de "Horários personalizados". */
@@ -644,7 +721,8 @@ function MiniSelect({
         onClick={() => setOpen(v => !v)}
         aria-haspopup="listbox"
         aria-expanded={open}
-        className={`${triggerCls} flex items-center justify-between gap-1 text-left`}
+        aria-label={ariaLabel}
+        className={`${triggerCls} flex items-center justify-between gap-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
       >
         <span className={`truncate ${selecionado ? "text-foreground" : "text-muted-foreground"}`}>
           {selecionado?.label ?? placeholder}
@@ -691,7 +769,7 @@ function MiniSelect({
  * Texto livre mascarado como "HH:MM": digita só números, ":" é inserido
  * automaticamente — sem popup nenhum, 100% estilizável.
  */
-function TimeField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function TimeField({ value, onChange, ariaLabel }: { value: string; onChange: (v: string) => void; ariaLabel: string }) {
   function handleChange(raw: string) {
     const digitos = raw.replace(/\D/g, "").slice(0, 4)
     const formatado = digitos.length > 2 ? `${digitos.slice(0, 2)}:${digitos.slice(2)}` : digitos
@@ -704,10 +782,14 @@ function TimeField({ value, onChange }: { value: string; onChange: (v: string) =
         type="text"
         inputMode="numeric"
         placeholder="08:00"
+        // `ariaLabel` é obrigatório no tipo: o placeholder era o ÚNICO nome
+        // deste campo, o que o DESIGN.md proíbe explicitamente — e com dois
+        // TimeField por linha ("das" e "até") eles eram indistinguíveis.
+        aria-label={ariaLabel}
         maxLength={5}
         value={value}
         onChange={e => handleChange(e.target.value)}
-        className="w-[70px] rounded-md border border-border bg-card py-1 pl-5 pr-1.5 text-[11px] text-foreground"
+        className="w-17.5 rounded-md border border-border bg-card py-1 pl-5 pr-1.5 text-[11px] text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       />
     </div>
   )

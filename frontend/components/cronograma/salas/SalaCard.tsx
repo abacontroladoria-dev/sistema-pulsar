@@ -43,18 +43,15 @@ function SalaCardBase({ resumo, temExclusividade, statusLabel, statusCarregando,
   const unidade = corDaUnidade(sala.unidade_nome)
 
   return (
+    // Sem `hover:shadow`: o DESIGN.md define o sistema como flat — mudança de
+    // estado é cor e opacidade, nunca elevação. O hover agora escurece a borda.
     <div
-      className={`group relative flex flex-col overflow-hidden rounded-xl border bg-card p-4 pl-5 transition-shadow hover:shadow-md ${
-        temInconsistencia ? "border-rose-300 dark:border-rose-800" : "border-border"
+      className={`group relative flex flex-col rounded-xl border bg-card p-4 transition-colors ${
+        temInconsistencia
+          ? "border-rose-300 dark:border-rose-800"
+          : "border-border hover:border-slate-300 dark:hover:border-slate-600"
       }`}
     >
-      {/* A unidade é o que agrupa a varredura de dezenas de cards: a faixa é o
-          que se lê de relance, antes de qualquer texto. Violeta/terracota/ciano
-          são famílias que NENHUM estado usa — rosa, âmbar, verde e azul-céu
-          estão reservados a conflito/atenção/saudável/agenda-aberta (ver
-          salasVocabulario), e uma unidade em âmbar leria como alerta. */}
-      <span className={`absolute inset-y-0 left-0 w-1.5 ${unidade.faixa}`} aria-hidden />
-
       {/* 1 e 2 — que sala é, em que estado está */}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
@@ -68,11 +65,17 @@ function SalaCardBase({ resumo, temExclusividade, statusLabel, statusCarregando,
               />
             )}
           </div>
-          {/* Unidade fora do cinza e separada do andar: antes as duas viviam
-              numa string só ("Fazendinha · 1º andar") no mesmo peso do núcleo,
-              e a unidade — o dado mais usado para achar a sala — sumia. */}
-          <p className="mt-0.5 flex flex-wrap items-baseline gap-x-1.5 text-xs">
-            <span className={`font-semibold ${unidade.texto}`}>{sala.unidade_nome}</span>
+          {/* A unidade como CHIP, não como faixa lateral: o DESIGN.md proíbe
+              side-stripe em card, e a cor precisa morar dentro do perímetro.
+              O chip é mais legível que o trilho de 6px que estava aqui — diz
+              a mesma coisa de relance e ainda carrega o nome.
+              Violeta/terracota/ciano são famílias que NENHUM estado usa: rosa,
+              âmbar, verde e azul-céu estão reservados a conflito/atenção/
+              saudável/agenda-aberta, e uma unidade em âmbar leria como alerta. */}
+          <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
+            <span className={`rounded-md px-1.5 py-0.5 text-[11px] font-bold ${unidade.chip}`}>
+              {sala.unidade_nome}
+            </span>
             {sala.andar && <span className="text-muted-foreground">{sala.andar}º andar</span>}
           </p>
         </div>

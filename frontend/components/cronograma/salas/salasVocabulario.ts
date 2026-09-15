@@ -122,20 +122,23 @@ export const SITUACAO_MARCA_CLS = "h-2 w-2 shrink-0 rounded-full"
 // A cor aqui NÃO pode colidir com o vocabulário de estado acima. Rosa, âmbar,
 // verde e azul-céu já significam conflito / atenção / saudável / agenda-aberta;
 // pintar uma unidade de âmbar faria "Fazendinha" parecer um alerta. Sobram as
-// famílias que nenhum estado usa — violeta, terracota e ciano —, e mesmo essas
-// entram como FAIXA na borda do card, nunca como cor de texto: um nome colorido
-// competiria com a cor do nome do profissional, que significa situação.
+// famílias que nenhum estado usa — violeta, terracota e ciano.
+//
+// O veículo é um CHIP (fundo tonal + texto), não um trilho na borda: o
+// DESIGN.md proíbe side-stripe (`border-left` > 1px) em card, e a memória do
+// projeto registra a mesma regra — "a cor mora no perímetro, nunca num trilho
+// lateral". O chip ainda é melhor de ler: carrega o nome junto da cor.
 //
 // Três unidades físicas (ver ORDEM_UNIDADES em comparativoSessoes.ts). Uma
 // unidade nova cai no fallback neutro em vez de ganhar cor aleatória — cor
 // atribuída por hash daria a duas unidades o mesmo tom no primeiro conflito.
-const UNIDADE_CORES: { faixa: string; texto: string }[] = [
-  { faixa: "bg-violet-400 dark:bg-violet-500", texto: "text-violet-700 dark:text-violet-300" },
-  { faixa: "bg-orange-400 dark:bg-orange-500", texto: "text-orange-700 dark:text-orange-300" },
-  { faixa: "bg-cyan-400 dark:bg-cyan-500", texto: "text-cyan-700 dark:text-cyan-300" },
+const UNIDADE_CORES: { chip: string }[] = [
+  { chip: "bg-violet-100 text-violet-800 dark:bg-violet-950/50 dark:text-violet-300" },
+  { chip: "bg-orange-100 text-orange-800 dark:bg-orange-950/50 dark:text-orange-300" },
+  { chip: "bg-cyan-100 text-cyan-800 dark:bg-cyan-950/50 dark:text-cyan-300" },
 ]
 
-const UNIDADE_NEUTRA = { faixa: "bg-slate-300 dark:bg-slate-600", texto: "text-muted-foreground" }
+const UNIDADE_NEUTRA = { chip: "bg-muted text-muted-foreground" }
 
 /**
  * Ordem canônica das unidades, espelhando ORDEM_UNIDADES de comparativoSessoes.
