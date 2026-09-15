@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import type {
   AIMode,
   Conversation,
@@ -128,6 +129,19 @@ export function useCentralInbox(): UseCentralInbox {
   const [enviando, setEnviando]           = useState(false)
   const [modoIa, setModoIa]               = useState<ModoIa | null>(null)
   const [salvandoModo, setSalvandoModo]   = useState(false)
+
+  // Link de fora: /connect/inbox?c=<id> abre aquela conversa. É como a triagem
+  // (/connect/atendimentos) entrega a conversa ao chat em vez de duplicá-lo.
+  //
+  // Só na PRIMEIRA montagem, via estado inicial e nunca num efeito que observe o
+  // parâmetro: depois disso quem manda é o clique do operador, e um efeito
+  // reaplicaria o `?c=` a cada render, prendendo a seleção na conversa do link.
+  const paramConversa = useSearchParams().get('c')
+  const [selecaoInicialAplicada, setSelecaoInicialAplicada] = useState(false)
+  if (!selecaoInicialAplicada) {
+    setSelecaoInicialAplicada(true)
+    if (paramConversa) setSelectedId(paramConversa)
+  }
 
   // Só a PRIMEIRA carga acende `loading`. As recargas do polling são silenciosas
   // — piscar a lista a cada 5s a tornaria inutilizável.

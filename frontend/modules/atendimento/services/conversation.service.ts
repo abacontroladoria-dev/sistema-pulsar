@@ -118,6 +118,11 @@ export class ConversationService {
     return this.conv.list(filters)
   }
 
+  // Contagem sem trazer linhas. Os cards da triagem chamam uma vez por caixa.
+  async contar(filters: ListConversationsFilters): Promise<number> {
+    return this.conv.contar(filters)
+  }
+
   // -------------------------------------------------------------------------
   // assign
   // Atribui conversa a um operador. Muda status para 'assigned'.

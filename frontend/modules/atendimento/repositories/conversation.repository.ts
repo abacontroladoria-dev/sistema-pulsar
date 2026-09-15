@@ -26,7 +26,21 @@ export interface ListConversationsFilters {
   status?:         ConversationStatus | ConversationStatus[]
   // null = buscar não atribuídas; string = buscar por operador específico
   assignedUserId?: string | null
+  // 'qualquer' = atribuídas a alguém, sem dizer a quem. Não dá para expressar
+  // isso com `assignedUserId`, que só tem "este operador" e "ninguém" — e a
+  // ausência de filtro não serve, porque traria também as não atribuídas.
+  responsavel?:    'qualquer'
   contactId?:      string
+  // Modos aceitos na coluna `ai_mode`. `null` no array significa "e também as
+  // que ninguém decidiu" — a coluna é NULL na maioria das conversas e quer dizer
+  // "vale o padrão da clínica" (ver 20260915220000).
+  //
+  // Precisa ser lista com null porque a triagem pergunta coisas como "a Maia
+  // está atendendo?", e isso é `ai_mode = 'autonomous'` OU `ai_mode IS NULL com
+  // o padrão em autonomous`. Quem chama resolve o padrão ANTES e traduz a
+  // pergunta para os valores concretos de coluna que a satisfazem; o
+  // repositório não conhece agent_settings.
+  aiModeIn?:       (AIMode | null)[]
   limit?:          number   // default 30
   offset?:         number   // default 0
 }
@@ -40,8 +54,62 @@ export interface CreateConversationInput {
   status?:           ConversationStatus   // default 'open'
 }
 
+// A cláusula de `ai_mode`, isolada porque `list` e `contar` precisam da MESMA —
+// e um contador que filtra diferente da lista que ele rotula é o defeito que
+// esta página inteira existe para não ter.
+//
+// `is.null` e `in.()` no mesmo `.or()` é o único jeito de expressar "herdadas +
+// explícitas" numa query só; separá-las em duas consultas somaria linhas
+// repetidas na paginação.
+function aplicarAiMode(query: any, modos: (AIMode | null)[] | undefined): any {
+  if (!modos || modos.length === 0) return query
+
+  const explicitos = modos.filter((m): m is AIMode => m !== null)
+  const aceitaNulo = modos.includes(null)
+
+  if (aceitaNulo && explicitos.length === 0) return query.is('ai_mode', null)
+  if (!aceitaNulo) return query.in('ai_mode', explicitos)
+
+  return query.or(`ai_mode.is.null,ai_mode.in.(${explicitos.join(',')})`)
+}
+
 export class ConversationRepository {
   constructor(private readonly supabase: SupabaseClient) {}
+
+  // Só a contagem, sem trazer linha nenhuma (`head: true`). Os quatro cards da
+  // triagem chamam isto quatro vezes; puxar as conversas só para descartá-las
+  // tornaria a tela cara à toa.
+  async contar(filters: ListConversationsFilters): Promise<number> {
+    let query = (this.supabase as any)
+      .schema('central')
+      .from('conversations')
+      .select('id', { count: 'exact', head: true })
+      .eq('organization_id', filters.orgId)
+
+    if (filters.inboxId) query = query.eq('inbox_id', filters.inboxId)
+
+    if (filters.status !== undefined) {
+      query = Array.isArray(filters.status)
+        ? query.in('status', filters.status)
+        : query.eq('status', filters.status)
+    }
+
+    if (filters.assignedUserId !== undefined) {
+      query = filters.assignedUserId === null
+        ? query.is('assigned_user_id', null)
+        : query.eq('assigned_user_id', filters.assignedUserId)
+    }
+
+    if (filters.responsavel === 'qualquer') {
+      query = query.not('assigned_user_id', 'is', null)
+    }
+
+    query = aplicarAiMode(query, filters.aiModeIn)
+
+    const { count, error } = await query
+    if (error) throw error
+    return count ?? 0
+  }
 
   async findById(id: string): Promise<Conversation | null> {
     const { data, error } = await (this.supabase as any)
@@ -108,9 +176,15 @@ export class ConversationRepository {
       }
     }
 
+    if (filters.responsavel === 'qualquer') {
+      query = query.not('assigned_user_id', 'is', null)
+    }
+
     if (filters.contactId) {
       query = query.eq('contact_id', filters.contactId)
     }
+
+    query = aplicarAiMode(query, filters.aiModeIn)
 
     const { data, count, error } = await query
     if (error) throw error
