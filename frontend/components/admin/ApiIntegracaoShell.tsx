@@ -1,8 +1,9 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import {
-  ArrowUpRight,
+  BookOpen,
   Check,
   Copy,
   KeyRound,
@@ -24,7 +25,11 @@ import PageHeader from '@/components/PageHeader'
 // A documentação completa (a que se manda para o parceiro) é a página
 // publicada; aqui fica só o essencial e o link.
 
-const DOC_URL = 'https://claude.ai/artifact/XjxcbhVRbs5nGXYkG7Kcu2'
+// Rota INTERNA, não o artifact publicado: o botão precisa abrir uma página do
+// próprio Pulsar para o `window.print()` dela funcionar. Impressão só opera
+// sobre conteúdo da mesma origem — um documento hospedado fora não pode ser
+// impresso a partir daqui, e um <iframe> seria recusado pelo X-Frame-Options.
+const DOC_ROTA = '/admin/api/documentacao'
 const BASE_URL = 'https://orbitaautomacao.com.br/api'
 const ENDPOINT = `${BASE_URL}/integracao/faltas/`
 
@@ -94,10 +99,8 @@ export default function ApiIntegracaoShell() {
         title="API"
         subtitle="Integrações de leitura expostas a sistemas parceiros"
         actions={
-          <a
-            href={DOC_URL}
-            target="_blank"
-            rel="noopener noreferrer"
+          <Link
+            href={DOC_ROTA}
             className="
               inline-flex items-center gap-2
               rounded-lg bg-slate-800 px-3 py-2
@@ -105,9 +108,9 @@ export default function ApiIntegracaoShell() {
               hover:bg-slate-700 transition-colors
             "
           >
+            <BookOpen className="h-4 w-4" />
             Documentação completa
-            <ArrowUpRight className="h-4 w-4" />
-          </a>
+          </Link>
         }
       />
 
