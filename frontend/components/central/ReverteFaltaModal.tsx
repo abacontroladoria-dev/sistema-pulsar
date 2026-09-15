@@ -29,8 +29,13 @@ export function ReverteFaltaModal({
 }: ReverteFaltaModalProps) {
   if (!atendimento) return null
 
-  const date = new Date(atendimento.data_atendimento)
-  const dataFormatada = `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`
+  // `data_atendimento` é data civil ('2026-09-15'), não instante. Passar por
+  // `new Date()` fazia o modal mostrar o DIA ANTERIOR: a string sem fuso é lida
+  // como meia-noite UTC e `getDate()` renderiza em horário local (UTC−3), então
+  // 15/09 virava 14/09. Fatiar a string não passa por fuso nenhum — é o mesmo
+  // padrão já usado em `isoParaBR` (components/connect/agenda/tipos.ts:66).
+  const [ano, mes, dia] = atendimento.data_atendimento.slice(0, 10).split('-')
+  const dataFormatada = `${dia}/${mes}/${ano}`
 
   return (
     <Dialog open={open} onOpenChange={onCancel}>
