@@ -253,7 +253,11 @@ export function SalaEditModal({ sala, todasSalas, onClose, onSaved }: SalaEditMo
     <ScheduleModal
       title={sala ? `Editar ${sala.nome_exibicao}` : "Nova sala"}
       subtitle="Cadastro estrutural de sala — cruzado automaticamente com a agenda pela referência de nome."
-      maxWidth={560}
+      // Largo, na linguagem de docs/padrao-detalhamento-modal.md (max-w-350).
+      // Em 560px as quatro seções viravam uma coluna estreita e alta, com
+      // rolagem para ver "Disponibilidade" — sendo que os campos são curtos e
+      // cabem lado a lado de sobra.
+      maxWidth={1180}
       onClose={onClose}
       footer={
         <>
@@ -279,77 +283,93 @@ export function SalaEditModal({ sala, todasSalas, onClose, onSaved }: SalaEditMo
             type="button"
             onClick={handleSalvar}
             disabled={saving || !valido}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50 dark:bg-white dark:text-slate-900"
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#222847] px-3 text-sm font-semibold text-white transition-colors hover:bg-[#2d3459] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 dark:bg-white dark:text-slate-900"
           >
             {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Salvar
           </button>
         </>
       }
     >
-      <div className="flex flex-col gap-5">
-        <Secao titulo="Localização">
-          <div className="grid grid-cols-2 gap-3">
-            <Campo label="Unidade *">
-              <MiniSelect
-                value={form.unidade_nome}
-                placeholder="Selecione..."
-                options={UNIDADES.map(u => ({ value: u, label: u }))}
-                onChange={v => set("unidade_nome", v)}
-              />
-            </Campo>
-            <Campo label="Núcleo">
-              <MiniSelect
-                value={form.nucleo ?? ""}
-                placeholder="Nenhum"
-                options={nucleos.map(n => ({ value: n, label: n }))}
-                onChange={v => set("nucleo", v)}
-                permiteVazio
-              />
-            </Campo>
-            <Campo label="Andar *">
-              <input
-                className={INPUT_CLS}
-                value={form.andar ?? ""}
-                onChange={e => set("andar", e.target.value)}
-                placeholder="1"
-              />
-            </Campo>
-            <Campo label="Número da sala *">
-              <input
-                className={`${INPUT_CLS} ${numeroJaUsado ? "border-rose-400 dark:border-rose-700" : ""}`}
-                value={form.numero_sala}
-                onChange={e => set("numero_sala", e.target.value)}
-                placeholder="3"
-              />
-            </Campo>
-            {!andarPreenchido && (
-              <span className="col-span-2 text-[11px] text-muted-foreground">
-                Preencha o Andar para ver os números livres — a numeração é por andar, não pela unidade inteira.
-              </span>
-            )}
-            {numeroJaUsado && (
-              <span className="col-span-2 text-[11px] font-semibold text-rose-600 dark:text-rose-400">
-                Já existe uma sala &quot;{form.numero_sala}&quot; em {form.unidade_nome} · {form.andar}º andar. Escolha outro número.
-              </span>
-            )}
-            {!numeroJaUsado && numerosSugeridos.length > 0 && (
-              <div className="col-span-2 flex flex-wrap items-center gap-1.5">
-                <span className="text-[11px] text-muted-foreground">Livres em {form.unidade_nome} · {form.andar}º andar:</span>
-                {numerosSugeridos.map(n => (
-                  <button
-                    key={n}
-                    type="button"
-                    onClick={() => set("numero_sala", String(n))}
-                    className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold transition-colors ${
-                      normNumeroSala(form.numero_sala) === String(n)
-                        ? "border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-900"
-                        : "border-border text-muted-foreground hover:bg-muted/50"
-                    }`}
-                  >
-                    {n}
-                  </button>
-                ))}
-              </div>
+      {/* Duas colunas no desktop, empilhado abaixo de lg.
+          À esquerda o que a sala É (endereço e identificação): campos curtos,
+          preenchidos uma vez e quase nunca revisitados. À direita QUANDO ela
+          atende: a grade de dias/turnos e as linhas de horário personalizado
+          precisam de largura — comprimidas em 560px, as linhas de override
+          quebravam em três filas. */}
+      {/* O erro entra ANTES do formulário: renderizado depois, num modal alto,
+          ele nascia fora da área visível e o usuário via só o Salvar "não
+          fazer nada". */}
+      {error && (
+        <div className="mb-4 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-400">
+          {error}
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 gap-x-8 gap-y-5 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
+        <div className="flex flex-col gap-5">
+          <Secao titulo="Localização">
+            <div className="grid grid-cols-2 gap-3">
+              <Campo label="Unidade *">
+                <MiniSelect
+                  value={form.unidade_nome}
+                  placeholder="Selecione..."
+                  options={UNIDADES.map(u => ({ value: u, label: u }))}
+                  onChange={v => set("unidade_nome", v)}
+                />
+              </Campo>
+              <Campo label="Núcleo">
+                <MiniSelect
+                  value={form.nucleo ?? ""}
+                  placeholder="Nenhum"
+                  options={nucleos.map(n => ({ value: n, label: n }))}
+                  onChange={v => set("nucleo", v)}
+                  permiteVazio
+                />
+              </Campo>
+              <Campo label="Andar *">
+                <input
+                  className={INPUT_CLS}
+                  value={form.andar ?? ""}
+                  onChange={e => set("andar", e.target.value)}
+                  placeholder="1"
+                />
+              </Campo>
+              <Campo label="Número da sala *">
+                <input
+                  className={`${INPUT_CLS} ${numeroJaUsado ? "border-rose-400 dark:border-rose-700" : ""}`}
+                  value={form.numero_sala}
+                  onChange={e => set("numero_sala", e.target.value)}
+                  placeholder="3"
+                />
+              </Campo>
+              {!andarPreenchido && (
+                <span className="col-span-2 text-[11px] text-muted-foreground">
+                  Preencha o Andar para ver os números livres — a numeração é por andar, não pela unidade inteira.
+                </span>
+              )}
+              {numeroJaUsado && (
+                <span className="col-span-2 text-[11px] font-semibold text-rose-600 dark:text-rose-400">
+                  Já existe uma sala &quot;{form.numero_sala}&quot; em {form.unidade_nome} · {form.andar}º andar. Escolha outro número.
+                </span>
+              )}
+              {!numeroJaUsado && numerosSugeridos.length > 0 && (
+                <div className="col-span-2 flex flex-wrap items-center gap-1.5">
+                  <span className="text-[11px] text-muted-foreground">Livres em {form.unidade_nome} · {form.andar}º andar:</span>
+                  {numerosSugeridos.map(n => (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => set("numero_sala", String(n))}
+                      className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold transition-colors ${
+                        normNumeroSala(form.numero_sala) === String(n)
+                          ? "border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-900"
+                          : "border-border text-muted-foreground hover:bg-muted/50"
+                      }`}
+                    >
+                      {n}
+                    </button>
+                  ))}
+        </div>
             )}
           </div>
         </Secao>
@@ -375,34 +395,36 @@ export function SalaEditModal({ sala, todasSalas, onClose, onSaved }: SalaEditMo
             </Campo>
           </div>
         </Secao>
+        </div>
 
-        <Secao titulo="Disponibilidade">
-          <div className="flex flex-col gap-3">
-            <Campo label="Dias e turnos de atendimento *">
-              <div className="flex flex-wrap items-center gap-2.5">
-                {DIAS_SEMANA.map(d => (
-                  <div key={d.dow} className="flex items-center gap-1 rounded-lg border border-border px-1.5 py-1">
-                    <span className="px-0.5 text-[11px] font-semibold text-muted-foreground">{d.label}</span>
-                    {(["Manhã", "Tarde"] as const).map(turno => {
-                      const marcado = turnoAtivo(d.dow, turno)
-                      return (
-                        <button
-                          key={turno}
-                          type="button"
-                          onClick={() => alternarTurno(d.dow, turno)}
-                          aria-pressed={marcado}
-                          title={`${d.label} · ${turno}`}
-                          className={`rounded-full border px-1.5 py-0.5 text-[10px] font-semibold transition-colors ${
-                            marcado
-                              ? "border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-900"
-                              : "border-border text-muted-foreground hover:bg-muted/50"
-                          }`}
-                        >
-                          {turno === "Manhã" ? "M" : "T"}
-                        </button>
-                      )
-                    })}
-                  </div>
+        <div className="flex flex-col gap-5">
+          <Secao titulo="Disponibilidade">
+            <div className="flex flex-col gap-3">
+              <Campo label="Dias e turnos de atendimento *">
+                <div className="flex flex-wrap items-center gap-2.5">
+                  {DIAS_SEMANA.map(d => (
+                    <div key={d.dow} className="flex items-center gap-1 rounded-lg border border-border px-1.5 py-1">
+                      <span className="px-0.5 text-[11px] font-semibold text-muted-foreground">{d.label}</span>
+                      {(["Manhã", "Tarde"] as const).map(turno => {
+                        const marcado = turnoAtivo(d.dow, turno)
+                        return (
+                          <button
+                            key={turno}
+                            type="button"
+                            onClick={() => alternarTurno(d.dow, turno)}
+                            aria-pressed={marcado}
+                            title={`${d.label} · ${turno}`}
+                            className={`rounded-full border px-1.5 py-0.5 text-[10px] font-semibold transition-colors ${
+                              marcado
+                                ? "border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-900"
+                                : "border-border text-muted-foreground hover:bg-muted/50"
+                            }`}
+                          >
+                            {turno === "Manhã" ? "M" : "T"}
+                          </button>
+                        )
+                      })}
+        </div>
                 ))}
               </div>
               {!diasPadrao && (
@@ -413,15 +435,30 @@ export function SalaEditModal({ sala, todasSalas, onClose, onSaved }: SalaEditMo
             </Campo>
 
             <Campo label="Horários personalizados (opcional)">
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-1.5">
+                {/* Cabeçalho uma vez, não por linha: antes os seis controles
+                    ficavam soltos e só a posição dizia o que era cada um. Com
+                    a largura do modal novo eles cabem em colunas alinhadas. */}
+                {overridesAtivos.length > 0 && (
+                  <div className="hidden grid-cols-[76px_92px_1fr_88px_auto_28px] items-center gap-2 px-2 text-[10px] font-semibold text-muted-foreground sm:grid">
+                    <span>Dia</span>
+                    <span>Turno</span>
+                    <span>Das / até</span>
+                    <span>Duração</span>
+                    <span className="text-right">Sessões</span>
+                    <span />
+                  </div>
+                )}
                 {overridesAtivos.map(o => {
                   const horarios = gerarHorarios(o.inicio, o.fim, o.duracaoMin)
                   const turnosDoDia = diasAtuais.find(d => d.dow === o.dow)?.turnos ?? []
                   return (
-                    <div key={o.id} className="flex flex-wrap items-center gap-1.5 rounded-lg border border-border bg-muted/20 px-2 py-1.5">
+                    <div
+                      key={o.id}
+                      className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/20 px-2 py-1.5 sm:grid sm:grid-cols-[76px_92px_1fr_88px_auto_28px]"
+                    >
                       <MiniSelect
                         compact
-                        className="w-[70px]"
                         value={String(o.dow)}
                         options={diasAtuais.map(d => ({ value: String(d.dow), label: DIAS_SEMANA.find(s => s.dow === d.dow)?.label ?? String(d.dow) }))}
                         onChange={v => {
@@ -433,30 +470,34 @@ export function SalaEditModal({ sala, todasSalas, onClose, onSaved }: SalaEditMo
                       />
                       <MiniSelect
                         compact
-                        className="w-[84px]"
                         value={o.turno}
                         options={turnosDoDia.map(t => ({ value: t, label: t }))}
                         onChange={v => atualizarOverride(o.id, { turno: v as "Manhã" | "Tarde" })}
                       />
-                      <TimeField value={o.inicio} onChange={v => atualizarOverride(o.id, { inicio: v })} />
-                      <span className="text-[11px] text-muted-foreground">até</span>
-                      <TimeField value={o.fim} onChange={v => atualizarOverride(o.id, { fim: v })} />
-                      <input
-                        type="number"
-                        min={5}
-                        step={5}
-                        className="w-14 rounded-md border border-border bg-card px-1.5 py-1 text-[11px] text-foreground [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                        value={o.duracaoMin}
-                        onChange={e => atualizarOverride(o.id, { duracaoMin: Number(e.target.value) })}
-                      />
-                      <span className="text-[11px] text-muted-foreground">min/sessão</span>
-                      <span className={`ml-auto text-[11px] font-semibold ${horarios.length > 0 ? "text-foreground" : "text-rose-600 dark:text-rose-400"}`}>
-                        {horarios.length > 0 ? `${horarios.length} sessões` : "confira os horários"}
+                      <span className="flex items-center gap-1.5">
+                        <TimeField value={o.inicio} onChange={v => atualizarOverride(o.id, { inicio: v })} />
+                        <span className="text-[11px] text-muted-foreground">até</span>
+                        <TimeField value={o.fim} onChange={v => atualizarOverride(o.id, { fim: v })} />
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <input
+                          type="number"
+                          min={5}
+                          step={5}
+                          aria-label="Minutos por sessão"
+                          className="w-14 rounded-md border border-border bg-card px-1.5 py-1 text-[11px] text-foreground [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                          value={o.duracaoMin}
+                          onChange={e => atualizarOverride(o.id, { duracaoMin: Number(e.target.value) })}
+                        />
+                        <span className="text-[11px] text-muted-foreground">min</span>
+                      </span>
+                      <span className={`text-right text-[11px] font-semibold tabular-nums ${horarios.length > 0 ? "text-foreground" : "text-rose-600 dark:text-rose-400"}`}>
+                        {horarios.length > 0 ? horarios.length : "confira"}
                       </span>
                       <button
                         type="button"
                         onClick={() => removerOverride(o.id)}
-                        className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-rose-600 dark:hover:text-rose-400"
+                        className="justify-self-end rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-rose-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:hover:text-rose-400"
                         aria-label="Remover este horário personalizado"
                       >
                         <Trash2 size={13} />
@@ -512,9 +553,8 @@ export function SalaEditModal({ sala, todasSalas, onClose, onSaved }: SalaEditMo
             )}
           </div>
         </Secao>
+        </div>
       </div>
-      {error && <div className="mt-3 text-xs font-semibold text-rose-600 dark:text-rose-400">{error}</div>}
-
       {confirmandoExclusao && sala && (
         <ConfirmDialog
           title="Excluir sala?"
@@ -538,11 +578,13 @@ function Campo({ label, className = "", children }: { label: string; className?:
   )
 }
 
-/** Agrupador visual do formulário — título curto em versalete + traço, mesma linguagem usada nos cabeçalhos de tabela do módulo (ex.: "SALA" em SalasGridView). Substitui blocos de campo soltos por seções reconhecíveis. */
+/** Agrupador visual do formulário — substitui blocos de campo soltos por seções reconhecíveis. */
 function Secao({ titulo, children }: { titulo: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-2.5">
-      <h3 className="border-b border-border pb-1 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">{titulo}</h3>
+      {/* Sem uppercase tracked-out: mesma decisão dos rótulos de filtro da
+          página — caixa alta espaçada só aumenta a mancha e custa legibilidade. */}
+      <h3 className="border-b border-border pb-1 text-[13px] font-bold text-foreground">{titulo}</h3>
       {children}
     </div>
   )
@@ -588,8 +630,11 @@ function MiniSelect({
   }, [open])
 
   const selecionado = options.find(o => o.value === value)
+  // `w-full` no compacto também: nas linhas de horário personalizado ele agora
+  // ocupa uma coluna de grade, e sem isso encolhia até o conteúdo, desalinhando
+  // das colunas vizinhas e do cabeçalho.
   const triggerCls = compact
-    ? "rounded-md border border-border bg-card px-1.5 py-1 text-[11px]"
+    ? "w-full rounded-md border border-border bg-card px-1.5 py-1 text-[11px]"
     : INPUT_CLS
 
   return (
