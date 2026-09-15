@@ -47,9 +47,52 @@ estático que viajasse no browser estaria no bundle do parceiro, ou seja, públi
 | `desde`    | ISO 8601 | — | Só o que mudou depois deste instante. Omita na primeira carga. |
 | `desde_id` | inteiro | — | Segunda metade do cursor. Sempre junto com `desde`. |
 | `limite`   | 1–1000  | 500 | Tamanho da página. |
+| `agendamento_id` | lista de inteiros | — | Consulta pontual: só estes `tita_agendamento_id`. Máx. 200. |
+| `paciente_id` | lista de inteiros | — | Consulta pontual: só estes pacientes. Máx. 200. |
 
 Limite de **60 requisições por minuto** por token. Ao estourar, a resposta é
 `429` com `Retry-After`.
+
+### Os dois modos de uso
+
+**Modo sincronização** — sem filtro por id, com `desde`/`desde_id`. É como manter
+sua base em dia: você recebe tudo que mudou, inclusive estornos.
+
+**Modo consulta pontual** — com `agendamento_id` e/ou `paciente_id`. É como
+perguntar "esse agendamento faltou?".
+
+```
+# um agendamento
+/api/integracao/faltas/?agendamento_id=1882480
+
+# vários de uma vez (até 200) — evita 200 chamadas e o 429
+/api/integracao/faltas/?agendamento_id=1882480,1887765,1887869
+
+# todas as faltas de um paciente
+/api/integracao/faltas/?paciente_id=11556
+
+# os dois juntos restringem (E, não OU)
+/api/integracao/faltas/?paciente_id=11556&agendamento_id=1887765
+```
+
+#### ⚠️ O filtro por id ignora o cursor — de propósito
+
+Quando você passa `agendamento_id` ou `paciente_id`, os parâmetros
+`desde`/`desde_id` são **descartados** e a resposta traz o estado atual daqueles
+ids, sempre. A resposta também **não traz** `proximo_desde`/`proximo_desde_id`.
+
+Isso existe para que a resposta vazia tenha um significado só:
+
+> `"faltas": []` sob filtro por id significa **"não há falta para esse id"** —
+> e nunca "há, mas não mudou desde o seu cursor".
+
+Se o filtro compusesse com o cursor, perguntar "o agendamento X faltou?" com um
+cursor antigo guardado devolveria `[]` para uma falta que existe, e você
+concluiria o oposto do verdadeiro.
+
+**Não use o modo pontual para sincronizar.** Ele não informa estornos que você
+ainda não conhece — só responde sobre ids que você já sabe perguntar. Para manter
+a base em dia, o cursor continua sendo o caminho.
 
 ### Resposta
 
@@ -245,7 +288,7 @@ Sem a chave, não há como você casar do lado de lá.
 | HTTP | Quando |
 |------|--------|
 | 401 | Token ausente, malformado, inexistente ou revogado. Mensagem sempre igual, de propósito. |
-| 400 | `desde` não é ISO 8601, `desde_id` não é inteiro, ou `limite` fora de 1–1000. |
+| 400 | `desde` não é ISO 8601, `desde_id` não é inteiro, `limite` fora de 1–1000, ou mais de 200 ids em `agendamento_id`/`paciente_id`. |
 | 429 | Mais de 60 requisições por minuto. Respeite o `Retry-After`. |
 | 500 | Falha na consulta. O detalhe fica no log do Pulsar, não na resposta. |
 
@@ -270,7 +313,9 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 - View: `public.vw_integracao_faltas` — a projeção; não expõe CPF, carteirinha
   nem guia
 - Migrations: `20260914160000_codigo_justificativa_falta.sql`,
-  `20260914170000_integracao_faltas_view_e_rpc.sql`
+  `20260914170000_integracao_faltas_view_e_rpc.sql`,
+  `20260915120000_integracao_faltas_hardening.sql`,
+  `20260915140000_integracao_faltas_filtro_por_id.sql`
 - Gerar/revogar token, mudar a data de corte:
   `supabase/snippets/integracao_faltas_provisionar.sql`
 - Vigiar a cobertura: `supabase/snippets/faltas_integracao_cobertura.sql`

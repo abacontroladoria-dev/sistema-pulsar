@@ -40,6 +40,50 @@ type LinhaFalta = {
   atualizado_em: string
 }
 
+// Máximo de ids por chamada. O mesmo teto existe na RPC, que é quem de fato
+// recusa — aqui a checagem serve só para devolver 400 com mensagem útil em vez
+// de deixar o Postgres levantar 22023, que a rota traduziria como 500.
+const MAX_IDS = 200
+
+// `?agendamento_id=1,2,3` (ou repetido: `?agendamento_id=1&agendamento_id=2`).
+// Devolve `undefined` quando o parâmetro não veio — que é diferente de veio
+// vazio: a RPC trata array vazio como "sem filtro", mas deixar um `?x=` virar
+// filtro-de-nada e responder `[]` seria transformar um erro de digitação numa
+// resposta que parece legítima.
+function extrairIds(
+  params: URLSearchParams,
+  nome: string
+): { ids?: number[]; erro?: string } {
+  const brutos = params.getAll(nome)
+  if (brutos.length === 0) return {}
+
+  const partes = brutos
+    .flatMap((v) => v.split(','))
+    .map((v) => v.trim())
+    .filter((v) => v !== '')
+
+  if (partes.length === 0) {
+    return { erro: `\`${nome}\` veio vazio; omita o parâmetro para não filtrar` }
+  }
+
+  if (partes.length > MAX_IDS) {
+    return { erro: `\`${nome}\` aceita no máximo ${MAX_IDS} ids por chamada` }
+  }
+
+  const ids: number[] = []
+  for (const parte of partes) {
+    const n = Number(parte)
+    // `Number('')` é 0 e `Number('1e3')` é 1000: validar com isSafeInteger
+    // depois de filtrar vazios evita aceitar notação que o parceiro não quis.
+    if (!Number.isSafeInteger(n) || n < 0) {
+      return { erro: `\`${nome}\` contém um valor que não é inteiro: ${parte}` }
+    }
+    ids.push(n)
+  }
+
+  return { ids }
+}
+
 function extrairToken(request: NextRequest): string | null {
   const header = request.headers.get('authorization')
   if (!header) return null
@@ -81,6 +125,22 @@ export async function GET(request: NextRequest) {
       { status: 400 }
     )
   }
+
+  // Filtro por id — consulta pontual ("esse agendamento faltou?"). Quando vem,
+  // a RPC ignora o cursor de propósito: ver o cabeçalho da migration
+  // 20260915140000. Resumo: com filtro, `[]` significa sempre "não há falta", e
+  // nunca "não mudou desde o seu cursor".
+  const agendamento = extrairIds(params, 'agendamento_id')
+  if (agendamento.erro) {
+    return Response.json({ erro: agendamento.erro }, { status: 400 })
+  }
+
+  const paciente = extrairIds(params, 'paciente_id')
+  if (paciente.erro) {
+    return Response.json({ erro: paciente.erro }, { status: 400 })
+  }
+
+  const filtrandoPorId = agendamento.ids !== undefined || paciente.ids !== undefined
 
   const limiteBruto = params.get('limite')
   const limite = limiteBruto ? Number(limiteBruto) : 500
@@ -135,6 +195,8 @@ export async function GET(request: NextRequest) {
     p_desde: desde,
     p_desde_id: desdeId,
     p_limite: limite,
+    p_agendamento_ids: agendamento.ids ?? null,
+    p_paciente_ids: paciente.ids ?? null,
   })
 
   if (error) {
@@ -143,6 +205,16 @@ export async function GET(request: NextRequest) {
     // não entregar ao chamador a informação de "quase acertou".
     if (error.code === '28000') {
       return Response.json({ erro: 'token invalido' }, { status: 401 })
+    }
+
+    // '22023' é o teto de ids da RPC. A rota já barra antes, então chegar aqui
+    // significa divergência entre os dois limites — devolver 400 mantém a culpa
+    // no chamador em vez de acusar falha do serviço.
+    if (error.code === '22023') {
+      return Response.json(
+        { erro: `no maximo ${MAX_IDS} ids por chamada` },
+        { status: 400 }
+      )
     }
 
     // Só o código do erro vai ao log. A mensagem/detalhe do PostgREST pode
@@ -160,14 +232,26 @@ export async function GET(request: NextRequest) {
   // última linha da lista.
   const ultima = faltas.at(-1)
 
+  // Sob filtro por id o cursor NÃO é emitido. Ele seria uma armadilha: a RPC
+  // ignorou `desde` nesta resposta, então devolver um `proximo_desde` daria ao
+  // chamador um cursor que nunca governou a consulta — e guardá-lo para a
+  // sincronização seguinte faria pular tudo que mudou nesse intervalo.
+  //
+  // `tem_mais` continua valendo nos dois modos: significa "a página encheu".
+  const cursor = filtrandoPorId
+    ? {}
+    : {
+        proximo_desde: ultima?.atualizado_em ?? desde,
+        proximo_desde_id: ultima?.tita_agendamento_id ?? desdeId,
+      }
+
   return Response.json(
     {
       faltas,
       // `true` significa que a página encheu: chame de novo com o cursor abaixo
       // antes de considerar a sincronização em dia.
       tem_mais: faltas.length === limite,
-      proximo_desde: ultima?.atualizado_em ?? desde,
-      proximo_desde_id: ultima?.tita_agendamento_id ?? desdeId,
+      ...cursor,
     },
     { headers: { 'Cache-Control': 'no-store' } }
   )
