@@ -20,9 +20,15 @@ import { supabaseService } from '@/lib/supabase/service'
 // dobrada no WhatsApp de quem esperava uma. Enfileirar e responder 200 corta
 // isso na raiz.
 //
-// A janela de 15 segundos (`process_after` da message_grouping_queue) resolve
-// outro problema humano: gente manda "oi", "queria marcar", "pra terça" em três
-// mensagens seguidas. Sem o debounce, seriam três turnos e três respostas.
+// A janela de debounce (`process_after` da message_grouping_queue) resolve outro
+// problema humano: gente manda "oi", "queria marcar", "pra terça" em três
+// mensagens seguidas. Sem ela, seriam três turnos e três respostas.
+//
+// A janela DESLIZA: cada mensagem nova empurra o prazo de todas as pendentes do
+// mesmo remetente para 8 segundos à frente. Enquanto a pessoa digita, nada é
+// processado; quando ela para, tudo vence junto e vira um turno só. Isso é feito
+// dentro da RPC `central.enqueue_grouping_messages`, não aqui — ver a migration
+// 20260915210000 para o porquê de ser atômico.
 //
 // Enfileirar não é o mesmo que esperar o cron. Depois de guardar, esta rota
 // AGENDA o worker para quando a janela fechar (despacharWorkerEmBreve), sem
@@ -116,16 +122,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, enfileiradas: 0 })
   }
 
-  // `ignoreDuplicates` apoiado no índice uq_grouping_wa_msg (org + whatsapp
-  // _message_id), criado em 20260810120100 exatamente para isto: a reentrega da
-  // Meta não pode virar duas respostas. Sem erro e sem duplicar.
-  const { error } = await supabaseService
+  // Uma RPC, e não um upsert, porque enfileirar e DESLIZAR a janela de debounce
+  // das mensagens já pendentes do mesmo remetente precisa ser atômico: em dois
+  // round-trips, um processo que morre no meio deixa a mensagem nova com a
+  // janela nova e a anterior com a antiga — e saem duas respostas, que é o
+  // defeito que a janela deslizante corrige. Ver a migration
+  // 20260915210000_central_janela_debounce_deslizante.sql.
+  //
+  // A idempotência continua vindo do índice uq_grouping_wa_msg (20260810120100):
+  // a função usa `on conflict do nothing`, então a reentrega da Meta não insere
+  // nada e, de propósito, também não empurra a janela de ninguém.
+  const { data, error } = await supabaseService
     .schema('central')
-    .from('message_grouping_queue')
-    .upsert(linhas, {
-      onConflict: 'organization_id,whatsapp_message_id',
-      ignoreDuplicates: true,
+    .rpc('enqueue_grouping_messages', {
+      p_organization_id: linhas[0].organization_id,
+      p_rows: linhas.map(({ organization_id: _org, ...resto }) => resto),
     })
+    .single<{ inseridas: number; process_after: string | null }>()
 
   if (error) {
     // AQUI o 5xx é desejado: a mensagem do paciente ainda não está guardada em
@@ -134,9 +147,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false }, { status: 503 })
   }
 
-  // Acorda o worker quando a janela de debounce fechar (~16s), em vez de esperar
-  // o próximo tique do cron. É o que aproxima isto de uma plataforma de
+  // Acorda o worker quando a janela de debounce fechar, em vez de esperar o
+  // próximo tique do cron. É o que aproxima isto de uma plataforma de
   // atendimento de verdade, onde um consumidor vivo reage à chegada da mensagem.
+  //
+  // O prazo vem do BANCO (`process_after` devolvido pela RPC), não de uma
+  // constante somada aqui: com a janela deslizando, esta entrega pode ter
+  // empurrado mensagens anteriores, e só o banco sabe para quando. Repetir o
+  // valor da janela em Node faria os dois relógios discordarem no dia em que
+  // ela mudasse.
   //
   // Sem `await`: a Meta reentrega se demorarmos, e o 200 não pode ficar preso
   // atrás de um turno de IA. O despacho é agendado e a resposta sai agora.
@@ -144,9 +163,13 @@ export async function POST(req: NextRequest) {
   // Isto NÃO substitui o pg_cron. Se o container reiniciar entre a entrega e o
   // despacho, o timer morre com ele — o cron é quem garante que nada fica na
   // fila para sempre. Ver lib/central/despachar-worker.ts.
-  despacharWorkerEmBreve(linhas[0].organization_id)
+  despacharWorkerEmBreve(linhas[0].organization_id, data?.process_after ?? null)
 
-  return NextResponse.json({ ok: true, enfileiradas: linhas.length })
+  return NextResponse.json({
+    ok: true,
+    recebidas: linhas.length,
+    enfileiradas: data?.inseridas ?? 0,
+  })
 }
 
 // ----------------------------------------------------------------------------

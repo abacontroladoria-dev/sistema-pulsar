@@ -18,20 +18,42 @@ import { processarEnvios } from '@/modules/atendimento/workers/envio.worker'
 // projeto de infra. O que dá para fazer com o que existe é aproximar o
 // comportamento: a própria entrega da Meta acorda o worker.
 //
-// POR QUE COM ATRASO, E NÃO IMEDIATO
+// POR QUE COM ATRASO, E POR QUE O ATRASO VEM DO BANCO
 //
-// Chamar o worker no instante da entrega não adiantaria nada: a linha nasce com
-// `process_after = now() + 15s` (migration 20260701010000, linha 324) e
-// `claim_message_grouping_batch` só reivindica `process_after <= now()`. Um
-// despacho imediato encontraria a fila vazia e voltaria de mãos abanando.
+// Chamar o worker no instante da entrega não adiantaria: a linha nasce com
+// `process_after` no futuro e `claim_message_grouping_batch` só reivindica
+// `process_after <= now()`. Um despacho imediato encontraria a fila vazia.
 //
-// Esses 15 segundos são DE PROPÓSITO: gente manda "oi", "queria marcar", "pra
-// terça" em três mensagens seguidas, e sem o debounce seriam três turnos e três
-// respostas atropelando o responsável. O atraso aqui não é desperdício — é o que
-// faz a atendente responder como uma pessoa que esperou a frase terminar.
+// Esse atraso é DE PROPÓSITO: gente manda "oi", "queria marcar", "pra terça" em
+// três mensagens seguidas, e sem o debounce seriam três turnos e três respostas
+// atropelando o responsável. O atraso não é desperdício — é o que faz a
+// atendente responder como quem esperou a frase terminar.
 //
-// Então despachamos QUANDO a janela fecha, com uma folga de 1s para o relógio do
-// Postgres não estar meio segundo à frente e a linha ainda não estar elegível.
+// E a janela DESLIZA (migration 20260915210000): cada mensagem nova empurra o
+// prazo das pendentes do mesmo remetente. Por isso o atraso NÃO pode ser uma
+// constante daqui — `enqueue_grouping_messages` devolve o `process_after`
+// resultante, e é dele que sai o agendamento. Uma constante em Node discordaria
+// do banco no primeiro ajuste da janela, e o timer dispararia antes da hora,
+// encontraria a fila vazia e deixaria a resposta para o cron.
+//
+// POR QUE O TIMER É REAGENDADO, E NÃO IGNORADO
+//
+// A versão anterior tinha um guard `if (despachoPendente) return`: o primeiro
+// agendamento vencia, os seguintes eram descartados. Com janela fixa isso
+// bastava. Com janela deslizante, não: a mensagem que chega no fim da janela
+// empurra o prazo para frente, e o timer antigo — agendado para o prazo ANTIGO
+// — dispara cedo, não reivindica nada, se apaga, e ninguém reagenda. A resposta
+// ficaria esperando o pg_cron.
+//
+// Então cada entrega CANCELA o timer pendente e agenda de novo, acompanhando a
+// janela. Continua existindo um único timer por organização — o espírito do
+// guard (não acumular N timers) se mantém.
+//
+// POR QUE UM MAPA POR ORGANIZAÇÃO
+//
+// O timer era um único módulo-global, e `executar(orgId)` usava o orgId do
+// PRIMEIRO agendamento: com duas organizações no mesmo processo, a segunda
+// ficaria sem despacho. Com reagendamento isso ficaria mais provável ainda.
 //
 // POR QUE EM PROCESSO, E NÃO HTTP PARA SI MESMO
 //
@@ -47,25 +69,57 @@ import { processarEnvios } from '@/modules/atendimento/workers/envio.worker'
 // lock próprio.
 // ============================================================================
 
-// A janela de debounce é de 15s; +1s de folga para o relógio do banco.
-const ATRASO_MS = 16_000
+// Folga para o relógio do Postgres não estar meio segundo à frente do nosso e a
+// linha ainda não estar elegível quando o timer disparar.
+const FOLGA_MS = 1_000
 
-// Guarda contra acúmulo: se muitas entregas chegarem juntas, não precisamos de
-// um timer para cada. Um despacho pendente já vai drenar o lote inteiro.
-let despachoPendente: NodeJS.Timeout | null = null
+// Rede de segurança para quando a RPC não devolve prazo (nenhuma pendente, ou
+// falha ao ler). Fica acima da janela de 8s de propósito: despachar cedo demais
+// é um tique perdido; despachar tarde é só latência.
+const ATRASO_PADRAO_MS = 10_000
 
-export function despacharWorkerEmBreve(orgId: string): void {
-  if (despachoPendente) return
+// Teto de sanidade. Um `process_after` absurdamente à frente (relógio errado,
+// adiamento por rate limit) não deve prender um timer por horas — o pg_cron
+// cobre qualquer coisa além disto.
+const ATRASO_MAXIMO_MS = 60_000
 
-  despachoPendente = setTimeout(() => {
-    despachoPendente = null
+// Um timer por organização. Ver "POR QUE UM MAPA POR ORGANIZAÇÃO" acima.
+const despachosPendentes = new Map<string, NodeJS.Timeout>()
+
+export function despacharWorkerEmBreve(
+  orgId: string,
+  processAfterIso: string | null,
+): void {
+  const atraso = calcularAtraso(processAfterIso)
+
+  // Cancela o agendamento anterior desta organização: o prazo pode ter sido
+  // empurrado pela mensagem que acabou de chegar.
+  const anterior = despachosPendentes.get(orgId)
+  if (anterior) clearTimeout(anterior)
+
+  const timer = setTimeout(() => {
+    despachosPendentes.delete(orgId)
     void executar(orgId)
-  }, ATRASO_MS)
+  }, atraso)
 
   // unref: este timer não deve segurar o processo vivo no encerramento. Se o
   // container estiver descendo, o pg_cron pega o item no próximo tique — melhor
   // que atrasar um shutdown.
-  despachoPendente.unref?.()
+  timer.unref?.()
+
+  despachosPendentes.set(orgId, timer)
+}
+
+function calcularAtraso(processAfterIso: string | null): number {
+  if (!processAfterIso) return ATRASO_PADRAO_MS
+
+  const prazo = Date.parse(processAfterIso)
+  if (Number.isNaN(prazo)) return ATRASO_PADRAO_MS
+
+  // Prazo já vencido (a RPC devolveu algo do passado) cai em 0 + folga: despacha
+  // quase imediatamente, que é o certo.
+  const bruto = Math.max(0, prazo - Date.now()) + FOLGA_MS
+  return Math.min(bruto, ATRASO_MAXIMO_MS)
 }
 
 async function executar(orgId: string): Promise<void> {

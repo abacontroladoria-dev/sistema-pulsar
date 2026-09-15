@@ -69,6 +69,9 @@ interface ItemFila {
   phone_number_id: string
   message_data: unknown
   contacts_data: unknown
+  // Coluna gerada (20260915210000). Opcional no tipo porque o claim de uma
+  // linha anterior à migration não a traz preenchida.
+  sender_key?: string | null
 }
 
 export async function processarAgrupamento(
@@ -94,7 +97,7 @@ export async function processarAgrupamento(
   // Agrupa por remetente ANTES de processar. Dois itens do mesmo contato viram
   // um turno só; sem isso o agrupamento não existiria de fato — a fila apenas
   // atrasaria mensagens que continuariam sendo tratadas uma a uma.
-  const porContato = new Map<string, ItemFila[]>()
+  const porContato = new Map<string, { from: string; itens: ItemFila[] }>()
   for (const item of itens) {
     const from = remetenteDe(item)
     if (!from) {
@@ -102,12 +105,22 @@ export async function processarAgrupamento(
       r.falhados++
       continue
     }
-    const lista = porContato.get(from) ?? []
-    lista.push(item)
-    porContato.set(from, lista)
+    // A chave inclui o phone_number_id — o NOSSO número que recebeu. O mesmo
+    // responsável pode escrever para dois números da clínica, e juntar as duas
+    // conversas num turno só daria uma resposta com o contexto trocado.
+    // `resolverCanal` usa itens[0].phone_number_id, então o grupo precisa ser
+    // homogêneo nesse campo. É a mesma chave do empurrão em
+    // central.enqueue_grouping_messages.
+    // O `from` viaja junto com o grupo em vez de ser remontado da chave: um
+    // separador escolhido a dedo é uma aposta sobre o formato de um campo que
+    // vem de fora.
+    const chave = `${item.phone_number_id}\u0000${from}`
+    const grupo = porContato.get(chave) ?? { from, itens: [] }
+    grupo.itens.push(item)
+    porContato.set(chave, grupo)
   }
 
-  for (const [from, doContato] of porContato) {
+  for (const { from, itens: doContato } of porContato.values()) {
     if (Date.now() > limite) {
       // Orçamento esgotado. Os itens ficam em 'processing' e o lease os devolve
       // — melhor que processá-los com pressa e estourar o tempo do handler.
@@ -325,6 +338,11 @@ async function processarContato(
 // ----------------------------------------------------------------------------
 
 function remetenteDe(item: ItemFila): string | null {
+  // `sender_key` é coluna gerada a partir de message_data->>'from'
+  // (20260915210000) e é a mesma chave que a RPC de enfileiramento usa para
+  // deslizar a janela. Preferi-la mantém fila e worker agrupando pelo MESMO
+  // critério; o fallback cobre linhas anteriores à migration.
+  if (typeof item.sender_key === 'string' && item.sender_key) return item.sender_key
   const m = (item.message_data ?? {}) as { from?: unknown }
   return typeof m.from === 'string' && m.from ? m.from : null
 }

@@ -9,6 +9,11 @@
 //   5. Duas entregas SIMULTÂNEAS não estouram: uma linha, sem exceção.
 //   6. Apagar contato com envio pendente falha em vez de apagar em silêncio.
 //   7. Mensagem e anexo nascem juntos ou não nascem.
+//   8. Mensagem nova empurra a janela das pendentes do mesmo remetente.
+//   9. Remetente diferente tem janela própria.
+//  10. Item já reivindicado fica fora do empurrão.
+//  11. Reentrega da Meta não insere nem adia.
+//  12. Duas mensagens seguidas saem no MESMO claim — uma resposta, não duas.
 //
 // Rodar com a stack local de pé:
 //   SUPABASE_URL=http://127.0.0.1:54321 \
@@ -286,6 +291,139 @@ try {
     .select('id', { count: 'exact', head: true })
     .eq('external_message_id', `wamid.${MARCA}.rollback`)
   checar(nRollback === 0, 'e a mensagem NÃO ficou órfã no banco', nRollback)
+
+  // ---------------------------------------------------------------------------
+  // 8–12. Janela de debounce DESLIZANTE (migration 20260915210000)
+  //
+  // O defeito que isto cobre: com janela fixa, a mensagem das 00:00 vencia às
+  // 00:15 e a das 00:03 às 00:18, então o worker as pegava em claims separados
+  // e a atendente respondia DUAS vezes a um pensamento só.
+  // ---------------------------------------------------------------------------
+  const FROM_A = '5511988887777'
+  const FROM_B = '5511977776666'
+  const PHONE  = '000'
+
+  const enfileirar = async (msgs: { id: string; from: string; phone?: string }[]) => {
+    const { data, error } = await central().rpc('enqueue_grouping_messages', {
+      p_organization_id: ORG,
+      p_rows: msgs.map((m) => ({
+        whatsapp_message_id: m.id,
+        phone_number_id: m.phone ?? PHONE,
+        message_data: { from: m.from, text: { body: 'oi' } },
+        contacts_data: null,
+      })),
+    })
+    if (error) throw new Error(`enqueue_grouping_messages: ${error.message}`)
+    return (Array.isArray(data) ? data[0] : data) as {
+      inseridas: number
+      process_after: string
+    }
+  }
+
+  const prazoDe = async (wamid: string): Promise<string> => {
+    const { data } = await central().from('message_grouping_queue')
+      .select('process_after').eq('organization_id', ORG)
+      .eq('whatsapp_message_id', wamid).single()
+    return data?.process_after
+  }
+
+  console.log('\n8. mensagem nova empurra a janela das pendentes do mesmo remetente')
+  const wA1 = `wamid.${MARCA}.desliza.1`
+  const wA2 = `wamid.${MARCA}.desliza.2`
+
+  const lote1 = await enfileirar([{ id: wA1, from: FROM_A }])
+  checar(lote1.inseridas === 1, 'primeira mensagem entrou', lote1.inseridas)
+  const prazoInicial = await prazoDe(wA1)
+
+  await new Promise((r) => setTimeout(r, 1100))
+
+  const lote2 = await enfileirar([{ id: wA2, from: FROM_A }])
+  checar(lote2.inseridas === 1, 'segunda mensagem entrou', lote2.inseridas)
+
+  const prazoA1 = await prazoDe(wA1)
+  const prazoA2 = await prazoDe(wA2)
+  checar(
+    Date.parse(prazoA1) > Date.parse(prazoInicial),
+    'a janela da PRIMEIRA mensagem foi empurrada para frente',
+    { antes: prazoInicial, depois: prazoA1 },
+  )
+  checar(
+    Math.abs(Date.parse(prazoA1) - Date.parse(prazoA2)) < 1000,
+    'as duas passam a vencer no mesmo instante — é o que faz virar UM turno',
+    { a1: prazoA1, a2: prazoA2 },
+  )
+  checar(
+    Math.abs(Date.parse(lote2.process_after) - Date.parse(prazoA2)) < 1000,
+    'a RPC devolve o prazo real (é dele que o despachante agenda o worker)',
+    { devolvido: lote2.process_after, gravado: prazoA2 },
+  )
+
+  console.log('\n9. remetente diferente não é empurrado')
+  const wB1 = `wamid.${MARCA}.outro.1`
+  await enfileirar([{ id: wB1, from: FROM_B }])
+  const prazoB1 = await prazoDe(wB1)
+  const prazoA1Depois = await prazoDe(wA1)
+  checar(
+    prazoA1Depois === prazoA1,
+    'a janela de FROM_A não se move quando FROM_B escreve',
+    { antes: prazoA1, depois: prazoA1Depois },
+  )
+  checar(!!prazoB1, 'e FROM_B tem janela própria', prazoB1)
+
+  console.log('\n10. item já reivindicado NÃO é empurrado')
+  // Simula o worker tendo reivindicado wA1 no instante em que chega wA3.
+  await central().from('message_grouping_queue')
+    .update({ status: 'processing', claimed_at: new Date().toISOString() })
+    .eq('organization_id', ORG).eq('whatsapp_message_id', wA1)
+  const prazoCongelado = await prazoDe(wA1)
+
+  await enfileirar([{ id: `wamid.${MARCA}.desliza.3`, from: FROM_A }])
+  const prazoA1EmProcessamento = await prazoDe(wA1)
+  checar(
+    prazoA1EmProcessamento === prazoCongelado,
+    'linha em processing fica fora do empurrão (o `status = pending` do predicado)',
+    { antes: prazoCongelado, depois: prazoA1EmProcessamento },
+  )
+
+  console.log('\n11. reentrega da Meta não insere nem empurra')
+  const prazoA2Antes = await prazoDe(wA2)
+  const reentrega = await enfileirar([{ id: wA2, from: FROM_A }])
+  checar(reentrega.inseridas === 0, 'nada inserido na reentrega', reentrega.inseridas)
+  const prazoA2Depois = await prazoDe(wA2)
+  checar(
+    prazoA2Depois === prazoA2Antes,
+    'e a janela não se move — senão a reentrega adiaria a resposta',
+    { antes: prazoA2Antes, depois: prazoA2Depois },
+  )
+
+  console.log('\n12. as duas mensagens saem no MESMO claim')
+  // Prova direta do defeito original. Limpa o resto para o lote ser só delas.
+  await central().from('message_grouping_queue').delete().eq('organization_id', ORG)
+  const wC1 = `wamid.${MARCA}.claim.1`
+  const wC2 = `wamid.${MARCA}.claim.2`
+  await enfileirar([{ id: wC1, from: FROM_A }])
+  await new Promise((r) => setTimeout(r, 1100))
+  await enfileirar([{ id: wC2, from: FROM_A }])
+
+  // Envelhece a janela em vez de esperar 8s de relógio.
+  await central().from('message_grouping_queue')
+    .update({ process_after: new Date(Date.now() - 60_000).toISOString() })
+    .eq('organization_id', ORG)
+
+  const { data: reivindicados, error: erroClaim } = await central()
+    .rpc('claim_message_grouping_batch', { p_organization_id: ORG, p_batch_size: 10 })
+  checar(!erroClaim, 'claim rodou sem erro', erroClaim?.message)
+  const ids = (reivindicados ?? []).map((l: any) => l.whatsapp_message_id)
+  checar(
+    ids.includes(wC1) && ids.includes(wC2),
+    'um único claim traz as DUAS mensagens — uma resposta, não duas',
+    ids,
+  )
+  checar(
+    (reivindicados ?? []).every((l: any) => l.sender_key === FROM_A),
+    'sender_key é derivada de message_data->>from sem o worker desembrulhar jsonb',
+    (reivindicados ?? []).map((l: any) => l.sender_key),
+  )
 
 } finally {
   // ---------------------------------------------------------------------------
