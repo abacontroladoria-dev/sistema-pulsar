@@ -260,6 +260,18 @@ export async function listarCentralAutorizacoes(data: string): Promise<Record<st
 // Ver supabase/migrations/20260908100100_registrar_falta_em_lote.sql.
 // ============================================================================
 
+// Quem faltou. Espelha o CHECK `chk_tipo_falta` do banco
+// (20260914180000_tipo_falta_blindagem_e_rename.sql) — se um valor for
+// acrescentado lá, acrescente aqui, e o compilador aponta quem precisa tratá-lo.
+//
+// `types/database.ts` tipa a coluna como `string | null`, então é ESTE union que
+// dá a rede de segurança no frontend. Antes dele, um valor divergente não
+// quebrava nada: só sumia silenciosamente dos filtros e dos badges.
+export type TipoFalta =
+  | 'paciente'         // o paciente não veio
+  | 'terapeuta'        // o profissional não veio
+  | 'unidade_fechada'  // a clínica não abriu: ninguém faltou
+
 export type MotivoFalta =
   | 'feriado'
   | 'ponto_facultativo'
@@ -275,14 +287,61 @@ export const MOTIVOS_FALTA: { valor: MotivoFalta; rotulo: string }[] = [
   { valor: 'outro',             rotulo: 'Outro' },
 ]
 
+// ────────────────────────────────────────────────────────────────────────────
+// Código da justificativa — lista 101-113
+//
+// É o MESMO vocabulário do sistema parceiro que recebe as faltas do Pulsar.
+// Existe para a recepcionista classificar no ato: antes só havia texto livre, e
+// o texto real não carrega motivo — de 6.189 justificativas preenchidas, ~4.200
+// eram "n vem" / "faltou" / "n chegou", que é literalmente o código 102.
+//
+// Complementa `motivo_falta`, não o substitui: aquele diz por que a CLÍNICA não
+// abriu (só no lote); este diz por que AQUELA SESSÃO não aconteceu (toda falta).
+// Quando há motivo de lote, o banco deriva o código — ver
+// supabase/migrations/20260914160000_codigo_justificativa_falta.sql.
+// ────────────────────────────────────────────────────────────────────────────
+
+export type CodigoJustificativaFalta =
+  | 101 | 102 | 103 | 104 | 105 | 106 | 107
+  | 108 | 109 | 110 | 111 | 112 | 113
+
+export const CODIGOS_JUSTIFICATIVA_FALTA: {
+  codigo: CodigoJustificativaFalta
+  rotulo: string
+}[] = [
+  { codigo: 101, rotulo: 'Atestado / internação / falecimento' },
+  { codigo: 102, rotulo: 'Ausência de justificativa' },
+  { codigo: 103, rotulo: 'Conflito com cronograma' },
+  { codigo: 104, rotulo: 'Conflito terapêutico' },
+  { codigo: 105, rotulo: 'Consultas / compromissos' },
+  { codigo: 106, rotulo: 'Falta do profissional' },
+  { codigo: 107, rotulo: 'Férias / Viagem' },
+  { codigo: 108, rotulo: 'Logística / deslocamento / clima' },
+  { codigo: 109, rotulo: 'Pendência Administrativa' },
+  { codigo: 110, rotulo: 'Saúde da criança' },
+  { codigo: 111, rotulo: 'Saúde do responsável' },
+  { codigo: 112, rotulo: 'Solicitação de liberação por parte do responsável' },
+  { codigo: 113, rotulo: 'Feriado / Recesso Clínica' },
+]
+
+// Fora do seletor de falta do paciente: 106 é falta do profissional (o tipo já
+// diz) e 113 é a clínica fechada, que só o lote produz.
+//
+// 108 e 109 FICAM na lista de propósito, mesmo sendo também derivados do motivo
+// do lote: os dois descrevem situações que acontecem com um paciente individual
+// (108 = não conseguiu chegar; 109 = pendência administrativa dele). Escondê-los
+// tiraria da recepção dois motivos legítimos por uma coincidência de mapeamento.
+export const CODIGOS_JUSTIFICATIVA_PACIENTE = CODIGOS_JUSTIFICATIVA_FALTA
+  .filter((c) => c.codigo !== 106 && c.codigo !== 113)
+
 export type FaltaLoteParams = {
   data: string                       // 'YYYY-MM-DD', direto do <input type="date">
   motivo: MotivoFalta
   justificativa: string
-  // 'unidade' = a clínica não abriu (feriado, ponto facultativo, falta de
-  // energia). Não é ausência de ninguém: fica fora da assiduidade do paciente e
-  // da fila de reposição. É o padrão do lote.
-  tipoFalta?: 'paciente' | 'terapeuta' | 'unidade'
+  // 'unidade_fechada' = a clínica não abriu (feriado, ponto facultativo, falta
+  // de energia). Não é ausência de ninguém: fica fora da assiduidade do paciente
+  // e da fila de reposição. É o padrão do lote.
+  tipoFalta?: TipoFalta
   unidade?: string | null            // null = todas
   horario?: string | null            // 'HH:MM', null = todos
   convenioNome?: string | null       // null = todos
@@ -316,7 +375,7 @@ function paramsParaRpc(p: FaltaLoteParams, dryRun: boolean) {
     p_data:          p.data,
     p_motivo:        p.motivo,
     p_justificativa: p.justificativa,
-    p_tipo_falta:    p.tipoFalta ?? 'unidade',
+    p_tipo_falta:    p.tipoFalta ?? 'unidade_fechada',
     // String vazia é o valor das opções "Todas as unidades" / "Todos os
     // horários" / "Todos os convênios"; o banco espera NULL para "sem filtro".
     p_unidade:       p.unidade || null,

@@ -161,7 +161,7 @@ const TOKENS: Record<string, StatusToken> = {
   // fora do bloco "Precisa de atenção", que é justamente o ponto: a recepção não
   // deve ser cobrada todo dia por um dia em que não houve atendimento.
   //
-  // Chega aqui por `tipo_falta = 'unidade'`, não por status_operacional — o CASE
+  // Chega aqui por `tipo_falta = 'unidade_fechada'`, não por status_operacional — o CASE
   // do banco ainda não tem o ramo 'falta_unidade' (ver o TODO em
   // 20260908100200_falta_da_unidade_fora_da_assiduidade.sql).
   falta_unidade: {
@@ -233,13 +233,13 @@ export function resolverStatus(item: any): StatusToken {
   //
   // Precisa vir ANTES da resolução por status porque a leitura do banco ainda
   // não distingue este caso: o CASE de status_operacional testa tipo_falta
-  // 'terapeuta'/'paciente' e nada mais, então uma linha 'unidade' escorrega até
+  // 'terapeuta'/'paciente' e nada mais, então uma linha 'unidade_fechada' escorrega até
   // o ELSE e chega aqui como 'falta' cru — que o TOKENS mapeia para "Falta do
   // paciente", exatamente o rótulo errado. Ver o TODO em
   // supabase/migrations/20260908100200_falta_da_unidade_fora_da_assiduidade.sql;
   // quando o ramo 'falta_unidade' existir no banco, este bloco vira redundante
   // (e inofensivo).
-  if (item?.tipo_falta === 'unidade') {
+  if (item?.tipo_falta === 'unidade_fechada') {
     return TOKENS.falta_unidade
   }
 

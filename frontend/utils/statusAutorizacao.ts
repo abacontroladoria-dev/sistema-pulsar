@@ -37,7 +37,7 @@ export function getStatusConfig(a: any) {
     // A clínica não abriu: feriado, ponto facultativo, falta de energia.
     // Neutro de propósito — não há ausência de ninguém a sinalizar, então não
     // usa o amarelo/vermelho que pedem tratativa.
-    if (a.tipo_falta === 'unidade') {
+    if (a.tipo_falta === 'unidade_fechada') {
       return {
         key: 'falta_unidade',
         label: 'Unidade fechada',

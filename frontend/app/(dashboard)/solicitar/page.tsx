@@ -15,8 +15,10 @@ import {
   aplicarFaltaEmLote,
   reverterFaltaEmLote,
   MOTIVOS_FALTA,
+  CODIGOS_JUSTIFICATIVA_PACIENTE,
   ROTULO_IGNORADA,
   type MotivoFalta,
+  type CodigoJustificativaFalta,
   type FaltaLoteResultado,
 } from '@/services/autorizacoes.service'
 
@@ -262,6 +264,12 @@ const unidades = [
 
   const [justificativaFalta, setJustificativaFalta] = useState('')
 
+  // Código da lista 101-113 escolhido no modal de falta do paciente. Começa em
+  // 102 ("Ausência de justificativa") porque é o caso real dominante — de 6.189
+  // justificativas históricas, ~4.200 eram "n vem"/"faltou", que é exatamente
+  // isso. Quem tiver um motivo melhor troca no seletor.
+  const [codigoFalta, setCodigoFalta] = useState<CodigoJustificativaFalta>(102)
+
   // ── Falta em lote ─────────────────────────────────────────────────────────
   // Feriado e afins: o dia inteiro cai de uma vez. Duas etapas — formulário e
   // confirmação com os números — porque errar a data aqui atinge centenas de
@@ -273,7 +281,7 @@ const unidades = [
   const [loteJustificativa, setLoteJustificativa] = useState('')
   // Fixo: o lote existe para os casos em que a clínica não abriu. Ver o bloco
   // explicativo no modal, onde o seletor de tipo deliberadamente não existe.
-  const loteTipo = 'unidade' as const
+  const loteTipo = 'unidade_fechada' as const
   const [loteUnidade, setLoteUnidade] = useState('')
   const [loteHorario, setLoteHorario] = useState('')
   const [loteConvenio, setLoteConvenio] = useState('')
@@ -986,7 +994,15 @@ async function handleSolicitarLista(
   // ❌ FALTA
   // =========================
 
-async function handleFalta(p: any, tipo: 'paciente' | 'terapeuta', justificativa?: string) {
+// `codigo` é o motivo na lista 101-113 que vai para o sistema parceiro. Opcional
+// porque a falta do terapeuta não pergunta nada: o banco deriva 106 pelo tipo
+// (ver o trigger em 20260914160000_codigo_justificativa_falta.sql).
+async function handleFalta(
+  p: any,
+  tipo: 'paciente' | 'terapeuta',
+  justificativa?: string,
+  codigo?: CodigoJustificativaFalta,
+) {
 
   try {
     const { data: existente } = await supabase
@@ -1015,6 +1031,7 @@ async function handleFalta(p: any, tipo: 'paciente' | 'terapeuta', justificativa
           tipo_falta: tipo,
           terapia_falta: p.terapias?.join(' + ') || null,
           justificativa_falta: justificativa || null,
+          codigo_justificativa: codigo ?? null,
           criado_por: criadoPor
         })
         .eq('id', existente.id)
@@ -1068,7 +1085,8 @@ async function handleFalta(p: any, tipo: 'paciente' | 'terapeuta', justificativa
       .update({
         tipo_falta: tipo,
         terapia_falta: p.terapias?.join(' + ') || null,
-        justificativa_falta: justificativa || null
+        justificativa_falta: justificativa || null,
+        codigo_justificativa: codigo ?? null
       })
       .eq('id', inserted.id)
 
@@ -1090,7 +1108,11 @@ async function handleFalta(p: any, tipo: 'paciente' | 'terapeuta', justificativa
   // ❌ FALTA DIA DE ATENDIMENTO
   // ===========================
   
-async function handleFaltaDia(paciente: any, justificativa?: string) {
+async function handleFaltaDia(
+  paciente: any,
+  justificativa?: string,
+  codigo?: CodigoJustificativaFalta,
+) {
 
   const dataAtendimento = paciente.data_atendimento
 
@@ -1143,6 +1165,7 @@ const atendimentos = Object.values(
           tipo_falta: 'paciente',
           terapia_falta: p.terapias?.join(' + ') || null,
           justificativa_falta: justificativa || null,
+          codigo_justificativa: codigo ?? null,
           criado_por: criadoPor
         })
         .eq('id', existente.id)
@@ -1181,7 +1204,8 @@ const atendimentos = Object.values(
         .update({
           tipo_falta: 'paciente',
           terapia_falta: p.terapias?.join(' + ') || null,
-          justificativa_falta: justificativa || null
+          justificativa_falta: justificativa || null,
+          codigo_justificativa: codigo ?? null
         })
         .eq('id', inserted.id)
     }
@@ -2452,7 +2476,7 @@ useEffect(() => {
 
       {/* BOTÃO FECHAR (X) */}
       <button
-        onClick={() => { setConfirmarFaltaDia(false); setJustificativaFalta('') }}
+        onClick={() => { setConfirmarFaltaDia(false); setJustificativaFalta(''); setCodigoFalta(102) }}
         className="absolute top-3 right-3 text-slate-400 hover:text-slate-600 text-lg"
       >
         ✕
@@ -2468,13 +2492,26 @@ useEffect(() => {
         {pacienteFaltaDia?.paciente_nome}
       </p>
 
+      {/* MOTIVO — a lista 101-113, o mesmo vocabulário do sistema parceiro que
+          recebe estas faltas. Antes só havia o texto livre abaixo, que na
+          prática não dizia o motivo ("n vem", "faltou"). */}
+      <select
+        value={codigoFalta}
+        onChange={e => setCodigoFalta(Number(e.target.value) as CodigoJustificativaFalta)}
+        className="w-full mt-4 px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300 text-slate-700"
+      >
+        {CODIGOS_JUSTIFICATIVA_PACIENTE.map(c => (
+          <option key={c.codigo} value={c.codigo}>{c.rotulo}</option>
+        ))}
+      </select>
+
       {/* JUSTIFICATIVA */}
       <textarea
         value={justificativaFalta}
         onChange={e => setJustificativaFalta(e.target.value)}
         placeholder="Justificativa obrigatória"
         rows={3}
-        className="w-full mt-4 px-3 py-2 text-sm border border-slate-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-300 text-slate-700 placeholder:text-slate-400"
+        className="w-full mt-3 px-3 py-2 text-sm border border-slate-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-300 text-slate-700 placeholder:text-slate-400"
       />
 
       {/* ESPAÇO */}
@@ -2485,8 +2522,9 @@ useEffect(() => {
           disabled={!justificativaFalta.trim()}
           onClick={async () => {
             if (!pacienteFaltaDia) return
-            await handleFalta(pacienteFaltaDia, 'paciente', justificativaFalta)
+            await handleFalta(pacienteFaltaDia, 'paciente', justificativaFalta, codigoFalta)
             setJustificativaFalta('')
+            setCodigoFalta(102)
             setConfirmarFaltaDia(false)
           }}
           className="w-full py-2.5 rounded-lg bg-blue-500 text-white font-semibold hover:bg-blue-600 transition disabled:opacity-40 disabled:cursor-not-allowed"
@@ -2500,10 +2538,12 @@ useEffect(() => {
           onClick={async () => {
             if (!pacienteFaltaDia) return
             const justificativa = justificativaFalta
+            const codigo = codigoFalta
 			setConfirmarFaltaDia(false)
 			setPacienteFaltaDia(null)
             setJustificativaFalta('')
-			await handleFaltaDia(pacienteFaltaDia, justificativa)
+            setCodigoFalta(102)
+			await handleFaltaDia(pacienteFaltaDia, justificativa, codigo)
           }}
           className="w-full py-2.5 rounded-lg bg-red-500 text-white font-semibold hover:bg-red-600 transition disabled:opacity-40 disabled:cursor-not-allowed"
         >
@@ -2619,7 +2659,7 @@ useEffect(() => {
 
         {/* Sem seletor de "tipo de falta" de propósito.
             Todo motivo desta lista é a clínica fechada, então o lançamento é
-            sempre tipo_falta='unidade'. Oferecer "do paciente" aqui seria
+            sempre tipo_falta='unidade_fechada'. Oferecer "do paciente" aqui seria
             convidar a registrar ausência de quem não faltou — que é exatamente
             o que suja a assiduidade e a fila de reposição. */}
         <div className="mt-4 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2.5">
