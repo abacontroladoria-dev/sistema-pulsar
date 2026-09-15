@@ -11,8 +11,26 @@ não mantém fila de entrega e não fica refém da disponibilidade do outro lado
 ## Endpoint
 
 ```
-GET https://orbitaautomacao.com.br/api/integracao/faltas
+GET https://orbitaautomacao.com.br/api/integracao/faltas/
 Authorization: Bearer <token>
+```
+
+### ⚠️ A barra final é obrigatória
+
+Repare no `/` depois de `faltas`. O Pulsar roda com `trailingSlash: true`, então
+a URL **sem** a barra não devolve os dados: ela devolve um **308 redirect** para
+a versão com barra.
+
+Isso costuma aparecer como **404** no Postman e em clientes HTTP que não seguem
+o redirect, ou como **401** em clientes que seguem mas **não repassam o header
+`Authorization`** entre hosts/requisições — a maioria não repassa, por segurança.
+Nos dois casos o problema é a barra, não o token.
+
+```
+✅ /api/integracao/faltas/
+✅ /api/integracao/faltas/?limite=500
+❌ /api/integracao/faltas          → 308
+❌ /api/integracao/faltas?limite=500  → 308
 ```
 
 O token é individual por parceiro, revogável isoladamente, e viaja no header —
@@ -191,8 +209,8 @@ que aconteceu naquele dia. Mas a decisão de contá-lo ou não é sua.
 O cursor é o **par** (`proximo_desde`, `proximo_desde_id`). Devolva os dois.
 
 ```
-1ª chamada:  /api/integracao/faltas
-2ª chamada:  /api/integracao/faltas?desde=<proximo_desde>&desde_id=<proximo_desde_id>
+1ª chamada:  /api/integracao/faltas/
+2ª chamada:  /api/integracao/faltas/?desde=<proximo_desde>&desde_id=<proximo_desde_id>
 ```
 
 Repita enquanto `tem_mais` for `true`. Guarde o último cursor recebido e use-o na
@@ -238,11 +256,11 @@ Sem a chave, não há como você casar do lado de lá.
 ```bash
 # Primeira carga
 curl -s -H "Authorization: Bearer $TOKEN" \
-  "https://orbitaautomacao.com.br/api/integracao/faltas?limite=500"
+  "https://orbitaautomacao.com.br/api/integracao/faltas/?limite=500"
 
 # Incremental
 curl -s -H "Authorization: Bearer $TOKEN" \
-  "https://orbitaautomacao.com.br/api/integracao/faltas?desde=2026-09-14T00:00:00Z&desde_id=3377324"
+  "https://orbitaautomacao.com.br/api/integracao/faltas/?desde=2026-09-14T00:00:00Z&desde_id=3377324"
 ```
 
 ---
