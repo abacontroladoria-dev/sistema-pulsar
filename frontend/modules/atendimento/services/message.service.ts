@@ -9,6 +9,7 @@ import type { MessageRepository, CreateAttachmentInput, ListMessagesParams } fro
 import type { ConversationRepository } from '../repositories/conversation.repository'
 import type { ContactRepository } from '../repositories/contact.repository'
 import type { AuditRepository } from '../repositories/audit.repository'
+import type { ConversationService } from './conversation.service'
 import type { TypedEventBus } from '../events/event-bus'
 import {
   ConversationNotFoundError,
@@ -87,7 +88,12 @@ export class MessageService {
     private readonly events:  TypedEventBus,
     private readonly factory: ProviderResolver,
     // Necessário para resolveChannel() — ChannelRepository é Sprint 2
-    private readonly supabase:SupabaseClient
+    private readonly supabase:SupabaseClient,
+    // Para assumir a conversa quando um humano responde (ver o passo 7 de send).
+    // A dependência é de mão única — mensagem conhece conversa, nunca o inverso —
+    // então não há ciclo. Opcional para não quebrar composições em teste que
+    // instanciam MessageService sozinho; sem ele, o envio só deixa de assumir.
+    private readonly conversas?: ConversationService
   ) {}
 
   // -------------------------------------------------------------------------
@@ -188,6 +194,21 @@ export class MessageService {
       },
       actorId: input.sentByUserId ?? 'system',
     })
+
+    // 7. Quem responde, assume.
+    //
+    // Depois do envio confirmado, e não antes: assumir uma conversa cuja
+    // mensagem a Meta vai recusar deixaria a fila apontando um responsável que
+    // nunca falou com o paciente.
+    //
+    // As duas condições são a proteção do sinal. `sentByAi` é a que mais importa:
+    // o worker da Maia também envia outbound, e sem esse recorte TODA conversa
+    // atendida pela IA migraria para a caixa "Humano" — o inverso exato do
+    // defeito que isto corrige. `sentByUserId` ausente é envio de sistema, que
+    // não tem a quem atribuir.
+    if (input.sentByUserId && input.sentByAi !== true && this.conversas) {
+      await this.conversas.assumirAoResponder(conversation, input.sentByUserId)
+    }
 
     return message
   }

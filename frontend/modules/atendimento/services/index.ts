@@ -97,18 +97,25 @@ export function createConversationService(userClient: SupabaseClient): Conversat
 }
 
 export function createMessageService(userClient: SupabaseClient): MessageService {
+  const convRepo  = new ConversationRepository(userClient)
+  const auditRepo = new AuditRepository(supabaseService)   // sempre service role
+
   return new MessageService(
     // Leitura e INSERT com o client do usuário (RLS decide o que ele pode ver
     // e em qual conversa pode escrever); o UPDATE de confirmação com service
     // role, porque central.messages não tem policy de UPDATE para
     // `authenticated` — ver a nota no construtor de MessageRepository.
     new MessageRepository(userClient, supabaseService),
-    new ConversationRepository(userClient),
+    convRepo,
     new ContactRepository(userClient),
-    new AuditRepository(supabaseService),   // sempre service role
+    auditRepo,
     caEventBus,
     providerFactory,
-    userClient
+    userClient,
+    // Para o envio assumir a conversa em nome de quem respondeu. Recebe o MESMO
+    // repositório: dois clientes diferentes para a mesma conversa poderiam ver
+    // estados distintos dentro de uma única chamada de send().
+    new ConversationService(convRepo, auditRepo, caEventBus)
   )
 }
 
@@ -122,12 +129,14 @@ export function createSystemServices(): {
   const contactRepo = new ContactRepository(supabaseService)
   const auditRepo   = new AuditRepository(supabaseService)
 
+  const conversationService = new ConversationService(
+    convRepo,
+    auditRepo,
+    caEventBus
+  )
+
   return {
-    conversationService: new ConversationService(
-      convRepo,
-      auditRepo,
-      caEventBus
-    ),
+    conversationService,
     messageService: new MessageService(
       msgRepo,
       convRepo,
@@ -135,7 +144,11 @@ export function createSystemServices(): {
       auditRepo,
       caEventBus,
       providerFactory,
-      supabaseService
+      supabaseService,
+      // Passado por completude, mas o worker nunca aciona a assunção: ele envia
+      // com `sentByAi: true` e sem `sentByUserId`, e send() exige os dois
+      // invertidos. É a Maia respondendo — ela não assume conversa nenhuma.
+      conversationService
     ),
   }
 }

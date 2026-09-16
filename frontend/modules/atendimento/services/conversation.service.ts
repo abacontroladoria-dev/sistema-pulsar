@@ -158,6 +158,72 @@ export class ConversationService {
   }
 
   // -------------------------------------------------------------------------
+  // assumirAoResponder
+  //
+  // Quem responde, assume. Chamado pelo MessageService depois de a mensagem sair
+  // de fato — responder é o ato de assumir o atendimento, e exigir um clique a
+  // mais para declarar o óbvio faria a fila mentir toda vez que alguém
+  // esquecesse.
+  //
+  // Antes disto, `assigned_user_id` nunca era escrito por nada no sistema: a
+  // caixa "Humano" da triagem era inalcançável e conversas atendidas por gente
+  // ficavam indistinguíveis das largadas, empilhadas em "Ninguém" — que é a fila
+  // de alarme. O banco sabia quem tinha respondido (`messages.sent_by_user_id`)
+  // e não registrava essa pessoa como responsável.
+  //
+  // Os três writes andam juntos de propósito:
+  //   assigned_user_id  quem atende agora
+  //   status            'assigned' — a conversa saiu da fila de entrada
+  //   ai_mode 'off'     a Maia sai desta conversa. Sem isto os dois respondem o
+  //                     mesmo paciente, cada um sem saber do outro.
+  //
+  // Devolve `true` se assumiu. Não lança: quem chama já mandou a mensagem para o
+  // WhatsApp, e falhar aqui não pode desfazer o que o paciente já recebeu.
+  // -------------------------------------------------------------------------
+  async assumirAoResponder(conversa: Conversation, userId: string): Promise<boolean> {
+    // Não rouba conversa de quem já a tem. Se outra pessoa assumiu, responder
+    // não troca o dono — transferir é ação explícita (ver `transfer`).
+    if (conversa.assigned_user_id !== null) return false
+
+    try {
+      await this.conv.updateAssignee(conversa.id, userId)
+      await this.conv.updateStatus(conversa.id, 'assigned')
+
+      // Só escreve se ainda não estiver desligada, para não sobrescrever à toa.
+      if (conversa.ai_mode !== 'off') {
+        await this.conv.updateAiMode(conversa.id, 'off')
+      }
+    } catch (erro) {
+      // A mensagem já saiu. Registrar e seguir é melhor que estourar um envio
+      // bem-sucedido; o pior caso é a conversa seguir em "Ninguém", visível na
+      // triagem, e não uma resposta entregue que a interface reporta como falha.
+      console.error('[ConversationService] Falha ao assumir a conversa ao responder', {
+        conversationId: conversa.id,
+        userId,
+        erro: erro instanceof Error ? erro.message : String(erro),
+      })
+      return false
+    }
+
+    void this.audit.insert({
+      organization_id: conversa.organization_id,
+      conversation_id: conversa.id,
+      event_type:      'conversation.assigned',
+      performed_by:    userId,
+      payload:         { toUserId: userId, previousAssignee: null, motivo: 'respondeu' },
+    })
+
+    this.events.emit('conversation.assigned', {
+      conversation:     { ...conversa, assigned_user_id: userId, status: 'assigned', ai_mode: 'off' },
+      toUserId:         userId,
+      previousAssignee: null,
+      actorId:          userId,
+    })
+
+    return true
+  }
+
+  // -------------------------------------------------------------------------
   // setAiMode
   // A chave Maia / Atendente do inbox. Decide POR CONVERSA quem responde, sem
   // tocar no ai_mode da organização — a recepcionista assume UMA conversa, não
@@ -180,12 +246,34 @@ export class ConversationService {
 
     await this.conv.updateAiMode(conversationId, aiMode)
 
+    // Religar a Maia SOLTA a conversa: quem devolve o atendimento à IA está
+    // dizendo "não sou mais eu que conduzo". Sem isto ela ficaria em "Humano"
+    // com a Maia respondendo — o pior dos dois mundos, porque a fila mostraria
+    // um responsável que não está mais lá.
+    //
+    // O status volta para 'open' junto: 'assigned' sem `assigned_user_id` é um
+    // estado contraditório. A triagem não se importa (STATUS_ATIVOS tem os dois,
+    // ver caixas.ts), mas o dado ficaria mentindo para qualquer outro leitor.
+    //
+    // Só ao virar 'autonomous'. Passar para 'off' ou null é o humano continuando
+    // no comando — mexer no responsável ali tiraria a conversa de quem a atende.
+    const soltou = aiMode === 'autonomous' && conv.assigned_user_id !== null
+    if (soltou) {
+      await this.conv.updateAssignee(conversationId, null)
+      await this.conv.updateStatus(conversationId, 'open')
+    }
+
     void this.audit.insert({
       organization_id: conv.organization_id,
       conversation_id: conversationId,
       event_type:      'conversation.ai_mode_changed',
       performed_by:    actorId,
-      payload:         { de: anterior, para: aiMode },
+      payload:         {
+        de: anterior, para: aiMode,
+        // Quem era o responsável antes de a conversa voltar para a Maia. Sem
+        // isto, a trilha perde o fim do atendimento humano.
+        ...(soltou ? { responsavelLiberado: conv.assigned_user_id } : {}),
+      },
     })
   }
 
