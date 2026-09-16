@@ -54,6 +54,26 @@ const EXPLICACAO: Record<DestinoSituacao, string> = {
 }
 
 /**
+ * O adiantamento não é uma `situacao`, então não tem entrada em
+ * `SITUACAO_CONFIG` — mas é oferecido lado a lado com quatro que têm, e uma
+ * caixa vestida por outra régua quebra a leitura da grade. Este objeto tem a
+ * forma de `resolverConfig()` só no que a grade usa (`label`, `strong`, `icon`),
+ * para que os cinco destinos saiam do mesmo `.map`.
+ *
+ * **Sky, e não emerald.** Emerald está travado em LIBERADA pelo Status Lock Rule
+ * do DESIGN.md, e adiantar não libera nada: quem libera é o vínculo com a guia,
+ * que é o passo SEGUINTE. Pintar o destino de verde prometeria o resultado antes
+ * de ele existir. Sky já significa "em trânsito", que é o que a sessão passa a
+ * estar — fora da falta, ainda sem cobertura. Stone (a régua das faltas) também
+ * não serve: ela diz "não aconteceu", e o fato aqui é o oposto.
+ */
+const CONFIG_ADIANTADA = {
+  label: 'Adiantada',
+  strong: 'text-sky-700',
+  icon: CalendarClock,
+} as const
+
+/**
  * Reclassificar a situação de uma sessão — a glosa que na verdade foi falta.
  *
  * ── Por que este modal existe, e por que ele é pesado de propósito ──────────
@@ -136,8 +156,20 @@ export default function ModalReclassificarSituacao({
   const desfazendo = reclassificacao !== null
   const suficiente = justificativa.trim().length >= MINIMO_JUSTIFICATIVA
 
+  const atual = cartao.situacao
+  const configAtual = atual ? resolverConfig(atual) : null
+
   const agendada = cartao.origem.data_atendimento
   const adiantando = destino === DESTINO_ADIANTADA
+
+  // Os cinco destinos numa lista só. A situação que a sessão JÁ tem sai daqui —
+  // a RPC recusa destino igual à origem, e oferecer um botão que sempre falha
+  // ensina a desconfiar dos que funcionam. Adiantada nunca é filtrada: não é uma
+  // situação, então não pode coincidir com a atual.
+  const destinos: DestinoSituacao[] = [
+    ...SITUACOES_RECLASSIFICAVEIS.filter((s) => s !== atual),
+    DESTINO_ADIANTADA,
+  ]
   // A data real é o segundo dado que só o adiantamento pede, e precisa diferir da
   // agendada — a RPC recusa iguais, e um botão que sempre falha ensina a
   // desconfiar dos que funcionam.
@@ -164,9 +196,6 @@ export default function ModalReclassificarSituacao({
       setErro(e instanceof Error ? e.message : 'Não foi possível concluir')
     }
   }
-
-  const atual = cartao.situacao
-  const configAtual = atual ? resolverConfig(atual) : null
 
   return createPortal(
     <div
@@ -276,83 +305,84 @@ export default function ModalReclassificarSituacao({
                   Passa a ser
                 </legend>
                 <div className="mt-1.5 grid gap-2 sm:grid-cols-2">
-                  {SITUACOES_RECLASSIFICAVEIS.map((s) => {
-                    // A situação que a sessão já tem não pode ser destino — a RPC
-                    // recusa, e oferecer um botão que sempre falha ensina a
-                    // desconfiar dos que funcionam.
-                    if (s === atual) return null
-                    const escolhida = destino === s
-                    const config = resolverConfig(s)
+                  {destinos.map((d) => {
+                    const escolhida = destino === d
+                    const config =
+                      d === DESTINO_ADIANTADA ? CONFIG_ADIANTADA : resolverConfig(d)
                     const Icone = config.icon
+                    // A data real é o único campo que um destino pede, e ele abre
+                    // DENTRO da caixa escolhida: fora dela, a pergunta apareceria
+                    // deslocada da escolha que a provocou.
+                    const abreData = d === DESTINO_ADIANTADA && escolhida
                     return (
-                      <button
-                        key={s}
-                        type="button"
-                        onClick={() => setDestino(s)}
-                        aria-pressed={escolhida}
-                        className={`flex flex-col items-start gap-1 rounded-xl border px-3 py-2.5 text-left transition focus-visible:ring-2 focus-visible:ring-brand focus-visible:outline-none ${
+                      <div
+                        key={d}
+                        className={`rounded-xl border transition ${
                           escolhida
                             ? 'border-brand bg-brand-surface'
                             : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
-                        }`}
+                        } ${abreData ? 'sm:col-span-2' : ''}`}
                       >
-                        <span
-                          className={`inline-flex items-center gap-1.5 text-[13px] font-semibold ${config.strong}`}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDestino(d)
+                            // O adiantamento é quase sempre para o dia anterior —
+                            // a sessão seria perdida, então foi puxada para antes.
+                            // Abrir o campo vazio faria a pessoa digitar o valor
+                            // óbvio; sugerir o palpite deixa só conferir ou trocar.
+                            // Escrito no clique e não num efeito: o lint deste
+                            // repositório recusa setState em useEffect.
+                            if (d === DESTINO_ADIANTADA && dataReal === '' && agendada) {
+                              setDataReal(deslocar(agendada, -1))
+                            }
+                          }}
+                          aria-pressed={escolhida}
+                          className="flex w-full flex-col items-start gap-1 rounded-xl px-3 py-2.5 text-left focus-visible:ring-2 focus-visible:ring-brand focus-visible:outline-none"
                         >
-                          <Icone size={14} aria-hidden />
-                          {config.label}
-                        </span>
-                        <span className="text-[11px] leading-relaxed text-slate-500">
-                          {EXPLICACAO[s]}
-                        </span>
-                      </button>
+                          <span
+                            className={`inline-flex items-center gap-1.5 text-[13px] font-semibold ${config.strong}`}
+                          >
+                            <Icone size={14} aria-hidden />
+                            {config.label}
+                          </span>
+                          <span className="text-[11px] leading-relaxed text-slate-500">
+                            {EXPLICACAO[d]}
+                          </span>
+                        </button>
+
+                        {abreData && (
+                          <label className="block border-t border-brand/25 px-3 py-2.5">
+                            <span className="text-[12px] font-medium text-slate-600">
+                              Atendida de fato em
+                            </span>
+                            <input
+                              type="date"
+                              value={dataReal}
+                              onChange={(e) => setDataReal(e.target.value)}
+                              min={
+                                agendada
+                                  ? deslocar(agendada, -MAXIMO_DIAS_ADIANTAMENTO)
+                                  : undefined
+                              }
+                              max={
+                                agendada
+                                  ? deslocar(agendada, MAXIMO_DIAS_ADIANTAMENTO)
+                                  : undefined
+                              }
+                              className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-[13px] tabular-nums text-slate-800 focus:border-slate-400 focus:outline-none sm:w-52"
+                            />
+                            {dataReal !== '' && dataReal === agendada && (
+                              <span className="mt-1 block text-[11px] text-amber-700">
+                                · precisa ser diferente da data agendada
+                              </span>
+                            )}
+                          </label>
+                        )}
+                      </div>
                     )
                   })}
-
-                  {/* O quinto destino. Fora do `.map` porque não é um
-                      `SituacaoReclassificavel`: não tem `SituacaoBadge` (a
-                      sessão não passa a ter uma situação nova — ela passa a ter
-                      uma DATA nova), e é o único que abre um segundo campo. */}
-                  <button
-                    type="button"
-                    onClick={() => setDestino(DESTINO_ADIANTADA)}
-                    aria-pressed={adiantando}
-                    className={`flex flex-col items-start gap-1 rounded-xl border px-3 py-2.5 text-left transition focus-visible:ring-2 focus-visible:ring-brand focus-visible:outline-none ${
-                      adiantando
-                        ? 'border-brand bg-brand-surface'
-                        : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
-                    }`}
-                  >
-                    <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-emerald-700">
-                      <CalendarClock size={14} aria-hidden />
-                      Adiantada
-                    </span>
-                    <span className="text-[11px] leading-relaxed text-slate-500">
-                      {EXPLICACAO[DESTINO_ADIANTADA]}
-                    </span>
-                  </button>
                 </div>
-
-                {adiantando && (
-                  <label className="mt-3 block">
-                    <span className="text-[12px] font-medium text-slate-600">
-                      Atendida de fato em
-                    </span>
-                    <input
-                      type="date"
-                      value={dataReal}
-                      onChange={(e) => setDataReal(e.target.value)}
-                      min={agendada ? deslocar(agendada, -MAXIMO_DIAS_ADIANTAMENTO) : undefined}
-                      max={agendada ? deslocar(agendada, MAXIMO_DIAS_ADIANTAMENTO) : undefined}
-                      className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-[13px] tabular-nums text-slate-800 focus:border-slate-400 focus:outline-none sm:w-52"
-                    />
-                    {dataReal !== '' && dataReal === agendada && (
-                      <span className="mt-1 block text-[11px] text-amber-700">
-                        · precisa ser diferente da data agendada
-                      </span>
-                    )}
-                  </label>
-                )}
               </fieldset>
             </>
           )}
@@ -433,12 +463,16 @@ export default function ModalReclassificarSituacao({
             type="button"
             onClick={confirmar}
             disabled={salvando || !podeConfirmar}
-            className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-[13px] font-semibold text-white disabled:opacity-60 ${
+            // Os cinco destinos compartilham UM botão âmbar: a ação é a mesma
+            // (sobrepor o que a ASSIM respondeu) e o destino muda o rótulo, não o
+            // matiz — três cores de confirmar fariam parecer três ações. Só o
+            // desfazer se separa, porque é a ação inversa. Âmbar é tinta + anel e
+            // não preenchimento: `amber-600` sob texto branco mede 3.0:1 e o
+            // DESIGN.md proíbe âmbar sólido em botão.
+            className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-[13px] font-semibold disabled:opacity-60 ${
               desfazendo
-                ? 'bg-slate-700 hover:bg-slate-800'
-                : adiantando
-                  ? 'bg-emerald-600 hover:bg-emerald-700'
-                  : 'bg-amber-600 hover:bg-amber-700'
+                ? 'bg-slate-700 text-white hover:bg-slate-800'
+                : 'bg-amber-100 text-amber-900 ring-1 ring-amber-400 hover:bg-amber-200'
             }`}
           >
             {salvando && <Loader2 size={15} className="animate-spin" aria-hidden />}
