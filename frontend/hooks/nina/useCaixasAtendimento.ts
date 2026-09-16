@@ -101,6 +101,12 @@ export function useCaixasAtendimento(): UseCaixasAtendimento {
 
         setContagens(corpo.contagens ?? CONTAGENS_ZERADAS)
         setModoPadrao(corpo.modoPadrao ?? 'off')
+
+        // Lê `priority` do CRU (corpo.conversas), nunca do convertido.
+        // NinaConversation não tem o campo — o adapter não o carrega — então
+        // mover esta linha para depois do toUIConversation faria o selo
+        // "escalada pela Maia" sumir em silêncio, sem erro de tipo, porque a
+        // origem passaria a ser um objeto onde `priority` é undefined.
         setUrgentes(new Set(
           corpo.conversas.filter(c => c.priority === 'high').map(c => c.id)))
         setErro(null)

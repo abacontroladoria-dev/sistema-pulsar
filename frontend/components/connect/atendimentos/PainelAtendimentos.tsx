@@ -150,7 +150,17 @@ const PainelAtendimentos: React.FC = () => {
                           </span>
                         )}
                       </div>
-                      <p className="text-xs text-slate-500 truncate mt-0.5">{c.lastMessage}</p>
+                      {/* Tipo do contato, NÃO a última mensagem.
+                          A triagem carrega as conversas sem histórico (o
+                          histórico é do chat), então `lastMessage` aqui seria
+                          sempre o literal "Sem mensagens" que o adapter usa como
+                          fallback — um texto falso em toda linha da tela.
+                          Buscar a última mensagem custaria um join por conversa
+                          para exibir uma prévia que não ajuda a decidir: numa
+                          fila, o que importa é quem espera e há quanto tempo. */}
+                      <p className="text-xs text-slate-500 truncate mt-0.5">
+                        {c.rotuloTipo}{c.contactPhone ? ` · ${c.contactPhone}` : ''}
+                      </p>
                     </div>
 
                     <span className="text-[11px] text-slate-500 shrink-0 tabular-nums">
