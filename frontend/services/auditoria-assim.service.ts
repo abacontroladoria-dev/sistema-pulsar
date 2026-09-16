@@ -33,11 +33,15 @@ export async function listarFaltasAuditoria(data: string): Promise<AuditoriaAssi
     return []
   }
 
-  return (result || []).map((f: { paciente_id: string; paciente_nome: string; data_atendimento: string; hora_inicial: string; tuss: string; terapia_nome: string; tipo_falta: string; profissional_nome: string | null }) => {
+  return (result || []).map((f: { fila_id: string; paciente_id: string; paciente_nome: string; data_atendimento: string; hora_inicial: string; tuss: string; terapia_nome: string; tipo_falta: string; profissional_nome: string | null }) => {
     const isTerapeuta = f.tipo_falta?.toLowerCase().includes('terapeuta')
     const bloco_id = `falta_${f.paciente_id}_${f.data_atendimento}_${f.hora_inicial}_${f.tuss}`
     return {
       bloco_id,
+      // A linha real por trás do cartão sintético. É o que permite marcar a
+      // sessão como adiantada — sem ela, a tela teria de reencontrar a linha por
+      // quatro campos, que é como nascem as divergências.
+      fila_id: f.fila_id,
       paciente_id: String(f.paciente_id),
       paciente_nome: f.paciente_nome,
       // A RPC de faltas não devolve carteirinha; quem precisa dela (a Análise de

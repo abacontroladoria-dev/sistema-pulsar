@@ -13,6 +13,7 @@ import ModalSemanaPaciente from '../reconciliacao/ModalSemanaPaciente'
 import { hojeLocal } from '../reconciliacao/datas'
 import {
   desfazerReclassificacao,
+  marcarSessaoAdiantada,
   reclassificarSituacao,
 } from '@/services/reconciliacao-assim.service'
 import type {
@@ -112,6 +113,7 @@ export default function ReconciliacaoTab({ alvo, onAlvoConsumido }: Props) {
    */
   const [cartaoEmReclassificacao, setCartaoEmReclassificacao] = useState<CartaoGrade | null>(null)
   const [salvandoReclassificacao, setSalvandoReclassificacao] = useState(false)
+
 
   // Haver paciente escolhido JÁ é "a semana está aberta" — não há um segundo
   // estado dizendo a mesma coisa, que é como as duas versões divergem. Durante a
@@ -220,6 +222,44 @@ export default function ReconciliacaoTab({ alvo, onAlvoConsumido }: Props) {
     [reclassificacaoAberta, recarregarSemana]
   )
 
+  /**
+   * Registra que a sessão aconteceu em outro dia.
+   *
+   * `recarregarSemana()` não é cosmético aqui, é o desfecho: a sessão sai da lista
+   * de faltas e volta como bloco real da Conferência, e é esse bloco que a guia
+   * órfã passa a poder cobrir. Sem a recarga a pessoa ficaria olhando o cartão de
+   * falta que o banco acabou de aposentar.
+   *
+   * O erro sobe para o modal, como na reclassificação: as mensagens da RPC são
+   * escritas para serem lidas, e um `catch` aqui as trocaria por um fechamento
+   * silencioso que parece sucesso.
+   */
+  const confirmarAdiantamento = useCallback(
+    async (dataReal: string, justificativa: string) => {
+      // `fila_id` só vem preenchido nos cartões de FALTA, que são sintéticos.
+      // Numa sessão real ele é nulo e o destino não se aplica — a RPC escreve na
+      // linha da fila, e sem ela não há o que marcar.
+      const filaId =
+        cartaoEmReclassificacao?.tipo === 'sessao'
+          ? cartaoEmReclassificacao.origem.fila_id
+          : null
+      if (!filaId) {
+        throw new Error(
+          'Esta sessão não tem uma linha de solicitação para marcar como adiantada.'
+        )
+      }
+      setSalvandoReclassificacao(true)
+      try {
+        await marcarSessaoAdiantada({ filaId, dataReal, justificativa })
+        recarregarSemana()
+        setCartaoEmReclassificacao(null)
+      } finally {
+        setSalvandoReclassificacao(false)
+      }
+    },
+    [cartaoEmReclassificacao, recarregarSemana]
+  )
+
   const modoVinculo = useMemo(
     () =>
       guiaEmVinculo && podeVincular
@@ -311,6 +351,7 @@ export default function ReconciliacaoTab({ alvo, onAlvoConsumido }: Props) {
         reclassificacao={reclassificacaoAberta}
         salvando={salvandoReclassificacao}
         onReclassificar={confirmarReclassificacao}
+        onAdiantar={confirmarAdiantamento}
         onDesfazer={confirmarDesfazer}
       />
 

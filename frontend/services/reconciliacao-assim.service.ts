@@ -194,6 +194,46 @@ export async function reclassificarSituacao(params: {
   return data as string
 }
 
+/**
+ * Registra que a sessão agendada para um dia foi atendida em outro.
+ *
+ * Não é uma reclassificação: reclassificar diz o que a sessão FOI (falta,
+ * cancelada); isto diz QUANDO ela aconteceu. Por isso escreve em
+ * fila_autorizacoes e não em auditoria_situacao_overrides — e por isso a sessão
+ * deixa de contar como falta em todo o sistema, não só na Conferência.
+ *
+ * Depois disto o bloco volta a existir na Conferência e a guia órfã pode ser
+ * vinculada a ele: a janela de `vincular_autorizacao` passa a comparar contra a
+ * data real (20260916120300).
+ */
+export async function marcarSessaoAdiantada(params: {
+  filaId: string
+  dataReal: string
+  justificativa: string
+}): Promise<{ marcada: boolean; motivo?: string }> {
+  const { data, error } = await supabase.rpc('marcar_sessao_adiantada', {
+    p_fila_id: params.filaId,
+    p_data_real: params.dataReal,
+    p_justificativa: params.justificativa,
+  })
+
+  if (error) throw error
+  return data as { marcada: boolean; motivo?: string }
+}
+
+/** A volta: a linha torna a ser falta. Recusa se a guia já foi vinculada. */
+export async function desfazerSessaoAdiantada(
+  filaId: string,
+  motivo?: string | null
+): Promise<void> {
+  const { error } = await supabase.rpc('desfazer_sessao_adiantada', {
+    p_fila_id: filaId,
+    p_motivo: motivo ?? null,
+  })
+
+  if (error) throw error
+}
+
 /** Desfaz por soft delete: a sessão volta a valer a situação derivada pela RPC. */
 export async function desfazerReclassificacao(
   overrideId: string,

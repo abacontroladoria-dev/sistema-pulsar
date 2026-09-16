@@ -1,5 +1,11 @@
 export type AuditoriaAssimItem = {
   bloco_id: string | null
+  /**
+   * A linha de `fila_autorizacoes` por trás do cartão. Só vem preenchida nas
+   * linhas de FALTA, cujo `bloco_id` é sintético e não existe no banco: é por ela
+   * que a tela marca a sessão como adiantada (20260916120000).
+   */
+  fila_id?: string | null
   paciente_id: string | null
   paciente_nome: string | null
   /**
@@ -548,6 +554,22 @@ export const SITUACOES_RECLASSIFICAVEIS = [
 ] as const
 
 export type SituacaoReclassificavel = (typeof SITUACOES_RECLASSIFICAVEIS)[number]
+
+/**
+ * O destino extra do modal: a sessão não faltou, aconteceu em outro dia.
+ *
+ * Aparece ao lado dos quatro acima, mas NÃO é um deles — e a distinção é o
+ * desenho, não um detalhe de implementação. Os quatro sobrepõem a LEITURA de uma
+ * sessão e vivem em `auditoria_situacao_overrides`; este afirma um FATO sobre o
+ * mundo (a data em que o atendimento ocorreu), escreve em `fila_autorizacoes` e
+ * por isso atravessa assiduidade, reposição e remuneração — não só a Conferência.
+ *
+ * Também é o único que pede um segundo dado além da justificativa: a data real.
+ */
+export const DESTINO_ADIANTADA = 'ADIANTADA' as const
+
+/** O que o modal oferece: as quatro reclassificações mais o adiantamento. */
+export type DestinoSituacao = SituacaoReclassificavel | typeof DESTINO_ADIANTADA
 
 /**
  * Uma reclassificação manual de situação, como `auditoria_situacao_overrides` a

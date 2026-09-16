@@ -2,18 +2,36 @@
 
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowRight, Loader2, ShieldAlert, Undo2, X } from 'lucide-react'
+import { ArrowRight, CalendarClock, Loader2, ShieldAlert, Undo2, X } from 'lucide-react'
 import { useModalDialog } from '@/hooks/useModalDialog'
 import SituacaoBadge, { resolverConfig } from './SituacaoBadge'
 import {
+  DESTINO_ADIANTADA,
   SITUACOES_RECLASSIFICAVEIS,
   type CartaoGrade,
+  type DestinoSituacao,
   type ReclassificacaoSituacao,
   type SituacaoReclassificavel,
 } from './types'
 
 /** O mínimo que a RPC aceita. Repetido aqui só para o contador não mentir. */
 const MINIMO_JUSTIFICATIVA = 10
+
+/** O teto de `marcar_sessao_adiantada`: adiantamento é de dias, não de meses. */
+const MAXIMO_DIAS_ADIANTAMENTO = 14
+
+/** `YYYY-MM-DD` somado em dias, sem fuso: a data da agenda é dia civil puro. */
+function deslocar(iso: string, dias: number): string {
+  const [a, m, d] = iso.split('-').map(Number)
+  const base = new Date(Date.UTC(a, m - 1, d))
+  base.setUTCDate(base.getUTCDate() + dias)
+  return base.toISOString().slice(0, 10)
+}
+
+function formatarBR(iso: string): string {
+  const [a, m, d] = iso.split('-')
+  return `${d}/${m}/${a}`
+}
 
 /**
  * O que cada destino significa em português de operação, não em vocabulário de
@@ -25,7 +43,9 @@ const MINIMO_JUSTIFICATIVA = 10
  * total, NAO_SOLICITADA continua sendo trabalho a fazer. Quem lê só "Falta" e
  * "Não Solicitada" não tem como saber qual das duas some da conta.
  */
-const EXPLICACAO: Record<SituacaoReclassificavel, string> = {
+const EXPLICACAO: Record<DestinoSituacao, string> = {
+  ADIANTADA:
+    'A sessão aconteceu, em outro dia. Deixa de contar como falta em todo o sistema.',
   FALTA: 'O paciente não compareceu. A sessão sai da contagem de pendências.',
   FALTA_TERAPEUTA: 'O terapeuta não compareceu. A sessão sai da contagem de pendências.',
   CANCELADA: 'O atendimento foi desfeito. A sessão sai da contagem de pendências.',
@@ -63,6 +83,7 @@ export default function ModalReclassificarSituacao({
   reclassificacao,
   salvando,
   onReclassificar,
+  onAdiantar,
   onDesfazer,
 }: {
   open: boolean
@@ -73,11 +94,18 @@ export default function ModalReclassificarSituacao({
   reclassificacao: ReclassificacaoSituacao | null
   salvando: boolean
   onReclassificar: (situacao: SituacaoReclassificavel, justificativa: string) => Promise<void>
+  /**
+   * Registra a data real do atendimento. Separado de `onReclassificar` porque o
+   * destino não é uma reclassificação: escreve em `fila_autorizacoes`, pede um
+   * segundo dado (a data) e vale além da Conferência. Ver `DESTINO_ADIANTADA`.
+   */
+  onAdiantar: (dataReal: string, justificativa: string) => Promise<void>
   onDesfazer: (motivo: string) => Promise<void>
 }) {
   const idTitulo = 'titulo-reclassificar-situacao'
   const { refDialogo, propsDialogo } = useModalDialog(open, onClose, idTitulo)
-  const [destino, setDestino] = useState<SituacaoReclassificavel | null>(null)
+  const [destino, setDestino] = useState<DestinoSituacao | null>(null)
+  const [dataReal, setDataReal] = useState('')
   const [justificativa, setJustificativa] = useState('')
   const [erro, setErro] = useState<string | null>(null)
 
@@ -98,6 +126,7 @@ export default function ModalReclassificarSituacao({
   if (recorteAnterior !== recorte) {
     setRecorteAnterior(recorte)
     setDestino(null)
+    setDataReal('')
     setJustificativa('')
     setErro(null)
   }
@@ -106,15 +135,26 @@ export default function ModalReclassificarSituacao({
 
   const desfazendo = reclassificacao !== null
   const suficiente = justificativa.trim().length >= MINIMO_JUSTIFICATIVA
+
+  const agendada = cartao.origem.data_atendimento
+  const adiantando = destino === DESTINO_ADIANTADA
+  // A data real é o segundo dado que só o adiantamento pede, e precisa diferir da
+  // agendada — a RPC recusa iguais, e um botão que sempre falha ensina a
+  // desconfiar dos que funcionam.
+  const dataRealValida = dataReal !== '' && dataReal !== agendada
+
   // No desfazer o motivo é opcional — a RPC o aceita nulo. Reclassificar é que
   // exige justificativa: é a ação que muda a contabilidade, e desfazer só a
   // devolve ao que o banco já derivava sozinho.
-  const podeConfirmar = desfazendo ? true : destino !== null && suficiente
+  const podeConfirmar = desfazendo
+    ? true
+    : destino !== null && suficiente && (!adiantando || dataRealValida)
 
   async function confirmar() {
     setErro(null)
     try {
       if (desfazendo) await onDesfazer(justificativa.trim())
+      else if (adiantando) await onAdiantar(dataReal, justificativa.trim())
       else if (destino) await onReclassificar(destino, justificativa.trim())
     } catch (e) {
       // A mensagem vem das validações da RPC, já escrita para ser lida por uma
@@ -268,7 +308,51 @@ export default function ModalReclassificarSituacao({
                       </button>
                     )
                   })}
+
+                  {/* O quinto destino. Fora do `.map` porque não é um
+                      `SituacaoReclassificavel`: não tem `SituacaoBadge` (a
+                      sessão não passa a ter uma situação nova — ela passa a ter
+                      uma DATA nova), e é o único que abre um segundo campo. */}
+                  <button
+                    type="button"
+                    onClick={() => setDestino(DESTINO_ADIANTADA)}
+                    aria-pressed={adiantando}
+                    className={`flex flex-col items-start gap-1 rounded-xl border px-3 py-2.5 text-left transition focus-visible:ring-2 focus-visible:ring-brand focus-visible:outline-none ${
+                      adiantando
+                        ? 'border-brand bg-brand-surface'
+                        : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                    }`}
+                  >
+                    <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-emerald-700">
+                      <CalendarClock size={14} aria-hidden />
+                      Adiantada
+                    </span>
+                    <span className="text-[11px] leading-relaxed text-slate-500">
+                      {EXPLICACAO[DESTINO_ADIANTADA]}
+                    </span>
+                  </button>
                 </div>
+
+                {adiantando && (
+                  <label className="mt-3 block">
+                    <span className="text-[12px] font-medium text-slate-600">
+                      Atendida de fato em
+                    </span>
+                    <input
+                      type="date"
+                      value={dataReal}
+                      onChange={(e) => setDataReal(e.target.value)}
+                      min={agendada ? deslocar(agendada, -MAXIMO_DIAS_ADIANTAMENTO) : undefined}
+                      max={agendada ? deslocar(agendada, MAXIMO_DIAS_ADIANTAMENTO) : undefined}
+                      className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-[13px] tabular-nums text-slate-800 focus:border-slate-400 focus:outline-none sm:w-52"
+                    />
+                    {dataReal !== '' && dataReal === agendada && (
+                      <span className="mt-1 block text-[11px] text-amber-700">
+                        · precisa ser diferente da data agendada
+                      </span>
+                    )}
+                  </label>
+                )}
               </fieldset>
             </>
           )}
@@ -303,7 +387,16 @@ export default function ModalReclassificarSituacao({
               palavra "reclassificar" não sugere que um número do mês muda. */}
           {!desfazendo && destino && (
             <p className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[12px] leading-relaxed text-slate-600">
-              {destino === 'NAO_SOLICITADA' ? (
+              {adiantando ? (
+                <>
+                  Esta sessão deixa de contar como falta em todo o sistema —
+                  assiduidade, reposição e remuneração — e volta à Conferência
+                  {dataRealValida && (
+                    <span className="tabular-nums"> de {formatarBR(dataReal)}</span>
+                  )}
+                  , onde a autorização pode ser vinculada a ela.
+                </>
+              ) : destino === 'NAO_SOLICITADA' ? (
                 <>
                   Esta sessão continua contando como pendência — muda o motivo, não o
                   fato de haver trabalho a fazer.
@@ -343,11 +436,17 @@ export default function ModalReclassificarSituacao({
             className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-[13px] font-semibold text-white disabled:opacity-60 ${
               desfazendo
                 ? 'bg-slate-700 hover:bg-slate-800'
-                : 'bg-amber-600 hover:bg-amber-700'
+                : adiantando
+                  ? 'bg-emerald-600 hover:bg-emerald-700'
+                  : 'bg-amber-600 hover:bg-amber-700'
             }`}
           >
             {salvando && <Loader2 size={15} className="animate-spin" aria-hidden />}
-            {desfazendo ? 'Desfazer reclassificação' : 'Reclassificar'}
+            {desfazendo
+              ? 'Desfazer reclassificação'
+              : adiantando
+                ? 'Registrar adiantamento'
+                : 'Reclassificar'}
           </button>
         </footer>
       </div>
