@@ -33,7 +33,7 @@ export async function listarFaltasAuditoria(data: string): Promise<AuditoriaAssi
     return []
   }
 
-  return (result || []).map((f: { fila_id: string; paciente_id: string; paciente_nome: string; data_atendimento: string; hora_inicial: string; tuss: string; terapia_nome: string; tipo_falta: string; profissional_nome: string | null }) => {
+  return (result || []).map((f: { fila_id: string; paciente_id: string; paciente_nome: string; data_atendimento: string; hora_inicial: string; tuss: string; terapia_nome: string; tipo_falta: string; profissional_nome: string | null; motivo_falta: string | null; justificativa_falta: string | null }) => {
     const isTerapeuta = f.tipo_falta?.toLowerCase().includes('terapeuta')
     const bloco_id = `falta_${f.paciente_id}_${f.data_atendimento}_${f.hora_inicial}_${f.tuss}`
     return {
@@ -93,6 +93,17 @@ export async function listarFaltasAuditoria(data: string): Promise<AuditoriaAssi
       reclassificacao_justificativa: null,
       reclassificacao_por: null,
       reclassificacao_em: null,
+      // O porquê da falta, como escrito. `observacao` acima continua sendo a
+      // frase sintetizada de quem faltou; estes dois são o que a pessoa digitou,
+      // e por isso não substituem aquela nem são substituídos por ela.
+      motivo_falta: f.motivo_falta,
+      justificativa_falta: f.justificativa_falta,
+      // Esta RPC só devolve faltas com `data_atendimento_real IS NULL` — a
+      // sessão adiantada sai daqui e volta como bloco real. Logo, nulo sempre.
+      data_atendimento_real: null,
+      adiantada_justificativa: null,
+      adiantada_por_nome: null,
+      adiantada_em: null,
     }
   })
 }

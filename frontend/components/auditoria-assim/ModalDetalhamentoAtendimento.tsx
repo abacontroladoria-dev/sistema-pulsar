@@ -7,6 +7,7 @@ import {
   Bot,
   Calendar,
   CalendarCheck,
+  CalendarClock,
   CalendarSearch,
   Clock,
   CreditCard,
@@ -22,6 +23,7 @@ import {
   Send,
   ShieldCheck,
   User,
+  UserX,
   Users,
   X,
 } from 'lucide-react'
@@ -222,6 +224,25 @@ export default function ModalDetalhamentoAtendimento({ item, open, onClose, onSa
         em: item.reclassificacao_em,
       }
     : null
+
+  // O adiantamento, quando houver. `data_atendimento_real` era predicado e nunca
+  // valor: ela traz a sessão de volta como bloco (20260916120200) e a remove dos
+  // cartões de falta, mas nada dizia de onde a sessão veio nem quem a moveu.
+  const adiantamento = item.data_atendimento_real
+    ? {
+        real: item.data_atendimento_real,
+        justificativa: item.adiantada_justificativa,
+        por: item.adiantada_por_nome,
+        em: item.adiantada_em,
+      }
+    : null
+
+  // O que a recepção escreveu ao registrar a falta. Distinto de `observacao`,
+  // que nas linhas de falta é a frase sintetizada de QUEM faltou: estes dizem o
+  // que houve, e só existem porque alguém sentou e escreveu.
+  const textoFalta = item.justificativa_falta?.trim() || null
+  const categoriaFalta = item.motivo_falta?.trim() || null
+  const temObservacaoFalta = textoFalta !== null || categoriaFalta !== null
 
   // Numa recusa, o rodapé desta coluna diria o MESMO que o bloco "Resposta da
   // ASSIM" da coluna ao lado — e diria pior: `status_assim` chega truncado da
@@ -460,6 +481,76 @@ export default function ModalDetalhamentoAtendimento({ item, open, onClose, onSa
                 de cima para baixo vê primeiro o desfecho vigente (o "para
                 onde"), depois a explicação de origem (o "o que a ASSIM
                 disse"), na mesma ordem que a `observacao` da RPC já narra. */}
+            {/* ── Sessão adiantada. Sky, e não emerald: emerald está travado em
+                LIBERADA pelo Status Lock Rule do DESIGN.md, e adiantar não
+                libera nada — quem libera é o vínculo com a guia, que é o passo
+                seguinte. Sky já significa "em trânsito", que é o que a sessão
+                passa a estar. Mesma escolha, pela mesma razão, que
+                ModalReclassificarSituacao fez para o destino "Adiantada". */}
+            {adiantamento && (
+              <section className="shrink-0 rounded-xl border border-sky-200 bg-sky-50/40 p-3.5">
+                <h3 className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold text-sky-900">
+                  <CalendarClock size={14} />
+                  Sessão adiantada
+                </h3>
+
+                <p className="mb-2 text-sm text-sky-900">
+                  Agendada para{' '}
+                  <span className="font-semibold tabular-nums">
+                    {formatarData(item.data_atendimento)}
+                  </span>
+                  , atendida em{' '}
+                  <span className="font-semibold tabular-nums">
+                    {formatarData(adiantamento.real)}
+                  </span>
+                  .
+                </p>
+
+                {adiantamento.justificativa && (
+                  <div className="mb-2 rounded-lg border border-sky-200 bg-white px-3 py-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-sky-700">
+                      Justificativa
+                    </p>
+                    <p className="mt-0.5 text-sm leading-snug wrap-break-word text-sky-900">
+                      {adiantamento.justificativa}
+                    </p>
+                  </div>
+                )}
+
+                {adiantamento.por && (
+                  <p className="text-xs leading-relaxed text-sky-800">
+                    Registrado por <span className="font-semibold">{adiantamento.por}</span>
+                    {adiantamento.em ? ` em ${formatarDataHora(adiantamento.em)}` : ''}
+                  </p>
+                )}
+              </section>
+            )}
+
+            {/* ── O que a recepção escreveu ao dar a falta. Stone é a régua das
+                faltas em SituacaoBadge ("não aconteceu"), então a seção que
+                explica uma falta se veste com ela. Sem ícone de alerta: não há
+                nada a decidir aqui, só um fato a ler. */}
+            {temObservacaoFalta && (
+              <section className="shrink-0 rounded-xl border border-stone-200 bg-stone-50/60 p-3.5">
+                <h3 className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold text-stone-800">
+                  <UserX size={14} />
+                  Observação da falta
+                </h3>
+
+                {categoriaFalta && (
+                  <p className="mb-2 text-sm font-medium text-stone-700">{categoriaFalta}</p>
+                )}
+
+                {textoFalta && (
+                  <div className="rounded-lg border border-stone-200 bg-white px-3 py-2">
+                    <p className="text-sm leading-snug wrap-break-word text-stone-800">
+                      {textoFalta}
+                    </p>
+                  </div>
+                )}
+              </section>
+            )}
+
             {reclassificacao && (
               <section className="shrink-0 rounded-xl border border-amber-200 bg-amber-50/40 p-3.5">
                 <h3 className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold text-amber-900">

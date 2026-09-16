@@ -202,6 +202,39 @@ function SidePanel({ atendimento, onReverterFalta }: Props) {
             {motivoGlosa.descricao}
           </p>
         )}
+        {/* O que a recepção escreveu ao dar a falta. Mesmo tratamento do motivo
+            da glosa logo acima, e pela mesma razão: é a explicação em prosa do
+            desfecho, e quem precisa dela precisa dela AQUI, não numa Row de par
+            rótulo/valor lá embaixo, onde texto livre quebra mal.
+
+            Vem antes do botão "Reverter falta" de propósito: explica a falta que
+            o botão desfaz, e ler o porquê antes de decidir desfazer é a ordem
+            natural. Herda o `ui.text` da severidade, como a frase que completa. */}
+        {(atendimento.justificativa_falta || atendimento.motivo_falta) && (
+          <p className={`mt-1.5 text-sm ${ui.text} opacity-90 wrap-break-word`}>
+            {atendimento.motivo_falta && (
+              <span className="font-medium">{atendimento.motivo_falta}</span>
+            )}
+            {atendimento.motivo_falta && atendimento.justificativa_falta && ' · '}
+            {atendimento.justificativa_falta}
+          </p>
+        )}
+
+        {/* A sessão adiantada. Sem ela, a Central mostra uma sessão que não
+            aconteceu no dia em que está listada e não diz que aconteceu noutro.
+            `data_atendimento_real` existe desde 20260916120000 e até aqui era
+            só predicado — nunca chegou a uma tela. */}
+        {atendimento.data_atendimento_real && (
+          <p className={`mt-1.5 text-sm ${ui.text} opacity-90 wrap-break-word`}>
+            Sessão adiantada — atendida em{' '}
+            <span className="font-semibold tabular-nums">
+              {new Date(`${atendimento.data_atendimento_real}T00:00:00`).toLocaleDateString('pt-BR')}
+            </span>
+            {atendimento.adiantada_justificativa ? ` · ${atendimento.adiantada_justificativa}` : ''}
+            {atendimento.adiantada_por_nome ? ` (${atendimento.adiantada_por_nome})` : ''}
+          </p>
+        )}
+
         {atendimento.status_operacional === 'falta_paciente' && onReverterFalta && (
           <Button
             size="sm"

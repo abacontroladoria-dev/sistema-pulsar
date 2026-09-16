@@ -43,6 +43,9 @@ function sessao(p: Partial<AuditoriaAssimItem>): AuditoriaAssimItem {
     token_conferido_em: null, token_conferido_por_nome: null, vinculo: null,
     reclassificacao_situacao_anterior: null, reclassificacao_justificativa: null,
     reclassificacao_por: null, reclassificacao_em: null,
+    motivo_falta: null, justificativa_falta: null,
+    data_atendimento_real: null, adiantada_justificativa: null,
+    adiantada_por_nome: null, adiantada_em: null,
     ...p,
   }
 }

@@ -105,6 +105,36 @@ export type AuditoriaAssimItem = {
   reclassificacao_justificativa: string | null
   reclassificacao_por: string | null
   reclassificacao_em: string | null
+  /**
+   * O que a recepção escreveu ao registrar a falta: `motivo_falta` é a
+   * categoria e `justificativa_falta` o texto livre. Os dois chegam porque nem
+   * toda falta tem os dois, e escolher um perderia o outro sem avisar.
+   *
+   * Não confundir com `observacao`, que nas linhas de falta é uma frase
+   * SINTETIZADA pelo serviço ('Falta do paciente') a partir de `tipo_falta`.
+   * Aquela diz de quem foi a falta; estes dizem o que houve — e só existem
+   * quando alguém sentou e escreveu.
+   *
+   * Nulos em todo bloco sem linha na fila, que é o mesmo caso em que não houve
+   * ninguém para escrever nada.
+   */
+  motivo_falta: string | null
+  justificativa_falta: string | null
+  /**
+   * O adiantamento: a data em que a sessão foi de fato atendida, mais a
+   * justificativa, o autor e o instante do registro.
+   *
+   * `data_atendimento_real` era, até aqui, PREDICADO e nunca valor — é ela que
+   * traz a sessão de volta como bloco (20260916120200) e que a remove dos
+   * cartões de falta. Sem expor o valor, a sessão reaparecia na grade sem dizer
+   * de onde veio nem quem a moveu.
+   *
+   * Nulos em toda sessão não adiantada, que é a esmagadora maioria.
+   */
+  data_atendimento_real: string | null
+  adiantada_justificativa: string | null
+  adiantada_por_nome: string | null
+  adiantada_em: string | null
 }
 
 export type KpisAuditoriaAssim = {

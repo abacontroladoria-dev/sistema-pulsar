@@ -139,7 +139,17 @@ export default function TabelaAuditoria({
               // dito mesmo quando a tentativa terminou em recusa.
               const erroFacial = erroReconhecimentoFacial(item.forma_autorizacao)
               const precisaConferir = temPapelParaConferir(item)
-              const detalhado = Boolean(item.motivo_glosa || item.observacao_manual)
+              // O selo de "tem texto escrito por gente lá dentro". Passa a contar
+              // também a justificativa da falta e a do adiantamento: exigir
+              // explicação de quem registra e escondê-la de quem consulta é o
+              // avesso do que a obrigatoriedade pretendia. Sem isto, só descobre
+              // que há observação quem já abriu o detalhe por outro motivo.
+              const detalhado = Boolean(
+                item.motivo_glosa ||
+                item.observacao_manual ||
+                item.justificativa_falta ||
+                item.adiantada_justificativa
+              )
 
               return (
               <div
