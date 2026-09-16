@@ -439,6 +439,64 @@ export default function DetalheCartao({
         </Secao>
       )}
 
+      {/* ── A sessão adiantada ──────────────────────────────────────────────
+          Vem junto da reclassificação e do vínculo porque responde a mesma
+          pergunta que eles: por que esta linha não é o que a agenda dizia. Sem
+          ela, a sessão reaparece na grade num dia em que a agenda não a tem e
+          nada explica de onde veio — `data_atendimento_real` existia desde
+          20260916120000 e até aqui era só predicado, nunca chegou a uma tela. */}
+      {daSessao?.origem.data_atendimento_real && (
+        <Secao titulo="Sessão adiantada">
+          <Campo rotulo="Agendada para">
+            <span className="tabular-nums">
+              {daSessao.origem.data_atendimento
+                ? formatarDiaComNome(daSessao.origem.data_atendimento)
+                : null}
+            </span>
+          </Campo>
+          <Campo rotulo="Atendida em">
+            <span className="font-semibold tabular-nums">
+              {formatarDiaComNome(daSessao.origem.data_atendimento_real)}
+            </span>
+          </Campo>
+          <Campo rotulo="Registrado por">{daSessao.origem.adiantada_por_nome}</Campo>
+          <Campo rotulo="Registrado em">
+            {daSessao.origem.adiantada_em
+              ? dataHoraDeTimestamptz(daSessao.origem.adiantada_em)
+              : null}
+          </Campo>
+          {daSessao.origem.adiantada_justificativa && (
+            <div className="py-1.5">
+              <p className="text-[11px] text-slate-500">Justificativa</p>
+              <p className="mt-0.5 text-[12px] leading-relaxed text-slate-700">
+                {daSessao.origem.adiantada_justificativa}
+              </p>
+            </div>
+          )}
+        </Secao>
+      )}
+
+      {/* ── O que a recepção escreveu ao dar a falta ─────────────────────────
+          Distinto da narrativa em "Observações" lá embaixo, que é a prosa que a
+          RPC monta sobre o bloco: isto aqui é texto de gente. Exigir
+          justificativa de quem registra e escondê-la de quem consulta é o
+          avesso do que a obrigatoriedade pretendia. */}
+      {daSessao && temAlgum(daSessao.origem.motivo_falta, daSessao.origem.justificativa_falta) && (
+        <Secao titulo="Observação da falta">
+          {daSessao.origem.motivo_falta && (
+            <Campo rotulo="Motivo">{daSessao.origem.motivo_falta}</Campo>
+          )}
+          {daSessao.origem.justificativa_falta && (
+            <div className="py-1.5">
+              <p className="text-[11px] text-slate-500">Justificativa</p>
+              <p className="mt-0.5 text-[12px] leading-relaxed text-slate-700">
+                {daSessao.origem.justificativa_falta}
+              </p>
+            </div>
+          )}
+        </Secao>
+      )}
+
       {motivo && (
         <Secao titulo="Motivo da recusa">
           <div className="py-1.5">
