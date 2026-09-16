@@ -1,16 +1,21 @@
 import type { NextRequest }  from 'next/server'
 import { extractUser }       from '@/lib/central/auth'
 import { mapCentralError }   from '@/lib/central/errors'
-import { ok, badRequest }    from '@/lib/central/response'
+import { ok }                from '@/lib/central/response'
 import { lerAgentSettingsDaOrg } from '@/modules/atendimento/agente/agent-settings'
-import { CAIXAS, isCaixa, filtroDaCaixa, type Caixa } from '@/modules/atendimento/agente/caixas'
+import { CAIXAS, filtroDaCaixa, type Caixa } from '@/modules/atendimento/agente/caixas'
 import { createConversationService } from '@/modules/atendimento/services'
 
-// GET /api/central/conversations/caixas?caixa=ninguem&limit=50
+// GET /api/central/conversations/caixas?limit=50
 //
-// A triagem do atendimento: quantas conversas estão com a Maia, com um humano,
-// largadas (a Maia passou e ninguém pegou) e encerradas — mais a lista da caixa
-// pedida.
+// A triagem do atendimento: as QUATRO filas de uma vez — com a Maia, com um
+// humano, largadas (a Maia passou e ninguém pegou) e encerradas. Cada uma vem
+// com a contagem total e as primeiras `limit` conversas.
+//
+// As quatro juntas, e não uma por vez, porque a tela mostra as quatro colunas
+// lado a lado: pedir uma caixa por requisição seriam quatro idas de rede a cada
+// tique do polling, e as colunas apareceriam em instantes diferentes — a soma na
+// tela poderia não fechar com nenhum estado que o banco teve de fato.
 //
 // POR QUE ESTA ROTA EXISTE, e não um filtro a mais em /conversations:
 //
@@ -26,12 +31,6 @@ import { createConversationService } from '@/modules/atendimento/services'
 export async function GET(request: NextRequest) {
   try {
     const { user, supabase } = await extractUser()
-
-    const caixaRaw = request.nextUrl.searchParams.get('caixa') ?? 'ninguem'
-    if (!isCaixa(caixaRaw)) {
-      return badRequest(`caixa inválida: ${caixaRaw} (use ${CAIXAS.join(', ')})`)
-    }
-    const caixa: Caixa = caixaRaw
 
     const limiteRaw = Number(request.nextUrl.searchParams.get('limit') ?? 50)
     const limit = Number.isFinite(limiteRaw) ? Math.min(Math.max(limiteRaw, 1), 100) : 50
@@ -58,32 +57,48 @@ export async function GET(request: NextRequest) {
         aiModeIn:       f.aiModeIn,
         assignedUserId: f.responsavel === 'nenhum' ? null : undefined,
         responsavel:    f.responsavel === 'qualquer' ? ('qualquer' as const) : undefined,
+        // As três caixas vivas são FILA: no topo quem espera há mais tempo.
+        // "Encerradas" não é fila, é histórico — e histórico se consulta do fim
+        // para trás ("o que acabou de fechar"), então ela mantém a ordem do
+        // inbox. A tela rotula as duas ordens, para a inversão não parecer
+        // defeito de quem lê as colunas lado a lado.
+        ordem: (c === 'encerradas' ? 'recente' : 'espera') as 'recente' | 'espera',
+        limit,
       }
     }
 
-    // As quatro contagens e a lista da caixa aberta, em paralelo. As contagens
-    // usam head:true — não trazem linha nenhuma.
-    const [maia, humano, ninguem, encerradas, lista] = await Promise.all([
-      service.contar(paraFiltro('maia')),
-      service.contar(paraFiltro('humano')),
-      service.contar(paraFiltro('ninguem')),
-      service.contar(paraFiltro('encerradas')),
-      service.list({ ...paraFiltro(caixa), limit }),
+    // As quatro filas em paralelo. Sem `contar()` à parte: `list` já devolve o
+    // `count` exato do mesmo recorte, então o número do cabeçalho e as linhas da
+    // coluna vêm da MESMA consulta e não têm como divergir — nem por diferença
+    // de filtro, nem por escrita que caia entre duas consultas.
+    const [maia, humano, ninguem, encerradas] = await Promise.all([
+      service.list(paraFiltro('maia')),
+      service.list(paraFiltro('humano')),
+      service.list(paraFiltro('ninguem')),
+      service.list(paraFiltro('encerradas')),
     ])
+
+    const caixas = { maia, humano, ninguem, encerradas }
 
     // A metadata da triagem vai no corpo, não no slot de paginação do `ok()`:
     // aquele parâmetro é só paginação, e é usado por todas as rotas da Central.
-    // Alargá-lo para caber contagens de caixa faria o tipo compartilhado carregar
-    // um conceito que só esta rota tem.
+    // Alargá-lo para caber as caixas faria o tipo compartilhado carregar um
+    // conceito que só esta rota tem.
     return ok({
-      conversas: lista.data,
-      caixa,
+      // `total` é a contagem REAL da caixa; `conversas` traz no máximo `limit`.
+      // Os dois separados de propósito: a coluna avisa quantas não coube exibir,
+      // e o número do topo nunca mente por causa do teto da lista.
+      caixas: Object.fromEntries(
+        CAIXAS.map(c => [c, {
+          conversas: caixas[c].data,
+          total:     caixas[c].count,
+        }]),
+      ),
       // A origem do recorte vai junto: com o padrão da clínica em 'off', a caixa
       // "Maia" só tem as conversas ligadas na mão — e quem olha a tela merece
       // saber que o número pequeno é isso, não falta de movimento.
       modoPadrao,
-      contagens: { maia, humano, ninguem, encerradas },
-      total:     lista.count,
+      limit,
     })
   } catch (err) {
     return mapCentralError(err)

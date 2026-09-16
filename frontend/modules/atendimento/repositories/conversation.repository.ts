@@ -41,6 +41,15 @@ export interface ListConversationsFilters {
   // pergunta para os valores concretos de coluna que a satisfazem; o
   // repositório não conhece agent_settings.
   aiModeIn?:       (AIMode | null)[]
+  // Ordem por `last_message_at`. O default 'recente' é o do inbox: a conversa
+  // que acabou de se mexer no topo.
+  //
+  // 'espera' inverte, e é a ordem de FILA: no topo fica a conversa cuja última
+  // mensagem é a mais antiga — ou seja, quem está esperando há mais tempo. É o
+  // oposto do inbox de propósito. O inbox mostra movimento; uma fila de triagem
+  // tem que mostrar abandono, e a conversa esquecida há quatro horas é
+  // exatamente a que o inbox empurra para o fim da lista, onde ninguém olha.
+  ordem?:          'recente' | 'espera'
   limit?:          number   // default 30
   offset?:         number   // default 0
 }
@@ -153,7 +162,15 @@ export class ConversationRepository {
       .from('conversations')
       .select('*', { count: 'exact' })
       .eq('organization_id', filters.orgId)
-      .order('last_message_at', { ascending: false, nullsFirst: false })
+      // `nullsFirst: false` nas DUAS ordens, e não é simetria à toa: uma conversa
+      // sem `last_message_at` é uma conversa sem mensagem nenhuma, e ela não
+      // espera há infinito — não espera por nada. Com `nullsFirst: true` na ordem
+      // de espera, essas linhas ocupariam o topo da fila e empurrariam para baixo
+      // justamente quem está esperando de verdade.
+      .order('last_message_at', {
+        ascending: filters.ordem === 'espera',
+        nullsFirst: false,
+      })
       .range(offset, offset + limit - 1)
 
     if (filters.inboxId) {
