@@ -48,7 +48,11 @@ export interface UpdateContactInput {
   display_email?: string
   contact_type?:  ContactType
   status?:        ContactStatus
-  source?:        string
+  // `null` grava NULL na coluna; ausente deixa como está. O `update()` abaixo
+  // testa `!== undefined` justamente para manter essa diferença — é o que
+  // permite LIMPAR a origem de um contato, e não só sobrescrevê-la.
+  source?:        string | null
+  tags?:          string[] | null
   is_provisional?:boolean
 }
 
@@ -193,6 +197,7 @@ export class ContactRepository {
     if (input.contact_type   !== undefined) patch.contact_type   = input.contact_type
     if (input.status         !== undefined) patch.status         = input.status
     if (input.source         !== undefined) patch.source         = input.source
+    if (input.tags           !== undefined) patch.tags           = input.tags
     if (input.is_provisional !== undefined) patch.is_provisional = input.is_provisional
 
     const { data, error } = await (this.supabase as any)

@@ -162,7 +162,11 @@ export function toUIConversation(
     // UI não desenha a badge. Um número inventado faria o operador confiar e
     // deixar de abrir a conversa que tem mensagem nova de verdade.
     unreadCount:  0,
-    // central.conversations não tem tags.
+    // Vazio de propósito, e não por ausência de dado: as colunas `tags`
+    // existem (em conversations E em contacts, TEXT[] desde a 20260701010000),
+    // mas as tags do produto vivem no CONTATO e quem as mostra é o painel de
+    // detalhamento, que lê o `central` cru. A lista de conversas não as desenha
+    // em lugar nenhum — preenchê-las aqui seria carregar dado para ninguém.
     tags:         [],
     messages:     uiMensagens,
     lastMessage:  ultima?.content || 'Sem mensagens',

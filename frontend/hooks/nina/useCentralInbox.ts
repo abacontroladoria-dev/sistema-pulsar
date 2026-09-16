@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import type {
   AIMode,
+  Channel,
   Conversation,
   Message,
   Contact,
@@ -75,8 +76,14 @@ async function buscar<T>(url: string, signal: AbortSignal): Promise<T> {
 }
 
 // A resposta de GET /conversations/[id] — conversa com os vizinhos embutidos.
-interface DetalheConversa extends Conversation {
+//
+// `channel` e `inbox` são recortes da rota, não as entidades inteiras: o SELECT
+// de lá (conversations/[id]/route.ts:39,46) pede colunas nomeadas. Declarar
+// Channel completo aqui prometeria campos que não vêm.
+export interface DetalheConversa extends Conversation {
   contact:         Contact | null
+  channel:         Pick<Channel, 'id' | 'name' | 'provider' | 'channel_type' | 'status'> | null
+  inbox:           { id: string; name: string; description: string | null } | null
   recentMessages:  Message[]
   // Herança já resolvida pelo servidor. `ai_mode` da conversa pode ser NULL
   // ("ninguém decidiu, vale o padrão da clínica") e só o backend enxerga o
@@ -117,6 +124,12 @@ export interface UseCentralInbox {
   modoIa:        ModoIa | null
   definirModoIa: (modo: AIMode | null) => Promise<void>
   salvandoModo:  boolean
+  // A conversa como o `central` a descreve, para o painel de detalhamento.
+  // Chega na mesma resposta do chat — nenhuma requisição a mais.
+  detalhe:       DetalheConversa | null
+  // Para o painel refletir o que ele mesmo gravou (origem, tags, responsável)
+  // sem esperar até 5s pelo próximo tique do polling.
+  recarregarDetalhe: () => Promise<void>
 }
 
 export function useCentralInbox(): UseCentralInbox {
@@ -129,6 +142,7 @@ export function useCentralInbox(): UseCentralInbox {
   const [enviando, setEnviando]           = useState(false)
   const [modoIa, setModoIa]               = useState<ModoIa | null>(null)
   const [salvandoModo, setSalvandoModo]   = useState(false)
+  const [detalhe, setDetalhe]             = useState<DetalheConversa | null>(null)
 
   // Link de fora: /connect/inbox?c=<id> abre aquela conversa. É como a triagem
   // (/connect/atendimentos) entrega a conversa ao chat em vez de duplicá-lo.
@@ -200,6 +214,10 @@ export function useCentralInbox(): UseCentralInbox {
       // tela do Nina não tem, e enfiá-los no tipo da UI misturaria os dois
       // vocabulários que o adapter existe para manter separados.
       modo: { modo: d.aiModeEfetivo, origem: d.aiModeOrigem, daConversa: d.ai_mode },
+      // O painel de detalhamento fala `central`, não Nina: precisa de canal,
+      // origem, responsável e tags, que o adapter não carrega. Este é o mesmo
+      // objeto que já vinha da rota — antes era descartado depois do adapter.
+      detalhe: d,
     }
   }, [])
 
@@ -217,10 +235,11 @@ export function useCentralInbox(): UseCentralInbox {
 
     async function carregar() {
       try {
-        const { chat, modo } = await carregarDetalhe(selectedId!, controller.signal)
+        const { chat, modo, detalhe: d } = await carregarDetalhe(selectedId!, controller.signal)
         if (!vivo) return
         setActiveChat(chat)
         setModoIa(modo)
+        setDetalhe(d)
         setErro(null)
       } catch (e) {
         if (!vivo || (e as Error).name === 'AbortError') return
@@ -243,6 +262,9 @@ export function useCentralInbox(): UseCentralInbox {
     // Pelo mesmo motivo: o botão mostrando "Maia" da conversa anterior enquanto
     // a nova carrega convida a recepcionista a desligar a IA da pessoa errada.
     setModoIa(null)
+    // E pelo mesmo motivo outra vez: o painel exibindo as tags e o responsável
+    // do contato anterior faria o operador editar a ficha da pessoa errada.
+    setDetalhe(null)
   }, [])
 
   // ------------------------------------------------------------------------
@@ -274,10 +296,15 @@ export function useCentralInbox(): UseCentralInbox {
 
       // Refetch em vez de empurrar a resposta na lista local: o poll de 5s
       // sobrescreveria o otimismo e as duas versões divergiriam por segundos.
+      //
+      // Aqui o refetch também atualiza o painel: enviar assume a conversa
+      // (assumirAoResponder), então o bloco Responsável muda por causa deste
+      // envio e precisa mostrar o novo dono sem esperar o próximo tique.
       const controller = new AbortController()
-      const { chat, modo } = await carregarDetalhe(selectedId, controller.signal)
+      const { chat, modo, detalhe: d } = await carregarDetalhe(selectedId, controller.signal)
       setActiveChat(chat)
       setModoIa(modo)
+      setDetalhe(d)
     } finally {
       setEnviando(false)
     }
@@ -305,12 +332,37 @@ export function useCentralInbox(): UseCentralInbox {
       // Refetch em vez de atualizar o estado local: a herança é resolvida no
       // servidor, então mandar `null` aqui não diz qual modo passou a valer —
       // só o backend sabe o que o agent_settings responde.
+      //
+      // O painel depende deste refetch por outro motivo: religar a Maia SOLTA o
+      // responsável (setAiMode), então o bloco Responsável precisa esvaziar no
+      // mesmo instante em que a chave muda de lado.
       const controller = new AbortController()
-      const { chat, modo: atual } = await carregarDetalhe(selectedId, controller.signal)
+      const { chat, modo: atual, detalhe: d } = await carregarDetalhe(selectedId, controller.signal)
       setActiveChat(chat)
       setModoIa(atual)
+      setDetalhe(d)
     } finally {
       setSalvandoModo(false)
+    }
+  }, [selectedId, carregarDetalhe])
+
+  // ------------------------------------------------------------------------
+  // Recarga sob demanda
+
+  // Chamada pelo painel depois de gravar. Falha em silêncio de propósito: o
+  // painel já reportou o erro da própria escrita, e mandar o erro de um refetch
+  // para `erro` pintaria a tela inteira de "Sem acesso" por causa de um tique
+  // perdido. Se este refetch falhar, o polling de 5s corrige sozinho.
+  const recarregarDetalhe = useCallback(async () => {
+    if (!selectedId) return
+    const controller = new AbortController()
+    try {
+      const { chat, modo, detalhe: d } = await carregarDetalhe(selectedId, controller.signal)
+      setActiveChat(chat)
+      setModoIa(modo)
+      setDetalhe(d)
+    } catch {
+      /* o polling corrige */
     }
   }, [selectedId, carregarDetalhe])
 
@@ -318,5 +370,6 @@ export function useCentralInbox(): UseCentralInbox {
     conversations, activeChat, selectedId, select,
     loading, loadingChat, erro, enviar, enviando,
     modoIa, definirModoIa, salvandoModo,
+    detalhe, recarregarDetalhe,
   }
 }

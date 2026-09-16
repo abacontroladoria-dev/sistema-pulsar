@@ -2,11 +2,15 @@
 
 import React, { useState, useRef, useEffect } from 'react'
 import {
-  Search, MessageSquare, Loader2, Mail, Phone, Users, Info, X, Bot, User, Pause, Brain, Plus, Send, Play, Check, CheckCheck, ShieldAlert, AlertCircle, WifiOff
+  Search, MessageSquare, Loader2, Info, Bot, User, Pause, Send, Check, CheckCheck, ShieldAlert, AlertCircle, WifiOff
 } from 'lucide-react'
 import { ConversationStatus, MessageDirection } from '@/types/nina'
 import { useCentralInbox, type ModoIa } from '@/hooks/nina/useCentralInbox'
-import { iniciais, rotuloTipoContato, type NinaMessage } from './adapters/centralToNina'
+import { usePainelDetalhamento } from '@/hooks/nina/usePainelDetalhamento'
+import { Avatar } from './Avatar'
+import { PainelDetalhamento } from './detalhamento/PainelDetalhamento'
+import { ModalAgendarRetorno } from './detalhamento/ModalAgendarRetorno'
+import { ModalDesignarTarefa } from './detalhamento/ModalDesignarTarefa'
 import { Button } from './Button'
 import { toast } from 'sonner'
 
@@ -15,7 +19,15 @@ const ChatInterface: React.FC = () => {
     conversations, activeChat, selectedId, select,
     loading, erro, enviar, enviando,
     modoIa, definirModoIa, salvandoModo,
+    detalhe, recarregarDetalhe,
   } = useCentralInbox()
+
+  // Fontes do painel que não vêm no detalhe da conversa (catálogo de tags,
+  // usuários, agendamentos, tarefas). Fora do polling — ver o hook.
+  const painel = usePainelDetalhamento(detalhe?.contact?.id ?? null)
+  const [salvandoResponsavel, setSalvandoResponsavel] = useState(false)
+  const [agendando, setAgendando] = useState(false)
+  const [designando, setDesignando] = useState(false)
 
   const [inputText, setInputText] = useState('')
   const [showProfileInfo, setShowProfileInfo] = useState(true)
@@ -72,6 +84,158 @@ const ChatInterface: React.FC = () => {
     try {
       await definirModoIa(ligar ? 'autonomous' : 'off')
       toast.success(ligar ? 'A Maia voltou a atender esta conversa.' : 'A Maia parou. O atendimento é seu.')
+    } catch (err) {
+      toast.error((err as Error).message)
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // Escritas do painel de detalhamento
+  //
+  // Todas seguem a mesma forma: grava, recarrega o detalhe, avisa. Nenhuma
+  // atualiza estado local com o valor enviado — o que vale é o que o servidor
+  // devolve. Isso importa porque estas três coisas mudam por caminhos que não
+  // passam pelo painel (responder assume a conversa; religar a Maia a solta).
+  // --------------------------------------------------------------------------
+
+  const patchContato = async (corpo: Record<string, unknown>) => {
+    const contatoId = detalhe?.contact?.id
+    if (!contatoId) throw new Error('Esta conversa não tem contato.')
+
+    const res = await fetch(`/api/central/contacts/${contatoId}`, {
+      method:  'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(corpo),
+    })
+    if (!res.ok) {
+      const json = await res.json().catch(() => null)
+      throw new Error(json?.error?.message ?? `A gravação falhou com ${res.status}.`)
+    }
+    await recarregarDetalhe()
+  }
+
+  const handleSalvarOrigem = async (valor: string | null) => {
+    try {
+      await patchContato({ source: valor })
+      toast.success(valor ? 'Origem registrada.' : 'Origem apagada.')
+    } catch (err) {
+      toast.error((err as Error).message)
+      // Repropaga para o bloco manter o campo aberto com o texto digitado:
+      // fechar depois de falhar faria a pessoa redigitar do zero.
+      throw err
+    }
+  }
+
+  const handleSalvarTags = async (chaves: string[]) => {
+    try {
+      await patchContato({ tags: chaves })
+    } catch (err) {
+      toast.error((err as Error).message)
+    }
+  }
+
+  const handleTrocarResponsavel = async (userId: string | null) => {
+    if (!selectedId) return
+    setSalvandoResponsavel(true)
+    try {
+      // 'assign' com toUserId null devolve a conversa à fila. É a mesma ação do
+      // caminho de volta da chave Maia, e reusa a auditoria que já existe.
+      const res = await fetch(`/api/central/conversations/${selectedId}`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ action: 'assign', toUserId: userId }),
+      })
+      if (!res.ok) {
+        const json = await res.json().catch(() => null)
+        throw new Error(json?.error?.message ?? `A atribuição falhou com ${res.status}.`)
+      }
+      await recarregarDetalhe()
+      toast.success(userId ? 'Responsável atualizado.' : 'Conversa devolvida à fila.')
+    } catch (err) {
+      toast.error((err as Error).message)
+    } finally {
+      setSalvandoResponsavel(false)
+    }
+  }
+
+  const handleAgendarRetorno = async (dados: {
+    titulo: string; data: string; hora: string | null; descricao: string | null
+  }) => {
+    const contatoId = detalhe?.contact?.id
+    if (!contatoId) return
+
+    try {
+      const res = await fetch('/api/central/appointments', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        // Sem `profissionalId`: a rota distingue reserva de vaga real de
+        // compromisso administrativo por esse campo. Este é um lembrete de
+        // contato, não uma sessão na grade.
+        body: JSON.stringify({
+          titulo:         dados.titulo,
+          data:           dados.data,
+          hora:           dados.hora,
+          descricao:      dados.descricao,
+          tipo:           'followup',
+          contactId:      contatoId,
+          conversationId: selectedId,
+        }),
+      })
+      if (!res.ok) {
+        const json = await res.json().catch(() => null)
+        throw new Error(json?.error?.message ?? `O agendamento falhou com ${res.status}.`)
+      }
+      await painel.recarregarListas()
+      setAgendando(false)
+      toast.success('Retorno agendado.')
+    } catch (err) {
+      // O modal fica ABERTO: os campos preenchidos continuam lá para corrigir
+      // e tentar de novo, em vez de obrigar a redigitar tudo.
+      toast.error((err as Error).message)
+    }
+  }
+
+  const handleDesignarTarefa = async (dados: {
+    title: string; description: string | null
+    assignedUserId: string | null; dueAt: string | null
+  }) => {
+    const contatoId = detalhe?.contact?.id
+    if (!contatoId) return
+
+    try {
+      const res = await fetch('/api/central/tasks', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        // Os dois vínculos: o contato é por quem o painel busca (a pendência é
+        // da pessoa e sobrevive à conversa ser resolvida), a conversa é o link
+        // de volta ao contexto em que a tarefa nasceu.
+        body: JSON.stringify({ ...dados, contactId: contatoId, conversationId: selectedId }),
+      })
+      if (!res.ok) {
+        const json = await res.json().catch(() => null)
+        throw new Error(json?.error?.message ?? `A criação falhou com ${res.status}.`)
+      }
+      await painel.recarregarListas()
+      setDesignando(false)
+      toast.success('Tarefa criada.')
+    } catch (err) {
+      toast.error((err as Error).message)
+    }
+  }
+
+  const handleConcluirTarefa = async (id: string) => {
+    try {
+      const res = await fetch(`/api/central/tasks/${id}`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ action: 'complete' }),
+      })
+      if (!res.ok) {
+        const json = await res.json().catch(() => null)
+        throw new Error(json?.error?.message ?? `A conclusão falhou com ${res.status}.`)
+      }
+      await painel.recarregarListas()
+      toast.success('Tarefa concluída.')
     } catch (err) {
       toast.error((err as Error).message)
     }
@@ -227,11 +391,28 @@ const ChatInterface: React.FC = () => {
                 </div>
               </div>
 
-              <ChaveAtendimento
-                modo={modoIa}
-                salvando={salvandoModo}
-                aoTrocar={handleTrocarModo}
-              />
+              <div className="flex items-center gap-2 shrink-0">
+                <ChaveAtendimento
+                  modo={modoIa}
+                  salvando={salvandoModo}
+                  aoTrocar={handleTrocarModo}
+                />
+
+                {/* O X do painel só escondia, e não havia como trazê-lo de
+                    volta sem recarregar a página. Com seis blocos de ficha lá
+                    dentro, fechar por engano custava caro demais. */}
+                {!showProfileInfo && (
+                  <button
+                    type="button"
+                    onClick={() => setShowProfileInfo(true)}
+                    title="Abrir o detalhamento"
+                    aria-label="Abrir o detalhamento"
+                    className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
+                  >
+                    <Info className="w-5 h-5" />
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar relative z-0">
@@ -328,56 +509,47 @@ const ChatInterface: React.FC = () => {
           </div>
 
           {showProfileInfo && (
-            <div className="w-80 border-l border-slate-800 bg-slate-900/95 flex-shrink-0 flex flex-col overflow-hidden">
-              <div className="h-16 flex items-center justify-between px-6 border-b border-slate-800 flex-shrink-0">
-                <span className="font-semibold text-white">Informações do Lead</span>
-                <button
-                  onClick={() => setShowProfileInfo(false)}
-                  className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
+            <PainelDetalhamento
+              detalhe={detalhe}
+              maiaAtendendo={modoIa?.modo === 'autonomous' || modoIa?.modo === 'assisted'}
+              dados={{
+                catalogoTags:     painel.catalogoTags,
+                usuarios:         painel.usuarios,
+                agendamentos:     painel.agendamentos,
+                tarefas:          painel.tarefas,
+                carregandoListas: painel.carregandoListas,
+              }}
+              acoes={{
+                salvarOrigem:        handleSalvarOrigem,
+                salvarTags:          handleSalvarTags,
+                trocarResponsavel:   handleTrocarResponsavel,
+                salvandoResponsavel,
+                agendarRetorno:      () => setAgendando(true),
+                designarTarefa:      () => setDesignando(true),
+                concluirTarefa:      handleConcluirTarefa,
+              }}
+              aoFechar={() => setShowProfileInfo(false)}
+            />
+          )}
 
-              <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-8">
-                <div className="flex flex-col items-center text-center">
-                  <div className="w-24 h-24 rounded-full p-1 bg-gradient-to-tr from-cyan-500 to-teal-600 shadow-xl mb-4">
-                    <div className="w-full h-full rounded-full overflow-hidden border-2 border-slate-900">
-                      <Avatar url={activeChat.contactAvatar} nome={activeChat.contactName} />
-                    </div>
-                  </div>
-                  <h3 className="text-xl font-bold text-white mb-1">{activeChat.contactName}</h3>
-                  {/* Era "Lead Qualificado" fixo — decoração. Agora é
-                      contact_type do banco, que diz quem de fato está
-                      escrevendo (responsável, paciente, primeiro contato). */}
-                  <p className="text-sm text-slate-400 mb-4">{activeChat.rotuloTipo}</p>
-                </div>
+          {/* Montado só quando aberto: o modal semeia os campos no primeiro
+              render, e mantê-lo montado guardaria o formulário de um contato
+              anterior. */}
+          {agendando && detalhe?.contact && (
+            <ModalAgendarRetorno
+              nomeContato={detalhe.contact.name?.trim() || 'Contato sem nome'}
+              aoFechar={() => setAgendando(false)}
+              aoConfirmar={handleAgendarRetorno}
+            />
+          )}
 
-                <div className="space-y-4">
-                  <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Dados de Contato</h4>
-                  <div className="flex items-center gap-3 text-sm">
-                    <div className="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center text-slate-400">
-                      <Phone className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <span className="text-xs text-slate-500">Telefone</span>
-                      <div className="text-slate-200 font-medium">{activeChat.contactPhone}</div>
-                    </div>
-                  </div>
-                  {activeChat.contactEmail && (
-                    <div className="flex items-center gap-3 text-sm">
-                      <div className="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center text-slate-400">
-                        <Mail className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <span className="text-xs text-slate-500">Email</span>
-                        <div className="text-slate-200 font-medium">{activeChat.contactEmail}</div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
+          {designando && detalhe?.contact && (
+            <ModalDesignarTarefa
+              nomeContato={detalhe.contact.name?.trim() || 'Contato sem nome'}
+              usuarios={painel.usuarios}
+              aoFechar={() => setDesignando(false)}
+              aoConfirmar={handleDesignarTarefa}
+            />
           )}
         </div>
       ) : (
@@ -396,26 +568,6 @@ const ChatInterface: React.FC = () => {
           </div>
         </div>
       )}
-    </div>
-  )
-}
-
-// `avatar_url` é nullable no banco e o caminho /assets/default-avatar.png que o
-// transform legado usava não existe no projeto — apontar <img> para ele daria
-// ícone de imagem quebrada em toda linha da lista. Sem url, desenha iniciais.
-const Avatar: React.FC<{ url: string; nome: string }> = ({ url, nome }) => {
-  if (url) {
-    return (
-      <img
-        src={url}
-        alt={nome}
-        className="w-full h-full rounded-full object-cover border border-slate-800"
-      />
-    )
-  }
-  return (
-    <div className="w-full h-full rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400 text-xs font-semibold">
-      {iniciais(nome)}
     </div>
   )
 }

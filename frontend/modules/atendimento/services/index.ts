@@ -14,12 +14,18 @@ import { AppointmentRepository }  from '../repositories/appointment.repository'
 import { AvailabilityRepository } from '../repositories/availability.repository'
 import { AgentSettingsRepository }    from '../repositories/agent-settings.repository'
 import { AgentCredentialsRepository } from '../repositories/agent-credentials.repository'
+import { TagDefinitionRepository }    from '../repositories/tag-definition.repository'
+import { CentralUserRepository }      from '../repositories/central-user.repository'
+import { TaskRepository }             from '../repositories/task.repository'
 
 import { ConversationService }  from './conversation.service'
 import { MessageService }       from './message.service'
 import { ContactService }       from './contact.service'
 import { AppointmentService }   from './appointment.service'
 import { AgentSettingsService } from './agent-settings.service'
+import { TagDefinitionService } from './tag-definition.service'
+import { CentralUserService }   from './central-user.service'
+import { TaskService }          from './task.service'
 
 import { MetaWabaProvider } from '../providers/meta-waba.provider'
 
@@ -157,6 +163,10 @@ export function createContactService(userClient: SupabaseClient): ContactService
   return new ContactService(
     new ContactRepository(userClient),
     new AuditRepository(supabaseService),   // sempre service role
+    // Para validar as chaves de `tags` contra o catálogo da organização antes
+    // de gravá-las. Sem ele o service RECUSA tags — a coluna é TEXT[] e o banco
+    // aceitaria qualquer string.
+    new TagDefinitionService(new TagDefinitionRepository(userClient)),
   )
 }
 
@@ -214,6 +224,34 @@ export function createAgentSettingsSystemService(): AgentSettingsService {
   )
 }
 
+// createTagDefinitionService(userClient):
+//   Catálogo de tags. RLS do usuário aplicada — é tabela de `central` e as
+//   policies já restringem por organização.
+export function createTagDefinitionService(userClient: SupabaseClient): TagDefinitionService {
+  return new TagDefinitionService(new TagDefinitionRepository(userClient))
+}
+
+// createCentralUserService():
+//   Não recebe client: usa service role OBRIGATORIAMENTE. A RLS de
+//   public.usuarios só deixa um admin do Pulsar ver os colegas ("Admin pode ver
+//   todos usuarios"), então com o client do usuário um `director` da Central
+//   veria apenas a si mesmo e o seletor de responsável chegaria com um nome só.
+//   O recorte por organização passa a ser do caller, que sempre informa o
+//   `orgId` vindo da sessão — nunca de parâmetro da requisição.
+export function createCentralUserService(): CentralUserService {
+  return new CentralUserService(new CentralUserRepository(supabaseService))
+}
+
+// createTaskService(userClient):
+//   Tarefas de atendimento. RLS do usuário aplicada — as policies de
+//   central.tasks restringem por organização e papel na Central.
+export function createTaskService(userClient: SupabaseClient): TaskService {
+  return new TaskService(
+    new TaskRepository(userClient),
+    new AuditRepository(supabaseService),   // sempre service role
+  )
+}
+
 // Exportar para permitir que Sprint 2 registre providers no bootstrap
 export { providerFactory }
 
@@ -223,3 +261,6 @@ export { MessageService }       from './message.service'
 export { ContactService }       from './contact.service'
 export { AppointmentService }   from './appointment.service'
 export { AgentSettingsService } from './agent-settings.service'
+export { TagDefinitionService } from './tag-definition.service'
+export { CentralUserService }   from './central-user.service'
+export { TaskService }          from './task.service'

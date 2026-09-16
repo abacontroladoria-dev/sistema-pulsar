@@ -119,6 +119,14 @@ export interface UpdateContactBody {
   displayEmail?: string
   contactType?:  ContactType
   status?:       ContactStatus
+  // `null` é significativo nestes dois, e por isso o tipo não é só `string`:
+  // ausente = "não mexa neste campo"; null = "apague o que está lá". Sem essa
+  // distinção não haveria como limpar a origem depois de preenchê-la errado.
+  source?:       string | null
+  // Substituição TOTAL do array. Não existe "adicionar uma tag": o cliente
+  // manda a lista completa que deve valer. Um add incremental, com o polling de
+  // 5s no meio, ressuscitaria a tag que o clique anterior tirou.
+  tags?:         string[] | null
 }
 
 export function parseUpdateContactBody(body: unknown): ParseResult<UpdateContactBody> {
@@ -147,6 +155,26 @@ export function parseUpdateContactBody(body: unknown): ParseResult<UpdateContact
     errors.push(`status inválido`)
   }
 
+  if (b.source !== undefined && b.source !== null) {
+    if (typeof b.source !== 'string')  errors.push('source deve ser string ou null')
+    else if (b.source.length > 120)    errors.push('source excede 120 caracteres')
+  }
+
+  // Só a FORMA é checada aqui. Se cada chave existe no catálogo da organização
+  // é pergunta para o banco, e o DTO não tem — nem deve ter — conexão. Essa
+  // validação é do TagDefinitionService.
+  if (b.tags !== undefined && b.tags !== null) {
+    if (!Array.isArray(b.tags)) {
+      errors.push('tags deve ser um array de strings ou null')
+    } else if (b.tags.some(t => typeof t !== 'string')) {
+      errors.push('tags deve conter apenas strings')
+    } else if (b.tags.length > 30) {
+      // Teto de sanidade: 30 é o dobro do catálogo inteiro. Sem limite, um
+      // cliente com defeito escreveria um array de milhares na linha do contato.
+      errors.push('tags excede 30 itens')
+    }
+  }
+
   if (errors.length) return { ok: false, errors }
   return {
     ok: true,
@@ -156,6 +184,10 @@ export function parseUpdateContactBody(body: unknown): ParseResult<UpdateContact
       displayEmail: b.displayEmail as string | undefined,
       contactType:  b.contactType  as ContactType | undefined,
       status:       b.status       as ContactStatus | undefined,
+      // `in` e não `?? undefined`: `null` precisa sobreviver até o service, e
+      // um `??` o converteria de volta em "não enviado".
+      ...('source' in b ? { source: b.source as string | null } : {}),
+      ...('tags'   in b ? { tags:   b.tags   as string[] | null } : {}),
     },
   }
 }

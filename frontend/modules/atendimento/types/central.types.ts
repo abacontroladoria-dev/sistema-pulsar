@@ -147,6 +147,10 @@ export interface Conversation {
   // "desligada de propósito" precisam ser distinguíveis — sem isso, o padrão da
   // organização não alcançaria conversa nenhuma.
   ai_mode:          AIMode | null
+  // Chaves de central.tag_definitions. A migration 20260701010000 escolheu
+  // TEXT[] em vez de tabela de junção, e deixou a validação das chaves para a
+  // aplicação — o banco aceita qualquer string aqui.
+  tags:             string[] | null
   last_message_at:  string | null
   resolved_at:      string | null
   archived_at:      string | null
@@ -201,6 +205,10 @@ export interface Contact {
   contact_type:           ContactType
   status:                 ContactStatus
   source:                 string | null
+  // Ver a nota em Conversation.tags. As tags do painel de detalhamento vivem
+  // AQUI, e não na conversa: descrevem a pessoa ('convênio', 'particular'), e
+  // acompanham-na quando ela volta meses depois numa conversa nova.
+  tags:                   string[] | null
   avatar_url:             string | null
   is_provisional:         boolean
   merged_into_contact_id: string | null
@@ -208,6 +216,21 @@ export interface Contact {
   deleted_at:             string | null
   created_at:             string
   updated_at:             string
+}
+
+// Catálogo de tags reutilizáveis da organização (central.tag_definitions,
+// migration 20260701010000). `key` é o que fica gravado em contacts.tags /
+// conversations.tags; `label` é o que a tela mostra; `color` é hex (#rrggbb).
+export interface TagDefinition {
+  id:              string
+  organization_id: string
+  key:             string
+  label:           string
+  color:           string | null
+  category:        string | null
+  is_active:       boolean
+  created_at:      string
+  updated_at:      string
 }
 
 export interface ContactIdentifier {
@@ -368,6 +391,30 @@ export interface Appointment {
   tita_paciente_id:  number | null
   created_at:        string
   updated_at:        string
+}
+
+// central.tasks — o que ficou pendente com um contato.
+export type TaskStatus = 'pending' | 'done' | 'cancelled'
+
+export interface Task {
+  id:               string
+  organization_id:  string
+  // Ambos nullable, com CHECK exigindo ao menos um (ck_tasks_vinculo). Espelha
+  // central.appointments: a tarefa é sobre a PESSOA ("ligar para a mãe do
+  // João"), e amarrá-la só à conversa a faria sumir quando esta fosse resolvida.
+  contact_id:       string | null
+  conversation_id:  string | null
+  title:            string
+  description:      string | null
+  // Sem FK para public.usuarios — nenhuma tabela de `central` referencia o
+  // schema public (conversations.assigned_user_id também é uuid solto).
+  assigned_user_id: string | null
+  due_at:           string | null
+  status:           TaskStatus
+  completed_at:     string | null
+  created_by:       string
+  created_at:       string
+  updated_at:       string
 }
 
 // Retorno de central.listar_vagas_disponiveis.

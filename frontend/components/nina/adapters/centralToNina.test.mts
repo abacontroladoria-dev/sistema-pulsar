@@ -63,7 +63,7 @@ function conv(over: Partial<Conversation> = {}): Conversation {
   return {
     id: 'c1', organization_id: 'o1', inbox_id: 'i1', channel_id: 'ch1',
     contact_id: 'ct1', assigned_user_id: null, status: 'open',
-    priority: null, intent: null, sentiment: null, ai_mode: 'off',
+    priority: null, intent: null, sentiment: null, ai_mode: 'off', tags: null,
     last_message_at: '2026-09-01T13:32:42Z', resolved_at: null, archived_at: null,
     created_at: '2026-09-01T13:00:00Z', updated_at: '2026-09-01T13:32:42Z',
     ...over,
@@ -74,7 +74,7 @@ function contato(over: Partial<Contact> = {}): Contact {
   return {
     id: 'ct1', organization_id: 'o1', name: 'Caio Vinícius',
     display_phone: '5521999185733', display_email: null,
-    contact_type: 'guardian', status: 'active', source: 'whatsapp',
+    contact_type: 'guardian', status: 'active', source: 'whatsapp', tags: null,
     avatar_url: null, is_provisional: false, merged_into_contact_id: null,
     last_interaction_at: null, deleted_at: null,
     created_at: '2026-09-01T13:32:41Z', updated_at: '2026-09-01T13:32:41Z',
@@ -225,7 +225,17 @@ eq(rotuloTipoContato(null), 'Contato', 'sem contato não quebra')
 // Campos sem origem no banco: zero e vazio, nunca inventados.
 const c = toUIConversation(conv(), contato(), [])
 eq(c.unreadCount, 0, 'unreadCount sempre 0 (não existe no schema)')
-eq(c.tags.length, 0, 'tags sempre vazio (não existe no schema)')
+// `tags` EXISTE no schema (TEXT[] em conversations e contacts). Fica vazio aqui
+// porque as tags do produto são do contato e quem as mostra é o painel de
+// detalhamento, lendo o `central` cru — a lista de conversas não as desenha.
+eq(c.tags.length, 0, 'tags vazio: a lista de conversas não desenha tags')
+// Prova de que é decisão, e não repasse: mesmo com tags nos dois lados, o
+// adapter não as propaga.
+eq(
+  toUIConversation(conv({ tags: ['urgente'] }), contato({ tags: ['convenio'] }), []).tags.length,
+  0,
+  'não propaga tags nem da conversa nem do contato',
+)
 
 // ---------------------------------------------------------------------------
 console.log(

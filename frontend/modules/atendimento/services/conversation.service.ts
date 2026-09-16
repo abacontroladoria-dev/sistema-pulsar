@@ -128,17 +128,43 @@ export class ConversationService {
   // Atribui conversa a um operador. Muda status para 'assigned'.
   // Requer: conversa ativa (não resolvida/arquivada).
   // -------------------------------------------------------------------------
-  async assign(conversationId: string, toUserId: string, actorId: string): Promise<void> {
+  // `toUserId: null` devolve a conversa à fila — é o "Não atribuído" do painel
+  // de detalhamento. O status volta para 'open' junto: 'assigned' sem ninguém
+  // atribuído é um estado contraditório, e a triagem passaria a mostrar como
+  // "em atendimento" uma conversa que não tem quem a atenda. É a mesma dupla de
+  // writes que `setAiMode` faz ao religar a Maia.
+  async assign(conversationId: string, toUserId: string | null, actorId: string): Promise<void> {
     const conv            = await this.requireActive(conversationId)
     const previousAssignee= conv.assigned_user_id
+    const status          = toUserId === null ? 'open' : 'assigned'
 
     await this.conv.updateAssignee(conversationId, toUserId)
-    await this.conv.updateStatus(conversationId, 'assigned')
+    await this.conv.updateStatus(conversationId, status)
 
     const updated: Conversation = {
       ...conv,
       assigned_user_id: toUserId,
-      status:           'assigned',
+      status,
+    }
+
+    // Atribuir e devolver à fila são eventos distintos: quem escuta reage de
+    // formas opostas a cada um, e um `assigned` com destinatário nulo obrigaria
+    // todo ouvinte a testar isso por conta própria.
+    if (toUserId === null) {
+      void this.audit.insert({
+        organization_id: conv.organization_id,
+        conversation_id: conversationId,
+        event_type:      'conversation.unassigned',
+        performed_by:    actorId,
+        payload:         { previousAssignee },
+      })
+
+      this.events.emit('conversation.unassigned', {
+        conversation: updated,
+        previousAssignee,
+        actorId,
+      })
+      return
     }
 
     void this.audit.insert({

@@ -51,6 +51,13 @@ export type ConversationEventType =
   | 'appointment.rescheduled'
   | 'appointment.cancelled'
   | 'appointment.deleted'
+  // Tarefas de atendimento (central.tasks). `task.status_changed` carrega
+  // { de, para } porque concluir, cancelar e reabrir são a mesma escrita com
+  // significados diferentes — sem o estado anterior, a trilha não distingue
+  // "resolvi" de "desisti".
+  | 'task.created'
+  | 'task.updated'
+  | 'task.status_changed'
   // Configuração do agente. Payload lista quais campos mudaram e sinaliza
   // troca de credencial — nunca o valor da credencial.
   | 'agent_settings.updated'
@@ -97,6 +104,17 @@ export type CAEventMap = {
   'conversation.assigned': {
     conversation:     Conversation
     toUserId:         string
+    previousAssignee: string | null
+    actorId:          string
+  }
+
+  // A conversa voltou para a fila: ninguém é responsável por ela. Evento
+  // próprio, e não um `assigned` com toUserId null, porque as duas coisas pedem
+  // reações opostas — atribuir tira da fila de triagem, desatribuir devolve.
+  // O nome já estava na lista de CentralEventType desde o início; faltava o
+  // payload, e por isso nada podia emiti-lo.
+  'conversation.unassigned': {
+    conversation:     Conversation
     previousAssignee: string | null
     actorId:          string
   }
