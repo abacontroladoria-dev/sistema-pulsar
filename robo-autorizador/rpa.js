@@ -26,6 +26,33 @@
  * é a recepcionista. A decisão de autorizar continua humana.
  *
  * -------------------------------------------------------------------------
+ * 1.1.9 — O #checkBday QUE CHEGA TARDE
+ * -------------------------------------------------------------------------
+ *
+ * O preenchimento do nascimento + CPF entrou na 1.1.7 e, na prática, quase nunca
+ * acontecia. O motivo não estava em preencherNascimentoCpf(), que sempre esteve
+ * certa, e sim em QUANDO ela era chamada.
+ *
+ * `SEL_IDENTIFICACAO` casa com QUATRO telas. Sem dispositivo Intelbras — o caso
+ * desta clínica — a ASSIM abre primeiro o `.jconfirm-box` ("Solicite
+ * identificacao do beneficiario por QRCode"), e o #checkBday só nasce quando
+ * alguém clica CONFIRMAR nesse aviso. Como o aviso já satisfazia o seletor, o
+ * laço da etapa 2 saía nele; a chamada seguinte — ÚNICA — esperava 10s por um
+ * modal que ainda não existia e saía por 'sem_modal'. Ninguém mais olhava.
+ *
+ * Visto em 17/09/2026: duas tarefas com biofacial_assim='8-DISPOSITIVO
+ * INDISPONIVEL' concluídas por Token, com CPF e nascimento disponíveis o tempo
+ * todo. E, desde a 1.1.8, o laço da etapa 3 não tem mais prazo — então o robô
+ * não devolvia a tarefa, ficava parado esperando uma recepção que, para ele,
+ * nunca tinha agido.
+ *
+ * Agora a tentativa também acontece dentro do laço da etapa 3, guardada por
+ * `bdayResolvido` e disparada só com o modal JÁ visível (chamá-la às cegas
+ * custaria o waitFor de 10s a cada volta, cegando o teto do token e a detecção
+ * da aba fechada). Regressão coberta por testes/checkbday-tardio.test.js, que
+ * contra o código da 1.1.8 trava para sempre — o sintoma de produção.
+ *
+ * -------------------------------------------------------------------------
  * 1.1.8 — A JANELA NUNCA MAIS FECHA SOZINHA
  * -------------------------------------------------------------------------
  *
@@ -563,9 +590,32 @@ async function aguardarConfirmacaoBeneficiario(page, cfg, api, tarefa, alertas =
   }
 
   // ---- 2b. Se o caminho foi o #checkBday, o robô preenche ----
-  // Feito AQUI e não dentro do laço da etapa 3: ali seria re-disparado a cada
-  // volta. A função sai por 'sem_modal' de graça quando o caminho é outro.
-  const bday = await preencherNascimentoCpf(page, cfg, api, tarefa, alertas)
+  // A tentativa acontece AQUI e também dentro do laço da etapa 3 (ver `tentarBday`
+  // abaixo), porque `SEL_IDENTIFICACAO` casa com QUATRO telas e o `.jconfirm-box`
+  // — o aviso "Solicite identificacao do beneficiario por QRCode" — é quase
+  // sempre a PRIMEIRA a aparecer quando o credenciado não tem dispositivo.
+  //
+  // O `#checkBday` só nasce depois que alguém clica CONFIRMAR nesse aviso. Até a
+  // 1.1.8 esta chamada era única e feita só aqui: ela esperava 10s por um modal
+  // que ainda não existia, saía por 'sem_modal' e a recepção resolvia tudo à mão
+  // — exatamente o "o robô não preenche" relatado em 17/09 (duas tarefas com
+  // biofacial_assim='8-DISPOSITIVO INDISPONIVEL' concluídas por Token).
+  //
+  // A guarda de disparo único é `bdayResolvido`: 'sem_modal' NÃO resolve nada
+  // (o modal pode aparecer depois), qualquer outro veredito resolve. Sem ela, um
+  // 'recusado' seria re-tentado a cada volta do laço, que é precisamente o que a
+  // regra "recusa não é repetida" proíbe.
+  let bdayResolvido = false
+
+  const tentarBday = async () => {
+    if (bdayResolvido) return 'sem_modal'
+
+    const veredito = await preencherNascimentoCpf(page, cfg, api, tarefa, alertas)
+    if (veredito !== 'sem_modal') bdayResolvido = true
+    return veredito
+  }
+
+  const bday = await tentarBday()
 
   if (bday === 'recusado') {
     // NÃO derruba a tarefa. Lendo o fonte de `ConfirmBdayDate()`, a recusa deixa
@@ -646,6 +696,26 @@ async function aguardarConfirmacaoBeneficiario(page, cfg, api, tarefa, alertas =
     }
 
     tokenDesde = null
+
+    // O #checkBday pode nascer AGORA — é o caso normal quando a recepção clica
+    // CONFIRMAR no aviso do QR Code. Só se ele já estiver visível é que vale
+    // chamar: `preencherNascimentoCpf` abre com um waitFor de `modal_bday_ms`
+    // (10s) e chamá-la às cegas a cada volta congelaria o laço, cegando o teto
+    // do token e a detecção da aba fechada.
+    if (!bdayResolvido && await contar(`${SEL_MODAL_BENEFICIARIO}:visible`) > 0) {
+      if (await tentarBday() === 'recusado') {
+        // Mesma decisão da etapa 2b: avisa e sai da frente, sem derrubar a
+        // tarefa. A tela segue utilizável e a recepção corrige à mão.
+        console.warn(
+          '⚠️  A ASSIM recusou o CPF/nascimento do cadastro. A recepção assume a partir daqui.'
+        )
+        await api.registrarLog(
+          tarefa.id,
+          'Cadastro diverge do registro da ASSIM: identificacao devolvida para a recepcao'
+        )
+      }
+      continue
+    }
 
     if (ocupada > 0) {
       silencioDesde = null
