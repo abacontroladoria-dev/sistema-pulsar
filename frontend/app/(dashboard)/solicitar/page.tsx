@@ -3473,16 +3473,19 @@ useEffect(() => {
   )
 }
 /**
- * O CPF com máscara, para LEITURA na tela: 216.181.027-88.
+ * O CPF para LEITURA na tela, em dígitos corridos: 21618102788.
  *
- * A máscara é só de exibição — os dois pontos de uso (o card e o modal) mostram,
- * nenhum grava. O que vai para o banco e para o robô é `p.cpf` cru, direto de
- * `criarAutorizacao`, e continua sem pontuação.
+ * SEM máscara, por decisão de quem usa a tela. A pontuação já esteve aqui
+ * (216.181.027-88) e foi retirada: o CPF é conferido contra o documento no
+ * balcão e contra outros sistemas, onde ele aparece cru, e os separadores
+ * obrigavam a ignorar pontuação que o outro lado não tem.
  *
- * Os agrupamentos existem para o olho: conferir 11 dígitos corridos contra um
- * documento no balcão obriga a contar casa a casa; em blocos de três, a
- * comparação é por bloco. Fora dos 11 dígitos o valor sai como está — é melhor
- * mostrar um CPF torto do que uma máscara que o deforma para caber.
+ * Continua sendo função, e não o valor direto, por dois motivos que não são
+ * cosméticos: `null` vira string vazia (senão a tela escreveria "null"), e um
+ * valor que chegue pontuado da origem é limpo aqui.
+ *
+ * Nada disto toca o que se GRAVA: o que vai para o banco e para o robô é
+ * `p.cpf` cru, direto de `criarAutorizacao`, e sempre foi sem pontuação.
  */
 function formatarCpf(
   cpf?: string | number | null
@@ -3490,11 +3493,7 @@ function formatarCpf(
 
   if (cpf == null) return ''
 
-  const digitos = String(cpf).replace(/\D/g, '')
-
-  if (digitos.length !== 11) return digitos
-
-  return digitos.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')
+  return String(cpf).replace(/\D/g, '')
 }
 
 // ISO (YYYY-MM-DD) para o formato brasileiro, sem passar por Date: construir um
