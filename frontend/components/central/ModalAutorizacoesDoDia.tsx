@@ -30,6 +30,17 @@ export type LinhaAutorizacaoDoDia = {
   cancelado_por_nome: string | null
   horario: string | null
   terapia_nome: string | null
+  tipo_falta: string | null
+}
+
+/**
+ * Uma linha de falta — registro de que a sessão não aconteceu, não tentativa de
+ * autorizar. Está na mesma tabela que a fila, mas responde outra pergunta, e por
+ * isso é lida de forma diferente em toda parte neste modal (hora, rótulo e o
+ * relativo "há N min", que para ela não faz sentido).
+ */
+function ehFalta(status: string): boolean {
+  return status === 'falta'
 }
 
 /**
@@ -42,6 +53,11 @@ export type LinhaAutorizacaoDoDia = {
  */
 function instanteDaLinha(l: LinhaAutorizacaoDoDia): string | null {
   if (l.horario_autorizacao) return l.horario_autorizacao
+  // Falta nunca identificou o beneficiário no portal, então não tem instante de
+  // autorização nenhum. Cair no `created_at` aqui é o que fazia a linha de 13:00
+  // aparecer como "17:55" — a hora em que a recepção CLICOU, não a da sessão.
+  // Para estas linhas o evento É a sessão, e quem a nomeia é `horario`.
+  if (ehFalta(l.status)) return null
   if (l.completed_at) {
     // Único campo em UTC: converte para SP antes de virar rótulo.
     const d = new Date(l.completed_at + (l.completed_at.endsWith('Z') ? '' : 'Z'))
@@ -56,6 +72,17 @@ function instanteDaLinha(l: LinhaAutorizacaoDoDia): string | null {
     }
   }
   return l.created_at
+}
+
+/**
+ * "HH:MM" da linha, para ordenar a lista pelo que ela mostra.
+ *
+ * Linha sem hora nenhuma vai para o fim com a string vazia, que ordena antes de
+ * qualquer "HH:MM" na comparação descendente.
+ */
+function horaDeOrdenacao(l: LinhaAutorizacaoDoDia): string {
+  if (ehFalta(l.status)) return String(l.horario || '').slice(0, 5)
+  return horaDoTimestamp(instanteDaLinha(l))
 }
 
 /** "há 23 min" / "há 1h 02min" — o formato que o mockup pede. */
@@ -87,10 +114,33 @@ const ROTULO_STATUS: Record<string, { texto: string; selo: string }> = {
   pendente:            { texto: 'Na fila',     selo: 'bg-amber-50 text-amber-700 border-amber-100' },
 }
 
-function rotuloDe(status: string) {
+/**
+ * Faltas. Quem as distingue é `tipo_falta`, não o status — na coluna todas são
+ * 'falta'. Sem este mapa a linha saía com o texto cru "falta" e selo cinza, como
+ * se fosse um status técnico desconhecido.
+ *
+ * Os nomes seguem `utils/statusAutorizacao.ts`, que é o vocabulário que o resto
+ * do sistema já mostra para estas mesmas linhas.
+ */
+const ROTULO_FALTA: Record<string, { texto: string; selo: string }> = {
+  paciente:         { texto: 'Falta do Paciente',    selo: 'bg-amber-50 text-amber-700 border-amber-100' },
+  terapeuta:        { texto: 'Falta do Profissional', selo: 'bg-red-50 text-red-600 border-red-100' },
+  unidade_fechada:  { texto: 'Unidade fechada',       selo: 'bg-slate-50 text-slate-600 border-slate-200' },
+}
+
+function rotuloDe(l: LinhaAutorizacaoDoDia) {
+  if (ehFalta(l.status)) {
+    return (
+      ROTULO_FALTA[l.tipo_falta ?? ''] ?? {
+        texto: 'Falta não identificada',
+        selo: 'bg-orange-50 text-orange-700 border-orange-100',
+      }
+    )
+  }
+
   return (
-    ROTULO_STATUS[status] ?? {
-      texto: status,
+    ROTULO_STATUS[l.status] ?? {
+      texto: l.status,
       selo: 'bg-slate-50 text-slate-600 border-slate-200',
     }
   )
@@ -143,7 +193,7 @@ export default function ModalAutorizacoesDoDia({
       const { data, error } = await supabase
         .from('fila_autorizacoes')
         .select(
-          'id, horario_autorizacao, completed_at, created_at, status, criado_por, cancelado_por_nome, horario, terapia_nome'
+          'id, horario_autorizacao, completed_at, created_at, status, criado_por, cancelado_por_nome, horario, terapia_nome, tipo_falta'
         )
         .eq('paciente_id', String(sessao.paciente_id))
         // O recorte do dia vigente. É a regra do modal, não um filtro de conveniência.
@@ -158,7 +208,15 @@ export default function ModalAutorizacoesDoDia({
         return
       }
 
-      setLinhas((data ?? []) as LinhaAutorizacaoDoDia[])
+      // Reordena pela hora que a linha EXIBE, não por `created_at`. As duas
+      // divergem na falta (registrada às 17:55 para a sessão das 13:00), e
+      // ordenar pelo `created_at` punha "13:00" no meio da tarde — uma lista
+      // cujos números não sobem nem descem.
+      const ordenadas = ((data ?? []) as LinhaAutorizacaoDoDia[])
+        .slice()
+        .sort((a, b) => horaDeOrdenacao(b).localeCompare(horaDeOrdenacao(a)))
+
+      setLinhas(ordenadas)
     })()
 
     return () => {
@@ -267,12 +325,25 @@ export default function ModalAutorizacoesDoDia({
           {/* HISTÓRICO */}
           <div className="rounded-xl border border-slate-200/70 bg-white p-5">
             <div className="flex items-baseline justify-between gap-3 mb-4">
+              {/* "Histórico", não "Autorizações": a lista inclui as faltas, que
+                  são o registro de que a sessão NÃO aconteceu. Sob o título
+                  antigo, uma falta lida na pressa passava por autorização. */}
               <h3 className="text-[15px] font-semibold text-slate-800">
-                Autorizações de hoje
+                Histórico de hoje
               </h3>
+              {/* "tentativa" só conta o que tentou autorizar. Chamar quatro
+                  faltas de "4 tentativas" dizia que o portal foi acionado
+                  quatro vezes — o oposto do que aconteceu. */}
               {linhas && linhas.length > 0 && (
                 <span className="shrink-0 text-[11px] text-slate-400 tabular-nums">
-                  {linhas.length === 1 ? '1 tentativa' : `${linhas.length} tentativas`}
+                  {(() => {
+                    const faltas = linhas.filter(l => ehFalta(l.status)).length
+                    const tentativas = linhas.length - faltas
+                    const partes: string[] = []
+                    if (tentativas) partes.push(tentativas === 1 ? '1 tentativa' : `${tentativas} tentativas`)
+                    if (faltas) partes.push(faltas === 1 ? '1 falta' : `${faltas} faltas`)
+                    return partes.join(' · ')
+                  })()}
                 </span>
               )}
             </div>
@@ -286,13 +357,22 @@ export default function ModalAutorizacoesDoDia({
               <p className="py-6 text-xs text-red-500">{erro}</p>
             ) : linhas.length === 0 ? (
               <p className="py-6 text-xs text-slate-400">
-                Nenhuma autorização registrada hoje para este paciente.
+                Nada registrado hoje para este paciente.
               </p>
             ) : (
               <ul className="space-y-2">
                 {linhas.map(l => {
                   const ts = instanteDaLinha(l)
-                  const r = rotuloDe(l.status)
+                  const r = rotuloDe(l)
+                  const falta = ehFalta(l.status)
+
+                  // A hora que a linha ANUNCIA. Para a autorização é o instante
+                  // da identificação no portal (é dela que sai a conta dos 30
+                  // min); para a falta é o horário da sessão que não aconteceu,
+                  // porque identificação nenhuma houve.
+                  const hora = falta
+                    ? String(l.horario || '').slice(0, 5)
+                    : horaDoTimestamp(ts)
 
                   // Quem cancelou é quem agiu naquela linha — mostrar o solicitante
                   // original ali diria o nome errado.
@@ -312,7 +392,7 @@ export default function ModalAutorizacoesDoDia({
                           antes — dizia a mesma coisa que o selo ao lado, em
                           duplicidade. */}
                       <span className="shrink-0 w-11 text-[13px] font-semibold text-slate-700 tabular-nums">
-                        {horaDoTimestamp(ts) || '--:--'}
+                        {hora || '--:--'}
                       </span>
 
                       <span
@@ -328,8 +408,13 @@ export default function ModalAutorizacoesDoDia({
                         {autor || '—'}
                       </span>
 
+                      {/* "há N min" mede a distância até a última identificação
+                          no portal — a conta dos 30 min. A falta não identificou
+                          ninguém, então esse número não existe para ela; o que
+                          situa a linha é a terapia da sessão faltada, já que o
+                          paciente costuma ter várias no mesmo dia. */}
                       <span className="shrink-0 text-[11px] text-slate-400 tabular-nums">
-                        {tempoRelativo(ts)}
+                        {falta ? l.terapia_nome || '' : tempoRelativo(ts)}
                       </span>
                     </li>
                   )
@@ -349,7 +434,7 @@ export default function ModalAutorizacoesDoDia({
         <div className="mt-5 flex items-center justify-between gap-4 border-t border-slate-100 px-6 py-4">
           <p className="flex items-center gap-1.5 text-[11px] text-slate-400">
             <Info size={13} className="shrink-0" />
-            Apenas as autorizações de hoje são exibidas.
+            Apenas os registros de hoje são exibidos.
           </p>
 
           <button
