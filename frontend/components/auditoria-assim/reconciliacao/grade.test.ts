@@ -40,7 +40,6 @@ function sessao(p: Partial<AuditoriaAssimItem>): AuditoriaAssimItem {
 
 function guia(p: Partial<AutorizacaoAssimSemana> & { guia: string }): AutorizacaoAssimSemana {
   return {
-    paciente_id: null,
     matricula: null, paciente_nome: null, data_execucao: null, status: 'Liberado',
     codigo_tuss: null, codigo_erro: null, descricao_erro: null, teve_token: null, token: null,
     ...p,

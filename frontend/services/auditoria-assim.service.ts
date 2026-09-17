@@ -349,13 +349,8 @@ function somarDiasIso(iso: string, dias: number): string {
   return `${a}-${m}-${dd}`
 }
 
-// `paciente_id` é o id do TiTa, o MESMO das sessões — a única identidade que
-// atravessa a fronteira ASSIM↔agenda. Nem o nome nem a carteirinha atravessam: a
-// ASSIM trunca o nome em 20 chars e sem acento ("DAVI LUCAS ARAUJO AL") e pontua
-// a matrícula ("000000.0747497.00") onde a agenda grava outra coisa
-// ("000000074749794400"). Preenchido em 5232 das 5233 linhas.
 const COLUNAS_AUTORIZACAO =
-  'guia, paciente_id, matricula, paciente_nome, data_execucao, status, codigo_tuss, codigo_erro, descricao_erro, teve_token, token'
+  'guia, matricula, paciente_nome, data_execucao, status, codigo_tuss, codigo_erro, descricao_erro, teve_token, token'
 
 /**
  * Todas as autorizações que a ASSIM registrou numa semana — inclusive as que não
