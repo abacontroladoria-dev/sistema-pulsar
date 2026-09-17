@@ -24,7 +24,9 @@ import {
 
 import toast from 'react-hot-toast'
 
-import { Lock, CheckCircle, Loader2, Megaphone, XCircle, CalendarX, Undo2 } from 'lucide-react'
+import { Lock, CheckCircle, Loader2, Megaphone, XCircle, CalendarX, Undo2, ChevronRight, AlertCircle, RotateCw, Ban, Clock, Check } from 'lucide-react'
+
+import ModalAutorizacoesDoDia from '@/components/central/ModalAutorizacoesDoDia'
 
 import { sondarRobo } from '@/lib/machine'
 
@@ -40,6 +42,7 @@ import {
   LIBERACAO_SOLICITAR_MIN,
   horaDoTimestamp,
   minutosDesde,
+  minutosRestantes,
   podeSolicitar,
 } from '@/lib/central/intervaloAssim'
 
@@ -65,6 +68,46 @@ const TTL_ULTIMO_LOTE_MS = 2 * 60 * 60 * 1000
 // TERAPIAS OCULTAS
 // (não exibidas na Central de Atendimentos)
 // =========================
+/**
+ * Uma linha da lista do dia, como a RPC `listar_central_autorizacoes` devolve.
+ *
+ * A página inteira trata essas linhas como `any` e mudar isso não cabe aqui; o
+ * alias existe para que o novo estado e o modal digam O QUE carregam, em vez de
+ * espalhar mais um `any` anônimo.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type SessaoDaLista = any
+
+/**
+ * A chave de uma sessão no índice `sessoesHoje` (o "N/Total" do card).
+ *
+ * Existe para que a montagem do índice e as duas leituras (card e modal) não
+ * sejam três cópias da mesma expressão: divergindo, a busca devolve `undefined`
+ * em silêncio e o contador some sem erro nenhum — a falha mais difícil de achar.
+ */
+function chaveSessaoDoDia(
+  pacienteId: unknown,
+  horario: unknown,
+  terapia: unknown
+) {
+  return `${pacienteId}_${horario ?? ''}_${terapia ?? ''}`
+}
+
+/**
+ * A forma dos botões de ação do card.
+ *
+ * Existe porque as cinco ações (Autorizar, Presença, Cancelar, Chamar, Falta)
+ * repetiam a mesma cadeia de classes com pequenas divergências — uma delas
+ * `items-start`, que desalinhava o ícone e era a origem do `-top-[1px]` colado em
+ * cada `<svg>`. Uma forma só, e a cor fica sendo a única coisa que cada ação
+ * escolhe.
+ */
+const ACAO_BASE =
+  'w-full flex items-center gap-1.5 text-[12px] px-2.5 py-1.5 rounded-lg font-semibold leading-none tracking-tight transition-all duration-150 disabled:cursor-not-allowed'
+
+/** O disco atrás do ícone — dá presença ao botão sem custar altura de linha. */
+const ACAO_ICONE = 'shrink-0 flex items-center justify-center w-5 h-5 rounded-md'
+
 const TERAPIAS_OCULTAS = [
   'equoterapia',
   'fisioterapia aquática',
@@ -214,7 +257,10 @@ const unidades = [
     Object.entries(grupos).forEach(([id, sessoes]) => {
       sessoes.sort((a, b) => a.horario.localeCompare(b.horario))
       sessoes.forEach((s, i) => {
-        lookup[`${id}_${s.horario}_${s.terapia}`] = { index: i + 1, total: sessoes.length }
+        lookup[chaveSessaoDoDia(id, s.horario, s.terapia)] = {
+          index: i + 1,
+          total: sessoes.length,
+        }
       })
     })
 
@@ -375,6 +421,64 @@ const unidades = [
 
   // Cards cujo "Chamar" está em voo — só para o feedback visual do botão.
   const [chamando, setChamando] = useState<Set<string>>(new Set())
+
+  // Sessão cujo modal "Autorizações de hoje" está aberto. Guarda o objeto inteiro
+  // (e não a chave) porque o modal precisa de sala/terapeuta/convênio, e re-achar
+  // o item em listaDia depois de um realtime daria uma linha diferente.
+  // `SessaoDaLista` porque as linhas da RPC chegam sem tipo em toda esta página;
+  // o alias ao menos nomeia o que é, sem fingir um contrato que não existe.
+  const [modalAutorizacoes, setModalAutorizacoes] = useState<SessaoDaLista | null>(null)
+
+  // Cards cujo INSERT da solicitação está em voo — a janela curta entre o clique
+  // e a linha existir no banco. Depois disso quem manda no rótulo é o
+  // `status_final` ('pendente'/'processando'), que o realtime mantém em dia.
+  const [enviando, setEnviando] = useState<Set<string>>(new Set())
+
+  // Cards cuja última tentativa falhou NO NAVEGADOR (insert recusado, rede caída).
+  // É estado de tela, não do banco: o erro do robô já chega como status_final
+  // 'erro' e tem o seu próprio caminho. Some no clique de "Tentar novamente".
+  const [erroAutorizar, setErroAutorizar] = useState<Set<string>>(new Set())
+
+  // Faltas já registradas no dia, por sessão (ver carregarFaltasDoDia).
+  const [faltasDoDia, setFaltasDoDia] = useState<
+    Record<string, { tipo: string | null; justificativa: string | null }>
+  >({})
+
+  // As mesmas faltas indexadas só por paciente+horário, para o aviso da sessão
+  // anterior — que cruza terapias diferentes e por isso não pode casar por tuss.
+  const [faltasPorHorario, setFaltasPorHorario] = useState<
+    Record<string, { tipo: string | null; justificativa: string | null }>
+  >({})
+
+  function marcarNaChave(
+    set: (f: (prev: Set<string>) => Set<string>) => void,
+    chave: string,
+    incluir: boolean
+  ) {
+    set(prev => {
+      const proximo = new Set(prev)
+      if (incluir) proximo.add(chave)
+      else proximo.delete(chave)
+      return proximo
+    })
+  }
+
+  // Relógio de 30s do contador "faltam N min" da janela dos 31 minutos.
+  //
+  // Separado do `tique` de 1s abaixo de propósito: aquele só roda enquanto há
+  // chamada recente (liga e desliga sozinho), e o contador dos 31 min precisa
+  // andar o tempo todo — senão o card ficaria dizendo "faltam 12 min" durante
+  // meia hora, até um re-render por outro motivo, e a atendente decidiria sobre
+  // um número velho.
+  //
+  // 30s porque a unidade exibida é o MINUTO: ticar mais rápido não mudaria o
+  // rótulo e custaria re-render numa página com dezenas de cards.
+  const [minutoAtual, setMinutoAtual] = useState(() => Date.now())
+
+  useEffect(() => {
+    const id = setInterval(() => setMinutoAtual(Date.now()), 30_000)
+    return () => clearInterval(id)
+  }, [])
 
   // Relógio de 1s que existe só para o botão sair de "Chamado" sozinho quando a
   // janela expira. Sem ele o rótulo dependeria de um re-render por outro motivo
@@ -672,14 +776,109 @@ async function carregarLista() {
   setListaDia(data || [])
   setListaDiaCompleta(data || [])
 
+  carregarFaltasDoDia(dataFiltro)
+
   setLoadingLista(false)
+}
+
+/**
+ * As faltas já registradas no dia, por sessão.
+ *
+ * Vem direto de `fila_autorizacoes` porque a RPC não devolve nem `tipo_falta`
+ * nem `justificativa_falta` — e, mais que isso, nem sempre devolve a falta: o
+ * `status_final` tem precedência, e 'autorizado_externo' (guia encontrada na
+ * ASSIM) ganha de 'falta'. Foi o caso do Benicio em 17/09: falta registrada às
+ * 13:00 com "n chegou", e o card mostrando só a guia.
+ *
+ * Nenhuma migration para isso: a leitura é de tela, a precedência da RPC segue
+ * como está (ela governa o que a sessão É; o selo abaixo conta o que ACONTECEU).
+ */
+async function carregarFaltasDoDia(dataFiltro: string) {
+  const { data, error } = await supabase
+    .from('fila_autorizacoes')
+    .select('paciente_id, horario, tuss, tipo_falta, justificativa_falta')
+    .eq('data_atendimento', dataFiltro)
+    .eq('status', 'falta')
+
+  if (error) {
+    // Falha aqui não derruba a lista: o card perde o selo de falta e continua
+    // inteiro no resto. Avisar com toast seria ruído sobre um detalhe.
+    console.warn('[faltas] não foi possível carregar', error)
+    return
+  }
+
+  const mapa: Record<string, { tipo: string | null; justificativa: string | null }> = {}
+
+  // Segundo índice, só por paciente+horário: serve ao aviso da sessão ANTERIOR,
+  // que não pode casar por tuss — a sessão de antes costuma ser de outra terapia
+  // (o Benicio faltou na Fonoaudiologia e a seguinte é Terapia Ocupacional).
+  const porHorario: Record<string, { tipo: string | null; justificativa: string | null }> = {}
+
+  for (const f of data || []) {
+    const hhmmFalta = String(f.horario).slice(0, 5)
+
+    // Mesma identidade de sessão que o realtime usa (paciente + horário + tuss),
+    // com o horário fatiado em HH:MM porque o banco devolve HH:MM:SS.
+    const chave = [
+      String(f.paciente_id),
+      hhmmFalta,
+      String(f.tuss ?? ''),
+    ].join('_')
+
+    const valor = {
+      tipo: f.tipo_falta ?? null,
+      justificativa: f.justificativa_falta ?? null,
+    }
+
+    mapa[chave] = valor
+    porHorario[`${f.paciente_id}_${hhmmFalta}`] = valor
+  }
+
+  setFaltasDoDia(mapa)
+  setFaltasPorHorario(porHorario)
+}
+
+/** A chave de `faltasDoDia` para uma linha da lista. */
+function chaveFalta(p: SessaoDaLista) {
+  return [
+    String(p.paciente_id),
+    String(p.horario).slice(0, 5),
+    String(p.codigos_tuss?.[0] ?? ''),
+  ].join('_')
 }
 // =========================
 // SOLICITAR LISTA
 // =========================
 
+/**
+ * "Tentar novamente" e "Autorizar" são o MESMO caminho.
+ *
+ * O retry não é um fluxo próprio: limpa a marca de erro e repete a solicitação,
+ * inclusive os guardas (os 30 min da ASSIM continuam valendo numa segunda
+ * tentativa — foi o incidente de 21/08/2026). Sem F5, como pede o requisito.
+ */
 async function handleSolicitarLista(
   p: any
+) {
+
+  const chaveEnvio = buildCardKey(p)
+
+  // O erro anterior morre no clique, não na resposta: se a nova tentativa falhar,
+  // o catch o remarca. Manter o rótulo vermelho durante o "Autorizando…" faria o
+  // card dizer duas coisas contraditórias ao mesmo tempo.
+  marcarNaChave(setErroAutorizar, chaveEnvio, false)
+  marcarNaChave(setEnviando, chaveEnvio, true)
+
+  try {
+    await solicitarLista(p, chaveEnvio)
+  } finally {
+    marcarNaChave(setEnviando, chaveEnvio, false)
+  }
+}
+
+async function solicitarLista(
+  p: SessaoDaLista,
+  chaveEnvio: string
 ) {
 
   if (!MACHINE_ID) {
@@ -959,6 +1158,11 @@ async function handleSolicitarLista(
         'Erro ao solicitar'
       )
 
+      // O card FICA na lista e passa a oferecer "Tentar novamente": a sessão
+      // continua pendente de ação, e exigir F5 para repetir era o que fazia a
+      // recepção recarregar a tela no meio do movimento.
+      marcarNaChave(setErroAutorizar, chaveEnvio, true)
+
       return
     }
 
@@ -987,6 +1191,8 @@ async function handleSolicitarLista(
     toast.error(
       'Erro inesperado'
     )
+
+    marcarNaChave(setErroAutorizar, chaveEnvio, true)
   }
 }
 
@@ -1488,6 +1694,16 @@ async function handleManualLista(p: any) {
 // ⛔ CANCELAR PROCESSAMENTO
 // =========================
 
+// Cancela a TENTATIVA de autorização em curso — não o agendamento. A sessão
+// continua na lista, volta ao estado normal e pode ser solicitada de novo.
+//
+// Alcança 'pendente' além de 'processando': entre o clique e o robô assumir a
+// tarefa a linha fica em 'pendente', e é justamente aí que a recepção percebe
+// que errou de paciente. Cancelar só 'processando' deixava essa janela — a mais
+// provável de todas — sem saída, e a linha seguia para o portal.
+//
+// Um AbortController não serviria aqui: abortar o HTTP do insert não desfaz a
+// linha que já chegou ao banco, e é a linha que o robô lê.
 async function handleCancelarProcessamento(p: any) {
   try {
     const { data: existente } = await supabase
@@ -1497,13 +1713,13 @@ async function handleCancelarProcessamento(p: any) {
       .eq('data_atendimento', p.data_atendimento)
       .eq('horario', p.horario)
       .eq('tuss', p.codigos_tuss?.[0])
-      .eq('status', 'processando')
+      .in('status', ['pendente', 'processando'])
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle()
 
     if (!existente) {
-      toast.error('Nenhum item em processamento encontrado')
+      toast.error('Nenhuma solicitação em andamento encontrada')
       return
     }
 
@@ -1528,7 +1744,10 @@ async function handleCancelarProcessamento(p: any) {
         updated_at: new Date().toISOString(),
       })
       .eq('id', existente.id)
-      .eq('status', 'processando')
+      // A trava de corrida continua aqui, só que sobre os dois estados vivos: se
+      // o robô concluiu entre a leitura acima e este update, o filtro não casa e
+      // o cancelamento não sobrescreve um desfecho real.
+      .in('status', ['pendente', 'processando'])
 
     if (error) {
       toast.error('Erro ao cancelar solicitação')
@@ -2142,14 +2361,198 @@ useEffect(() => {
 			  <div className="space-y-3">
 				{(listaOrdenada as any[]).map((p) => {
 
-          const sessaoKey = `${p.paciente_id}_${p.horario ?? ''}_${p.terapias?.[0] ?? ''}`
-          const sessaoInfo = sessoesHoje[sessaoKey]
+          const sessaoInfo = sessoesHoje[
+            chaveSessaoDoDia(p.paciente_id, p.horario, p.terapias?.[0])
+          ]
 
 			  const ativo =
 				![
 				  'processando',
 				  'pendente'
 				].includes(p.status_final)
+
+			  // Há uma solicitação viva para esta sessão: entre o clique e o
+			  // desfecho do robô. Durante ela o Falta sai do ar — marcar falta
+			  // por cima de uma guia a caminho é escrita concorrente sobre a
+			  // mesma sessão que o robô está autorizando.
+			  //
+			  // Chamar NÃO entra aqui: é ação independente, sobre outra pessoa
+			  // (o responsável na sala de espera), e as duas correm em paralelo
+			  // no balcão. Ver o comentário no próprio botão.
+			  const autorizandoAgora =
+				enviando.has(buildCardKey(p)) ||
+				p.status_final === 'pendente' ||
+				p.status_final === 'processando'
+
+			  // O horário que o RÓTULO mostra é a autorização mais recente do
+			  // paciente no dia — inclusive a da PRÓPRIA sessão deste card.
+			  //
+			  // `ultima_autorizacao_anterior` não serve aqui: a subquery da RPC
+			  // tem `fa2.horario <> b.horario`, ou seja, exclui de propósito o
+			  // próprio horário. Isso é certo para o CÁLCULO (uma sessão não pode
+			  // bloquear a si mesma no reprocesso) e errado para a EXIBIÇÃO — em
+			  // 17/09 eram 62 de 154 sessões autorizadas mostrando um horário mais
+			  // antigo que o real, o Theo entre elas: autorizado às 08:48, card
+			  // dizendo 08:03. Ler 45 min a mais de folga do que existe é o
+			  // caminho para a guia duplicada de 21/08.
+			  //
+			  // `horario_autorizacao` é a da própria sessão; o max() das duas
+			  // devolve a mais recente de fato.
+
+			  // A falta registrada para ESTA sessão, quando houver.
+			  const faltaDaSessao = faltasDoDia[chaveFalta(p)] ?? null
+
+			  // A falta da sessão IMEDIATAMENTE anterior do mesmo paciente hoje.
+			  //
+			  // "Imediatamente", e não "qualquer anterior", é a diferença entre
+			  // avisar e alarmar: no Benicio de 17/09 a de 13:00 faltou e a de
+			  // 13:40 compareceu, então o card das 14:20 não tem o que avisar —
+			  // sinalizar ali seria dizer que o paciente não veio quando ele está
+			  // na clínica há 40 minutos.
+			  //
+			  // A busca é por HORÁRIO e ignora terapia/tuss: a sessão anterior
+			  // costuma ser de outra terapia (Fonoaudiologia → Terapia Ocupacional
+			  // no caso dele), e casar por tuss não acharia nada.
+			  const faltaDaAnterior = (() => {
+				if (faltaDaSessao) return null // esta sessão já diz o seu próprio
+
+				const meu = String(p.horario).slice(0, 5)
+
+				const anterior = listaDiaCompleta
+				  .filter(
+				    (s: SessaoDaLista) =>
+				      String(s.paciente_id) === String(p.paciente_id) &&
+				      String(s.horario).slice(0, 5) < meu
+				  )
+				  .map((s: SessaoDaLista) => String(s.horario).slice(0, 5))
+				  .sort()
+				  .pop()
+
+				if (!anterior) return null
+
+				const falta = faltasPorHorario[`${p.paciente_id}_${anterior}`]
+				return falta ? { ...falta, horario: anterior } : null
+			  })()
+
+			  const ultimaAutorizacaoExibida =
+				[p.horario_autorizacao, p.ultima_autorizacao_anterior]
+				  .filter(Boolean)
+				  .sort()
+				  .pop() ?? null
+
+			  // Quanto falta para a ASSIM liberar outra identificação deste
+			  // beneficiário.
+			  //
+			  // O selo conta sobre `ultima_autorizacao_anterior` — o MESMO valor
+			  // que o clique usa em `podeSolicitar` —, e NÃO sobre o que o rótulo
+			  // exibe. Os dois divergem de propósito: o rótulo mostra a mais
+			  // recente de todas (é o que se quer LER), enquanto o bloqueio ignora
+			  // a própria sessão, senão uma tentativa interrompida bloquearia a si
+			  // mesma no reprocesso.
+			  //
+			  // Contar sobre o valor exibido faria a tela prometer o que o botão
+			  // nega: no Arthur de 17/09, a sessão das 13:40 (autorizada 13:39)
+			  // ficaria "faltam 25 min" enquanto o clique a deixaria passar,
+			  // porque para ELA a anterior é 12:57.
+			  //
+			  // Ler `minutoAtual` aqui é o que faz o contador andar: sem tocar no
+			  // state na render, o React não teria por que recalcular e o número
+			  // ficaria parado. (`void` porque o valor em si não é usado — quem
+			  // conta é o `Date.now()` dentro de `minutosRestantes`.)
+			  void minutoAtual
+			  const faltamMin = minutosRestantes(
+				p.ultima_autorizacao_anterior,
+				LIBERACAO_SOLICITAR_MIN
+			  )
+			  const janelaAberta = faltamMin === 0
+			  const temUltima = !!p.ultima_autorizacao_anterior
+
+			  // Montado uma vez e usado em dois lugares: na coluna de apoio (a
+			  // partir de `lg`) e no fluxo do miolo abaixo disso, quando a coluna
+			  // é escondida. Duplicar o JSX faria as duas cópias divergirem.
+			  // O bloco existe se houver QUALQUER coisa a dizer: a última
+			  // autorização (só em cards de autorização) ou o aviso da sessão
+			  // anterior, que vale também para os de Presença — o Caio de 17/09
+			  // faltou às 08:40 e tem quatro sessões de presença depois, todas
+			  // precisando do aviso.
+			  const botaoUltimaAutorizacao =
+				p.tipo_fluxo === 'autorizacao' || faltaDaAnterior ? (
+				  <div className="flex flex-col items-start gap-1">
+				    {p.tipo_fluxo === 'autorizacao' && (
+				    <button
+				      type="button"
+				      onClick={() => setModalAutorizacoes(p)}
+				      aria-label="Ver autorizações de hoje"
+				      className="group -ml-1.5 flex items-center gap-1.5 self-start rounded-lg px-1.5 py-1 text-[11px] text-slate-500 hover:bg-[#3A8FB7]/[0.07] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#3A8FB7]/40 transition-colors"
+				    >
+				      <Clock size={12} className="shrink-0 text-slate-400 group-hover:text-[#3A8FB7] transition-colors" />
+				      <span className="group-hover:text-slate-600 transition-colors">Últ. autorização</span>
+				      <span className="text-[12.5px] font-semibold tabular-nums text-slate-700 group-hover:text-[#3A8FB7] transition-colors">
+				        {horaDoTimestamp(ultimaAutorizacaoExibida) || '—'}
+				      </span>
+				      <ChevronRight
+				        size={12}
+				        className="shrink-0 text-slate-300 group-hover:text-[#3A8FB7] group-hover:translate-x-0.5 transition-all"
+				      />
+				    </button>
+				    )}
+
+				    {/* O SEMÁFORO DA JANELA DOS 31 MIN — linha própria, sob o
+				        horário. Até aqui a regra só aparecia DEPOIS do clique, como
+				        um toast de recusa: a atendente descobria que faltavam 12
+				        minutos tentando e falhando. O estado passa a ser legível
+				        antes, onde a decisão é tomada.
+
+				        Fica FORA do botão de propósito: é informação de leitura, não
+				        parte do alvo de clique — dentro dele, o alvo crescia e o
+				        selo virava algo que parece clicável e não é.
+
+				        Só duas cores, e a neutra é o repouso: âmbar enquanto falta
+				        (com o número, que é o que se quer saber) e um "Liberado"
+				        discreto em verde quando abre. Sem última autorização não há
+				        espera, e nada é desenhado — card sem selo já diz "pode
+				        solicitar". */}
+				    {p.tipo_fluxo === 'autorizacao' && temUltima && (
+				      janelaAberta ? (
+				        <span className="flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-100 px-1.5 py-[2px] rounded">
+				          <Check size={10} className="shrink-0" />
+				          Liberado
+				        </span>
+				      ) : (
+				        <span
+				          title={`A ASSIM exige ${INTERVALO_ASSIM_MIN} min entre autorizações do mesmo beneficiário`}
+				          className="flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-100 px-1.5 py-[2px] rounded"
+				        >
+				          <Clock size={10} className="shrink-0" />
+				          <span className="tabular-nums">Faltam {faltamMin} min</span>
+				        </span>
+				      )
+				    )}
+
+				    {/* FALTOU NA SESSÃO ANTERIOR — sob o semáforo, fechando a
+				        coluna de apoio.
+				        Fica aqui, e não junto dos chips do miolo, porque esta coluna
+				        é o histórico do paciente: CPF e nascimento dizem quem ele é,
+				        a última autorização e este aviso dizem o que já aconteceu
+				        com ele hoje. O miolo descreve a SESSÃO; aqui se lê a PESSOA.
+
+				        Mesmo corpo (10px) do semáforo acima, para os dois lerem
+				        como uma coisa só. */}
+				    {faltaDaAnterior && (
+				      <span
+				        title={
+				          faltaDaAnterior.justificativa
+				            ? `Sessão das ${faltaDaAnterior.horario}: ${faltaDaAnterior.justificativa}`
+				            : `O paciente não compareceu à sessão das ${faltaDaAnterior.horario}`
+				        }
+				        className="flex items-center gap-1 text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200/70 px-1.5 py-[2px] rounded"
+				      >
+				        <AlertCircle size={10} className="shrink-0" />
+				        <span className="tabular-nums">Faltou às {faltaDaAnterior.horario}</span>
+				      </span>
+				    )}
+				  </div>
+				) : null
 
 			  const cpfFormatado =
 				formatarCpf(p.cpf)
@@ -2162,147 +2565,347 @@ useEffect(() => {
 				  return (
 			<div
 			  key={buildCardKey(p)}
-			  className="flex rounded-2xl border border-white/60 bg-white/90 border-slate-200/60 backdrop-blur-md shadow-[0_8px_30px_rgba(0,0,0,0.06)] hover:shadow-[0_10px_40px_rgba(0,0,0,0.10)] hover:-translate-y-[1px] transition-all duration-200 overflow-hidden"
+			  /* `min-h`, e NUNCA `h` fixa.
+			     O piso é o que dá o alinhamento: a faixa do horário é coluna irmã
+			     do miolo, e com altura livre ela se reconciliava com um centro que
+			     mudava de tamanho conforme o CPF e a "Última autorização"
+			     existissem — daí o nome pousar em alturas diferentes. Um piso
+			     comum resolve isso e dá ritmo regular à lista.
+
+			     Mas altura FIXA aqui corta: a coluna de ações tem 4 botões no
+			     estado "Autorizando…" (Autorizando + Cancelar + Chamar + Falta) e
+			     no de erro (Erro + Tentar novamente + Chamar + Falta), contra 3 no
+			     estado normal — 136px contra 108. Com `h-[124px]` o Falta sumia
+			     atrás do `overflow-hidden`, sem aviso. Com `min-h` o card cresce
+			     nesses dois estados e nada é escondido. */
+			  className="relative flex min-h-[124px] rounded-2xl border border-slate-200/70 bg-white shadow-[0_2px_8px_rgba(15,23,42,0.04),0_8px_24px_rgba(15,23,42,0.05)] hover:shadow-[0_4px_12px_rgba(15,23,42,0.06),0_12px_32px_rgba(15,23,42,0.08)] hover:border-slate-300/70 transition-all duration-200 overflow-hidden"
 			>
-			  {/* ⏰ HORÁRIO */}
-			<div className="bg-gradient-to-b from-[#3A8FB7]/15 to-[#3A8FB7]/5 px-6 flex flex-col items-center justify-center gap-1 min-w-[130px] border-r border-slate-200/60">
-			  <span className="text-2xl font-bold text-[#3A8FB7] tracking-tight">
+			  {/* ⏰ HORÁRIO
+			      A faixa voltou ao lugar, e com ela a separação entre três coisas
+			      de natureza diferente: QUANDO (a hora), QUAL sessão (4/6) e QUEM
+			      (o nome). Inline, numa linha só, elas viravam uma sequência que
+			      ninguém lê — "10:00 4/6 Benicio" não tem onde começar.
+
+			      O desalinhamento que motivou a saída não vinha da faixa existir:
+			      vinha de ela ser irmã de uma coluna de altura VARIÁVEL. Com a
+			      altura do card fixa (h-[104px] abaixo, e a linha da "Última
+			      autorização" reservada), a faixa se centra contra uma altura que
+			      é sempre a mesma — e o problema não tem como voltar.
+
+			      A profundidade vem de camadas de gradiente, não de formas: duas
+			      radiais (brilho no alto à esquerda, sombra no pé à direita) sobre
+			      uma linear de base. As radiais vêm ANTES da linear porque em CSS
+			      a primeira camada é a de cima. */}
+			<div className="relative isolate overflow-hidden shrink-0 w-[124px] flex flex-col items-center justify-center gap-1 border-r border-slate-200/60 bg-[radial-gradient(120%_80%_at_20%_0%,rgba(255,255,255,0.85)_0%,rgba(255,255,255,0)_55%),radial-gradient(100%_70%_at_100%_100%,rgba(47,118,149,0.16)_0%,rgba(47,118,149,0)_60%),linear-gradient(to_bottom,rgba(58,143,183,0.14)_0%,rgba(58,143,183,0.05)_100%)]">
+			  {/* Fio de luz na aresta superior — a borda que o vidro fosco tem
+			      contra a luz. Um pixel, e é ele que separa o bloco do card. */}
+			  <span
+			    aria-hidden="true"
+			    className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/70 to-transparent"
+			  />
+
+			  <span className="text-[26px] leading-none font-bold text-[#2F7695] tracking-tight tabular-nums">
 				{p.horario?.slice(0, 5)}
 			  </span>
-			  {sessaoInfo && sessaoInfo.total > 1 && (
-			    <span className="text-[11px] font-bold text-white bg-[#3A8FB7] px-2.5 py-0.5 rounded-full shadow-sm">
+
+			  {sessaoInfo && (
+			    <span className="text-[10px] font-semibold text-white bg-[#3A8FB7] px-2 py-[2px] rounded-full shadow-sm tabular-nums">
 			      {sessaoInfo.index}/{sessaoInfo.total}
 			    </span>
 			  )}
 			</div>
 
 {/* CONTEÚDO */}
-<div className="flex flex-1 justify-between p-2 items-start gap-4">
+<div className="flex flex-1 min-w-0 px-5 py-3.5 items-center gap-5">
 
-  <div className="flex flex-col gap-2 min-w-0">
+  {/* `flex-1` aqui (e não largura natural) é o que ancora a coluna de apoio: o
+      miolo absorve toda a sobra de largura, então o filete e o CPF caem sempre
+      na mesma posição, card após card. Sem isso a coluna flutuava conforme o
+      comprimento do nome e dos chips. */}
+  <div className="flex flex-1 flex-col gap-1.5 min-w-0">
 
     {/* NOME */}
-    <span className="text-lg font-semibold text-slate-800 leading-tight truncate">
+    <span className="text-[15px] font-semibold text-slate-800 leading-tight truncate">
       {formatarNome(p.paciente_nome)}
     </span>
 
-		{(cpfFormatado || dataNascimentoFormatada) && (
-		  <span className="text-xs text-slate-500 leading-tight">
-			{[
-			  cpfFormatado
-				? `CPF: ${cpfFormatado}`
-				: null,
+    {/* Abaixo de `lg` a coluna de apoio não cabe e é escondida; CPF e
+        nascimento voltam para cá, senão sumiriam da tela junto com ela. */}
+    {(cpfFormatado || dataNascimentoFormatada) && (
+      <span className="lg:hidden text-[11px] text-slate-500 leading-tight">
+        {[
+          cpfFormatado ? `CPF: ${cpfFormatado}` : null,
+          dataNascimentoFormatada ? `Nasc.: ${dataNascimentoFormatada}` : null,
+        ]
+          .filter(Boolean)
+          .join('   |   ')}
+      </span>
+    )}
 
-			  dataNascimentoFormatada
-				? `Nascimento: ${dataNascimentoFormatada}`
-				: null
-			]
-			  .filter(Boolean)
-			  .join(' | ')}
-		  </span>
-		)}
-		
-    {/* BADGES (INFORMAÇÃO) */}
-    <div className="flex items-center gap-2 flex-wrap">
+    {/* BADGES (INFORMAÇÃO)
+        Sem teto de largura: o que empurrava a coluna de apoio era o selo de
+        ESTADO ("Processando · Larissa") misturado aqui, e ele agora tem linha
+        própria. Limitar a fileira em 420px, depois disso, só criaria um vão à
+        direita dos chips — encolher o conteúdo enquanto sobra espaço.
 
-		  {/* TERAPIA */}
-		  <span className="text-[11px] px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-100">
+        `flex-wrap` continua: nome de sala longo ("Unid. Realengo - Sala 18
+        (Coordenação de caso)") desce para a segunda linha em vez de espremer os
+        vizinhos.
+
+        (a última autorização também volta para cá abaixo de `lg`, logo após) */}
+    <div className="flex items-center gap-2 gap-y-1.5 flex-wrap min-w-0">
+
+		  {/* TERAPIA — a única tag colorida da fileira: é o dado que muda o
+		      trabalho da recepção. Convênio e sala ficam neutros ao lado. */}
+		  <span className="shrink-0 text-[10.5px] font-medium px-2 py-[3px] rounded-md bg-blue-50 text-blue-700 border border-blue-100/80">
 		  	{p.terapias?.join(' + ') || 'Sem terapia'}
 		  </span>
 
 		{/* CONVENIO */}
-		<span className="text-[11px] px-2 py-0.5 rounded-md bg-slate-100/70 text-slate-600 border border-slate-200">
+		<span className="shrink-0 text-[10.5px] font-medium px-2 py-[3px] rounded-md bg-slate-50 text-slate-600 border border-slate-200/80">
 		  {p.convenio_nome || 'Sem convênio'}
 		</span>
-		
 
-      {/* STATUS */}
-      {(p.status_final === 'processando') &&
-	  (
-        <span className="flex items-center gap-1 text-xs font-semibold text-blue-800 bg-blue-100 px-2 py-0.5 rounded-md max-w-[260px]">
-          <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse shrink-0"></span>
-          <span className="shrink-0">Processando</span>
-          {/* Quem pediu. Numa recepção com várias estações, "Processando" sozinho
-              vira pergunta em voz alta. truncate porque criado_por cai no e-mail
-              quando o usuário não tem nome preenchido em `usuarios`. */}
-          {p.criado_por && (
-            <span className="font-normal text-blue-700 truncate">· {p.criado_por}</span>
-          )}
-        </span>
-      )}
-
-		{p.status_final === 'pendente' && (
-		  <span className="flex items-center gap-1 text-xs font-semibold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-md max-w-[260px]">
-			<span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse shrink-0"></span>
-			<span className="shrink-0">Na fila</span>
-			{/* Mesmo motivo do selo acima: logo depois do clique o card fica aqui,
-			    e é justamente quando a recepção precisa saber de quem é. */}
-			{p.criado_por && (
-			  <span className="font-normal text-amber-700 truncate">· {p.criado_por}</span>
-			)}
+		{/* SALA — está no mockup e o dado já vinha na lista sem ser exibido.
+		    Na recepção é o que se diz em voz alta ao encaminhar o paciente. */}
+		{p.sala_nome && (
+		  <span className="shrink-0 text-[10.5px] font-medium px-2 py-[3px] rounded-md bg-slate-50 text-slate-600 border border-slate-200/80">
+		    {p.sala_nome}
 		  </span>
 		)}
+		
 
-      {p.status_final === 'erro' && (
-        <span className="flex items-center gap-1 text-xs font-semibold text-red-800 bg-red-100 px-2 py-0.5 rounded-md">
-          <span className="w-1.5 h-1.5 bg-red-500 rounded-full"></span>
-          Erro
-        </span>
-      )}
-
-      {p.status_final === 'cancelado' && (
-        <span className="flex items-center gap-1 text-xs font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md">
-          <span className="w-1.5 h-1.5 bg-slate-400 rounded-full"></span>
-          {p.cancelado_por_nome
-            ? `Cancelada por: ${p.cancelado_por_nome}`
-            : 'Cancelada'}
-        </span>
-      )}
     </div>
 
-{/* ÚLTIMA AUTORIZAÇÃO */}
-{p.tipo_fluxo === 'autorizacao' && (
-  <span className="text-xs text-slate-400">
-    Última autorização:{' '}
-    {p.ultima_autorizacao_anterior
-      ? new Date(
-          p.ultima_autorizacao_anterior
-        ).toLocaleTimeString('pt-BR', {
-          hour: '2-digit',
-          minute: '2-digit'
-        })
-      : '-'}
-  </span>
-)}
+    {/* ESTADO DA AUTORIZAÇÃO — linha própria, abaixo dos chips.
+        Misturado à fileira de cima, o selo alongava a linha e empurrava a coluna
+        de apoio; mas o motivo de separar não é só largura. Terapia, convênio e
+        sala descrevem a SESSÃO e são sempre os mesmos; "Processando · Larissa"
+        é o ESTADO de agora, muda sozinho e pertence a outra ordem de leitura.
 
+        O selo "Erro" saiu: o botão ao lado já diz "Erro ao autorizar", e dizer
+        duas vezes a mesma coisa em vermelho, a um palmo de distância, só rouba
+        atenção de quem precisa achar a saída. */}
+    {(p.status_final === 'processando' ||
+      p.status_final === 'pendente' ||
+      p.status_final === 'cancelado' ||
+      faltaDaSessao) && (
+      <div className="flex items-center gap-2 flex-wrap min-w-0">
+
+
+        {/* FALTA REGISTRADA.
+            Não é redundante com o `status_final`: a RPC dá precedência a
+            'autorizado_externo' sobre 'falta', então uma sessão com guia na ASSIM
+            E falta registrada aparecia só como autorizada. Foi o Benicio em
+            17/09 — falta às 13:00 com "n chegou", invisível no card.
+
+            Quem lê aqui precisa saber DE QUEM foi a falta: paciente e terapeuta
+            têm desfechos diferentes na cobrança. A justificativa vai no `title`,
+            porque é texto livre digitado pela recepção ("n chegou") e não cabe
+            num selo sem estourar a linha. */}
+        {faltaDaSessao && (
+          <span
+            title={
+              faltaDaSessao.justificativa
+                ? `Falta: ${faltaDaSessao.justificativa}`
+                : undefined
+            }
+            className="flex items-center gap-1.5 text-[10.5px] font-semibold text-rose-700 bg-rose-50 border border-rose-100 px-2 py-[3px] rounded-md min-w-0"
+          >
+            <XCircle size={11} className="shrink-0" />
+            <span className="shrink-0">
+              {faltaDaSessao.tipo === 'terapeuta'
+                ? 'Falta do terapeuta'
+                : 'Falta do paciente'}
+            </span>
+            {faltaDaSessao.justificativa && (
+              <span className="font-normal text-rose-600 truncate">
+                · {faltaDaSessao.justificativa}
+              </span>
+            )}
+          </span>
+        )}
+
+        {p.status_final === 'processando' && (
+          <span className="flex items-center gap-1.5 text-[10.5px] font-semibold text-blue-800 bg-blue-100/80 px-2 py-[3px] rounded-md min-w-0">
+            <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse shrink-0"></span>
+            <span className="shrink-0">Processando</span>
+            {/* Quem pediu. Numa recepção com várias estações, "Processando" sozinho
+                vira pergunta em voz alta. truncate porque criado_por cai no e-mail
+                quando o usuário não tem nome preenchido em `usuarios`. */}
+            {p.criado_por && (
+              <span className="font-normal text-blue-700 truncate">· {p.criado_por}</span>
+            )}
+          </span>
+        )}
+
+        {p.status_final === 'pendente' && (
+          <span className="flex items-center gap-1.5 text-[10.5px] font-semibold text-amber-800 bg-amber-100/80 px-2 py-[3px] rounded-md min-w-0">
+            <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse shrink-0"></span>
+            <span className="shrink-0">Na fila</span>
+            {/* Mesmo motivo do selo acima: logo depois do clique o card fica aqui,
+                e é justamente quando a recepção precisa saber de quem é. */}
+            {p.criado_por && (
+              <span className="font-normal text-amber-700 truncate">· {p.criado_por}</span>
+            )}
+          </span>
+        )}
+
+        {p.status_final === 'cancelado' && (
+          <span className="flex items-center gap-1.5 text-[10.5px] font-semibold text-slate-600 bg-slate-100 px-2 py-[3px] rounded-md min-w-0">
+            <span className="w-1.5 h-1.5 bg-slate-400 rounded-full shrink-0"></span>
+            <span className="truncate">
+              {p.cancelado_por_nome
+                ? `Cancelada por: ${p.cancelado_por_nome}`
+                : 'Cancelada'}
+            </span>
+          </span>
+        )}
+      </div>
+    )}
+
+    {/* Abaixo de `lg`, onde a coluna de apoio está escondida. */}
+    {botaoUltimaAutorizacao && (
+      <div className="lg:hidden">{botaoUltimaAutorizacao}</div>
+    )}
 
   </div>
 
-<div className="flex flex-col gap-1 ml-4 w-[135px]">
+{/* COLUNA DE APOIO
+    CPF, nascimento e última autorização saem da pilha e formam uma coluna
+    própria, separada por um filete. São dados de CONFERÊNCIA — olhados quando se
+    precisa deles, não a cada varredura da lista —, e empilhados junto do nome
+    pesavam o mesmo que ele. Lado a lado, a divisão fica explícita: à esquerda
+    quem é o paciente, à direita o que se confere sobre ele.
 
-{p.tipo_fluxo === 'autorizacao' ? (
+    Some também a linha reservada: com as duas colunas independentes, o card não
+    encolhe mais quando falta a última autorização. */}
+  <div className="hidden lg:flex shrink-0 flex-col justify-center gap-1 self-stretch border-l border-slate-100 pl-6 w-[210px]">
+    {/* Rótulo de largura fixa para os dois valores começarem na MESMA coluna:
+        "CPF:" e "Nasc.:" têm larguras diferentes, e sem o trilho os números
+        saíam escalonados — numa pilha de cards, é isso que faz a coluna parecer
+        torta. O rótulo fica um tom mais claro que o valor: quem se lê é o
+        número, o rótulo só diz qual é. */}
+    {cpfFormatado && (
+      <span className="flex items-baseline gap-1.5 text-[11px] leading-tight">
+        <span className="shrink-0 w-[40px] text-slate-400">CPF:</span>
+        <span className="text-slate-600 tabular-nums">{cpfFormatado}</span>
+      </span>
+    )}
 
+    {dataNascimentoFormatada && (
+      <span className="flex items-baseline gap-1.5 text-[11px] leading-tight">
+        <span className="shrink-0 w-[40px] text-slate-400">Nasc.:</span>
+        <span className="text-slate-600 tabular-nums">{dataNascimentoFormatada}</span>
+      </span>
+    )}
+
+    {/* É a informação mais consultada do card: por ela a recepção decide se já
+        passaram os 30 min que a ASSIM exige entre autorizações do mesmo
+        beneficiário. Por isso é a única coisa clicável desta coluna. */}
+    {botaoUltimaAutorizacao}
+
+  </div>
+
+<div className="flex flex-col gap-1 shrink-0 w-[158px]">
+
+{p.tipo_fluxo === 'autorizacao' ? (() => {
+
+  // Os três estados do botão, numa fonte de verdade só.
+  //
+  // "Autorizando…" atravessa o insert E a espera do robô ('pendente' →
+  // 'processando'), porque é isso que a recepcionista chama de autorizar: o
+  // trabalho só termina quando a ASSIM responde. O desfecho não é desenhado
+  // aqui — o realtime tira o card da tela em 'concluido' —, e é por isso que
+  // não existe estado "Autorizado" permanente: a lista é de pendências.
+  const emVooLocal = enviando.has(buildCardKey(p))
+  const noBanco = p.status_final === 'pendente' || p.status_final === 'processando'
+  const autorizando = emVooLocal || noBanco
+
+  const comErro = erroAutorizar.has(buildCardKey(p)) || p.status_final === 'erro'
+
+  if (autorizando) {
+    return (
+      <button
+        disabled
+        aria-busy="true"
+        className={`${ACAO_BASE} bg-[#3A8FB7]/10 text-[#2F7695] cursor-default`}
+      >
+        <span className={`${ACAO_ICONE} bg-[#3A8FB7]/15`}>
+          <Loader2 size={13} className="animate-spin" />
+        </span>
+        Autorizando…
+      </button>
+    )
+  }
+
+  if (comErro) {
+    return (
+      <>
+        <span className={`${ACAO_BASE} bg-red-50 text-red-600 border border-red-100`}>
+          <span className={`${ACAO_ICONE} bg-red-100`}>
+            <AlertCircle size={13} />
+          </span>
+          Erro ao autorizar
+        </span>
+
+        {/* "Tentar novamente" cinza sem explicação é um beco: a atendente vê o
+            erro, vê a saída oferecida e ela não responde. O motivo é sempre o
+            mesmo — o robô não está acessível —, então o botão diz isso no
+            próprio rótulo, como o "Autorizar" já faz. Repetir "Tentar
+            novamente" enquanto o robô está fora seria prometer o que não há. */}
+        <button
+          disabled={!workerOnline}
+          onClick={() => handleSolicitarLista(p)}
+          title={workerOnline ? undefined : mensagemDoRobo(robo)}
+          className={`${ACAO_BASE} ${
+            workerOnline
+              ? 'bg-blue-50 text-[#2F7695] hover:bg-blue-100'
+              : 'bg-slate-100 text-slate-400'
+          }`}
+        >
+          <span className={`${ACAO_ICONE} ${workerOnline ? 'bg-blue-100' : 'bg-slate-200'}`}>
+            <RotateCw size={13} />
+          </span>
+          {workerOnline
+            ? 'Tentar novamente'
+            : robo.estado === 'verificando'
+              ? 'Verificando…'
+              : robo.estado === 'bloqueado'
+                ? 'Sem acesso local'
+                : 'Robô Offline'}
+        </button>
+      </>
+    )
+  }
+
+  return (
   <button
     disabled={
       !workerOnline ||
-      !ativo ||
-      p.status_final === 'processando'
+      !ativo
     }
     onClick={() => handleSolicitarLista(p)}
     title={workerOnline ? undefined : mensagemDoRobo(robo)}
-    className={`w-full flex items-start justify-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg font-medium leading-none tracking-tight ${
+    className={`${ACAO_BASE} ${
       !workerOnline
-        ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
+        ? 'bg-slate-200 text-slate-500'
         : ativo
-          ? 'bg-[#3A8FB7] text-white shadow-md hover:brightness-110'
-          : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+          ? 'bg-[#3A8FB7] text-white shadow-[0_4px_12px_rgba(58,143,183,0.35)] hover:brightness-110 hover:shadow-[0_6px_16px_rgba(58,143,183,0.42)]'
+          : 'bg-slate-100 text-slate-400'
     }`}
   >
-    <Lock size={14} className="relative -top-[1px]" />
+    <span
+      className={`${ACAO_ICONE} ${
+        workerOnline && ativo ? 'bg-white/20' : 'bg-slate-200/70'
+      }`}
+    >
+      <Lock size={13} />
+    </span>
 
     {
       // "Sistema Offline" era mentira quando o robô estava vivo e o browser é
-      // que bloqueava. O rótulo cabe em 135px, então diz o essencial; o detalhe
+      // que bloqueava. O rótulo cabe na coluna, então diz o essencial; o detalhe
       // (e o que fazer) fica no aviso do topo e no title.
       workerOnline
         ? 'Autorizar'
@@ -2313,34 +2916,37 @@ useEffect(() => {
             : 'Robô Offline'
     }
   </button>
-
-) : (
+  )
+})() : (
 
   <button
     disabled={!ativo}
     onClick={() => handleManualLista(p)}
-    className={`w-full flex items-start justify-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg font-medium leading-none tracking-tight ${
+    className={`${ACAO_BASE} ${
 		  ativo
-			? 'bg-emerald-600 text-white shadow-md hover:bg-emerald-700'
-			: 'bg-slate-200 text-slate-400 cursor-not-allowed'
+			? 'bg-emerald-600 text-white shadow-[0_4px_12px_rgba(5,150,105,0.32)] hover:bg-emerald-700'
+			: 'bg-slate-100 text-slate-400'
 	  }`}
   >
-  <CheckCircle
-    size={14}
-    className="relative -top-[1px]"
-  />
-
-  Presença
-</button>
+    <span className={`${ACAO_ICONE} ${ativo ? 'bg-white/20' : 'bg-slate-200/70'}`}>
+      <CheckCircle size={13} />
+    </span>
+    Presença
+  </button>
 
 )}
 
-{p.status_final === 'processando' && (
+{/* Cancelar acompanha o "Autorizando…": aparece assim que há solicitação viva
+    ('pendente' ou 'processando'), e não só depois que o robô assume. Cancela a
+    TENTATIVA, nunca o agendamento — a sessão volta à lista como estava. */}
+{(p.status_final === 'pendente' || p.status_final === 'processando') && (
   <button
     onClick={() => handleCancelarProcessamento(p)}
-    className="w-full flex items-start justify-center gap-1.5 text-[12px] px-2 py-1.5 rounded-lg font-medium bg-orange-100 text-orange-700 hover:bg-orange-200 tracking-tight leading-none"
+    className={`${ACAO_BASE} bg-orange-50 text-orange-700 hover:bg-orange-100`}
   >
-    <XCircle size={14} className="relative -top-[1px]" />
+    <span className={`${ACAO_ICONE} bg-orange-100`}>
+      <Ban size={13} />
+    </span>
     Cancelar
   </button>
 )}
@@ -2359,6 +2965,13 @@ useEffect(() => {
   const chamadoAgora =
     ultima !== undefined && tique - ultima < JANELA_RECHAMADA_MS
 
+  // Chamar segue liberado DURANTE a autorização, de propósito.
+  //
+  // As duas ações correm em paralelo na vida real: o robô leva de segundos a
+  // minutos no portal da ASSIM, e a recepção não espera esse tempo para chamar o
+  // responsável — o paciente já está no balcão. Travar o botão aqui não evitava
+  // engano nenhum, só obrigava a esperar. (Falta continua bloqueada: aquela sim
+  // é escrita concorrente sobre a mesma sessão que o robô está autorizando.)
   const inerte = emVoo || chamadoAgora
 
   return (
@@ -2371,15 +2984,17 @@ useEffect(() => {
           ? 'Responsável chamado há instantes — aguarde antes de chamar de novo'
           : undefined
       }
-      className="w-full flex items-start justify-center gap-1.5 text-[12px] px-2 py-1.5 rounded-lg font-medium bg-emerald-100 text-emerald-700 hover:bg-emerald-200 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-emerald-100 tracking-tight leading-none"
+      className={`${ACAO_BASE} bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-60 disabled:hover:bg-emerald-50`}
     >
-      {emVoo ? (
-        <Loader2 size={14} className="relative -top-[1px] animate-spin" />
-      ) : chamadoAgora ? (
-        <CheckCircle size={14} className="relative -top-[1px]" />
-      ) : (
-        <Megaphone size={14} className="relative -top-[1px]" />
-      )}
+      <span className={`${ACAO_ICONE} bg-emerald-100`}>
+        {emVoo ? (
+          <Loader2 size={13} className="animate-spin" />
+        ) : chamadoAgora ? (
+          <CheckCircle size={13} />
+        ) : (
+          <Megaphone size={13} />
+        )}
+      </span>
       {emVoo ? 'Chamando…' : chamadoAgora ? 'Chamado' : 'Chamar'}
     </button>
   )
@@ -2390,9 +3005,13 @@ useEffect(() => {
     setPacienteFalta(p)
     setModalFalta(true)
   }}
-  className="w-full flex items-start justify-center gap-1.5 text-[12px] px-2 py-1.5 rounded-lg font-medium bg-red-100 text-red-600 hover:bg-red-200 tracking-tight leading-none"
+  disabled={autorizandoAgora}
+  title={autorizandoAgora ? 'Aguarde a autorização terminar' : undefined}
+  className={`${ACAO_BASE} bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-60 disabled:hover:bg-red-50`}
 >
-  <XCircle size={14} className="relative -top-[1px]" />
+  <span className={`${ACAO_ICONE} bg-red-100`}>
+    <XCircle size={13} />
+  </span>
   Falta
 </button>
 
@@ -2408,6 +3027,25 @@ useEffect(() => {
 
       </div>
 
+
+{/* MODAL "AUTORIZAÇÕES DE HOJE" */}
+{modalAutorizacoes && (
+  <ModalAutorizacoesDoDia
+    sessao={modalAutorizacoes}
+    sessaoInfo={
+      sessoesHoje[
+        chaveSessaoDoDia(
+          modalAutorizacoes.paciente_id,
+          modalAutorizacoes.horario,
+          modalAutorizacoes.terapias?.[0]
+        )
+      ]
+    }
+    cpfFormatado={formatarCpf(modalAutorizacoes.cpf)}
+    dataNascimentoFormatada={formatarDataNascimento(modalAutorizacoes.data_nascimento)}
+    onClose={() => setModalAutorizacoes(null)}
+  />
+)}
 
 {/* MODAL FALTA */}
 {modalFalta && (
@@ -2820,14 +3458,29 @@ useEffect(() => {
 	</div>
   )
 }
+/**
+ * O CPF com máscara, para LEITURA na tela: 216.181.027-88.
+ *
+ * A máscara é só de exibição — os dois pontos de uso (o card e o modal) mostram,
+ * nenhum grava. O que vai para o banco e para o robô é `p.cpf` cru, direto de
+ * `criarAutorizacao`, e continua sem pontuação.
+ *
+ * Os agrupamentos existem para o olho: conferir 11 dígitos corridos contra um
+ * documento no balcão obriga a contar casa a casa; em blocos de três, a
+ * comparação é por bloco. Fora dos 11 dígitos o valor sai como está — é melhor
+ * mostrar um CPF torto do que uma máscara que o deforma para caber.
+ */
 function formatarCpf(
   cpf?: string | number | null
 ) {
 
   if (cpf == null) return ''
 
-  return String(cpf)
-    .replace(/\D/g, '')
+  const digitos = String(cpf).replace(/\D/g, '')
+
+  if (digitos.length !== 11) return digitos
+
+  return digitos.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')
 }
 
 // ISO (YYYY-MM-DD) para o formato brasileiro, sem passar por Date: construir um
