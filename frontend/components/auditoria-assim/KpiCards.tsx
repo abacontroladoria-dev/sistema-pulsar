@@ -46,7 +46,7 @@ export default function KpiCards({ kpis, loading, activeFilter, totalFiltrados, 
         totalFiltrados={totalFiltrados}
         onFilter={() => onFilter('')}
       />
-      <div className="grid grid-cols-2 gap-2 xl:grid-cols-8 flex-1">
+      <div className="grid grid-cols-2 gap-2 xl:grid-cols-9 flex-1">
         {cards.map((card) => (
           <KpiCard
             key={card.key}
