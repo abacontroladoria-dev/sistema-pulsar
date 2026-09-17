@@ -2,7 +2,7 @@
 
 import { Calendar } from 'lucide-react'
 import type { KpisAuditoriaAssim } from './types'
-import { KPI_VISUAL, ORDEM_KPIS, type VisualKpi } from './kpisVisual'
+import { KPI_VISUAL, ORDEM_KPIS_CARD, type VisualKpi } from './kpisVisual'
 
 type Props = {
   kpis: KpisAuditoriaAssim | null
@@ -24,7 +24,7 @@ export default function KpiCards({ kpis, loading, activeFilter, totalFiltrados, 
     (kpis?.faltas_terapeuta ?? 0) +
     (kpis?.unidade_fechada ?? 0)
 
-  const cards: KpiConfig[] = ORDEM_KPIS.map((metrica) => {
+  const cards: KpiConfig[] = ORDEM_KPIS_CARD.map((metrica) => {
     const visual = KPI_VISUAL[metrica]
     // A dica de Glosas é a única dinâmica: as já cobertas por vínculo aparecem
     // como dica, e não somadas — "houve glosa" continua na tela sem inflar o
@@ -46,7 +46,7 @@ export default function KpiCards({ kpis, loading, activeFilter, totalFiltrados, 
         totalFiltrados={totalFiltrados}
         onFilter={() => onFilter('')}
       />
-      <div className="grid grid-cols-2 gap-2 xl:grid-cols-9 flex-1">
+      <div className="grid grid-cols-2 gap-2 xl:grid-cols-8 flex-1">
         {cards.map((card) => (
           <KpiCard
             key={card.key}

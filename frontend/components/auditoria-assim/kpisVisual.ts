@@ -30,6 +30,15 @@ export type MetricaKpi =
   | 'liberadas' | 'tokens' | 'glosas' | 'canceladas'
   | 'faltas' | 'faltas_terapeuta' | 'unidade_fechada'
 
+/** As nove métricas que viram card na tela diária. `unidade_fechada` fica de
+ *  fora aqui (2026-09-17): ainda soma no Total e aparece na Visão Gerencial,
+ *  só não tem card próprio no dia-a-dia. */
+export const ORDEM_KPIS_CARD: Exclude<MetricaKpi, 'unidade_fechada'>[] = [
+  'nao_solicitadas', 'sincronizando', 'retorno_nao_confirmado',
+  'liberadas', 'tokens', 'glosas', 'canceladas',
+  'faltas', 'faltas_terapeuta',
+]
+
 export type VisualKpi = {
   key: string
   title: string
