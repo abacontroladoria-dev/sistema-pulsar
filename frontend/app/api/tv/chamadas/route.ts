@@ -14,10 +14,20 @@ const JANELA_HORAS = 6
 const LIMITE = 6
 
 // Piso de permanência: uma chamada nunca sai da tela antes disso, nem com a
-// autorização já resolvida. Existe porque o robô às vezes conclui segundos
-// depois do "Chamar" (o responsável já estava no balcão), e um nome que aparece
-// e desaparece em 5s não foi chamado — foi piscado.
-const PISO_VISIVEL_MS = 60_000
+// autorização já resolvida.
+//
+// Eram 60s, e 57 das 60 chamadas de 17/09 sumiam da TV mesmo assim. O motivo é
+// que a premissa de baixo — autorização resolvida DEPOIS da chamada prova que o
+// responsável passou no balcão — não descreve o que acontece: quem resolve a
+// autorização é o ROBÔ, sozinho, e ele leva de 40s a 3 min. Nesse intervalo o
+// responsável em geral nem levantou da cadeira. O nome nascia, durava um ou dois
+// polls de 3s e sumia; da recepção o sintoma era "aperto e não acontece nada".
+//
+// 5 min é o tempo que a sala de espera precisa: cobre a resolução do robô com
+// folga larga e ainda tira o nome bem antes do fim da janela de 6h. Quem some
+// cedo agora é só quem foi chamado e resolvido com o responsável já no balcão —
+// e mesmo esse fica os 5 min, o que não atrapalha ninguém.
+const PISO_VISIVEL_MS = 300_000
 
 // `completed_at`/`updated_at` são `timestamp without time zone` guardando UTC,
 // enquanto `chamado_em` é `timestamptz` — os dois fusos que essa tabela mistura
