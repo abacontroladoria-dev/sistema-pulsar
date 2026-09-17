@@ -201,10 +201,7 @@ export function agoraMenos30MinIso(): string {
 // `carteirinhaUtil` foi para `agruparPacientes`, junto do agrupamento que a usa.
 // Reexportada aqui porque era daqui que a tela a importava.
 export { carteirinhaUtil } from '@/components/auditoria-assim/reconciliacao/agruparPacientes'
-import {
-  agruparPacientes,
-  ehDoPacienteSelecionado,
-} from '@/components/auditoria-assim/reconciliacao/agruparPacientes'
+import { agruparPacientes } from '@/components/auditoria-assim/reconciliacao/agruparPacientes'
 
 
 /**
@@ -381,23 +378,8 @@ export function useAnaliseReincidencia(dataInicial: string, pacienteInicial: str
    * carteirinhas vindas de fora são um ponto de partida — o recorte soma a elas
    * as que o próprio período descobrir.
    */
-  /**
-   * Quem está aberto no modal.
-   *
-   * `ids` existe porque o NOME NÃO IDENTIFICA ninguém entre as duas origens: a
-   * ASSIM trunca em 20 caracteres e sem acento ("DAVI LUCAS DE OLIVEI"), a
-   * agenda grava "Davi Lucas De Oliveira Capela". Filtrar as sessões por nome
-   * fazia a grade abrir SEM SESSÃO NENHUMA sempre que a linha tivesse sido
-   * aberta pelo lado da ASSIM — e aí toda guia aparecia "além do agendado",
-   * porque não havia sessão com que parear.
-   *
-   * O nome continua guardado: nem toda linha tem id (as que vêm só de falta),
-   * e para essas ele ainda é a única chave.
-   */
-  const [selecionado, setSelecionado] = useState<{ nome: string; carteirinhas: string[]; ids: string[] } | null>(
-    // Sem `ids`: a abertura por URL só traz o nome, e nesse caminho o fallback
-    // por nome é o que existe. A primeira seleção pela lista já os traz.
-    pacienteInicial ? { nome: pacienteInicial, carteirinhas: [], ids: [] } : null
+  const [selecionado, setSelecionado] = useState<{ nome: string; carteirinhas: string[] } | null>(
+    pacienteInicial ? { nome: pacienteInicial, carteirinhas: [] } : null
   )
 
   const [sessoes, setSessoes] = useState<AuditoriaAssimItem[]>([])
@@ -507,11 +489,11 @@ export function useAnaliseReincidencia(dataInicial: string, pacienteInicial: str
   const semanaMaxima = useMemo(() => segundaDe(fimFetch), [fimFetch])
 
   /** Reposiciona a análise — mês, semana, paciente e carteirinha de uma vez. */
-  const reabrirEm = useCallback((data: string, paciente: string | null, carteirinha: string | null, ids: string[] = []) => {
+  const reabrirEm = useCallback((data: string, paciente: string | null, carteirinha: string | null) => {
     setMesRef(primeiroDiaDoMes(data))
     setSemanaInicio(segundaDe(data))
     setErro(null)
-    setSelecionado(paciente ? { nome: paciente, carteirinhas: carteirinha ? [carteirinha] : [], ids } : null)
+    setSelecionado(paciente ? { nome: paciente, carteirinhas: carteirinha ? [carteirinha] : [] } : null)
   }, [])
 
   /** Troca de mês pela listagem — nunca vai além do mês corrente. */
@@ -802,17 +784,13 @@ export function useAnaliseReincidencia(dataInicial: string, pacienteInicial: str
     () => new Map()
   )
 
-  // O predicado mora em `agruparPacientes`, junto da regra de identidade que ele
-  // aplica — e onde há teste travando a regressão que ele corrige.
-  const ehDoPaciente = ehDoPacienteSelecionado
-
   const blocosDoPaciente = useMemo(() => {
     if (!selecionado?.nome) return [] as string[]
     return sessoes
-      .filter((s) => ehDoPaciente(s, selecionado))
+      .filter((s) => s.paciente_nome === selecionado?.nome)
       .map((s) => s.bloco_id)
       .filter((id): id is string => !!id && !id.startsWith('falta_'))
-  }, [sessoes, selecionado, ehDoPaciente])
+  }, [sessoes, selecionado?.nome])
 
   const chaveBlocos = blocosDoPaciente.join(',')
   useEffect(() => {
@@ -873,7 +851,7 @@ export function useAnaliseReincidencia(dataInicial: string, pacienteInicial: str
     return sessoes
       .filter(
         (s) =>
-          ehDoPaciente(s, selecionado) &&
+          s.paciente_nome === pacienteNome &&
           (s.data_atendimento ?? '') >= semanaInicio &&
           (s.data_atendimento ?? '') <= semanaFim
       )
@@ -882,30 +860,19 @@ export function useAnaliseReincidencia(dataInicial: string, pacienteInicial: str
           (a.data_atendimento ?? '').localeCompare(b.data_atendimento ?? '') ||
           (a.hora_inicial ?? '').localeCompare(b.hora_inicial ?? '')
       )
-  }, [sessoes, pacienteNome, selecionado, ehDoPaciente, semanaInicio, semanaFim])
+  }, [sessoes, pacienteNome, semanaInicio, semanaFim])
 
   const autorizacoesPaciente = useMemo(() => {
-    // Sem exigir carteirinha: uma linha pode ter só `paciente_id` (a guia da
-    // ASSIM traz id sempre, matrícula nem sempre), e a guarda antiga a deixava
-    // sem guia nenhuma.
-    if (!pacienteNome) return []
+    if (!pacienteNome || carteirinhas.length === 0) return []
     const chaves = new Set(carteirinhas)
-    const ids = new Set(selecionado?.ids ?? [])
     return autorizacoes
       .filter((a) => {
-        // Por id quando os dois lados o têm; pela matrícula quando não. A
-        // matrícula sozinha não basta: a agenda grava a carteirinha de um jeito
-        // ("000000074749794400") e a ASSIM de outro ("000000.0747497.00"), então
-        // uma linha que só conheça a forma da agenda não reconheceria guia
-        // nenhuma como sua.
-        const porId = a.paciente_id != null && ids.has(String(a.paciente_id))
-        const porMatricula = !!a.matricula && chaves.has(a.matricula)
-        if (!porId && !porMatricula) return false
+        if (!a.matricula || !chaves.has(a.matricula)) return false
         const dia = (a.data_execucao ?? '').slice(0, 10)
         return dia >= semanaInicio && dia <= semanaFim
       })
       .sort((a, b) => (a.data_execucao ?? '').localeCompare(b.data_execucao ?? ''))
-  }, [autorizacoes, pacienteNome, carteirinhas, selecionado, semanaInicio, semanaFim])
+  }, [autorizacoes, pacienteNome, carteirinhas, semanaInicio, semanaFim])
 
   // Nome de paciente é a chave da busca, mas não é identidade. Se duas pessoas
   // dividem o nome, dizer isso é melhor que escolher uma em silêncio.
@@ -925,29 +892,23 @@ export function useAnaliseReincidencia(dataInicial: string, pacienteInicial: str
 
   /** O recorte de um paciente numa semana qualquer do mês já carregado. */
   const recortarSemana = useCallback(
-    (nome: string, chaves: Set<string>, inicio: string, ids: string[] = []) => {
+    (nome: string, chaves: Set<string>, inicio: string) => {
       const fim = somarDias(inicio, 4)
-      const alvo = { nome, ids }
       return {
         sessoes: sessoes.filter(
           (s) =>
-            ehDoPaciente(s, alvo) &&
+            s.paciente_nome === nome &&
             (s.data_atendimento ?? '') >= inicio &&
             (s.data_atendimento ?? '') <= fim
         ),
         autorizacoes: autorizacoes.filter((a) => {
-          // Mesmo critério de `autorizacoesPaciente`: id primeiro, matrícula
-          // como alternativa. Divergir aqui faria o índice de semanas contar
-          // uma coisa e a grade mostrar outra.
-          const porId = a.paciente_id != null && ids.includes(String(a.paciente_id))
-          const porMatricula = !!a.matricula && chaves.has(a.matricula)
-          if (!porId && !porMatricula) return false
+          if (!a.matricula || !chaves.has(a.matricula)) return false
           const dia = (a.data_execucao ?? '').slice(0, 10)
           return dia >= inicio && dia <= fim
         }),
       }
     },
-    [sessoes, autorizacoes, ehDoPaciente]
+    [sessoes, autorizacoes]
   )
 
   /**
@@ -968,7 +929,7 @@ export function useAnaliseReincidencia(dataInicial: string, pacienteInicial: str
     const chaves = new Set(carteirinhas)
     const semanas: { inicio: string; fim: string; marcados: number }[] = []
     for (let ini = semanaMinima; ini <= semanaMaxima; ini = somarDias(ini, 7)) {
-      const { sessoes: s, autorizacoes: a } = recortarSemana(pacienteNome, chaves, ini, selecionado?.ids ?? [])
+      const { sessoes: s, autorizacoes: a } = recortarSemana(pacienteNome, chaves, ini)
       semanas.push({
         inicio: ini,
         fim: somarDias(ini, 4),
@@ -977,8 +938,8 @@ export function useAnaliseReincidencia(dataInicial: string, pacienteInicial: str
     }
     return semanas
   }, [
-    pacienteNome, carteirinhas, selecionado, semanaMinima, semanaMaxima, recortarSemana, cutoff,
-    ehOrfa, vinculos,
+    pacienteNome, carteirinhas, semanaMinima, semanaMaxima, recortarSemana, cutoff, ehOrfa,
+    vinculos,
   ])
 
   /** Vai direto para uma semana do mês, pela faixa do cabeçalho. */
@@ -1002,14 +963,14 @@ export function useAnaliseReincidencia(dataInicial: string, pacienteInicial: str
    * montagem de grade por semana sobre dados já em memória — nada de rede.
    */
   const escolherPaciente = useCallback(
-    (nome: string | null, carteirinhas: string[] = [], dataReferencia?: string | null, ids: string[] = []) => {
-      setSelecionado(nome ? { nome, carteirinhas, ids } : null)
+    (nome: string | null, carteirinhas: string[] = [], dataReferencia?: string | null) => {
+      setSelecionado(nome ? { nome, carteirinhas } : null)
       if (!nome) return
 
       const chaves = new Set(carteirinhas)
       let comMarca: string | null = null
       for (let ini = semanaMinima; ini <= semanaMaxima; ini = somarDias(ini, 7)) {
-        const { sessoes: s, autorizacoes: a } = recortarSemana(nome, chaves, ini, ids)
+        const { sessoes: s, autorizacoes: a } = recortarSemana(nome, chaves, ini)
         if (marcadosDaSemana(s, a, diasUteisDe(ini), cutoff, ehOrfa, vinculos) > 0) {
           comMarca = ini
           break

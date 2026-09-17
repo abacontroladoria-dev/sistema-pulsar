@@ -154,24 +154,3 @@ export function agruparPacientes(
 
   return [...mapa.values()]
 }
-
-/**
- * Esta sessão é do paciente aberto no modal?
- *
- * Mesma regra de identidade de `agruparPacientes`, aplicada ao recorte de UMA
- * pessoa: `paciente_id` quando os dois lados o têm, nome só quando não há id.
- *
- * Mora aqui, e não dentro do hook, porque foi exatamente esta comparação que
- * quebrou a grade em 2026-09-16: filtrar as sessões por `paciente_nome` fazia o
- * modal abrir VAZIO de sessões sempre que a linha tivesse sido rotulada pelo
- * nome truncado da ASSIM — e aí todas as guias apareciam "Liberada além do
- * agendado", por não haver sessão com que parear.
- */
-export function ehDoPacienteSelecionado(
-  sessao: Pick<AuditoriaAssimItem, 'paciente_id' | 'paciente_nome'>,
-  alvo: { nome: string; ids: string[] } | null
-): boolean {
-  if (!alvo) return false
-  if (alvo.ids.length > 0 && sessao.paciente_id) return alvo.ids.includes(sessao.paciente_id)
-  return sessao.paciente_nome === alvo.nome
-}

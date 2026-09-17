@@ -324,16 +324,7 @@ export default function ReconciliacaoTab({ alvo, onAlvoConsumido }: Props) {
         onAbrir={(paciente) => {
           // A última autorização do paciente no mês, quando existe, posiciona
           // o modal na semana onde a pendência de fato está.
-          // `pacienteIds` vai junto porque o NOME não identifica: a linha pode
-          // ter sido rotulada pelo nome truncado da ASSIM, e filtrar as sessões
-          // por ele abriria a grade sem sessão nenhuma — toda guia viraria
-          // "além do agendado" por não ter com o que parear.
-          escolherPaciente(
-            paciente.nome,
-            paciente.carteirinhas,
-            paciente.ultimaAutorizacao,
-            paciente.pacienteIds
-          )
+          escolherPaciente(paciente.nome, paciente.carteirinhas, paciente.ultimaAutorizacao)
           setEtapa('grade')
         }}
       />

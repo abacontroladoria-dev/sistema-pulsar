@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { agruparPacientes, carteirinhaUtil, ehDoPacienteSelecionado } from './agruparPacientes'
+import { agruparPacientes, carteirinhaUtil } from './agruparPacientes'
 import type { AuditoriaAssimItem, AutorizacaoAssimSemana } from '../types'
 
 /**
@@ -126,32 +126,5 @@ describe('agruparPacientes', () => {
     )
     expect(linhas).toHaveLength(1)
     expect(linhas[0].autorizacoes).toHaveLength(1)
-  })
-})
-
-describe('ehDoPacienteSelecionado', () => {
-  // A regressão de 2026-09-16: a linha rotulada com o nome truncado da ASSIM
-  // não achava nenhuma sessão da agenda, e o modal abria só com guias órfãs.
-  it('acha a sessão pelo id mesmo com o nome truncado da ASSIM', () => {
-    const sessao = { paciente_id: '11579', paciente_nome: 'Davi Lucas De Oliveira Capela' }
-    expect(ehDoPacienteSelecionado(sessao, { nome: 'DAVI LUCAS DE OLIVEI', ids: ['11579'] })).toBe(true)
-    // Sem o id — o comportamento antigo — a mesma sessão era descartada.
-    expect(ehDoPacienteSelecionado(sessao, { nome: 'DAVI LUCAS DE OLIVEI', ids: [] })).toBe(false)
-  })
-
-  it('o id manda sobre o nome: sessão de outra pessoa com nome igual fica de fora', () => {
-    const sessao = { paciente_id: '2', paciente_nome: 'Maria Silva' }
-    expect(ehDoPacienteSelecionado(sessao, { nome: 'Maria Silva', ids: ['1'] })).toBe(false)
-  })
-
-  it('cai no nome quando a linha não tem id (o caso da falta)', () => {
-    const sessao = { paciente_id: null, paciente_nome: 'Ana Souza' }
-    expect(ehDoPacienteSelecionado(sessao, { nome: 'Ana Souza', ids: [] })).toBe(true)
-    expect(ehDoPacienteSelecionado(sessao, { nome: 'Outra', ids: [] })).toBe(false)
-  })
-
-  it('sessão sem id ainda entra pelo nome mesmo quando o alvo tem ids', () => {
-    const sessao = { paciente_id: null, paciente_nome: 'Ana Souza' }
-    expect(ehDoPacienteSelecionado(sessao, { nome: 'Ana Souza', ids: ['9'] })).toBe(true)
   })
 })
