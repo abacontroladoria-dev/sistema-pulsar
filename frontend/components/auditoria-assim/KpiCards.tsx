@@ -16,7 +16,13 @@ type Props = {
 type KpiConfig = VisualKpi & { value: number }
 
 export default function KpiCards({ kpis, loading, activeFilter, totalFiltrados, onFilter }: Props) {
-  const total = (kpis?.total ?? 0) + (kpis?.faltas ?? 0) + (kpis?.faltas_terapeuta ?? 0)
+  // Tudo que estava na agenda, inclusive o que não virou sessão: as duas faltas
+  // e o dia de unidade fechada. `kpis.total` conta só o ciclo de autorização.
+  const total =
+    (kpis?.total ?? 0) +
+    (kpis?.faltas ?? 0) +
+    (kpis?.faltas_terapeuta ?? 0) +
+    (kpis?.unidade_fechada ?? 0)
 
   const cards: KpiConfig[] = ORDEM_KPIS.map((metrica) => {
     const visual = KPI_VISUAL[metrica]

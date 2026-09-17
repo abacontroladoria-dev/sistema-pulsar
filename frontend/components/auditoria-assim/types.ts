@@ -142,6 +142,13 @@ export type KpisAuditoriaAssim = {
   liberadas: number
   faltas: number
   faltas_terapeuta: number
+  /**
+   * Sessões de um dia em que a CLÍNICA não abriu (feriado, recesso, falta de
+   * energia). Contada à parte das duas faltas acima, e não somada a elas, pelo
+   * mesmo motivo que `contar_faltas_do_paciente` a exclui no banco: ninguém
+   * faltou, e juntá-la a `faltas` poria feriado na conta de assiduidade.
+   */
+  unidade_fechada: number
   nao_solicitadas: number
   sincronizando: number
   retorno_nao_confirmado: number
@@ -590,6 +597,14 @@ export type VinculoCobertura = VinculoAutorizacao & {
  * cobertura exige uma guia, e o caminho para isso é o vínculo desta mesma aba.
  * O banco recusa esses dois valores; esta lista existe para que a tela nem os
  * ofereça.
+ *
+ * `UNIDADE_FECHADA` também está fora, pelo mesmo motivo de contrato: a situação
+ * nasceu em 2026-09-17 e a constraint `auditoria_situacao_overrides_nova_ck` não
+ * a conhece — oferecê-la aqui daria erro do banco no clique. E o caminho dela é
+ * outro: "a clínica não abriu" é fato do DIA, registrado em lote pela recepção
+ * (`registrar_falta_em_lote`), não veredito sessão a sessão. Reclassificar uma
+ * sessão isolada para esse estado afirmaria que a unidade fechou para um
+ * paciente só.
  */
 export const SITUACOES_RECLASSIFICAVEIS = [
   'FALTA',

@@ -38,10 +38,35 @@ describe('contarKpis — as regras que as duas pontas precisam compartilhar', ()
   })
 
   it('mantém as faltas fora de total, cada espécie no seu campo', () => {
-    const k = contarKpis([linha('LIBERADA'), linha('FALTA'), linha('FALTA_TERAPEUTA')])
+    const k = contarKpis([
+      linha('LIBERADA'),
+      linha('FALTA'),
+      linha('FALTA_TERAPEUTA'),
+      linha('UNIDADE_FECHADA'),
+    ])
     expect(k.total).toBe(1)
     expect(k.faltas).toBe(1)
     expect(k.faltas_terapeuta).toBe(1)
+    expect(k.unidade_fechada).toBe(1)
+  })
+
+  /*
+    O defeito que este teste tranca: enquanto eram DUAS espécies de falta, o
+    roteamento era `if FALTA ... else faltas_terapeuta`, e esse `else` significava
+    "a outra". Com a terceira, ele passou a despejar UNIDADE_FECHADA em
+    `faltas_terapeuta` — feriado contado como lacuna de escala da clínica.
+
+    É o mesmo `else` de duas pernas que existia em quatro lugares (aqui, no
+    service, no CASE do resumo diário e no da RPC de faltas); os quatro viraram
+    comparação exata em 2026-09-17.
+  */
+  it('não confunde unidade fechada com falta do terapeuta (o `else` de duas pernas)', () => {
+    const k = contarKpis([linha('UNIDADE_FECHADA'), linha('UNIDADE_FECHADA')])
+    expect(k.unidade_fechada).toBe(2)
+    expect(k.faltas_terapeuta).toBe(0)
+    expect(k.faltas).toBe(0)
+    // E, como as outras duas, fora da régua de autorização.
+    expect(k.total).toBe(0)
   })
 
   it('situação desconhecida entra no total e em card nenhum — não some da âncora', () => {
@@ -81,9 +106,12 @@ describe('acumularKpis — peso', () => {
 })
 
 describe('ehFalta', () => {
-  it('cobre as duas espécies e nada além delas', () => {
+  it('cobre as três espécies e nada além delas', () => {
     expect(ehFalta('FALTA')).toBe(true)
     expect(ehFalta('FALTA_TERAPEUTA')).toBe(true)
+    // "Falta" aqui significa "não houve sessão", não "alguém faltou": a
+    // unidade fechada entra pela mesma porta e sai do ciclo de autorização.
+    expect(ehFalta('UNIDADE_FECHADA')).toBe(true)
     expect(ehFalta('CANCELADA')).toBe(false)
     expect(ehFalta(null)).toBe(false)
   })

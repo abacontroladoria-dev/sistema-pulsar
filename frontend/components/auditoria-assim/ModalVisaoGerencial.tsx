@@ -114,7 +114,8 @@ export default function ModalVisaoGerencial({ aberto, onClose }: Props) {
   // ramos guardados, sem `!` espalhado pelo JSX.
   const metrica = r.metrica
   const visual = metrica ? KPI_VISUAL[metrica as MetricaKpi] : null
-  const totalSessoes = r.totais.total + r.totais.faltas + r.totais.faltas_terapeuta
+  const totalSessoes =
+    r.totais.total + r.totais.faltas + r.totais.faltas_terapeuta + r.totais.unidade_fechada
 
   /**
    * A mesma informação do `title` da contagem, para quem não tem ponteiro.

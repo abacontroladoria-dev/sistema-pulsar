@@ -34,7 +34,18 @@ export async function listarFaltasAuditoria(data: string): Promise<AuditoriaAssi
   }
 
   return (result || []).map((f: { fila_id: string; paciente_id: string; paciente_nome: string; data_atendimento: string; hora_inicial: string; tuss: string; terapia_nome: string; tipo_falta: string; profissional_nome: string | null; motivo_falta: string | null; justificativa_falta: string | null }) => {
-    const isTerapeuta = f.tipo_falta?.toLowerCase().includes('terapeuta')
+    const tipo = f.tipo_falta?.toLowerCase() ?? ''
+    const isTerapeuta = tipo.includes('terapeuta')
+    // A clínica não abriu — feriado, recesso, falta de energia. Não é falta de
+    // ninguém, e por isso tem situação PRÓPRIA em vez de cair em 'FALTA': a
+    // gestora precisa distinguir "o paciente não veio" de "não havia
+    // atendimento", que pedem coisas opostas (a primeira é assiduidade, a
+    // segunda é um dia neutralizado de propósito).
+    //
+    // Por 'unidade', não 'unidade_fechada': o rename de 20260914180000 deixou o
+    // nome antigo aceito na RPC de lote, e o normalizador só age na ESCRITA.
+    // Casar pelo radical cobre os dois sem depender de qual gravou a linha.
+    const isUnidade = tipo.includes('unidade')
     const bloco_id = `falta_${f.paciente_id}_${f.data_atendimento}_${f.hora_inicial}_${f.tuss}`
     return {
       bloco_id,
@@ -51,7 +62,7 @@ export async function listarFaltasAuditoria(data: string): Promise<AuditoriaAssi
       hora_inicial: f.hora_inicial,
       codigo_tuss: f.tuss,
       terapias: f.terapia_nome,
-      situacao: isTerapeuta ? 'FALTA_TERAPEUTA' : 'FALTA',
+      situacao: isUnidade ? 'UNIDADE_FECHADA' : isTerapeuta ? 'FALTA_TERAPEUTA' : 'FALTA',
       prioridade: 7,
       convenio_nome: null,
       profissionais: null,
@@ -64,9 +75,14 @@ export async function listarFaltasAuditoria(data: string): Promise<AuditoriaAssi
       dias_atraso: null,
       possui_autorizacao: null,
       possui_solicitacao: null,
-      observacao: isTerapeuta
-        ? (f.profissional_nome ?? 'Falta do terapeuta')
-        : 'Falta do paciente',
+      // A frase sintetizada de QUEM faltou. Em unidade fechada não faltou
+      // ninguém, então ela diz o fato; o porquê (feriado, recesso, energia) vem
+      // logo abaixo em `motivo_falta`/`justificativa_falta`, como nas outras.
+      observacao: isUnidade
+        ? 'A unidade não abriu'
+        : isTerapeuta
+          ? (f.profissional_nome ?? 'Falta do terapeuta')
+          : 'Falta do paciente',
       motivo_glosa: null,
       teve_token: null,
       token: null,

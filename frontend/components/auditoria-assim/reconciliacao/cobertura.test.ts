@@ -86,9 +86,16 @@ describe('sessaoNaoSolicitada', () => {
     }
   })
 
+  /*
+    UNIDADE_FECHADA entrou aqui em 2026-09-17, e é o caso que motivou o conserto:
+    em 07/09 (Independência) as 336 sessões do dia apareciam na Conferência como
+    RETORNO_NAO_CONFIRMADO, cobrando tratativa de um dia em que a clínica não
+    abriu. Uma sessão que não existiu não pode estar "sem cobertura".
+  */
   it('falta não entra: a sessão não aconteceu', () => {
-    for (const situacao of ['FALTA', 'FALTA_TERAPEUTA']) {
+    for (const situacao of ['FALTA', 'FALTA_TERAPEUTA', 'UNIDADE_FECHADA']) {
       expect(sessaoNaoSolicitada(sessao({ situacao }), CUTOFF), situacao).toBe(false)
+      expect(sessaoSemCobertura(sessao({ situacao }), CUTOFF), situacao).toBe(false)
     }
   })
 
@@ -144,7 +151,7 @@ describe('cobertaPorAvulsa', () => {
   it('falta não entra: uma guia não faz a sessão acontecer', () => {
     // Mesma fronteira que `situacaoComVinculo` respeita — falta continua falta
     // depois do vínculo, então não há cobertura cuja procedência marcar.
-    for (const situacao of ['FALTA', 'FALTA_TERAPEUTA']) {
+    for (const situacao of ['FALTA', 'FALTA_TERAPEUTA', 'UNIDADE_FECHADA']) {
       expect(cobertaPorAvulsa(situacao, { tipo: 'vinculo' }), situacao).toBe(false)
     }
   })

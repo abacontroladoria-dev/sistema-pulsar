@@ -19,16 +19,16 @@
  */
 
 import {
-  AlertCircle, AlertTriangle, Ban, CheckCircle2, RefreshCw,
+  AlertCircle, AlertTriangle, Ban, CalendarX, CheckCircle2, RefreshCw,
   Ticket, UserMinus, UserX, XCircle,
 } from 'lucide-react'
 
-/** As nove métricas que viram card. `total` e `glosas_resolvidas` ficam fora:
+/** As dez métricas que viram card. `total` e `glosas_resolvidas` ficam fora:
  *  o primeiro é a âncora (TotalCard), o segundo é dica dentro de Glosas. */
 export type MetricaKpi =
   | 'nao_solicitadas' | 'sincronizando' | 'retorno_nao_confirmado'
   | 'liberadas' | 'tokens' | 'glosas' | 'canceladas'
-  | 'faltas' | 'faltas_terapeuta'
+  | 'faltas' | 'faltas_terapeuta' | 'unidade_fechada'
 
 export type VisualKpi = {
   key: string
@@ -53,7 +53,7 @@ export type VisualKpi = {
 export const ORDEM_KPIS: MetricaKpi[] = [
   'nao_solicitadas', 'sincronizando', 'retorno_nao_confirmado',
   'liberadas', 'tokens', 'glosas', 'canceladas',
-  'faltas', 'faltas_terapeuta',
+  'faltas', 'faltas_terapeuta', 'unidade_fechada',
 ]
 
 export const KPI_VISUAL: Record<MetricaKpi, VisualKpi> = {
@@ -179,5 +179,22 @@ export const KPI_VISUAL: Record<MetricaKpi, VisualKpi> = {
     hoverBorder: 'hover:border-stone-400',
     bgActive: 'bg-stone-100/80',
     icon: UserMinus,
+  },
+  // Terceira em stone, e a última da rampa: não é falta de ninguém, então não
+  // pede nada de ninguém. Separa-se das outras duas pelo título e pelo ícone de
+  // calendário — o mesmo CalendarX que a Central usa para este estado
+  // (severity.ts:171) e que o badge da situação carrega.
+  unidade_fechada: {
+    key: 'unidade-fechada',
+    situacao: 'UNIDADE_FECHADA',
+    title: 'Unidade Fechada',
+    hint: 'a clínica não abriu',
+    tone: 'text-stone-800',
+    iconTone: 'bg-stone-200 text-stone-800',
+    barTone: 'bg-stone-600',
+    borderActive: 'border-stone-600',
+    hoverBorder: 'hover:border-stone-400',
+    bgActive: 'bg-stone-100',
+    icon: CalendarX,
   },
 }

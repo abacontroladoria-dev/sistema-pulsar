@@ -111,7 +111,7 @@ function agruparPorChave(
  * única resposta honesta quando ninguém escolheu um indicador ainda.
  */
 function sessoesDe(kpis: KpisAuditoriaAssim): number {
-  return kpis.total + kpis.faltas + kpis.faltas_terapeuta
+  return kpis.total + kpis.faltas + kpis.faltas_terapeuta + kpis.unidade_fechada
 }
 
 /** Um paciente do período, como a lista de sugestões precisa dele. */

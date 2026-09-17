@@ -11,8 +11,17 @@ import type { AuditoriaAssimItem, VinculoAutorizacao } from '../types'
  * o número do topo e a marca do cartão de discordarem sobre a mesma semana.
  */
 
-/** Cota = quantas sessões daquele TUSS o paciente tem no período. Falta não conta. */
-export const SITUACOES_SEM_SESSAO = new Set(['FALTA', 'FALTA_TERAPEUTA'])
+/**
+ * Cota = quantas sessões daquele TUSS o paciente tem no período. Falta não conta.
+ *
+ * `UNIDADE_FECHADA` entrou em 2026-09-17 e é o caso mais claro dos três: num dia
+ * em que a clínica não abriu não havia sessão para autorizar, então ela não
+ * consome cota, não fica "sem cobertura" e não vira pendência. Antes da
+ * migration 20260917110000 essas linhas nem chegavam aqui — escapavam do
+ * anti-join da RPC e apareciam como RETORNO_NAO_CONFIRMADO, cobrando tratativa
+ * de um feriado (336 linhas em 07/09/2026).
+ */
+export const SITUACOES_SEM_SESSAO = new Set(['FALTA', 'FALTA_TERAPEUTA', 'UNIDADE_FECHADA'])
 
 /**
  * Os dois desfechos em que a sessão saiu coberta por uma liberação.

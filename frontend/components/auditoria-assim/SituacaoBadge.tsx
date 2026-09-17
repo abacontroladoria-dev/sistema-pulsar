@@ -3,6 +3,7 @@ import {
   AlertCircle,
   AlertOctagon,
   Ban,
+  CalendarX,
   CheckCircle2,
   Clock,
   RefreshCw,
@@ -192,6 +193,25 @@ export const SITUACAO_CONFIG: Record<string, SituacaoConfigEntry> = {
     surface: 'bg-stone-50 border-stone-200',
     strong: 'text-stone-700',
     icon: UserX,
+  },
+  // fora da régua de autorização — a CLÍNICA não abriu, e ninguém faltou.
+  //
+  // Terceira entrada em stone pelo mesmo motivo das outras duas: sessão que não
+  // aconteceu não disputa a escala de autorização. Quem separa dentro da família
+  // é o dot e o ícone, como já separa FALTA de FALTA_TERAPEUTA — aqui o dot é
+  // stone (nenhuma culpa a atribuir; o âmbar de FALTA_TERAPEUTA significa
+  // "lacuna de escala nossa", e isto não é lacuna de ninguém) e o ícone é
+  // CalendarX, o mesmo que a Central usa para este estado em severity.ts:171.
+  //
+  // O par (stone-100, stone-800) não se repete: FALTA é -600, FALTA_TERAPEUTA é
+  // -700. Medido 8.9:1, acima dos 7.3:1 já registrados para a família.
+  UNIDADE_FECHADA: {
+    label: 'Unidade Fechada',
+    dot: 'bg-stone-500',
+    className: 'bg-stone-100 text-stone-800 ring-1 ring-stone-300',
+    surface: 'bg-stone-50 border-stone-200',
+    strong: 'text-stone-800',
+    icon: CalendarX,
   },
 }
 

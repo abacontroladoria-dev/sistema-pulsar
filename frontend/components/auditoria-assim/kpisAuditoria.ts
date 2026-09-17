@@ -19,14 +19,24 @@ import type { KpisAuditoriaAssim } from './types'
 import { situacaoNoRecorte } from './situacoes'
 
 /**
- * As duas situações que não são estágio de autorização — a sessão não
- * aconteceu. Ficam fora de `total` e de todos os cards do ciclo, como o
- * DESIGN.md determina ao mantê-las fora da rampa de prioridades.
+ * As situações que não são estágio de autorização — a sessão não aconteceu.
+ * Ficam fora de `total` e de todos os cards do ciclo, como o DESIGN.md determina
+ * ao mantê-las fora da rampa de prioridades.
+ *
+ * `UNIDADE_FECHADA` (a clínica não abriu) entrou em 2026-09-17. Ela é falta para
+ * efeito de CONTAGEM — não houve sessão, não há autorização a cobrar — mas não é
+ * falta de ninguém, e por isso tem card próprio em vez de somar em `faltas`:
+ * misturá-la ali inflaria o número de assiduidade com feriado. É a mesma
+ * separação que `contar_faltas_do_paciente` já faz no banco (20260908100200).
  */
-export const SITUACOES_DE_FALTA = ['FALTA', 'FALTA_TERAPEUTA'] as const
+export const SITUACOES_DE_FALTA = ['FALTA', 'FALTA_TERAPEUTA', 'UNIDADE_FECHADA'] as const
 
 export function ehFalta(situacao: string | null): boolean {
-  return situacao === 'FALTA' || situacao === 'FALTA_TERAPEUTA'
+  return (
+    situacao === 'FALTA' ||
+    situacao === 'FALTA_TERAPEUTA' ||
+    situacao === 'UNIDADE_FECHADA'
+  )
 }
 
 /** O que uma linha precisa expor para ser contada. Nada além disto. */
@@ -41,6 +51,7 @@ export function kpisVazios(): KpisAuditoriaAssim {
     liberadas: 0,
     faltas: 0,
     faltas_terapeuta: 0,
+    unidade_fechada: 0,
     nao_solicitadas: 0,
     sincronizando: 0,
     retorno_nao_confirmado: 0,
@@ -75,8 +86,13 @@ export function acumularKpis(
   const { situacao } = linha
 
   if (ehFalta(situacao)) {
+    // Comparação EXATA nos três, sem `else` de sobra: enquanto eram duas
+    // espécies o `else` era seguro, mas com a terceira ele passou a despejar
+    // UNIDADE_FECHADA em `faltas_terapeuta` — feriado contado como lacuna de
+    // escala. Um `else` que significa "o outro" não sobrevive a um terceiro.
     if (situacao === 'FALTA') acc.faltas += peso
-    else acc.faltas_terapeuta += peso
+    else if (situacao === 'FALTA_TERAPEUTA') acc.faltas_terapeuta += peso
+    else acc.unidade_fechada += peso
     return
   }
 
