@@ -198,26 +198,11 @@ export function agoraMenos30MinIso(): string {
   return `${ano}-${mes}-${dia}T${hora}:${min}`
 }
 
-/**
- * A carteirinha que serve como IDENTIDADE — ou nada.
- *
- * O agrupamento da listagem usa a carteirinha como chave de paciente, e o
- * cadastro do TiTa aceita o preenchimento vazio na forma `000000.0000000.00`.
- * Uma carteirinha assim é pior que carteirinha nenhuma: sendo igual entre
- * pacientes diferentes, ela os FUNDE numa linha só — o nome exibido vira o do
- * primeiro que o mês encontra e os demais somem da tela, e qualquer autorização
- * que chegue com essa matrícula cai no irmão errado. Visto em 2026-09 com
- * Benicio e Helena Asta Moraes: uma linha só, com o nome do Benicio e a
- * contagem somada dos dois — a Helena não existia na tela.
- *
- * Devolvendo `null`, a chave cai no fallback `nome:<nome>` — que separa os
- * homônimos-por-defeito sem custo, porque uma carteirinha zerada também não
- * casa autorização nenhuma (`autorizacoes_assim.matricula` nunca a traz).
- */
-export function carteirinhaUtil(valor: string | null | undefined): string | null {
-  if (!valor) return null
-  return /[1-9]/.test(valor) ? valor : null
-}
+// `carteirinhaUtil` foi para `agruparPacientes`, junto do agrupamento que a usa.
+// Reexportada aqui porque era daqui que a tela a importava.
+export { carteirinhaUtil } from '@/components/auditoria-assim/reconciliacao/agruparPacientes'
+import { agruparPacientes } from '@/components/auditoria-assim/reconciliacao/agruparPacientes'
+
 
 /**
  * O placar de um conjunto de sessões contra um conjunto de autorizações.
@@ -727,80 +712,13 @@ export function useAnaliseReincidencia(dataInicial: string, pacienteInicial: str
 
   // ── A listagem: um paciente por linha, com as cinco pendências ─────────────
   const pacientesDoMes = useMemo<PacientePendencias[]>(() => {
-    type Acumulado = {
-      chave: string
-      nome: string
-      carteirinhas: Set<string>
-      pacienteIds: Set<string>
-      plano: string | null
-      sessoes: AuditoriaAssimItem[]
-      autorizacoes: AutorizacaoAssimSemana[]
-    }
-
-    // A carteirinha é a identidade; o nome é só como se chega nela. Duas pessoas
-    // homônimas são dois beneficiários, e juntá-las faria alguém vincular a guia
-    // de uma na sessão da outra. Mas a linha de FALTA não traz carteirinha (a RPC
-    // de faltas não a devolve), então o nome é a ponte — construída a partir das
-    // sessões que TÊM carteirinha antes de qualquer agrupamento.
-    const carteirinhaPorNome = new Map<string, string>()
-    for (const s of sessoesDoMes) {
-      const c = carteirinhaUtil(s.carteirinha)
-      if (s.paciente_nome && c && !carteirinhaPorNome.has(s.paciente_nome)) {
-        carteirinhaPorNome.set(s.paciente_nome, c)
-      }
-    }
-
-    const mapa = new Map<string, Acumulado>()
-    const abrir = (chave: string, nome: string): Acumulado => {
-      let atual = mapa.get(chave)
-      if (!atual) {
-        atual = {
-          chave,
-          nome,
-          carteirinhas: new Set(),
-          pacienteIds: new Set(),
-          plano: null,
-          sessoes: [],
-          autorizacoes: [],
-        }
-        mapa.set(chave, atual)
-      }
-      return atual
-    }
-
-    for (const s of sessoesDoMes) {
-      const nome = s.paciente_nome ?? '(sem nome)'
-      const carteirinha = carteirinhaUtil(s.carteirinha) ?? carteirinhaPorNome.get(nome) ?? null
-      const item = abrir(carteirinha ?? `nome:${nome}`, nome)
-      if (carteirinha) item.carteirinhas.add(carteirinha)
-      if (s.paciente_id) item.pacienteIds.add(s.paciente_id)
-      item.plano ??= s.convenio_nome
-      item.sessoes.push(s)
-    }
-
-    // Índice de carteirinha -> linha, para as autorizações caírem no paciente
-    // certo mesmo quando o nome da ASSIM difere do nome da agenda.
-    const porCarteirinha = new Map<string, Acumulado>()
-    for (const item of mapa.values()) {
-      for (const c of item.carteirinhas) porCarteirinha.set(c, item)
-    }
-
-    for (const a of autorizacoesDoMes) {
-      // Guia de paciente sem sessão nenhuma no mês abre linha própria: é
-      // exatamente o caso de "autorização sobrando" que nenhuma tela mostrava.
-      const matricula = carteirinhaUtil(a.matricula)
-      const alvo = matricula ? porCarteirinha.get(matricula) : undefined
-      const item =
-        alvo ?? abrir(matricula ?? `nome:${a.paciente_nome ?? '(sem nome)'}`, a.paciente_nome ?? '(sem nome)')
-      if (!alvo && matricula) {
-        item.carteirinhas.add(matricula)
-        porCarteirinha.set(matricula, item)
-      }
-      item.autorizacoes.push(a)
-    }
+    // O agrupamento mora em `agruparPacientes` e não aqui: é ele que resolve o
+    // desencontro de identidade entre a agenda e o extrato da ASSIM, e fora de
+    // um `useMemo` ele pode ser testado. Ver o módulo para a tabela do porquê.
+    const agrupados = agruparPacientes(sessoesDoMes, autorizacoesDoMes)
 
     const linhas: PacientePendencias[] = []
-    for (const item of mapa.values()) {
+    for (const item of agrupados) {
       const placar = calcularPlacar(item.sessoes, item.autorizacoes, cutoff, vinculos.porBloco)
       // A glosa que um vínculo cobriu sai da conta aqui também, e não só no
       // modal: a listagem é a fila de trabalho, e uma linha que insiste em "1

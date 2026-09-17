@@ -215,6 +215,21 @@ export type ResumoDiarioLinha = {
  */
 export type AutorizacaoAssimSemana = {
   guia: string
+  /**
+   * O id do paciente no TiTa, gravado junto da guia — e o ÚNICO campo pelo qual
+   * uma guia da ASSIM reencontra as sessões da agenda.
+   *
+   * `paciente_nome` chega truncado em 20 caracteres, em caixa alta e sem acento
+   * ("DAVI LUCAS ARAUJO AL" para "Davi Lucas Araújo Alves Moreira"), e
+   * `matricula` é pontuada de um jeito que a agenda não repete
+   * ("000000.0747497.00" contra "000000074749794400"). Nenhum dos dois casa por
+   * igualdade, nem normalizando — daí agrupar por aqui.
+   *
+   * `number` porque é assim que a coluna existe em `autorizacoes_assim`,
+   * enquanto `AuditoriaAssimItem.paciente_id` é `string`: comparar SEMPRE por
+   * `String(...)`, nunca por `==`.
+   */
+  paciente_id: number | null
   matricula: string | null
   paciente_nome: string | null
   data_execucao: string | null
