@@ -125,9 +125,14 @@ export function agruparPacientes(
     // `String(...)`: a coluna é `number` na ASSIM e `string` nas sessões.
     const pacienteId = a.paciente_id != null ? String(a.paciente_id) : null
     const matricula = carteirinhaUtil(a.matricula)
+    // A CARTEIRINHA PRIMEIRO — ver `guiaDoPaciente` para a medição. O
+    // `paciente_id` da guia é carimbado pelo Pulsar e mistura pessoas (nove ids
+    // com até 5 matrículas cada); a matrícula vem da ASSIM e não mistura. Com o
+    // id na frente, a guia da Laura encontrava a linha do Emanuel e parava ali,
+    // sem nunca consultar a carteirinha que a desmentiria.
     const alvo =
-      (pacienteId ? porPacienteId.get(pacienteId) : undefined) ??
-      (matricula ? porCarteirinha.get(matricula) : undefined)
+      (matricula ? porCarteirinha.get(matricula) : undefined) ??
+      (pacienteId ? porPacienteId.get(pacienteId) : undefined)
 
     // Guia de paciente sem sessão nenhuma no mês abre linha própria: é
     // exatamente o caso de "autorização sobrando" que nenhuma tela mostrava.
@@ -141,7 +146,13 @@ export function agruparPacientes(
     // Cada identidade vista passa a indexar a linha, venha ela da sessão ou da
     // guia: é o que faz a SEGUNDA guia do mesmo paciente achar a linha que a
     // primeira abriu, mesmo quando só uma das duas traz carteirinha.
-    if (pacienteId && !porPacienteId.has(pacienteId)) {
+    //
+    // O id só entra no índice quando foi ELE que achou a linha (guia sem
+    // matrícula). Quando a matrícula decidiu, aprender o id junto propagaria a
+    // sujeira: a guia da Laura, agrupada corretamente por carteirinha, ensinaria
+    // o índice que o id 14447 também é dela — e a guia seguinte, essa sem
+    // matrícula, herdaria o engano.
+    if (pacienteId && !matricula && !porPacienteId.has(pacienteId)) {
       item.pacienteIds.add(pacienteId)
       porPacienteId.set(pacienteId, item)
     }
@@ -174,4 +185,38 @@ export function ehDoPacienteSelecionado(
   if (!alvo) return false
   if (alvo.ids.length > 0 && sessao.paciente_id) return alvo.ids.includes(sessao.paciente_id)
   return sessao.paciente_nome === alvo.nome
+}
+
+/**
+ * Esta GUIA é do paciente aberto? A matrícula decide; o id só quando não há.
+ *
+ * A ordem é a regra, não uma preferência, e é o que separa esta função da irmã
+ * acima. `ehDoPacienteSelecionado` trata de SESSÕES, cujo `paciente_id` vem de
+ * `agenda_tita` e é confiável. Aqui são GUIAS, e `autorizacoes_assim.paciente_id`
+ * é carimbado do lado do Pulsar: medido em 2026-09-17, nove ids carregavam de 2
+ * a 5 matrículas distintas — 375 guias desde 30/07 atribuídas ao paciente
+ * errado. `matricula`, essa sim, vem da ASSIM e identifica sem ambiguidade
+ * (empresa.matricula.dep, com o `dep` separando irmãos da mesma apólice).
+ *
+ * O defeito em tela (Emanuel Abreu De Andrade, 07 a 11/09): o modal mostrava 15
+ * cartões para uma semana de 7 sessões — 8 "Liberada além do agendado" que eram
+ * da Laura, do Guilherme e do Rodolfo, todas gravadas com o `paciente_id` 14447,
+ * que é o do Emanuel na agenda. Enquanto o filtro olhava só a matrícula a
+ * sujeira ficava invisível; aceitar o id como chave ALTERNATIVA a trouxe à tela,
+ * porque um `||` faz a chave errada vencer sempre que a certa diz não.
+ *
+ * O id continua servindo ao caso que o introduziu — a guia que chega sem
+ * matrícula —, mas como último recurso.
+ *
+ * Corrigir a origem é trabalho do robô da ASSIM, que vive em outro repositório e
+ * ficou fora por decisão do usuário. Esta é a defesa do lado da leitura, e
+ * continua correta mesmo depois que a origem for consertada.
+ */
+export function guiaDoPaciente(
+  guia: { matricula?: string | null; paciente_id?: string | number | null },
+  carteirinhas: ReadonlySet<string>,
+  ids: ReadonlySet<string>
+): boolean {
+  if (guia.matricula) return carteirinhas.has(guia.matricula)
+  return guia.paciente_id != null && ids.has(String(guia.paciente_id))
 }

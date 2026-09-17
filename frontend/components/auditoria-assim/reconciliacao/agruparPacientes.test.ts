@@ -127,6 +127,53 @@ describe('agruparPacientes', () => {
     expect(linhas).toHaveLength(1)
     expect(linhas[0].autorizacoes).toHaveLength(1)
   })
+
+  /*
+    A regressão de 2026-09-17. `autorizacoes_assim.paciente_id` é carimbado pelo
+    Pulsar e mistura pessoas: medidos nove ids carregando de 2 a 5 matrículas
+    cada, 375 guias desde 30/07. Com o id consultado ANTES da carteirinha, a
+    guia da Laura achava a linha do Emanuel e parava ali.
+
+    Em tela: o modal do Emanuel (07–11/09) mostrava 15 cartões numa semana de 7
+    sessões, 8 deles "Liberada além do agendado" pertencentes a outras crianças.
+  */
+  it('a carteirinha manda sobre um paciente_id que mistura pessoas', () => {
+    const linhas = agruparPacientes(
+      [
+        sessao({ paciente_id: '14447', paciente_nome: 'Emanuel Abreu De Andrade', carteirinha: '411008.0000001.01' }),
+        sessao({ paciente_id: '11610', paciente_nome: 'Laura Alves Simoes', carteirinha: '461800.0000001.02' }),
+      ],
+      [
+        guia({ guia: 'DELE',  paciente_id: 14447, matricula: '411008.0000001.01' }),
+        // O id diz Emanuel; a matrícula diz Laura. A matrícula é quem sabe.
+        guia({ guia: 'DELA', paciente_id: 14447, matricula: '461800.0000001.02' }),
+      ]
+    )
+    const emanuel = linhas.find((l) => l.pacienteIds.has('14447'))
+    const laura = linhas.find((l) => l.pacienteIds.has('11610'))
+    expect(emanuel?.autorizacoes.map((a) => a.guia)).toEqual(['DELE'])
+    expect(laura?.autorizacoes.map((a) => a.guia)).toEqual(['DELA'])
+  })
+
+  it('a guia agrupada por matrícula não ensina seu id sujo ao índice', () => {
+    // Sem esta guarda, a primeira guia (matrícula da Laura, id do Emanuel)
+    // registraria 14447 na linha da Laura — e a segunda, sem matrícula, cairia
+    // nela em vez de na do Emanuel.
+    const linhas = agruparPacientes(
+      [
+        sessao({ paciente_id: '14447', paciente_nome: 'Emanuel Abreu De Andrade', carteirinha: '411008.0000001.01' }),
+        sessao({ paciente_id: '11610', paciente_nome: 'Laura Alves Simoes', carteirinha: '461800.0000001.02' }),
+      ],
+      [
+        guia({ guia: 'DELA',      paciente_id: 14447, matricula: '461800.0000001.02' }),
+        guia({ guia: 'SEM_MATRIC', paciente_id: 14447, matricula: null }),
+      ]
+    )
+    const emanuel = linhas.find((l) => l.pacienteIds.has('14447'))
+    const laura = linhas.find((l) => l.carteirinhas.has(carteirinhaUtil('461800.0000001.02')!))
+    expect(laura?.autorizacoes.map((a) => a.guia)).toEqual(['DELA'])
+    expect(emanuel?.autorizacoes.map((a) => a.guia)).toEqual(['SEM_MATRIC'])
+  })
 })
 
 describe('ehDoPacienteSelecionado', () => {

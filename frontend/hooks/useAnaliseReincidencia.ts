@@ -204,6 +204,7 @@ export { carteirinhaUtil } from '@/components/auditoria-assim/reconciliacao/agru
 import {
   agruparPacientes,
   ehDoPacienteSelecionado,
+  guiaDoPaciente,
 } from '@/components/auditoria-assim/reconciliacao/agruparPacientes'
 
 
@@ -893,14 +894,7 @@ export function useAnaliseReincidencia(dataInicial: string, pacienteInicial: str
     const ids = new Set(selecionado?.ids ?? [])
     return autorizacoes
       .filter((a) => {
-        // Por id quando os dois lados o têm; pela matrícula quando não. A
-        // matrícula sozinha não basta: a agenda grava a carteirinha de um jeito
-        // ("000000074749794400") e a ASSIM de outro ("000000.0747497.00"), então
-        // uma linha que só conheça a forma da agenda não reconheceria guia
-        // nenhuma como sua.
-        const porId = a.paciente_id != null && ids.has(String(a.paciente_id))
-        const porMatricula = !!a.matricula && chaves.has(a.matricula)
-        if (!porId && !porMatricula) return false
+        if (!guiaDoPaciente(a, chaves, ids)) return false
         const dia = (a.data_execucao ?? '').slice(0, 10)
         return dia >= semanaInicio && dia <= semanaFim
       })
@@ -928,6 +922,7 @@ export function useAnaliseReincidencia(dataInicial: string, pacienteInicial: str
     (nome: string, chaves: Set<string>, inicio: string, ids: string[] = []) => {
       const fim = somarDias(inicio, 4)
       const alvo = { nome, ids }
+      const idsSet = new Set(ids)
       return {
         sessoes: sessoes.filter(
           (s) =>
@@ -936,12 +931,10 @@ export function useAnaliseReincidencia(dataInicial: string, pacienteInicial: str
             (s.data_atendimento ?? '') <= fim
         ),
         autorizacoes: autorizacoes.filter((a) => {
-          // Mesmo critério de `autorizacoesPaciente`: id primeiro, matrícula
-          // como alternativa. Divergir aqui faria o índice de semanas contar
-          // uma coisa e a grade mostrar outra.
-          const porId = a.paciente_id != null && ids.includes(String(a.paciente_id))
-          const porMatricula = !!a.matricula && chaves.has(a.matricula)
-          if (!porId && !porMatricula) return false
+          // Mesmo critério de `autorizacoesPaciente` — matrícula manda, id só
+          // na falta dela. Divergir aqui faria o índice de semanas contar uma
+          // coisa e a grade mostrar outra.
+          if (!guiaDoPaciente(a, chaves, idsSet)) return false
           const dia = (a.data_execucao ?? '').slice(0, 10)
           return dia >= inicio && dia <= fim
         }),
