@@ -2536,8 +2536,15 @@ useEffect(() => {
 				        a última autorização e este aviso dizem o que já aconteceu
 				        com ele hoje. O miolo descreve a SESSÃO; aqui se lê a PESSOA.
 
-				        Mesmo corpo (10px) do semáforo acima, para os dois lerem
-				        como uma coisa só. */}
+				        A FORMA é o que o separa do semáforo logo acima, não a cor:
+				        empilhados, duas pílulas âmbar viravam a mesma coisa lida
+				        duas vezes. O semáforo é pílula preenchida porque é estado
+				        TRANSITÓRIO — muda sozinho e some quando a janela abre; este
+				        é fato REGISTRADO sobre o paciente, então vira texto com uma
+				        barra à esquerda, que é como se marca uma anotação e não um
+				        status. O rosa separa das duas cores do semáforo (âmbar
+				        esperando, verde liberado) sem gritar como o vermelho da
+				        falta desta sessão. */}
 				    {faltaDaAnterior && (
 				      <span
 				        title={
@@ -2545,10 +2552,12 @@ useEffect(() => {
 				            ? `Sessão das ${faltaDaAnterior.horario}: ${faltaDaAnterior.justificativa}`
 				            : `O paciente não compareceu à sessão das ${faltaDaAnterior.horario}`
 				        }
-				        className="flex items-center gap-1 text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200/70 px-1.5 py-[2px] rounded"
+				        className="flex items-center gap-1.5 border-l-2 border-rose-300 pl-1.5 text-[10px] font-medium text-rose-700"
 				      >
-				        <AlertCircle size={10} className="shrink-0" />
-				        <span className="tabular-nums">Faltou às {faltaDaAnterior.horario}</span>
+				        <AlertCircle size={10} className="shrink-0 text-rose-400" />
+				        <span className="tabular-nums">
+				          Faltou às {faltaDaAnterior.horario}
+				        </span>
 				      </span>
 				    )}
 				  </div>
