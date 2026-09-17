@@ -2524,7 +2524,12 @@ useEffect(() => {
 				          className="flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-100 px-1.5 py-[2px] rounded"
 				        >
 				          <Clock size={10} className="shrink-0" />
-				          <span className="tabular-nums">Faltam {faltamMin} min</span>
+				          {/* "Liberação em", e não "Faltam": o rótulo nomeia o que
+				              vai acontecer, em vez de deixar a atendente deduzir o
+				              que está faltando. E é a MESMA palavra do estado
+				              seguinte ("Liberado"), então o selo conta uma história
+				              só ao virar — o contador some e a palavra fica. */}
+				          <span className="tabular-nums">Liberação em {faltamMin} min</span>
 				        </span>
 				      )
 				    )}
