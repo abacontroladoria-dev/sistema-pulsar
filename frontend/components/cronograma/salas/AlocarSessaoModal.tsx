@@ -96,7 +96,16 @@ const INPUT_CLS = "w-full rounded-lg border border-border bg-card px-2.5 py-1.5 
 // horários bloqueados/em aberto) — quando aparece no campo terapia da grade
 // (sessão sem terapia real definida ainda), não é uma terapia de verdade e
 // nunca deve ser oferecida como opção de alocação.
-const TERAPIAS_ADMIN_NORM = new Set([...PACS_ADMIN].map(nome => normTxt(nome)))
+//
+// Mas PACS_ADMIN é uma lista de nomes de PACIENTE, não de terapia — e um deles
+// ("Fonoaudiologia") colide de propósito diferente: é também o nome de uma
+// terapia real, em TERAPIA_ID/NOME_PARA_TERAPIA_ID. Sem o filtro abaixo, essa
+// linha sozinha apagava "Fonoaudiologia" de toda sugestão de terapia do modal
+// — achado 2026-09-18, caso Luciana Lima Dos Santos. Um nome que é terapia de
+// verdade nunca é placeholder administrativo, mesmo compartilhando o texto.
+const TERAPIAS_ADMIN_NORM = new Set(
+  [...PACS_ADMIN].map(nome => normTxt(nome)).filter(nome => !(nome in NOME_PARA_TERAPIA_ID)),
+)
 const semTerapiaAdmin = (terapias: string[]) => terapias.filter(t => !TERAPIAS_ADMIN_NORM.has(normTxt(t)))
 
 export function AlocarSessaoModal({
@@ -181,10 +190,21 @@ export function AlocarSessaoModal({
     setMostrarSugestoesProf(false)
   }
 
-  // Restringe às terapias reais do profissional selecionado quando disponíveis;
-  // cai para a lista completa da clínica só se ainda não houver profissional
-  // válido selecionado (ou ele não tiver histórico).
-  const listaTerapiasBase = terapiasDoProfissional && terapiasDoProfissional.length ? terapiasDoProfissional : terapiasTodas
+  // As terapias reais do profissional (histórico) vêm primeiro — é o que essa
+  // pessoa de fato faz, então é o que a busca deve sugerir antes. Mas nunca
+  // ESCONDE o resto da clínica atrás delas: histórico é `csv_grades_profissionais`
+  // (o que já foi agendado), e um profissional novo, recém-transferido de
+  // especialidade, ou só com histórico de outra função (ex.: cobriu um plantão
+  // de Aplicador ABA antes de virar Fonoaudióloga) não tem a terapia real dele
+  // ali — e o modal não pode ficar impossível de usar por isso. Achado
+  // 2026-09-18: Luciana Lima Dos Santos (Fonoaudiologia) via só entradas de
+  // Aplicador ABA no histórico, e digitar "fono" não achava nada.
+  const listaTerapiasBase = useMemo(() => {
+    if (!terapiasDoProfissional || !terapiasDoProfissional.length) return terapiasTodas
+    const jaListadas = new Set(terapiasDoProfissional.map(t => normTxt(t)))
+    const resto = terapiasTodas.filter(t => !jaListadas.has(normTxt(t)))
+    return [...terapiasDoProfissional, ...resto]
+  }, [terapiasDoProfissional, terapiasTodas])
   const terapiasSugeridas = terapia.trim().length
     ? listaTerapiasBase.filter(t => normTxt(t).includes(normTxt(terapia)))
     : listaTerapiasBase

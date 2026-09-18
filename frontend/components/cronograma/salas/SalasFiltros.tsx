@@ -5,7 +5,8 @@
 // profissional, que é busca livre) aceita múltipla seleção — um dropdown com
 // checkboxes em vez de um <select> nativo, que só permite uma opção por vez.
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useLayoutEffect, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import { ChevronDown, Filter, Search, SlidersHorizontal } from "lucide-react"
 import { normTxt } from "@/lib/cronograma/constants"
 import { CAPACIDADE_LABEL_CURTO } from "@/lib/cronograma/salasTypes"
@@ -32,11 +33,33 @@ interface MultiSelectFiltroProps {
 function MultiSelectFiltro({ label, values, options, onChange, labelFor }: MultiSelectFiltroProps) {
   const [aberto, setAberto] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+  const painelRef = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
+
+  // Painel em portal pra document.body: `absolute` comum ficava preso ao
+  // `<main overflow-auto>` do layout do dashboard e era cortado na borda dele
+  // (ver MultiSearchCombobox.tsx, mesmo problema). `fixed` + getBoundingClientRect
+  // evita ter que somar scroll de containers intermediários.
+  const reposicionar = () => {
+    const r = ref.current?.getBoundingClientRect()
+    if (r) setPos({ top: r.bottom + 4, left: r.left })
+  }
+
+  useLayoutEffect(() => {
+    if (aberto) reposicionar()
+    else setPos(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aberto])
 
   useEffect(() => {
     if (!aberto) return
     function aoClicarFora(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setAberto(false)
+      const alvo = e.target as Node
+      // O painel vive num portal: não é descendente de `ref` no DOM, por isso
+      // precisa do próprio contains — senão marcar um checkbox seria lido
+      // como "clique fora" e fecharia o painel na hora.
+      if (ref.current?.contains(alvo) || painelRef.current?.contains(alvo)) return
+      setAberto(false)
     }
     // Mesmo handler de Escape que o MaisFiltros já usava — antes só o popover
     // de baixo fechava com Esc e estes não, o que é uma inconsistência que o
@@ -46,9 +69,13 @@ function MultiSelectFiltro({ label, values, options, onChange, labelFor }: Multi
     }
     document.addEventListener("mousedown", aoClicarFora)
     document.addEventListener("keydown", aoTeclar)
+    window.addEventListener("scroll", reposicionar, true)
+    window.addEventListener("resize", reposicionar)
     return () => {
       document.removeEventListener("mousedown", aoClicarFora)
       document.removeEventListener("keydown", aoTeclar)
+      window.removeEventListener("scroll", reposicionar, true)
+      window.removeEventListener("resize", reposicionar)
     }
   }, [aberto])
 
@@ -92,8 +119,12 @@ function MultiSelectFiltro({ label, values, options, onChange, labelFor }: Multi
         <span className="text-[13px] text-muted-foreground">{label}</span>
         <ChevronDown size={14} className="shrink-0 text-muted-foreground" />
       </button>
-      {aberto && (
-        <div className="absolute left-0 top-full z-20 mt-1 max-h-64 min-w-50 overflow-auto rounded-lg border border-border bg-card p-1.5 shadow-lg">
+      {aberto && pos && createPortal(
+        <div
+          ref={painelRef}
+          style={{ position: "fixed", top: pos.top, left: pos.left }}
+          className="z-[100] max-h-64 min-w-50 overflow-auto rounded-lg border border-border bg-card p-1.5 shadow-lg"
+        >
           {options.length === 0 && <div className="px-2 py-1 text-xs text-muted-foreground">Nenhuma opção</div>}
           {options.map(o => (
             <label key={o} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-sm hover:bg-muted/60">
@@ -106,7 +137,8 @@ function MultiSelectFiltro({ label, values, options, onChange, labelFor }: Multi
               <span className="truncate">{labelFor ? labelFor(o) : o}</span>
             </label>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )
@@ -139,23 +171,47 @@ function MaisFiltros({ value, andares, onSet }: {
 }) {
   const [aberto, setAberto] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+  const painelRef = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
   const ativos = contarFiltrosSecundarios(value)
+  const LARGURA_PAINEL = 256 // w-64
+
+  // Mesmo portal-pra-body do MultiSelectFiltro acima: `absolute` ficava preso
+  // ao `<main overflow-auto>` do layout do dashboard e era cortado na borda
+  // dele. Alinhado pela DIREITA (como o `right-0` de antes), por isso `left`
+  // usa a borda direita do gatilho menos a largura do painel.
+  const reposicionar = () => {
+    const r = ref.current?.getBoundingClientRect()
+    if (r) setPos({ top: r.bottom + 4, left: r.right - LARGURA_PAINEL })
+  }
+
+  useLayoutEffect(() => {
+    if (aberto) reposicionar()
+    else setPos(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aberto])
 
   // Mesmo mousedown + ref do MultiSelectFiltro acima — não inventar um segundo
   // mecanismo de "fechar ao clicar fora" na mesma barra.
   useEffect(() => {
     if (!aberto) return
     function aoClicarFora(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setAberto(false)
+      const alvo = e.target as Node
+      if (ref.current?.contains(alvo) || painelRef.current?.contains(alvo)) return
+      setAberto(false)
     }
     function aoTeclar(e: KeyboardEvent) {
       if (e.key === "Escape") setAberto(false)
     }
     document.addEventListener("mousedown", aoClicarFora)
     document.addEventListener("keydown", aoTeclar)
+    window.addEventListener("scroll", reposicionar, true)
+    window.addEventListener("resize", reposicionar)
     return () => {
       document.removeEventListener("mousedown", aoClicarFora)
       document.removeEventListener("keydown", aoTeclar)
+      window.removeEventListener("scroll", reposicionar, true)
+      window.removeEventListener("resize", reposicionar)
     }
   }, [aberto])
 
@@ -176,10 +232,12 @@ function MaisFiltros({ value, andares, onSet }: {
           </span>
         )}
       </button>
-      {aberto && (
-        // z-50 porque a barra de filtros é sticky z-40 — sem isso o popover
-        // nasce atrás do próprio container.
-        <div className="absolute right-0 top-full z-50 mt-1 flex w-64 flex-col gap-3 rounded-xl border border-border bg-card p-3 shadow-lg">
+      {aberto && pos && createPortal(
+        <div
+          ref={painelRef}
+          style={{ position: "fixed", top: pos.top, left: pos.left, width: LARGURA_PAINEL }}
+          className="z-[100] flex flex-col gap-3 rounded-xl border border-border bg-card p-3 shadow-lg"
+        >
           <MultiSelectFiltro label="Andar" values={value.andar} options={andares} onChange={v => onSet("andar", v)} />
           <MultiSelectFiltro
             label="Capacidade"
@@ -218,7 +276,8 @@ function MaisFiltros({ value, andares, onSet }: {
           >
             Sala com exclusividade
           </button>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )

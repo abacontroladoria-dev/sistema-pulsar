@@ -86,7 +86,7 @@ function OcupacaoSalasConteudo() {
   const view = searchParams.get("view")
   const emRegularizacoes = view === "regularizacoes"
   const modo: ModoLista =
-    view === "lista" || view === "mapa" || view === "regularizacoes" ? view : "cards"
+    view === "cards" || view === "mapa" || view === "regularizacoes" ? view : "lista"
 
   const {
     salas, alocacoes, linhas, turnosBloqueioAdmin, exclusividades, profissionaisTodos, terapiasTodas,
