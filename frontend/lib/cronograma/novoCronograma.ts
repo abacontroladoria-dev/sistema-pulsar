@@ -423,7 +423,7 @@ function construirEspTable(
 
 const ESP_ORD = [
   "Fonoaudiologia", "Terapia Ocupacional", "Psicologia ABA", "Musicoterapia",
-  "Psicopedagogia", "Psicomotricidade", "Terapia Alimentar", "Fisioterapia Motora",
+  "Psicopedagogia", "Psicomotricidade", "Terapia Alimentar", "Fisioterapia",
   "Fisioterapia Aquática", "Equoterapia", "Arteterapia", "Psicologia", "Habilidades Sociais",
 ]
 

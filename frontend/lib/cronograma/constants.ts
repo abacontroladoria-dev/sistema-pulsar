@@ -38,7 +38,7 @@ export const TERAPIA_TO_ESP: Record<string, string> = {
   "Terapia Alimentar": "Terapia Alimentar",
   "Psicologia": "Psicologia",
   "Fisioterapia Aquática": "Fisioterapia Aquática",
-  "Fisioterapia": "Fisioterapia Motora",
+  "Fisioterapia": "Fisioterapia",
   "Equoterapia": "Equoterapia",
   "Arteterapia": "Arteterapia",
 }
@@ -54,7 +54,7 @@ export const ESP_CLINICO: Record<string, string[]> = {
   "Terapia Alimentar": ["Terapia Alimentar"],
   "Psicologia": ["Psicologia"],
   "Fisioterapia Aquática": ["Fisioterapia Aquática"],
-  "Fisioterapia Motora": ["Fisioterapia"],
+  "Fisioterapia": ["Fisioterapia"],
   "Equoterapia": ["Equoterapia"],
   "Arteterapia": ["Arteterapia"],
 }
@@ -235,7 +235,7 @@ export function escurecerHex(hex: string, fator: number): string {
 
 // ─── ESPECIALIDADES ───────────────────────────────────────────────────────────
 export const TODAS_ESP = [
-  "Arteterapia", "Equoterapia", "Fisioterapia Aquática", "Fisioterapia Motora",
+  "Arteterapia", "Equoterapia", "Fisioterapia", "Fisioterapia Aquática",
   "Fonoaudiologia", "Habilidades Sociais", "Musicoterapia", "Psicologia",
   "Psicologia ABA", "Psicomotricidade", "Psicopedagogia", "Terapia Alimentar",
   "Terapia Ocupacional",
@@ -478,6 +478,43 @@ export const PROCESSO_DIAGNOSTICO_NAMES = new Set(
 // Especialidades no laudo que habilitam AE e HS
 export const AE_LAUDO_ESP = "Arteterapia"
 export const HS_LAUDO_ESP = "Habilidades Sociais"
+
+// ─── SINÔNIMOS DE ESPECIALIDADE NO LAUDO (Ocupação de Paciente) ───────────────
+// O laudo às vezes grava a especialidade com um nome diferente do usado na
+// grade/TiTa. Fusão completa (contagem E rótulo exibido viram o nome canônico
+// à direita, sem item separado) — pedido do usuário, 2026-09-18/19:
+// - "Psicoterapia" é só outro nome pra "Psicologia".
+// - "Cozinha Terapêutica" e "Nutrição" são como o laudo às vezes chama sessões
+//   de "Terapia Alimentar" — precisam contar como a mesma especialidade pra
+//   que (a) a contagem ofertado/autorizado feche corretamente e (b) o motor de
+//   sugestões ofereça vaga livre de Terapia Alimentar pra fechar esse gap,
+//   mesmo quando o laudo não usa literalmente esse nome.
+// - "Fisioterapia Solo" e "Fisioterapia Motora" são como o laudo às vezes chama
+//   sessões de "Fisioterapia" (a ação real na grade) — mesmo raciocínio acima.
+// - "Artes Marciais" no laudo corresponde à ação de grade "Aplicador ABA (EF)",
+//   e "Aplicador ABA" (sem sufixo) e "Coordenador de Caso" também contam como
+//   ABA genérico — todos já caem em "Psicologia ABA" quando vêm da grade
+//   (TERAPIA_TO_ESP), então o laudo precisa da mesma fusão.
+export const ESP_LAUDO_SINONIMO: Record<string, string> = {
+  "Psicoterapia": "Psicologia",
+  "Cozinha Terapêutica": "Terapia Alimentar",
+  "Nutrição": "Terapia Alimentar",
+  "Fisioterapia Solo": "Fisioterapia",
+  "Fisioterapia Motora": "Fisioterapia",
+  "Artes Marciais": "Psicologia ABA",
+  "Aplicador ABA": "Psicologia ABA",
+  "Coordenador de Caso": "Psicologia ABA",
+}
+
+// Especialidades de laudo que são avaliações pontuais (fazem parte do "Processo
+// Diagnóstico", ver PROCESSO_DIAGNOSTICO_IDS), não tratamento contínuo — não
+// existe ação de grade recorrente pra fechar esse "gap", então a Ocupação de
+// Paciente ignora essas linhas do laudo por completo (pedido do usuário,
+// 2026-09-19), em vez de mostrar um déficit que nunca fecha.
+export const ESP_LAUDO_IGNORAR = new Set([
+  "Avaliação Neuropsicológica",
+  "Avaliação de Repertório",
+])
 
 // ─── LEGENDA DE REGRAS (fonte única — GuiaTab e ConfigTab) ────────────────────
 export const REGRAS_LEGENDA: Array<{ r: string; c: string; title: string; desc: string }> = [
