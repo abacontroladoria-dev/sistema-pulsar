@@ -33,14 +33,14 @@ import type { CsvRow } from "@/types/cronograma"
 // Mesmo sistema de ícone+cor por terapia de ComparativoSessoesShell.tsx
 // (cronograma/indicadores/?tab=comparativo-sessoes), só que pela ESPECIALIDADE
 // agregada (as chaves de gapPorEspecialidade), não pela terapia individual —
-// a maioria dos nomes já bate 1:1 (ex.: "Fonoaudiologia"), só "Fisioterapia
-// Motora" e "Psicologia ABA" precisam de um desvio explícito pra achar a cor
-// certa em TERAPIA_CORES (que é indexado por terapia, não por especialidade).
+// a maioria dos nomes já bate 1:1 (ex.: "Fonoaudiologia"), só "Psicologia ABA"
+// precisa de um desvio explícito pra achar a cor certa em TERAPIA_CORES (que é
+// indexado por terapia, não por especialidade).
 const ICONE_ESPECIALIDADE: Record<string, LucideIcon> = {
   "Arteterapia": Paintbrush,
   "Equoterapia": PawPrint,
+  "Fisioterapia": Dumbbell,
   "Fisioterapia Aquática": Waves,
-  "Fisioterapia Motora": Dumbbell,
   "Fonoaudiologia": MessageCircle,
   "Habilidades Sociais": Users,
   "Musicoterapia": Music,
@@ -73,9 +73,7 @@ function corComContraste(hex: string): string {
 }
 
 function corEspecialidade(especialidade: string): string {
-  const base = especialidade === "Psicologia ABA" ? TERAPIA_CORES["Coordenador de Caso"]
-    : especialidade === "Fisioterapia Motora" ? tCor("Fisioterapia")
-    : tCor(especialidade)
+  const base = especialidade === "Psicologia ABA" ? TERAPIA_CORES["Coordenador de Caso"] : tCor(especialidade)
   return corComContraste(base)
 }
 

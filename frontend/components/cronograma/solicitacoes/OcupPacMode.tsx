@@ -5,7 +5,7 @@ import toast from "react-hot-toast"
 import Link from "next/link"
 import { type CSSProperties, forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react"
 import {
-  ABA_EXIB_PSICO_NAMES, B, DIAS_LIST, DIAS_ORD, EXCLUIR_OCUP, EXIB_ID, EXIB_NOME,
+  ABA_EXIB_PSICO_NAMES, B, DIAS_LIST, DIAS_ORD, ESP_LAUDO_IGNORAR, ESP_LAUDO_SINONIMO, EXCLUIR_OCUP, EXIB_ID, EXIB_NOME,
   HORAS_GRID, PACS_ADMIN, TERAPIA_TO_ESP, TODAS_ESP, isProfBloqueadoTemp, normTxt,
 } from "@/lib/cronograma/constants"
 import {
@@ -2413,7 +2413,9 @@ export function OcupPacMode({
     for (const l of lRows) {
       const idFav = String(l["ID Favorecido"] ?? l["Id Favorecido"] ?? "").trim()
       const p     = (idFav ? agendIdMap.get(idFav) : undefined) ?? String(l["Paciente"] || "").trim()
-      const esp   = String(l["Especialidade"] || "").trim()
+      const espRaw = String(l["Especialidade"] || "").trim()
+      if (ESP_LAUDO_IGNORAR.has(espRaw)) continue
+      const esp   = ESP_LAUDO_SINONIMO[espRaw] ?? espRaw
       if (!p || PACS_ADMIN_OCUP_PAC.has(p) || !esp) continue
       const k = `${p}|||${esp}`
       if (isLaudoComAlta(l) || suspensaoSet.has(k)) { excluidosSet.add(k); continue }
@@ -2640,7 +2642,9 @@ export function OcupPacMode({
       const idFav = String(l["ID Favorecido"] ?? l["Id Favorecido"] ?? "").trim()
       const p     = (idFav ? agendIdMap.get(idFav) : undefined) ?? String(l["Paciente"] || "").trim()
       if (p !== pac) continue
-      const esp = String(l["Especialidade"] || "").trim()
+      const espRaw = String(l["Especialidade"] || "").trim()
+      if (ESP_LAUDO_IGNORAR.has(espRaw)) continue
+      const esp = ESP_LAUDO_SINONIMO[espRaw] ?? espRaw
       if (!esp) continue
       if (isLaudoComAlta(l) || suspensaoSet.has(`${pac}|||${esp}`)) { excluidosSet.add(esp); continue }
       const aut = parseFloat(String(l["Qtd autorizada"] || "0").replace(",", ".")) || 0

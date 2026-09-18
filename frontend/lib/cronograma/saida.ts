@@ -31,7 +31,7 @@ const ESP_CLIN_L: Record<string, string[]> = {
   "Fonoaudiologia":        ["Fonoaudiologia"],
   "Psicomotricidade":      ["Psicomotricidade"],
   "Psicopedagogia":        ["Psicopedagogia"],
-  "Fisioterapia Motora":   ["Fisioterapia"],
+  "Fisioterapia":          ["Fisioterapia"],
   "Fisioterapia Aquática": ["Fisioterapia Aquática"],
   "Musicoterapia":         ["Musicoterapia"],
   "Psicologia":            ["Psicologia"],

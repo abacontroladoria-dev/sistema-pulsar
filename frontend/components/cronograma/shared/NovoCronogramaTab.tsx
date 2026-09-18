@@ -14,7 +14,7 @@ interface Props {
 
 const ESP_ORD_T = [
   "Fonoaudiologia", "Terapia Ocupacional", "Psicologia ABA", "Musicoterapia",
-  "Psicopedagogia", "Psicomotricidade", "Terapia Alimentar", "Fisioterapia Motora",
+  "Psicopedagogia", "Psicomotricidade", "Terapia Alimentar", "Fisioterapia",
   "Fisioterapia Aquática", "Equoterapia", "Arteterapia", "Psicologia", "Habilidades Sociais",
 ]
 
