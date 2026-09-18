@@ -1,4 +1,4 @@
-import { DIA_COLS_DISP, DIAS_LIST, DIAS_ORD, ESP_CLINICO, EXCLUIR_OCUP, TERAPIA_TO_ESP } from "./constants"
+import { DIA_COLS_DISP, DIAS_LIST, DIAS_ORD, ESP_CLINICO, EXCLUIR_OCUP, TERAPIA_TO_ESP, TERAPIA_TO_ESP_ALT } from "./constants"
 import { isLaudoComAlta, pm } from "./helpers"
 import type { CsvRow, DispRow, LaudoRow } from "@/types/cronograma"
 
@@ -252,21 +252,13 @@ export function buildSugestoesManual(
     Object.entries(espTable).filter(([, v]) => v.aut > 0).map(([e]) => e),
   )
 
-  // Terapias correspondentes às esps válidas.
-  const terapiasValidas = new Set<string>()
-  for (const esp of espsValidas) {
-    for (const t of (ESP_CLINICO[esp] || [])) {
-      if (!EXCLUIR_OCUP.has(t)) terapiasValidas.add(t)
-    }
-  }
-
-  // Filtra vagas elegíveis: turno + unidade + terapia válida.
+  // Filtra vagas elegíveis: turno + unidade. A terapia válida é checada
+  // abaixo, por terapia individual (ver split de r["Terapia"]).
   const eligible = (livreSlots || []).filter(r => {
     const hiVal = Number(r.HI ?? r["HI"] ?? null)
     return (
       unidadesPermitidas.has(String(r.Unidade || r["Unidade"] || "")) &&
       r.HI !== null && !isNaN(hiVal) &&
-      terapiasValidas.has(r["Terapia"]) &&
       hiVal >= janela.inicio && hiVal < janela.fim
     )
   })
@@ -282,25 +274,46 @@ export function buildSugestoesManual(
   for (const r of eligible) {
     const dia = r["Dia da Semana"]
     const hiStr = String(r.HI_str || r["HI_str"] || "")
-    const tP = r["Terapia"]
     const prof = r["Profissional"]
     const unidade = String(r.Unidade || r["Unidade"] || "")
 
-    // Deduplica mesma combinação dia+hora+terapia+profissional.
-    const dedup = `${dia}|||${hiStr}|||${tP}|||${prof}`
-    if (seenSlots.has(dedup)) continue
-    seenSlots.add(dedup)
+    // Um horário "Livre" pode servir mais de uma terapia — a view traz isso
+    // como uma única string separada por vírgula (ex.: "Aplicador ABA (AE),
+    // Aplicador ABA (HS), Psicopedagogia"). Split aqui e trata cada terapia
+    // bruta individualmente, em vez de casar a string inteira em
+    // TERAPIA_TO_ESP (que nunca bate e derruba o horário inteiro — mesmo
+    // bug já corrigido em listarSlotsLivres, caso Amanda Martins Rodrigues).
+    const terapiasBrutas = String(r["Terapia"] || "").split(",").map(t => t.trim()).filter(Boolean)
+    for (const tP of terapiasBrutas) {
+      // Especialidades que esta terapia bruta pode cobrir: a default
+      // (TERAPIA_TO_ESP, sujeita a EXCLUIR_OCUP — ex.: Coordenador de Caso e
+      // Supervisão ABA nunca contam como Psicologia ABA livre) e, quando
+      // existir, a alternativa (TERAPIA_TO_ESP_ALT — ex.: "Aplicador ABA
+      // (AE)" está em EXCLUIR_OCUP pra Psicologia ABA, mas serve sim como
+      // Arteterapia de verdade, com exibição própria "Arteterapia
+      // (Psicologia ABA)"; por isso a alternativa NÃO passa por
+      // EXCLUIR_OCUP). O mesmo horário livre vira candidato pras duas — a
+      // escolha de qual vira sessão de fato acontece na implantação, não aqui.
+      const espDefault = EXCLUIR_OCUP.has(tP) ? undefined : TERAPIA_TO_ESP[tP]
+      const espsCandidatas = [espDefault, TERAPIA_TO_ESP_ALT[tP]]
+        .filter((esp): esp is string => !!esp && espsValidas.has(esp))
+      if (espsCandidatas.length === 0) continue
 
-    const esp = TERAPIA_TO_ESP[tP]
-    if (!esp || !espsValidas.has(esp)) continue
+      for (const esp of espsCandidatas) {
+        // Deduplica mesma combinação dia+hora+especialidade+terapia+profissional.
+        const dedup = `${dia}|||${hiStr}|||${esp}|||${tP}|||${prof}`
+        if (seenSlots.has(dedup)) continue
+        seenSlots.add(dedup)
 
-    const slotKey = `${dia}|||${hiStr}`
-    if (!slotMap[slotKey]) slotMap[slotKey] = {}
-    if (!slotMap[slotKey][esp]) slotMap[slotKey][esp] = []
-    slotMap[slotKey][esp].push({
-      tP, prof, unidade,
-      csvGradeId: r.CsvGradeId ? String(r.CsvGradeId) : undefined,
-    })
+        const slotKey = `${dia}|||${hiStr}`
+        if (!slotMap[slotKey]) slotMap[slotKey] = {}
+        if (!slotMap[slotKey][esp]) slotMap[slotKey][esp] = []
+        slotMap[slotKey][esp].push({
+          tP, prof, unidade,
+          csvGradeId: r.CsvGradeId ? String(r.CsvGradeId) : undefined,
+        })
+      }
+    }
   }
 
   // Ordena especialidades pela ordem clínica, desempate por aut desc.

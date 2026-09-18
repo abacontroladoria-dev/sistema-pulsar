@@ -39,6 +39,27 @@ export function espParaOcupacaoPac(terapia: string, terapiaToEsp: Record<string,
 }
 
 /**
+ * Um horário "Livre" pode servir mais de uma terapia — a view traz isso como
+ * uma única string separada por vírgula (ex.: "Aplicador ABA (AE), Aplicador
+ * ABA (HS), Psicopedagogia"). Expande cada linha "Livre" com terapia composta
+ * em uma linha por terapia individual (preservando os demais campos, inclusive
+ * CsvGradeId), pra que TERAPIA_TO_ESP[r.Terapia] e comparações tipo
+ * `r.Terapia === "X"` continuem funcionando linha a linha. Sem isso a string
+ * inteira nunca bate em lugar nenhum e o horário some inteiro da oferta —
+ * mesmo bug já corrigido em listarSlotsLivres (disponibilidadeInterna.ts),
+ * caso Amanda Martins Rodrigues. Linhas não-"Livre" (ou "Livre" com terapia
+ * única) passam inalteradas.
+ */
+export function expandirTerapiasLivres<T extends CsvRow>(rows: T[]): T[] {
+  return rows.flatMap(r => {
+    if (r["Status do Agendamento"] !== "Livre") return [r]
+    const terapias = String(r.Terapia || "").split(",").map(t => t.trim()).filter(Boolean)
+    if (terapias.length <= 1) return [r]
+    return terapias.map(t => ({ ...r, Terapia: t }))
+  })
+}
+
+/**
  * Peso de consumo de quantidade autorizada por sessão da grade. ABA em
  * Ambiente Natural (Aplicador ABA Casa/Escola) consome 0,666 de quantidade
  * autorizada por sessão, contra 1,0 das terapias em Ambiente Clínico —

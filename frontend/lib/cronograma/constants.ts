@@ -50,6 +50,20 @@ export const TERAPIA_TO_ESP: Record<string, string> = {
   "Arteterapia": "Arteterapia",
 }
 
+/**
+ * Especialidade ALTERNATIVA que uma terapia livre também pode cobrir, além da
+ * default em TERAPIA_TO_ESP — ver EXIB_ID/EXIB_NOME e espRealPorExibicao em
+ * helpers.ts. "Aplicador ABA (AE)" tem exibição própria "Arteterapia
+ * (Psicologia ABA)" (EXIB_ID.ARTETERAPIA_ABA): a sessão pode ser implantada
+ * como Psicologia ABA (default) OU como Arteterapia, dependendo da demanda do
+ * paciente. Um horário livre desse tipo precisa contar como candidato pras
+ * duas — quem decide qual das duas vira sessão de fato é a implantação
+ * (exibição real gravada), não a busca de vaga.
+ */
+export const TERAPIA_TO_ESP_ALT: Record<string, string> = {
+  "Aplicador ABA (AE)": "Arteterapia",
+}
+
 export const ESP_CLINICO: Record<string, string[]> = {
   "Psicologia ABA": ["Aplicador ABA (PS)", "Aplicador ABA (SF)", "Aplicador ABA (AV)", "Aplicador ABA (AE)", "Aplicador ABA (EF)", "Supervisão ABA", "Coordenador de Caso"],
   "Habilidades Sociais": ["Aplicador ABA (HS)"],

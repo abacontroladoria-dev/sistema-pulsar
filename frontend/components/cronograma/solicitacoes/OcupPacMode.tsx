@@ -9,7 +9,7 @@ import {
   HORAS_GRID, PACS_ADMIN, TERAPIA_TO_ESP, TODAS_ESP, isProfBloqueadoTemp, normTxt,
 } from "@/lib/cronograma/constants"
 import {
-  buildCronoUnitMeta, ceilOcupacaoAba, espParaOcupacaoPac, espRealPorExibicao, fm, fmtName, isLaudoComAlta, pesoOcupacaoAba, pm,
+  buildCronoUnitMeta, ceilOcupacaoAba, espParaOcupacaoPac, espRealPorExibicao, expandirTerapiasLivres, fm, fmtName, isLaudoComAlta, pesoOcupacaoAba, pm,
   shouldShowSessionUnit, unidadeBadgeText,
 } from "@/lib/cronograma/helpers"
 import { UnitHeaderBadges, CronoGlobalUnitBadge } from "@/components/cronograma/ui/UnitBadges"
@@ -2316,6 +2316,13 @@ export function OcupPacMode({
 
   // ── Dados derivados ─────────────────────────────────────────────────────────
 
+  // Um horário "Livre" pode trazer mais de uma terapia numa string só separada por
+  // vírgula (ver expandirTerapiasLivres) — buildSugestoes e findSupervTarget precisam
+  // de uma linha por terapia individual pra não perder o horário inteiro quando o
+  // profissional tem mais de uma opção. `agend` (Agendado) não precisa disso: essas
+  // linhas já vêm com terapia única.
+  const cRowsExpandido = useMemo(() => expandirTerapiasLivres(cRows), [cRows])
+
   const agend = useMemo(() => cRows.filter(r => r["Status do Agendamento"] === "Agendado"), [cRows])
   const agendClin = useMemo(() =>
     agend.filter(r => r["Nome Favorecido"] && !PACS_ADMIN_OCUP_PAC.has(r["Nome Favorecido"]) && !EXCLUIR_GAPS.has(r.Terapia)),
@@ -2688,9 +2695,9 @@ export function OcupPacMode({
     // Bundles "pendente" continuam fora do cálculo — preserva o comportamento anterior
     // de manter os cards visíveis enquanto aguardam confirmação do responsável.
     const aceitesRelevantes = aceites.filter(a => a.status === "confirmado" || a.status === "recusado")
-    return buildSugestoes(pac, agend, agendClin, cRows, gapMap, aceitesRelevantes, conv, isLiminar, prefEsps)
+    return buildSugestoes(pac, agend, agendClin, cRowsExpandido, gapMap, aceitesRelevantes, conv, isLiminar, prefEsps)
     // prefEsps nas deps: trocar a preferência recalcula as sugestões na hora, sem recarregar a página.
-  }, [pac, estrategia, agend, agendClin, cRows, gapMap, pacConvMap, cfg.judicialMap, aceites, prefEsps])
+  }, [pac, estrategia, agend, agendClin, cRowsExpandido, gapMap, pacConvMap, cfg.judicialMap, aceites, prefEsps])
 
   useEffect(() => {
     if (!pac) return
@@ -3099,7 +3106,7 @@ export function OcupPacMode({
             key={pac}
             pac={pac}
             conv={pacConvMap[pac] || ""}
-            cRows={cRows}
+            cRows={cRowsExpandido}
             sugestoes={sugestoes}
             pacGaps={pacGaps}
             pacAllEsp={pacAllEsp}

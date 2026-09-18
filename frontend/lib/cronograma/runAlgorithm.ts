@@ -22,6 +22,7 @@ import {
   construirProfissionaisOcupados,
   espRealPorExibicao,
   exU,
+  expandirTerapiasLivres,
   fm,
   fmtName,
   gPrio,
@@ -65,10 +66,17 @@ export function runAlgorithm(
   // terapia ofertada, então preencher um horário não apaga as outras linhas
   // "Livre" do mesmo profissional nesse dia/hora.
   const profOcupado = construirProfissionaisOcupados(agend)
-  const livre = df.filter(
+  // Um horário "Livre" pode servir mais de uma terapia — a view traz isso como
+  // uma única string separada por vírgula (ver expandirTerapiasLivres). Expande
+  // ANTES do restante do algoritmo tratar `r.Terapia`/`TERAPIA_TO_ESP[...]` como
+  // valor único: sem isso, um profissional com mais de uma terapia livre no
+  // mesmo horário some da oferta inteira (mesmo bug do caso Amanda Martins
+  // Rodrigues, corrigido em listarSlotsLivres/buildSugestoesManual/OcupPacMode
+  // — este é um motor de sugestões paralelo, que não herda essas correções).
+  const livre = expandirTerapiasLivres(df.filter(
     r => r["Status do Agendamento"] === "Livre" && !isProfBloqueadoTemp(r["Profissional"])
       && !profissionalEstaOcupado(profOcupado, r["Profissional"], r["Dia da Semana"], r.HI_str || ""),
-  )
+  ))
 
   const qtdAut: Record<string, number> = {}
   const altaAut: Record<string, number> = {}
