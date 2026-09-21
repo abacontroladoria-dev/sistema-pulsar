@@ -294,4 +294,22 @@ export class ConversationRepository {
 
     if (error) throw error
   }
+
+  // `priority` é a urgência da conversa na fila de atendimento humano. Coluna
+  // `text` livre em central.conversations (20260701000500), sem CHECK; os valores
+  // que o produto usa são 'low' | 'medium' | 'high' | 'urgent', documentados lá.
+  //
+  // Quem lê: a triagem acende o selo "escalada pela Maia" em 'high'
+  // (PainelAtendimentos.tsx). Quem escrevia, até agora, era só o UPDATE cru do
+  // worker ao escalar — é por isso que este método nasce agora, junto com
+  // ConversationService.escalarParaAtendimentoHumano.
+  async updatePriority(id: string, priority: string | null): Promise<void> {
+    const { error } = await (this.supabase as any)
+      .schema('central')
+      .from('conversations')
+      .update({ priority })
+      .eq('id', id)
+
+    if (error) throw error
+  }
 }

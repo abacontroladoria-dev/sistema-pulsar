@@ -1,5 +1,6 @@
 import type { AppointmentService } from '../services/appointment.service'
 import type { AppointmentRepository } from '../repositories/appointment.repository'
+import type { ConversationService } from '../services/conversation.service'
 import {
   SlotAlreadyBookedError,
   SlotInPastError,
@@ -266,7 +267,88 @@ export const DEFINICOES_FERRAMENTAS = [
   },
 ] as const
 
-export type NomeFerramenta = typeof DEFINICOES_FERRAMENTAS[number]['function']['name']
+// ----------------------------------------------------------------------------
+// Ferramentas que NÃO dependem do interruptor de agendamento
+//
+// `DEFINICOES_FERRAMENTAS` acima só chega ao modelo quando
+// `agent_settings.ai_scheduling_enabled` está ligado — é o botão de pânico da
+// entrega, e ele precisa continuar desligando a agenda inteira de uma vez.
+//
+// Chamar gente não é agendar. Amarrar esta ferramenta àquele interruptor
+// produziria o pior estado possível do sistema: com o agendamento desligado, a
+// Maia conversa, não resolve nada e TAMBÉM não consegue passar para um humano.
+// É justamente quando o agendamento está off que mais se precisa dela. Além
+// disso, `ai_scheduling_enabled: false` é o default de uma instalação sem seed
+// (agent-settings.ts falha fechada), então o caminho de pedir ajuda começaria
+// morto.
+//
+// A lista efetiva do turno é montada no orquestrador, juntando os dois arrays.
+// ----------------------------------------------------------------------------
+export const FERRAMENTAS_SEMPRE = [
+  {
+    type: 'function' as const,
+    function: {
+      name: 'escalar_para_humano',
+      // A description é o contrato que o modelo lê para decidir quando chamar.
+      // As duas últimas frases são o conserto do defeito que motivou esta
+      // ferramenta: o system prompt já mandava dizer "vou chamar alguém", o
+      // modelo dizia, e ninguém era chamado. Dizer sem chamar é pior que não
+      // dizer — a pessoa fica esperando um atendimento que ninguém pediu.
+      description:
+        'Passa esta conversa para uma pessoa da equipe e tira você do atendimento. '
+        + 'Use quando o responsável pedir para falar com alguém, com um atendente, com a recepção ou com um humano; '
+        + 'quando demonstrar irritação ou insatisfação com o atendimento; '
+        + 'ou quando pedir algo que nenhuma outra ferramenta resolve e você não pode confirmar. '
+        + 'CHAME ESTA FERRAMENTA ANTES de dizer que vai chamar alguém — dizer sem chamar deixa a pessoa esperando por um atendimento que não foi pedido. '
+        + 'Depois que ela responder, escreva UMA mensagem curta avisando que alguém da equipe vai continuar. '
+        + 'Não prometa prazo e não diga o nome de ninguém. '
+        + 'Chame no máximo uma vez por conversa: se a resposta vier com jaEstavaEscalada, apenas fale com o responsável.',
+      strict: true,
+      parameters: {
+        type: 'object',
+        properties: {
+          // `motivoEscalada`, e não `motivo`, por uma razão de privacidade e não
+          // de estilo: `motivo` já é parâmetro de reagendar_sessao e
+          // cancelar_sessao, onde carrega texto livre do responsável e está
+          // DELIBERADAMENTE fora de ARGUMENTOS_LOGAVEIS (orquestrador.ts). Este
+          // precisa ser logado para a auditoria da escalada; se os dois
+          // dividissem o nome, pôr um na allowlist vazaria o outro para o rastro.
+          //
+          // Enum fechado porque vai para o payload do evento: código estável que
+          // dá para contar e filtrar, não frase que cada turno escreve diferente.
+          motivoEscalada: {
+            type: 'string',
+            enum: ['pedido_do_usuario', 'insatisfacao', 'fora_do_alcance'],
+            description:
+              'pedido_do_usuario: pediu para falar com uma pessoa. '
+              + 'insatisfacao: demonstrou irritação ou reclamou do atendimento. '
+              + 'fora_do_alcance: precisa de algo que você não tem como resolver.',
+          },
+        },
+        required: ['motivoEscalada'],
+        additionalProperties: false,
+      },
+    },
+  },
+] as const
+
+// LIMITAÇÃO CONHECIDA: não há como deixar um recado para quem vai assumir.
+//
+// O desenho original tinha um parâmetro `resumo` — uma frase do que a pessoa
+// precisa, para quem abrisse a conversa não começar do zero. Ele foi removido
+// porque o schema não tem onde guardá-lo: não existe nota interna em `central`
+// (nem tabela de notas, nem message_type para isso), e `payload` de auditoria
+// não serve — é texto livre do responsável, que fica fora da trilha pela mesma
+// razão que `motivo` fica fora do rastro de ferramentas.
+//
+// Coletar para descartar seria pior que não coletar: custaria tokens todo turno
+// e daria a impressão, para quem lesse o schema, de que o recado chega a alguém.
+// Quem assume lê o histórico da conversa, que tem o pedido original literal.
+// Se um dia existir nota interna, é aqui que `resumo` volta.
+
+export type NomeFerramenta =
+  | typeof DEFINICOES_FERRAMENTAS[number]['function']['name']
+  | typeof FERRAMENTAS_SEMPRE[number]['function']['name']
 
 // ----------------------------------------------------------------------------
 // Executor
@@ -277,7 +359,39 @@ export class FerramentasAgente {
     private readonly agendamentos: AppointmentService,
     private readonly repo:         AppointmentRepository,
     private readonly contexto:     ContextoAgente,
+    // Para `escalar_para_humano`. Opcional porque os testes das ferramentas de
+    // agenda não precisam dele — e porque é melhor a ferramenta recusar dizendo
+    // que não conseguiu transferir do que o worker explodir na construção.
+    //
+    // Vai por SERVICE e não por cliente supabase: "as ferramentas NÃO falam com o
+    // banco" (ver o topo deste arquivo). A escalada tem regra — não mexer no
+    // responsável, não rebaixar prioridade, auditar uma vez só — e essa regra
+    // mora em ConversationService.escalarParaAtendimentoHumano, onde o worker
+    // também a alcança.
+    private readonly conversas:    ConversationService | null = null,
   ) {}
+
+  // A escalada pedida NESTE turno, ou null. Lida pelo worker depois de
+  // `executarTurno`.
+  //
+  // POR QUE ESTE ESTADO EXISTE
+  //
+  // Escalar é a única ferramenta cujo efeito o worker precisa conhecer. As de
+  // agenda terminam em si mesmas: o modelo lê o resultado, responde, e o turno
+  // segue. Esta muda quem atende — e se o turno MORRER depois dela (o modelo
+  // trunca, entra em loop, o provider cai), a conversa fica 'off' com o
+  // responsável sem receber nada. Como a Maia acabou de ser desligada, nenhum
+  // turno futuro vai falar com ele: o silêncio é permanente, não temporário.
+  //
+  // O worker usa este flag para garantir a despedida mesmo nesses caminhos.
+  //
+  // O escopo é o turno porque a instância é construída uma vez por turno no
+  // worker. Não é estado global, e não sobrevive à conversa seguinte.
+  private escalouNesteTurno: { motivoEscalada: string } | null = null
+
+  escaladaPedida(): { motivoEscalada: string } | null {
+    return this.escalouNesteTurno
+  }
 
   // Ponto único de entrada. Recebe o nome e os argumentos crus vindos do
   // modelo — nada aqui confia no formato, porque o modelo erra.
@@ -294,6 +408,7 @@ export class FerramentasAgente {
         case 'consultar_agendamentos_do_contato':    return await this.consultarDoContato()
         case 'reagendar_sessao':                     return await this.reagendar(args)
         case 'cancelar_sessao':                      return await this.cancelar(args)
+        case 'escalar_para_humano':                  return await this.escalarParaHumano(args)
         default:
           return recusa(MOTIVO.ERRO_INTERNO, `Ferramenta desconhecida: ${nome}`)
       }
@@ -709,6 +824,79 @@ export class FerramentasAgente {
     }
   }
 
+  // --------------------------------------------------------------------------
+  // escalar_para_humano
+  //
+  // A única ferramenta que muda QUEM ATENDE em vez de mexer na agenda. Tudo o que
+  // ela decide já está em ConversationService.escalarParaAtendimentoHumano — aqui
+  // só se resolve o que é específico do agente: não escalar duas vezes no mesmo
+  // turno, e dizer ao modelo o que fazer em seguida.
+  //
+  // NUNCA RECUSA POR JÁ ESTAR ESCALADA. Uma recusa é um sinal de "tente outra
+  // coisa", e a outra coisa que o modelo tentaria é pior: insistir com argumentos
+  // diferentes, ou pior ainda, desistir e não avisar o responsável. Já escalada é
+  // sucesso — o estado desejado foi alcançado, só não por esta chamada.
+  // --------------------------------------------------------------------------
+  private async escalarParaHumano(args: Record<string, any>): Promise<ResultadoFerramenta> {
+    const motivoEscalada = MOTIVOS_ESCALADA.includes(String(args.motivoEscalada))
+      ? String(args.motivoEscalada)
+      // O enum do schema já restringe, mas `strict` pode ser desligado para
+      // depurar e outro provedor pode não honrar a restrição. Cair num valor
+      // válido é melhor que gravar lixo na auditoria ou recusar a escalada por
+      // causa de um rótulo — o que importa é a conversa chegar ao humano.
+      : 'fora_do_alcance'
+
+    // Segunda chamada no mesmo turno. O detector de laço do orquestrador pega a
+    // repetição EXATA (mesmo nome, mesmo JSON), mas não a que troca o motivo —
+    // e aquela chegaria aqui. Sem esta guarda seriam duas idas ao banco e dois
+    // eventos para a mesma decisão.
+    if (this.escalouNesteTurno) {
+      return {
+        ok: true,
+        escalada: true,
+        jaEstavaEscalada: true,
+        avisoInterno: AVISO_JA_ESCALADA,
+      }
+    }
+
+    if (!this.conversas) {
+      // Sem o serviço não há como escalar. É falha de montagem (o worker não
+      // passou a dependência), não algo que o modelo possa contornar — por isso
+      // a mensagem manda ele parar de tentar e ser honesto com o responsável.
+      return recusa(
+        MOTIVO.ERRO_INTERNO,
+        'Não consegui transferir para a equipe agora. Diga ao responsável que a equipe vai retornar por aqui e não repita a tentativa.',
+      )
+    }
+
+    const conversationId = this.contexto.conversationId
+    if (!conversationId) {
+      return recusa(
+        MOTIVO.ERRO_INTERNO,
+        'Não consegui transferir para a equipe agora. Diga ao responsável que a equipe vai retornar por aqui e não repita a tentativa.',
+      )
+    }
+
+    const { jaEstavaEscalada } = await this.conversas.escalarParaAtendimentoHumano(
+      conversationId,
+      motivoEscalada,
+      'ferramenta_agente',
+    )
+
+    // Só DEPOIS da escrita bem-sucedida. Se `escalarParaAtendimentoHumano`
+    // lançar, o catch de `executar()` devolve a recusa e este flag continua null
+    // — é o que impede o worker de mandar a despedida de uma escalada que não
+    // aconteceu.
+    this.escalouNesteTurno = { motivoEscalada }
+
+    return {
+      ok: true,
+      escalada: true,
+      jaEstavaEscalada,
+      avisoInterno: jaEstavaEscalada ? AVISO_JA_ESCALADA : AVISO_ESCALADA_NOVA,
+    }
+  }
+
   // Traduz erro de domínio em recusa com motivo estável.
   // Cada motivo pede uma reação diferente do agente, e é por isso que os três
   // tipos de falha de vaga não são fundidos num "não deu".
@@ -740,6 +928,20 @@ export class FerramentasAgente {
 function recusa(motivo: string, mensagem: string): ResultadoFerramenta {
   return { ok: false, motivo, mensagem }
 }
+
+// Os valores do enum de `escalar_para_humano`, para validar o que chega do modelo.
+const MOTIVOS_ESCALADA: readonly string[] = [
+  'pedido_do_usuario', 'insatisfacao', 'fora_do_alcance',
+] as const
+
+// Instrução de volta ao modelo. Vai no resultado da ferramenta porque é ali que
+// ele lê o que fazer em seguida — e o que ele faz em seguida é a metade visível
+// desta funcionalidade: sem a despedida, o responsável vê a conversa morrer.
+const AVISO_ESCALADA_NOVA =
+  'Pronto, a conversa está com a equipe. Agora escreva UMA mensagem curta ao responsável avisando que alguém vai continuar o atendimento. Não prometa prazo.'
+
+const AVISO_JA_ESCALADA =
+  'Esta conversa já está com a equipe. Não chame esta ferramenta de novo; apenas responda ao responsável em uma frase curta.'
 
 // ----------------------------------------------------------------------------
 // Contexto confiável: derivado do runtime, nunca do modelo

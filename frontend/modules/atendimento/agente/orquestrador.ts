@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { DEFINICOES_FERRAMENTAS, type FerramentasAgente } from './ferramentas'
+import { DEFINICOES_FERRAMENTAS, FERRAMENTAS_SEMPRE, type FerramentasAgente } from './ferramentas'
 import {
   LlmRateLimitError,
   LlmTimeoutError,
@@ -147,6 +147,14 @@ const ARGUMENTOS_LOGAVEIS = new Set([
   // lista porque o rastro histórico o tem e porque a rota HTTP ainda o usa —
   // remover só apagaria a coluna nas consultas de diagnóstico antigas.
   'terapia', 'terapiaId', 'unidade', 'dataInicio', 'dataFim', 'limite', 'profissionalId', 'tipo',
+  // Enum fechado de `escalar_para_humano` — por que a Maia chamou gente. É a
+  // pergunta que o rastro precisa responder ("ela escala por pedido ou porque
+  // não dá conta?") e o valor é um de três rótulos, nunca texto do responsável.
+  //
+  // Repare que `motivo` (de reagendar/cancelar) continua FORA: aquele é a frase
+  // que o responsável disse. Os dois campos têm nomes diferentes exatamente para
+  // que esta linha não arraste aquele junto.
+  'motivoEscalada',
 ])
 
 function argumentosLogaveis(args: Record<string, unknown>): Record<string, unknown> {
@@ -204,10 +212,22 @@ export async function executarTurno(
     { papel: 'user', conteudo: entrada.textosDoUsuario.join('\n').trim() },
   ]
 
-  // Ferramentas ausentes quando o agendamento está desligado. `undefined` e não
-  // `[]`: o provider omite a chave `tools` inteira, e o modelo nem sabe que
-  // poderia agendar — não há o que recusar.
-  const ferramentas = deps.agendamentoHabilitado ? DEFINICOES_FERRAMENTAS : undefined
+  // A lista do turno: as de agenda só entram com o interruptor ligado; as de
+  // FERRAMENTAS_SEMPRE entram sempre.
+  //
+  // O interruptor continua sendo o botão de pânico que era — com ele desligado o
+  // modelo não recebe NENHUMA ferramenta de agenda e não tem como escrever na
+  // agenda. O que mudou é que ele deixou de levar junto a de chamar gente:
+  // desligar o agendamento e ao mesmo tempo impedir a Maia de passar para um
+  // humano deixava a conversa sem saída nenhuma, e `ai_scheduling_enabled: false`
+  // é o default de instalação sem seed.
+  //
+  // Nunca mais é `undefined` — antes disso o provider omitia a chave `tools` e o
+  // modelo nem sabia que poderia agendar. Agora sempre há ao menos uma ferramenta,
+  // e a de agenda continua invisível quando desligada, que é o que importa.
+  const ferramentas = deps.agendamentoHabilitado
+    ? [...DEFINICOES_FERRAMENTAS, ...FERRAMENTAS_SEMPRE]
+    : [...FERRAMENTAS_SEMPRE]
 
   const jaChamadas = new Set<string>()
 

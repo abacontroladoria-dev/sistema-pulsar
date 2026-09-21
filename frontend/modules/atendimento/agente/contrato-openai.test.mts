@@ -17,7 +17,7 @@
 // Sem framework, como os outros testes do módulo: sai com código 1 na primeira
 // asserção falha.
 
-import { DEFINICOES_FERRAMENTAS, FerramentasAgente } from './ferramentas.js'
+import { DEFINICOES_FERRAMENTAS, FERRAMENTAS_SEMPRE, FerramentasAgente } from './ferramentas.js'
 import { UNIDADES } from './unidade.js'
 import type { AppointmentService } from '../services/appointment.service.js'
 import type { AppointmentRepository } from '../repositories/appointment.repository.js'
@@ -37,11 +37,25 @@ const ORG_REAL     = 'a0000000-0000-0000-0000-000000000001'
 const ORG_INVASORA = 'ffffffff-ffff-ffff-ffff-ffffffffffff'
 
 // ----------------------------------------------------------------------------
-console.log('\n1. os 6 schemas são válidos em strict mode')
+console.log('\n1. os 7 schemas são válidos em strict mode')
 
-checar(DEFINICOES_FERRAMENTAS.length === 6, 'são 6 ferramentas', DEFINICOES_FERRAMENTAS.length)
+checar(DEFINICOES_FERRAMENTAS.length === 6, 'são 6 ferramentas de agenda', DEFINICOES_FERRAMENTAS.length)
+checar(FERRAMENTAS_SEMPRE.length === 1, 'e 1 que não depende do interruptor', FERRAMENTAS_SEMPRE.length)
 
-for (const definicao of DEFINICOES_FERRAMENTAS) {
+// Os DOIS arrays passam pelo mesmo crivo. Validar só as de agenda deixaria a
+// ferramenta que sempre vai ao modelo sem nenhuma verificação de strict mode — e
+// um schema inválido derruba o turno INTEIRO, inclusive as chamadas que nada têm
+// a ver com ela.
+const TODAS_AS_FERRAMENTAS = [...DEFINICOES_FERRAMENTAS, ...FERRAMENTAS_SEMPRE]
+
+// Nome repetido entre os dois arrays faria a OpenAI recusar a requisição inteira,
+// e o sintoma chegaria como "a atendente parou de responder".
+{
+  const nomes = TODAS_AS_FERRAMENTAS.map(d => d.function.name)
+  checar(new Set(nomes).size === nomes.length, 'nenhum nome de ferramenta repetido', nomes)
+}
+
+for (const definicao of TODAS_AS_FERRAMENTAS) {
   const fn = definicao.function
   const params = fn.parameters as {
     type: string

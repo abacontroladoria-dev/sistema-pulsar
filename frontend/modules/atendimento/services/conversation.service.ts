@@ -265,8 +265,15 @@ export class ConversationService {
   //
   // A auditoria é o ponto todo deste método existir — sem ela, "a Maia parou de
   // responder esse contato" fica sem dono nem horário.
+  //
+  // `actorId` aceita null desde que a própria IA passou a escalar por decisão
+  // (não só por falha): events.types.ts já documentava que "performed_by ausente
+  // = foi a própria IA escalando", mas a assinatura exigia string e era o único
+  // ponto que não tinha acompanhado a convenção. Null em vez de um uuid sintético
+  // de "usuário IA": um usuário falso apareceria em todo join de operadores e em
+  // toda lista de quem mexeu na conversa.
   // -------------------------------------------------------------------------
-  async setAiMode(conversationId: string, aiMode: AIMode | null, actorId: string): Promise<void> {
+  async setAiMode(conversationId: string, aiMode: AIMode | null, actorId: string | null): Promise<void> {
     const conv      = await this.getById(conversationId)
     const anterior  = conv.ai_mode
 
@@ -293,7 +300,10 @@ export class ConversationService {
       organization_id: conv.organization_id,
       conversation_id: conversationId,
       event_type:      'conversation.ai_mode_changed',
-      performed_by:    actorId,
+      // `?? undefined` e não `?? null`: o campo é opcional no AuditEntry e o
+      // repositório é quem normaliza para null na coluna. Passar null direto
+      // não tipa.
+      performed_by:    actorId ?? undefined,
       payload:         {
         de: anterior, para: aiMode,
         // Quem era o responsável antes de a conversa voltar para a Maia. Sem
@@ -301,6 +311,81 @@ export class ConversationService {
         ...(soltou ? { responsavelLiberado: conv.assigned_user_id } : {}),
       },
     })
+  }
+
+  // -------------------------------------------------------------------------
+  // escalarParaAtendimentoHumano
+  //
+  // "Esta conversa passa a ser de gente." É a operação inteira, com nome: a Maia
+  // sai (`ai_mode = 'off'`), a conversa sobe na fila (`priority = 'high'`) e o
+  // motivo fica na trilha.
+  //
+  // POR QUE UM MÉTODO, E NÃO DOIS UPDATES NO CHAMADOR
+  //
+  // Esta escrita já existia como UPDATE cru dentro do worker (`escalarParaHumano`),
+  // e por viver lá ela não gerava evento nenhum — a convenção de
+  // events.types.ts:34 ("performed_by ausente = foi a própria IA escalando") estava
+  // documentada e nunca tinha sido ligada. Com a ferramenta `escalar_para_humano`
+  // haveria um SEGUNDO lugar reimplementando as mesmas duas colunas. Um nome só,
+  // um caminho só.
+  //
+  // `origem` separa as duas razões de escalar, que se parecem no banco e não se
+  // parecem em nada na vida: 'ferramenta_agente' é a Maia fazendo a coisa certa a
+  // pedido do responsável; 'falha_tecnica' é a Maia quebrando (loop, timeout,
+  // filtro). Sem esse campo, medir "quantas vezes o atendimento automático não deu
+  // conta" exigiria adivinhar pelo motivo.
+  //
+  // O QUE ESTE MÉTODO NÃO FAZ, DE PROPÓSITO
+  //
+  //   • Não toca em `assigned_user_id`. A caixa "Ninguém" da triagem é exatamente
+  //     `ai_mode 'off'` + assignee NULL (ver caixas.ts): atribuir aqui esconderia a
+  //     conversa da fila que existe para ela. E se JÁ houver um responsável, ele
+  //     está atendendo — sobrescrever seria tirar a conversa de quem está nela.
+  //   • Não rebaixa `priority`. Só escreve 'high' quando o que está lá é menor.
+  //   • Não mexe em `status`. Escalar não resolve nem arquiva.
+  //
+  // IDEMPOTENTE: conversa já em 'off' não é reescrita e não gera segundo evento.
+  // O retorno diz qual dos dois casos ocorreu, porque quem chama precisa saber se
+  // a escalada é NOVA (a ferramenta usa isso para não repetir o aviso ao
+  // responsável).
+  // -------------------------------------------------------------------------
+  async escalarParaAtendimentoHumano(
+    conversationId: string,
+    motivoEscalada: string,
+    origem: 'ferramenta_agente' | 'falha_tecnica',
+  ): Promise<{ jaEstavaEscalada: boolean }> {
+    const conv = await this.getById(conversationId)
+
+    // 'off' é a marca de "a Maia foi tirada desta conversa". Já estando lá, não há
+    // o que escalar — reescrever só produziria um evento de 'off' para 'off' na
+    // timeline de quem for investigar depois.
+    const jaEstavaEscalada = conv.ai_mode === 'off'
+
+    if (!jaEstavaEscalada) {
+      await this.conv.updateAiMode(conversationId, 'off')
+    }
+
+    // 'urgent' é o único valor acima de 'high' (20260701000500). Nada no sistema
+    // o grava hoje, mas escrever 'high' por cima dele seria rebaixar uma conversa
+    // que alguém marcou como mais grave — e um rebaixamento silencioso é o tipo de
+    // perda que ninguém liga a esta linha depois.
+    if (conv.priority !== 'high' && conv.priority !== 'urgent') {
+      await this.conv.updatePriority(conversationId, 'high')
+    }
+
+    // Só o que muda de fato vira evento.
+    if (!jaEstavaEscalada) {
+      void this.audit.insert({
+        organization_id: conv.organization_id,
+        conversation_id: conversationId,
+        // performed_by ausente: quem escalou foi a IA, não um operador. É a
+        // convenção que events.types.ts:34 descreve.
+        event_type:      'conversation.ai_mode_changed',
+        payload:         { de: conv.ai_mode, para: 'off', motivoEscalada, origem },
+      })
+    }
+
+    return { jaEstavaEscalada }
   }
 
   // -------------------------------------------------------------------------

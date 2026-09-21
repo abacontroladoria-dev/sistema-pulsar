@@ -31,7 +31,19 @@ export type ConversationEventType =
   // Chave Maia / Atendente: quem passou esta conversa da IA para gente (ou de
   // volta), e quando. payload: { de, para } com os ai_mode, onde null significa
   // "seguindo o padrão da inbox/org". performed_by ausente = foi a própria IA
-  // escalando (escalarParaHumano), não um operador.
+  // escalando, não um operador.
+  //
+  // Quando quem escala é a IA, o payload traz também { motivoEscalada, origem }:
+  //   origem 'ferramenta_agente' — a Maia chamou gente porque o responsável pediu
+  //                                (ou se irritou, ou pediu algo fora do alcance)
+  //   origem 'falha_tecnica'     — a Maia quebrou (loop, timeout, filtro)
+  // As duas deixam a conversa idêntica no banco e não têm nada a ver uma com a
+  // outra; sem o campo, "quanto o atendimento automático não dá conta" viraria
+  // adivinhação. Ver ConversationService.escalarParaAtendimentoHumano.
+  //
+  // NOTA HISTÓRICA: até 21/09/2026 a escalada da IA não emitia este evento — o
+  // worker fazia UPDATE cru e a convenção do `performed_by` ausente, descrita
+  // aqui desde o começo, nunca tinha sido cumprida por ninguém.
   | 'conversation.ai_mode_changed'
   // Mensagens
   | 'message.received'
