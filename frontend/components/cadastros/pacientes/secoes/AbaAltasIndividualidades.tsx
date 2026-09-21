@@ -733,7 +733,11 @@ export function AbaAltasIndividualidades({
             <button
               type="button"
               onClick={() => setModalAltaClinicaAberto(true)}
-              className="inline-flex items-center gap-1.5 rounded-md bg-destructive px-3 py-2 text-sm font-semibold text-destructive-foreground hover:bg-destructive/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              // text-destructive-foreground depende de --destructive-foreground
+              // (globals.css) resolver certo em toda combinação de navegador/
+              // build — texto direto elimina essa dependência: branco no claro,
+              // quase-preto no escuro (onde o vermelho de fundo é mais claro).
+              className="inline-flex items-center gap-1.5 rounded-md bg-destructive px-3 py-2 text-sm font-semibold text-white hover:bg-destructive/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:text-neutral-900"
             >
               <AlertTriangle className="h-4 w-4" />
               Registrar alta clínica
@@ -1303,7 +1307,7 @@ function AltaClinicaConfirmModal({
             type="button"
             onClick={() => void confirmar()}
             disabled={salvando || uploadando || !confirmado || !data}
-            className="inline-flex items-center gap-1.5 rounded-md bg-destructive px-4 py-2 text-sm font-semibold text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex items-center gap-1.5 rounded-md bg-destructive px-4 py-2 text-sm font-semibold text-white hover:bg-destructive/90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:text-neutral-900"
           >
             {salvando && <Loader2 className="h-4 w-4 animate-spin" />}
             Confirmar alta clínica
