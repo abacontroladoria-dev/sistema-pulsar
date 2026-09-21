@@ -17,20 +17,20 @@
 //   - sem_historico: mês passado sem NENHUM snapshot (ex.: antes da
 //     implantação do histórico, ou sem dados sincronizados suficientes).
 
-import { useEffect, useMemo, useState } from "react"
-import { CalendarClock, CalendarX2, Clock, Loader2, TrendingUp, Wallet, AlertTriangle, Users } from "lucide-react"
+import { useMemo } from "react"
+import { CalendarClock, CalendarX2, Clock, Loader2, TrendingUp, Users } from "lucide-react"
 import { StatCard } from "@/components/cronograma/ui/StatCard"
-import { buscarResumoHistoricoReceitas, type PrevisaoReceitasResumoMes } from "@/services/previsaoReceitasHistoricoResumo.service"
+import { type PrevisaoReceitasResumoMes } from "@/services/previsaoReceitasHistoricoResumo.service"
 import { labelMesAno } from "@/lib/cronograma/helpers"
-
-/** Primeiro mês considerado pelo índice — antes disso não há (nem haverá) dado sincronizado suficiente pra calcular nada (ver project_sync_grade_csv_deploy_drift_fix na memória do projeto: csv_grades_profissionais só passou a ter cobertura completa a partir daqui). */
-const MES_INICIO_HISTORICO = { ano: 2026, mes: 6 }
-
-function fmtReal(v: number): string {
-  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
-}
-
-type StatusMes = "futuro" | "em_desenvolvimento" | "aguardando_fechamento" | "fechado" | "sem_historico"
+import { useResumoHistoricoReceitas } from "@/hooks/useResumoHistoricoReceitas"
+import { EvolucaoReceitasChart } from "./EvolucaoReceitasChart"
+import { METRICAS_RECEITAS, formatarMetrica } from "@/lib/cronograma/previsaoReceitasMetricas"
+import {
+  MES_INICIO_HISTORICO,
+  listaChavesMes,
+  classificarStatusMes,
+  type StatusMes,
+} from "@/lib/cronograma/previsaoReceitasHistoricoStatus"
 
 interface LinhaHistorico {
   ano: number
@@ -38,17 +38,6 @@ interface LinhaHistorico {
   label: string
   status: StatusMes
   resumo: PrevisaoReceitasResumoMes | null
-}
-
-function listaChavesMes(inicio: { ano: number; mes: number }, fim: { ano: number; mes: number }): { ano: number; mes: number }[] {
-  const lista: { ano: number; mes: number }[] = []
-  let ano = inicio.ano, mes = inicio.mes
-  while (ano * 12 + mes <= fim.ano * 12 + fim.mes) {
-    lista.push({ ano, mes })
-    mes += 1
-    if (mes > 12) { mes = 1; ano += 1 }
-  }
-  return lista
 }
 
 function ExplicacaoStatus({ status }: { status: StatusMes }) {
@@ -107,18 +96,15 @@ function LinhaMesCard({ linha }: { linha: LinhaHistorico }) {
 
       {linha.resumo ? (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-          <StatCard tone="amber" icon={<Wallet size={14} />} label="Projetado Sem Deduções" tinted={false}>
-            <div className="text-lg font-black text-foreground">{fmtReal(linha.resumo.receitaSemDeducao)}</div>
-          </StatCard>
-          <StatCard tone="red" icon={<AlertTriangle size={14} />} label="Deduções por Falta" tinted={false}>
-            <div className="text-lg font-black text-foreground">{fmtReal(linha.resumo.deducaoFalta)}</div>
-          </StatCard>
-          <StatCard tone="green" icon={<Wallet size={14} />} label="Efetivado Com Deduções" tinted={false}>
-            <div className="text-lg font-black text-foreground">{fmtReal(linha.resumo.receitaComDeducao)}</div>
-          </StatCard>
-          <StatCard tone="slate" icon={<TrendingUp size={14} />} label="Sessões no mês" tinted={false}>
-            <div className="text-lg font-black text-foreground">{linha.resumo.sessoesMes}</div>
-          </StatCard>
+          {(["receitaSemDeducao", "deducaoFalta", "receitaComDeducao", "sessoesMes"] as const).map(key => {
+            const config = METRICAS_RECEITAS[key]
+            const Icone = config.icon
+            return (
+              <StatCard key={key} tone={config.tone} icon={<Icone size={14} />} label={config.label} tinted={false}>
+                <div className="text-lg font-black text-foreground">{formatarMetrica(config, config.acessor(linha.resumo!))}</div>
+              </StatCard>
+            )
+          })}
           <StatCard tone="slate" icon={<Users size={14} />} label="Faltas / Pacientes" tinted={false}>
             <div className="text-lg font-black text-foreground">{linha.resumo.faltasMes} / {linha.resumo.pacientesUnicos}</div>
           </StatCard>
@@ -131,38 +117,19 @@ function LinhaMesCard({ linha }: { linha: LinhaHistorico }) {
 }
 
 export function HistoricoReceitasShell() {
-  const [resumos, setResumos] = useState<PrevisaoReceitasResumoMes[] | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    buscarResumoHistoricoReceitas()
-      .then(r => { if (!cancelled) { setResumos(r); setLoading(false) } })
-      .catch(err => { if (!cancelled) { setError(String(err?.message ?? err)); setLoading(false) } })
-    return () => { cancelled = true }
-  }, [])
+  const { resumos, loading, error } = useResumoHistoricoReceitas()
 
   const linhas = useMemo<LinhaHistorico[]>(() => {
     const hoje = new Date()
     const mesAtual = { ano: hoje.getFullYear(), mes: hoje.getMonth() + 1 }
     const mesFuturo = { ano: mesAtual.mes === 12 ? mesAtual.ano + 1 : mesAtual.ano, mes: mesAtual.mes === 12 ? 1 : mesAtual.mes + 1 }
-    const chaveAtual = mesAtual.ano * 12 + mesAtual.mes
 
-    const resumoPorCompetencia = new Map((resumos ?? []).map(r => [r.competencia, r]))
+    const resumoPorCompetencia = new Map(resumos.map(r => [r.competencia, r]))
 
     return listaChavesMes(MES_INICIO_HISTORICO, mesFuturo).map(({ ano, mes }) => {
-      const chave = ano * 12 + mes
       const competencia = `${ano}-${String(mes).padStart(2, "0")}`
       const resumo = resumoPorCompetencia.get(competencia) ?? null
-
-      let status: StatusMes
-      if (chave > chaveAtual) status = "futuro"
-      else if (chave === chaveAtual) status = "em_desenvolvimento"
-      else if (resumo?.status === "fechado") status = "fechado"
-      else if (resumo?.status === "parcial") status = "aguardando_fechamento"
-      else status = "sem_historico"
-
+      const status = classificarStatusMes(ano, mes, resumo)
       return { ano, mes, label: labelMesAno(ano, mes), status, resumo }
     }).reverse() // mais recente primeiro
   }, [resumos])
@@ -181,6 +148,7 @@ export function HistoricoReceitasShell() {
       <p className="text-[11px] text-muted-foreground">
         Índice mensal — pra ver o detalhamento por convênio/paciente/sessão de um mês específico, use o seletor de mês na aba "Previsão de Receitas".
       </p>
+      <EvolucaoReceitasChart resumos={resumos} modo="cheio" />
       {linhas.map(linha => <LinhaMesCard key={`${linha.ano}-${linha.mes}`} linha={linha} />)}
     </div>
   )

@@ -33,10 +33,12 @@ import { useConvenioValoresCalculo } from "@/hooks/useConvenioValores"
 import { useFeriados } from "@/hooks/useFeriados"
 import { useLinhasMesInteiro } from "@/hooks/useLinhasMesInteiro"
 import { usePrevisaoReceitasHistorico } from "@/hooks/usePrevisaoReceitasHistorico"
+import { useResumoHistoricoReceitas } from "@/hooks/useResumoHistoricoReceitas"
 import { normalizarUnidadeOcupacao } from "@/lib/cronograma/ocupacaoProf"
 import { getRefWeekDoMes, labelMesAno, fmtReal } from "@/lib/cronograma/helpers"
 import { SeletorMesPrevisao } from "./SeletorMesPrevisao"
 import { ExportEscopoDialog } from "./ExportEscopoDialog"
+import { EvolucaoReceitasChart } from "./EvolucaoReceitasChart"
 import { exportarPrevisaoReceitasXlsx, type EscopoExport } from "@/lib/cronograma/exportPrevisaoReceitas"
 import {
   calcularPrevisaoReceita,
@@ -545,6 +547,7 @@ function unidadeDaLinha(r: { sala_nome: string | null }): string {
 export function PrevisaoReceitasShell() {
   const [periodo, setPeriodo] = useState(mesSeguinteAtual)
   const semanaRef = useMemo(() => getRefWeekDoMes(periodo.ano, periodo.mes), [periodo.ano, periodo.mes])
+  const { resumos: resumosHistorico } = useResumoHistoricoReceitas()
 
   const { linhas, loading: loadingSalas, error: errorSalas } = useOcupacaoSalas(semanaRef.inicio, semanaRef.fim)
   const { regrasGerais, excecoesPaciente, pacotesAvaliacao, loading: loadingValores, error: errorValores } = useConvenioValoresCalculo()
@@ -740,6 +743,13 @@ export function PrevisaoReceitasShell() {
           </span>
         )}
       </div>
+
+      <EvolucaoReceitasChart
+        resumos={resumosHistorico}
+        modo="compacto"
+        mesSelecionado={periodo}
+        onSelecionarMes={(ano, mes) => setPeriodo({ ano, mes })}
+      />
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         <StatCard tone="amber" icon={<Wallet size={15} />} label="Receita Mês Projetada Sem Deduções">
