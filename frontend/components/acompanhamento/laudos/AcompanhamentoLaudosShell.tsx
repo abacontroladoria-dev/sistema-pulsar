@@ -33,13 +33,25 @@ import { RegistrarAvisoModal } from "./RegistrarAvisoModal"
 
 const POR_PAGINA = 75
 
-export function AcompanhamentoLaudosShell() {
+interface Props {
+  /** Termo já pronto (ex: o "ID Favorecido" de um paciente) vindo de um link
+   * direto de outra tela — ver cronograma/ocupacao-paciente. Abre a tela já
+   * buscando por ele, num recorte que não esconde laudos vigentes. */
+  buscaInicial?: string
+}
+
+export function AcompanhamentoLaudosShell({ buscaInicial = "" }: Props) {
   const [itens, setItens] = useState<ItemAcompanhamentoLaudo[]>([])
   const [meta, setMeta] = useState<MetaAcompanhamentoLaudos | null>(null)
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
 
-  const [filtros, setFiltros] = useState<FiltrosLaudos>(filtrosIniciais)
+  // "vencidos_sem_aviso" (o padrão de filtrosIniciais) esconderia um laudo
+  // vigente que chegou aqui por link direto — "todos" garante que o que veio
+  // de fora sempre aparece, não só a fila de trabalho do dia.
+  const [filtros, setFiltros] = useState<FiltrosLaudos>(() =>
+    buscaInicial ? { ...filtrosIniciais(), busca: buscaInicial, recorte: "todos" } : filtrosIniciais(),
+  )
   const [pagina, setPagina] = useState(1)
   const [aberto, setAberto] = useState<ItemAcompanhamentoLaudo | null>(null)
   const [verHistorico, setVerHistorico] = useState(false)
@@ -160,7 +172,7 @@ export function AcompanhamentoLaudosShell() {
       // nunca chegaria a ativar. `flex-nowrap`: quebrar linha aqui estouraria
       // essa mesma altura fixa.
       <div className="flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto">
-        <BuscaHeader key={versaoFiltros} onBusca={aplicarBusca} />
+        <BuscaHeader key={versaoFiltros} onBusca={aplicarBusca} textoInicial={buscaInicial} />
         <BarraFiltros
           filtros={filtros}
           onChange={(f) => {
@@ -328,10 +340,12 @@ export function AcompanhamentoLaudosShell() {
  */
 const BuscaHeader = memo(function BuscaHeader({
   onBusca,
+  textoInicial = "",
 }: {
   onBusca: (texto: string) => void
+  textoInicial?: string
 }) {
-  const [texto, setTexto] = useState("")
+  const [texto, setTexto] = useState(textoInicial)
 
   useEffect(() => {
     const t = setTimeout(() => onBusca(texto), 200)

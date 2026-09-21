@@ -20,12 +20,14 @@ interface InfoTooltipProps {
   ariaLabel?: string
   /** Notificado sempre que o painel abre/fecha — usado, por ex., para destacar o elemento a que o tooltip se refere. */
   onOpenChange?: (open: boolean) => void
+  /** Conteúdo extra renderizado dentro do próprio botão-gatilho, antes do ícone — permite que um texto ao lado (ex.: "N oportunidade(s)") também abra o painel, em vez de só o ícone da lâmpada. */
+  trigger?: ReactNode
 }
 
 const PANEL_WIDTH = 288 // w-72
 const VIEWPORT_MARGIN = 8
 
-export function InfoTooltip({ children, ariaLabel = "Explicação das colunas", onOpenChange }: InfoTooltipProps) {
+export function InfoTooltip({ children, ariaLabel = "Explicação das colunas", onOpenChange, trigger }: InfoTooltipProps) {
   const [open, setOpenState] = useState(false)
   const setOpen = (value: boolean | ((prev: boolean) => boolean)) => {
     setOpenState(prev => {
@@ -87,9 +89,12 @@ export function InfoTooltip({ children, ariaLabel = "Explicação das colunas", 
         aria-label={ariaLabel}
         aria-expanded={open}
         onClick={toggle}
-        className="inline-flex items-center justify-center rounded-full p-0.5 text-amber-500 hover:text-amber-400 hover:bg-amber-500/10 transition-colors"
+        className={trigger
+          ? "inline-flex items-center gap-1 rounded-full transition-colors hover:text-foreground"
+          : "inline-flex items-center justify-center rounded-full p-0.5 text-amber-500 hover:text-amber-400 hover:bg-amber-500/10 transition-colors"}
       >
-        <Lightbulb size={14} />
+        {trigger}
+        <Lightbulb size={14} className={trigger ? "shrink-0 text-amber-500" : undefined} />
       </button>
       {open && typeof document !== "undefined" && createPortal(
         <div

@@ -105,16 +105,25 @@ export function ConfirmarImplantacaoModal({ pac, sessoesAtuais, sessoes, avisoMu
 
           {/* Aviso de 3+ profissionais na mesma terapia — não impede confirmar */}
           {temAviso && (
-            <div style={{ display: "flex", gap: "8px", background: "#fee2e2", border: "1px solid #fca5a5", borderRadius: "10px", padding: "10px 12px" }}>
-              <span style={{ fontSize: "15px", lineHeight: 1 }}>⚠️</span>
-              <div style={{ fontSize: "11.5px", color: "#dc2626", lineHeight: 1.4 }}>
-                <div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px", background: "#fee2e2", border: "1px solid #fca5a5", borderRadius: "10px", padding: "10px 12px" }}>
+              <div style={{ display: "flex", gap: "8px" }}>
+                <span style={{ fontSize: "15px", lineHeight: 1 }}>⚠️</span>
+                <div style={{ fontSize: "11.5px", color: "#dc2626", lineHeight: 1.4 }}>
                   Após esta implantação, {avisoMultiProf.length === 1 ? "uma terapia ficará" : "estas terapias ficarão"} com{" "}
                   <strong>3 ou mais profissionais diferentes</strong>. O ideal é no máximo 2 por terapia — você pode confirmar mesmo assim, mas revise antes.
                 </div>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                 {avisoMultiProf.map(a => (
-                  <div key={a.tP} style={{ marginTop: "5px" }}>
-                    <strong>{a.tP}</strong>: {a.profs.map(p => fmtName(p)).join(" · ")}
+                  <div key={a.tP} style={{ background: "rgba(255,255,255,0.55)", border: "1px solid #fca5a5", borderRadius: "6px", padding: "6px 8px" }}>
+                    <div style={{ fontSize: "11px", fontWeight: 800, color: "#991b1b", marginBottom: "4px" }}>{a.tP}</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+                      {a.profs.map(p => (
+                        <span key={p} style={{ fontSize: "10.5px", fontWeight: 600, color: "#7f1d1d", background: "var(--card)", border: "1px solid #fecaca", borderRadius: "4px", padding: "1px 6px", whiteSpace: "nowrap" }}>
+                          {fmtName(p)}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 ))}
               </div>

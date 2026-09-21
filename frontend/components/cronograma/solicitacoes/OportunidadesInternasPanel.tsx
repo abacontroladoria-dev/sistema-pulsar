@@ -18,20 +18,22 @@
 // agora", não "qual % de ocupação prevista" — sem simular contratação nova,
 // não faz sentido perseguir uma % de "capacidade cheia".
 
-import { startTransition, useMemo, useState } from "react"
-import { ArrowRight, ChevronLeft, ChevronRight, Sparkles } from "lucide-react"
+import { startTransition, useEffect, useMemo, useState, useTransition } from "react"
+import { ArrowRight, ChevronLeft, ChevronRight, Loader2, Sparkles } from "lucide-react"
 import { rankearOportunidadesInternas, type CategoriaComOportunidade } from "@/lib/cronograma/ocupacaoCategoria"
 import { corTerapiaBadge, escurecerHex, hexParaRgba, TODAS_ESP_CATEGORIA, UNID_COR } from "@/lib/cronograma/constants"
+import { diaCurto } from "@/lib/cronograma/helpers"
 import { Button } from "@/components/ui/button"
 import { InlineNotice } from "@/components/cronograma/ui/InlineNotice"
 import { BadgeOcupacao, COR_OCUPACAO } from "@/components/cronograma/ui/BadgeOcupacao"
 import { IndicadorDiaTurno } from "@/components/cronograma/ui/IndicadorDiaTurno"
+import { InfoTooltip } from "@/components/cronograma/ui/InfoTooltip"
 import { MultiSearchCombobox } from "@/components/cronograma/ui/MultiSearchCombobox"
 import type { ModoCascataOcupacao } from "@/lib/cronograma/sugestaoContratacao"
 import type { GapItem, Turno } from "@/lib/cronograma/simulacaoNovoPrestador"
 import type { CsvRow } from "@/types/cronograma"
 
-const ITENS_POR_PAGINA = 5
+const ITENS_POR_PAGINA = 6
 const ESPECIALIDADES_OPCOES = TODAS_ESP_CATEGORIA.map((nome, id) => ({ id, nome }))
 const UNIDADES_OPCOES = Object.keys(UNID_COR).map((nome, id) => ({ id, nome }))
 
@@ -43,49 +45,88 @@ interface Props {
   onAplicar: (unidade: string, periodos: { dia: string; turno: Turno }[], especialidade: string) => void
 }
 
-function CardOportunidade({ item, onAplicar }: { item: CategoriaComOportunidade; onAplicar: () => void }) {
+// Card inteiro é a área clicável (inspirado em CardPaciente, de
+// PacientesCadastro.tsx: hover eleva + sombra cresce + borda escurece,
+// tudo com guardas motion-reduce). Raiz é um <div role="button"> em vez
+// de <button> porque o InfoTooltip (lâmpada de detalhamento) já renderiza
+// um <button> interno — <button> dentro de <button> é HTML inválido. O
+// InfoTooltip já para a propagação do clique, então abrir o detalhamento
+// não aplica o filtro do card.
+function CardOportunidade({ item, pendente, onAplicar }: { item: CategoriaComOportunidade; pendente: boolean; onAplicar: () => void }) {
   const turnos: Turno[] = item.periodo === "diaInteiro" ? ["manha", "tarde"] : [item.periodo]
   return (
-    <div className="flex flex-wrap items-start gap-3 rounded-xl border border-border bg-card p-3.5">
-      <BadgeOcupacao
-        pct={item.pctAproveitamento}
-        faixa={item.faixa}
-        valorExibido={String(item.qtdOportunidade)}
-        sufixo={`de ${item.maxSessoes} sessões`}
-      />
+    <div
+      role="button"
+      tabIndex={0}
+      aria-busy={pendente}
+      onClick={() => { if (!pendente) onAplicar() }}
+      onKeyDown={e => {
+        if (pendente) return
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onAplicar() }
+      }}
+      aria-label={`Aplicar filtro: ${item.especialidade} em ${item.unidade}, ${diaCurto(item.dia)}`}
+      className={`group flex h-full flex-col gap-3 rounded-xl border border-border bg-card p-3.5 shadow-sm transition-all duration-200 ease-out hover:-translate-y-1 hover:border-foreground/15 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 motion-reduce:transform-none motion-reduce:transition-none ${pendente ? "cursor-wait opacity-80" : "cursor-pointer"}`}
+    >
+      <div className="flex items-start gap-3">
+        <BadgeOcupacao
+          pct={item.pctAproveitamento}
+          faixa={item.faixa}
+          valorExibido={String(item.qtdOportunidade)}
+          sufixo={`de ${item.maxSessoes} sessões`}
+        />
 
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span
-            className="rounded-full border px-2 py-0.5 text-[12.5px] font-extrabold"
-            style={{
-              backgroundColor: hexParaRgba(corTerapiaBadge(item.especialidade), 0.16),
-              borderColor: hexParaRgba(corTerapiaBadge(item.especialidade), 0.4),
-              color: escurecerHex(corTerapiaBadge(item.especialidade), 0.35),
-            }}
-          >
-            {item.especialidade}
-          </span>
-          <span className="text-muted-foreground">·</span>
-          <span className="text-[12.5px] font-bold text-foreground">{item.unidade}</span>
-        </div>
-        <IndicadorDiaTurno dia={item.dia} turnos={turnos} corBar={COR_OCUPACAO[item.faixa].bar} />
-
-        <div className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
-          <span className="flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-1 font-semibold text-foreground">
-            {item.qtdOportunidade} oportunidade(s) — {item.qtdDireto} direta(s), {item.qtdRemanejamentoMesmoDia} via remanejamento (mesmo dia), {item.qtdRemanejamentoOutroDia} via remanejamento (outro dia), {item.qtdNovoDia} via novo dia
-          </span>
-          {item.qtdLivre > 0 && (
-            <span className="flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-1 text-muted-foreground">
-              {item.qtdLivre} livre(s) sem oportunidade
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span
+              className="rounded-full border px-2 py-0.5 text-[12.5px] font-extrabold"
+              style={{
+                backgroundColor: hexParaRgba(corTerapiaBadge(item.especialidade), 0.16),
+                borderColor: hexParaRgba(corTerapiaBadge(item.especialidade), 0.4),
+                color: escurecerHex(corTerapiaBadge(item.especialidade), 0.35),
+              }}
+            >
+              {item.especialidade}
             </span>
-          )}
+            <span className="text-muted-foreground">·</span>
+            <span className="text-[12.5px] font-bold text-foreground">{item.unidade}</span>
+          </div>
+          <IndicadorDiaTurno dia={item.dia} turnos={turnos} corBar={COR_OCUPACAO[item.faixa].bar} />
         </div>
       </div>
 
-      <Button size="xs" onClick={onAplicar} className="shrink-0 gap-1">
-        Aplicar <ArrowRight size={12} />
-      </Button>
+      <hr className="border-border" />
+
+      <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+        <span className="rounded-full border border-border bg-muted/40 px-2 py-1 font-semibold text-foreground">
+          <InfoTooltip ariaLabel="Detalhamento das oportunidades" trigger={<span>{item.qtdOportunidade} oportunidade(s)</span>}>
+            <div className="flex flex-col gap-1">
+              <span>{item.qtdDireto} direta(s)</span>
+              <span>{item.qtdRemanejamentoMesmoDia} via remanejamento (mesmo dia)</span>
+              <span>{item.qtdRemanejamentoOutroDia} via remanejamento (outro dia)</span>
+              <span>{item.qtdNovoDia} via novo dia</span>
+            </div>
+          </InfoTooltip>
+        </span>
+        {item.qtdLivre > 0 && (
+          <span className="flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-1 text-muted-foreground">
+            {item.qtdLivre} livre(s) sem oportunidade
+          </span>
+        )}
+      </div>
+
+      <div className="mt-auto flex items-center justify-end gap-1 pt-1 text-[11px] font-bold text-sky-700 dark:text-sky-400">
+        {pendente ? (
+          <>
+            Aplicando…
+            <Loader2 size={12} className="animate-spin motion-reduce:animate-none" />
+          </>
+        ) : (
+          <>
+            Aplicar
+            <ArrowRight size={12} className="transition-transform duration-200 group-hover:translate-x-0.5 motion-reduce:transform-none" />
+          </>
+        )}
+      </div>
     </div>
   )
 }
@@ -95,6 +136,17 @@ export function OportunidadesInternasPanel({ cRows, gapMap, limiteCoordenadorCas
   const [especialidadesIds, setEspecialidadesIds] = useState<Set<number>>(new Set())
   const [unidadesIds, setUnidadesIds] = useState<Set<number>>(new Set())
   const [pagina, setPagina] = useState(0)
+
+  // Aplicar um card dispara recálculo pesado da grade abaixo (mesmo motivo
+  // do startTransition usado nos filtros) — sem indicação visual, o clique
+  // parece não ter feito nada até o recálculo terminar. `aplicando` cobre
+  // o período em que o React está processando essa transição; `itemPendenteKey`
+  // marca QUAL card mostra o spinner (só o que foi clicado, não todos).
+  const [aplicando, startAplicarTransition] = useTransition()
+  const [itemPendenteKey, setItemPendenteKey] = useState<string | null>(null)
+  useEffect(() => {
+    if (!aplicando) setItemPendenteKey(null)
+  }, [aplicando])
 
   const especialidadesSelecionadas = useMemo(
     () => new Set(ESPECIALIDADES_OPCOES.filter(o => especialidadesIds.has(o.id)).map(o => o.nome)),
@@ -139,11 +191,14 @@ export function OportunidadesInternasPanel({ cRows, gapMap, limiteCoordenadorCas
   const paginaAtual = Math.min(pagina, totalPaginas - 1)
   const itensDaPagina = ranking.slice(paginaAtual * ITENS_POR_PAGINA, paginaAtual * ITENS_POR_PAGINA + ITENS_POR_PAGINA)
 
-  const aplicarItem = (item: CategoriaComOportunidade) => {
-    const periodos: { dia: string; turno: Turno }[] = item.periodo === "diaInteiro"
-      ? [{ dia: item.dia, turno: "manha" }, { dia: item.dia, turno: "tarde" }]
-      : [{ dia: item.dia, turno: item.periodo }]
-    onAplicar(item.unidade, periodos, item.especialidade)
+  const aplicarItem = (item: CategoriaComOportunidade, key: string) => {
+    setItemPendenteKey(key)
+    startAplicarTransition(() => {
+      const periodos: { dia: string; turno: Turno }[] = item.periodo === "diaInteiro"
+        ? [{ dia: item.dia, turno: "manha" }, { dia: item.dia, turno: "tarde" }]
+        : [{ dia: item.dia, turno: item.periodo }]
+      onAplicar(item.unidade, periodos, item.especialidade)
+    })
   }
 
   return (
@@ -247,14 +302,18 @@ export function OportunidadesInternasPanel({ cRows, gapMap, limiteCoordenadorCas
         </InlineNotice>
       ) : (
         <>
-          <div className="flex flex-col gap-2.5">
-            {itensDaPagina.map((item, i) => (
-              <CardOportunidade
-                key={`${item.unidade}-${item.dia}-${item.periodo}-${item.especialidade}-${i}`}
-                item={item}
-                onAplicar={() => aplicarItem(item)}
-              />
-            ))}
+          <div className="grid grid-cols-1 items-stretch gap-2.5 md:grid-cols-2 xl:grid-cols-3">
+            {itensDaPagina.map((item, i) => {
+              const key = `${item.unidade}-${item.dia}-${item.periodo}-${item.especialidade}-${i}`
+              return (
+                <CardOportunidade
+                  key={key}
+                  item={item}
+                  pendente={itemPendenteKey === key}
+                  onAplicar={() => aplicarItem(item, key)}
+                />
+              )
+            })}
           </div>
 
           {totalPaginas > 1 && (

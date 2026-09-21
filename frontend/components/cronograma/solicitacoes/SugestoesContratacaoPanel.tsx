@@ -5,8 +5,8 @@
 // especialidade/dias/turnos/unidade no formulário já existente, reaproveitando
 // 100% da grade e do comparativo já renderizados abaixo.
 
-import { startTransition, useMemo, useState } from "react"
-import { ArrowRight, Building2, ChevronLeft, ChevronRight, Sparkles, Users } from "lucide-react"
+import { startTransition, useEffect, useMemo, useState, useTransition } from "react"
+import { ArrowRight, Building2, ChevronLeft, ChevronRight, Loader2, Sparkles, Users } from "lucide-react"
 import { useSugestoesContratacao } from "@/hooks/useSugestoesContratacao"
 import { useTaxasEspecialidadeCalculo } from "@/hooks/useTaxasEspecialidade"
 import { useParametrosGeraisCalculo } from "@/hooks/useParametrosGerais"
@@ -34,7 +34,7 @@ import { anexarModalidadeERemanejamento, filtrarPorDisponibilidadeInterna, anexa
 import type { ConvenioValor, ConvenioValorPaciente } from "@/lib/cronograma/convenioValoresTypes"
 import type { FeriadoInfo } from "@/types/feriados"
 
-const SUGESTOES_POR_PAGINA = 5
+const SUGESTOES_POR_PAGINA = 6
 
 interface Props {
   onAplicarSugestao: (especialidade: string, periodos: { dia: string; turno: Turno }[], unidade: string) => void
@@ -85,12 +85,21 @@ function avaliarComboIsolado(
   return anexarRemuneracaoEOrdenar(comDisponibilidade, cRows, regrasGerais, excecoesPaciente, mesReferencia, feriados)[0] ?? null
 }
 
+// Card inteiro é a área clicável (mesmo padrão de CardOportunidade, em
+// OportunidadesInternasPanel.tsx, inspirado em CardPaciente de
+// PacientesCadastro.tsx). O ConfirmDialog "sem sala livre" fica FORA do
+// <div role="button"> (irmão dentro de um Fragment), não dentro dele: ele
+// não é um portal, é renderizado na árvore normal — se ficasse dentro do
+// card clicável, clicar em "Cancelar"/"Continuar" borbulharia até o
+// onClick do card e disparava (ou reabria) a ação por cima do diálogo,
+// um bug real no fluxo de segurança de contratação sem sala.
 function CardSugestao({
-  sugestao, cRows, gapMap, regrasGerais, excecoesPaciente, mesReferencia, feriados, onAplicar,
+  sugestao, cRows, gapMap, regrasGerais, excecoesPaciente, mesReferencia, feriados, pendente, onAplicar,
 }: {
   sugestao: SugestaoContratacao; cRows: CsvRow[]; gapMap: Record<string, GapItem>
   regrasGerais: ConvenioValor[]; excecoesPaciente: ConvenioValorPaciente[]
   mesReferencia: { ano: number; mes: number } | null; feriados: Record<string, FeriadoInfo>
+  pendente: boolean
   onAplicar: () => void
 }) {
   const [confirmarSemSala, setConfirmarSemSala] = useState(false)
@@ -168,92 +177,111 @@ function CardSugestao({
     ? isolada.projecaoRemuneracao.receitaSemanalProjetada * SEMANAS_POR_MES - margemBreakEven.receitaLiquidaMes
     : 0
 
-  return (
-    <div className="overflow-hidden rounded-xl border border-border bg-card">
-      <div className="flex flex-wrap items-start gap-3 p-3.5">
-        <BadgeOcupacao pct={pctExibido} faixa={faixaExibida} />
+  const acionar = () => {
+    if (pendente) return
+    if (semSalaLivre) setConfirmarSemSala(true)
+    else onAplicar()
+  }
 
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span
-              className="rounded-full border px-2 py-0.5 text-[12.5px] font-extrabold"
-              style={{
-                backgroundColor: hexParaRgba(corTerapiaBadge(sugestao.especialidade), 0.16),
-                borderColor: hexParaRgba(corTerapiaBadge(sugestao.especialidade), 0.4),
-                color: escurecerHex(corTerapiaBadge(sugestao.especialidade), 0.35),
-              }}
-            >
-              {sugestao.especialidade}
-            </span>
-            <span className="text-muted-foreground">·</span>
-            <span className="text-[12.5px] font-bold text-foreground">{sugestao.unidade}</span>
+  return (
+    <>
+      <div
+        role="button"
+        tabIndex={0}
+        aria-busy={pendente}
+        onClick={acionar}
+        onKeyDown={e => {
+          if (pendente) return
+          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); acionar() }
+        }}
+        aria-label={`Aplicar sugestão: ${sugestao.especialidade} em ${sugestao.unidade}, ${diaCurto(sugestao.dia)}`}
+        className={`group flex h-full flex-col gap-3 rounded-xl border border-border bg-card p-3.5 shadow-sm transition-all duration-200 ease-out hover:-translate-y-1 hover:border-foreground/15 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 motion-reduce:transform-none motion-reduce:transition-none ${pendente ? "cursor-wait opacity-80" : "cursor-pointer"}`}
+      >
+        <div className="flex items-start gap-3">
+          <BadgeOcupacao pct={pctExibido} faixa={faixaExibida} />
+
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span
+                className="rounded-full border px-2 py-0.5 text-[12.5px] font-extrabold"
+                style={{
+                  backgroundColor: hexParaRgba(corTerapiaBadge(sugestao.especialidade), 0.16),
+                  borderColor: hexParaRgba(corTerapiaBadge(sugestao.especialidade), 0.4),
+                  color: escurecerHex(corTerapiaBadge(sugestao.especialidade), 0.35),
+                }}
+              >
+                {sugestao.especialidade}
+              </span>
+              <span className="text-muted-foreground">·</span>
+              <span className="text-[12.5px] font-bold text-foreground">{sugestao.unidade}</span>
+            </div>
+            <IndicadorDiaTurno dia={sugestao.dia} turnos={sugestao.turnos} corBar={COR_OCUPACAO[faixaExibida].bar} />
           </div>
-          <IndicadorDiaTurno dia={sugestao.dia} turnos={sugestao.turnos} corBar={COR_OCUPACAO[faixaExibida].bar} />
         </div>
 
-        <div className="flex shrink-0 flex-col items-end gap-1.5">
-          {margemBreakEven ? (
-            <div className="w-72 rounded-xl bg-muted/50 p-3">
-              <div className="flex flex-col gap-1 text-[11px]">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="whitespace-nowrap text-muted-foreground">Receita líquida/mês</span>
-                  <span className="whitespace-nowrap text-right font-bold tabular-nums text-emerald-700 dark:text-emerald-400">
-                    {fmtReal(margemBreakEven.receitaLiquidaMes)}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between gap-3 text-rose-500/80 dark:text-rose-400/70">
-                  <span className="whitespace-nowrap text-muted-foreground">Impostos ({parametrosGerais?.imposto_faturamento_pct}%) e perdas ({PERDA_PADRAO_CARD}%)</span>
-                  <span className="whitespace-nowrap text-right font-semibold tabular-nums">− {fmtReal(impostosEPerdas)}</span>
-                </div>
-                <div className="flex items-center justify-between gap-3 text-rose-600 dark:text-rose-400">
-                  <span className="whitespace-nowrap text-muted-foreground">Remuneração do prestador</span>
-                  <span className="whitespace-nowrap text-right font-semibold tabular-nums">− {fmtReal(margemBreakEven.custoMes)}</span>
-                </div>
-              </div>
+        <hr className="border-border" />
 
-              <div className="mt-2 flex items-center justify-between gap-2 border-t border-border pt-2">
-                <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Margem/mês</span>
-                <span className={`whitespace-nowrap text-[15px] font-black tabular-nums ${margemBreakEven.margemMensal >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
-                  {margemBreakEven.margemMensal >= 0 ? "+" : ""}{fmtReal(margemBreakEven.margemMensal)}
+        {margemBreakEven ? (
+          <div className="w-full rounded-xl bg-muted/50 p-3">
+            <div className="flex flex-col gap-1 text-[11px]">
+              <div className="flex items-center justify-between gap-3">
+                <span className="whitespace-nowrap text-muted-foreground">Receita líquida/mês</span>
+                <span className="whitespace-nowrap text-right font-bold tabular-nums text-emerald-700 dark:text-emerald-400">
+                  {fmtReal(margemBreakEven.receitaLiquidaMes)}
                 </span>
               </div>
-            </div>
-          ) : (
-            <div className="text-right">
-              <div className="text-lg font-black tabular-nums text-emerald-700 dark:text-emerald-400">
-                {sugestao.projecaoRemuneracao ? fmtReal(sugestao.projecaoRemuneracao.receitaMensalProjetada) : "—"}
+              <div className="flex items-center justify-between gap-3 text-rose-500/80 dark:text-rose-400/70">
+                <span className="whitespace-nowrap text-muted-foreground">Impostos ({parametrosGerais?.imposto_faturamento_pct}%) e perdas ({PERDA_PADRAO_CARD}%)</span>
+                <span className="whitespace-nowrap text-right font-semibold tabular-nums">− {fmtReal(impostosEPerdas)}</span>
               </div>
-              <div className="text-[11px] text-muted-foreground">receita/mês projetada</div>
-              {sugestao.projecaoRemuneracao && (
-                <div className="mt-0.5 text-[11px] font-bold tabular-nums text-foreground">
-                  {fmtReal(sugestao.projecaoRemuneracao.receitaSemanalProjetada)} <span className="font-normal text-muted-foreground">/semana</span>
-                </div>
-              )}
+              <div className="flex items-center justify-between gap-3 text-rose-600 dark:text-rose-400">
+                <span className="whitespace-nowrap text-muted-foreground">Remuneração do prestador</span>
+                <span className="whitespace-nowrap text-right font-semibold tabular-nums">− {fmtReal(margemBreakEven.custoMes)}</span>
+              </div>
             </div>
-          )}
-          {!!sugestao.projecaoRemuneracao?.sessoesSemValor && (
-            <div className="text-[11px] text-amber-600 dark:text-amber-400">
-              {sugestao.projecaoRemuneracao.sessoesSemValor} sessão(ões) sem valor cadastrado
-            </div>
-          )}
-        </div>
-      </div>
 
-      <div className="flex items-center justify-between gap-3 border-t border-border bg-muted/40 px-3.5 py-2">
+            <div className="mt-2 flex items-center justify-between gap-2 border-t border-border pt-2">
+              <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Margem/mês</span>
+              <span className={`whitespace-nowrap text-[15px] font-black tabular-nums ${margemBreakEven.margemMensal >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
+                {margemBreakEven.margemMensal >= 0 ? "+" : ""}{fmtReal(margemBreakEven.margemMensal)}
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div className="text-right">
+            <div className="text-lg font-black tabular-nums text-emerald-700 dark:text-emerald-400">
+              {sugestao.projecaoRemuneracao ? fmtReal(sugestao.projecaoRemuneracao.receitaMensalProjetada) : "—"}
+            </div>
+            <div className="text-[11px] text-muted-foreground">receita/mês projetada</div>
+            {sugestao.projecaoRemuneracao && (
+              <div className="mt-0.5 text-[11px] font-bold tabular-nums text-foreground">
+                {fmtReal(sugestao.projecaoRemuneracao.receitaSemanalProjetada)} <span className="font-normal text-muted-foreground">/semana</span>
+              </div>
+            )}
+          </div>
+        )}
+        {!!sugestao.projecaoRemuneracao?.sessoesSemValor && (
+          <div className="text-[11px] text-amber-600 dark:text-amber-400">
+            {sugestao.projecaoRemuneracao.sessoesSemValor} sessão(ões) sem valor cadastrado
+          </div>
+        )}
+
+        <hr className="border-border" />
+
         <div className="flex flex-wrap gap-1.5 text-[11px]">
-          <span className="flex items-center gap-1 rounded-full border border-border bg-card px-2 py-1 font-semibold text-foreground">
+          <span className="flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-1 font-semibold text-foreground">
             <Users size={12} className="text-muted-foreground" />
             {vagas} vaga(s) · {sugestao.candidatos.length} paciente(s) elegível(is)
           </span>
           {qtdRemanejamento > 0 && (
-            <span className="flex items-center gap-1 rounded-full border border-border bg-card px-2 py-1 text-muted-foreground">
+            <span className="flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-1 text-muted-foreground">
               {qtdAdjacente} adjacência · {qtdRemanejamento} remanejamento
             </span>
           )}
           <span className={`flex items-center gap-1 rounded-full border px-2 py-1 ${
             semSalaLivre
               ? "animate-pulse border-red-300 bg-red-50 font-bold text-red-600 dark:border-red-800 dark:bg-red-950/30 dark:text-red-400"
-              : "border-border bg-card text-foreground"
+              : "border-border bg-muted/40 text-foreground"
           }`}>
             <Building2 size={12} className={semSalaLivre ? "text-red-600 dark:text-red-400" : "text-muted-foreground"} />
             {sugestao.salaVinculada
@@ -262,9 +290,19 @@ function CardSugestao({
           </span>
         </div>
 
-        <Button size="xs" onClick={() => (semSalaLivre ? setConfirmarSemSala(true) : onAplicar())} className="shrink-0 gap-1">
-          Aplicar <ArrowRight size={12} />
-        </Button>
+        <div className="mt-auto flex items-center justify-end gap-1 pt-1 text-[11px] font-bold text-sky-700 dark:text-sky-400">
+          {pendente ? (
+            <>
+              Aplicando…
+              <Loader2 size={12} className="animate-spin motion-reduce:animate-none" />
+            </>
+          ) : (
+            <>
+              Aplicar
+              <ArrowRight size={12} className="transition-transform duration-200 group-hover:translate-x-0.5 motion-reduce:transform-none" />
+            </>
+          )}
+        </div>
       </div>
 
       {confirmarSemSala && (
@@ -277,7 +315,7 @@ function CardSugestao({
           onConfirm={() => { setConfirmarSemSala(false); onAplicar() }}
         />
       )}
-    </div>
+    </>
   )
 }
 
@@ -295,6 +333,17 @@ export function SugestoesContratacaoPanel({ onAplicarSugestao }: Props) {
     sugestoes: todasSugestoes, loading, error, laudosCarregados, refWeekLabel, cRows, gapMap,
     regrasGerais, excecoesPaciente, mesReferencia, feriados,
   } = useSugestoesContratacao(modo, faixasSelecionadas)
+
+  // Aplicar um card dispara recálculo pesado abaixo (mesmo motivo do
+  // startTransition usado nos filtros) — sem indicação visual, o clique
+  // parece não ter feito nada até o recálculo terminar. `aplicando` cobre
+  // o período em que o React está processando essa transição;
+  // `sugestaoPendenteId` marca QUAL card mostra o spinner.
+  const [aplicando, startAplicarTransition] = useTransition()
+  const [sugestaoPendenteId, setSugestaoPendenteId] = useState<string | null>(null)
+  useEffect(() => {
+    if (!aplicando) setSugestaoPendenteId(null)
+  }, [aplicando])
 
   const especialidadesSelecionadas = useMemo(
     () => new Set(ESPECIALIDADES_OPCOES.filter(o => especialidadesIds.has(o.id)).map(o => o.nome)),
@@ -339,6 +388,13 @@ export function SugestoesContratacaoPanel({ onAplicarSugestao }: Props) {
   const totalPaginas = Math.max(1, Math.ceil(sugestoes.length / SUGESTOES_POR_PAGINA))
   const paginaAtual = Math.min(pagina, totalPaginas - 1)
   const sugestoesDaPagina = sugestoes.slice(paginaAtual * SUGESTOES_POR_PAGINA, paginaAtual * SUGESTOES_POR_PAGINA + SUGESTOES_POR_PAGINA)
+
+  const aplicarSugestao = (s: SugestaoContratacao) => {
+    setSugestaoPendenteId(s.id)
+    startAplicarTransition(() => {
+      onAplicarSugestao(s.especialidade, s.turnos.map(turno => ({ dia: s.dia, turno })), s.unidade)
+    })
+  }
 
   return (
     <div className="rounded-2xl border border-border bg-card p-4">
@@ -453,7 +509,7 @@ export function SugestoesContratacaoPanel({ onAplicarSugestao }: Props) {
 
       {!loading && !error && !!sugestoes.length && (
         <>
-          <div className="flex flex-col gap-2.5">
+          <div className="grid grid-cols-1 items-stretch gap-2.5 md:grid-cols-2 xl:grid-cols-3">
             {sugestoesDaPagina.map(s => (
               <CardSugestao
                 key={s.id}
@@ -464,7 +520,8 @@ export function SugestoesContratacaoPanel({ onAplicarSugestao }: Props) {
                 excecoesPaciente={excecoesPaciente}
                 mesReferencia={mesReferencia}
                 feriados={feriados}
-                onAplicar={() => onAplicarSugestao(s.especialidade, s.turnos.map(turno => ({ dia: s.dia, turno })), s.unidade)}
+                pendente={sugestaoPendenteId === s.id}
+                onAplicar={() => aplicarSugestao(s)}
               />
             ))}
           </div>
