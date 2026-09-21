@@ -366,8 +366,13 @@ const ChatInterface: React.FC = () => {
         </div>
       </div>
 
+      {/* A tela da conversa (e o vazio, mais abaixo) é a superfície MAIS FUNDA
+          da página: as bolhas (bg-card) precisam se destacar dela. No escuro
+          isso era #0B0E14 fixo, mais fundo que o --background; no claro o
+          equivalente é o cinza do --muted, porque o branco do --background
+          deixaria a bolha branca invisível. Daí o par explícito, não um token. */}
       {activeChat ? (
-        <div className="flex-1 flex overflow-hidden bg-[#0B0E14]">
+        <div className="flex-1 flex overflow-hidden bg-muted dark:bg-[#0B0E14]">
           <div className="flex-1 flex flex-col min-w-0 relative">
             <div className="h-16 px-6 flex items-center justify-between bg-card backdrop-blur-md border-b border-border z-10 shrink-0">
               <div className="flex items-center cursor-pointer hover:bg-muted p-1.5 -ml-1.5 rounded-lg transition-colors pr-3">
@@ -553,7 +558,7 @@ const ChatInterface: React.FC = () => {
           )}
         </div>
       ) : (
-        <div className="flex-1 flex flex-col items-center justify-center bg-[#0B0E14] relative overflow-hidden">
+        <div className="flex-1 flex flex-col items-center justify-center bg-muted dark:bg-[#0B0E14] relative overflow-hidden">
           <div className="relative z-10 flex flex-col items-center p-8 text-center max-w-md">
             <div className="w-24 h-24 bg-card rounded-full flex items-center justify-center mb-6 shadow-2xl border border-border relative group">
               <div className="absolute inset-0 bg-cyan-500/20 rounded-full blur-xl group-hover:bg-cyan-500/30 transition-all duration-1000"></div>
