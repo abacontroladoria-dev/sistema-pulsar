@@ -1,6 +1,8 @@
 import type { AppointmentService } from '../services/appointment.service'
 import type { AppointmentRepository } from '../repositories/appointment.repository'
 import type { ConversationService } from '../services/conversation.service'
+import type { FichaService } from '../services/ficha.service'
+import type { CampoFicha } from '../types/central.types'
 import {
   SlotAlreadyBookedError,
   SlotInPastError,
@@ -330,6 +332,61 @@ export const FERRAMENTAS_SEMPRE = [
       },
     },
   },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'registrar_dados_do_paciente',
+      // Esta ferramenta só é OFERECIDA quando o contato ainda não está vinculado
+      // a um paciente do TiTa (o worker decide, ver deveColetar). Quem já é da
+      // clínica tem esses campos no cadastro, e perguntar de novo soaria como se
+      // a clínica não soubesse quem ele é.
+      //
+      // Retirar a capacidade é mais confiável que instruir a contenção: uma
+      // regra de prompt dizendo "não pergunte a quem já é paciente" depende de o
+      // modelo saber quem já é paciente, e ele não sabe.
+      description:
+        'Registra na ficha do paciente um dado que o responsável acabou de informar nesta conversa. '
+        + 'Chame assim que ele disser qualquer um destes dados, mesmo que de passagem e mesmo um de cada vez. '
+        + 'Envie APENAS os campos que ele realmente informou: mande null em todo o resto. '
+        + 'NUNCA deduza, complete ou invente um valor — se ele disse só o primeiro nome, registre o primeiro nome. '
+        + 'O nome do paciente é o da CRIANÇA que vai fazer as terapias; o nome do responsável é o de quem está falando com você. '
+        + 'Quando a resposta vier dizendo que um campo foi recusado, use o motivo para perguntar de novo àquele ponto específico, sem repetir a pergunta igual.',
+      strict: true,
+      parameters: {
+        type: 'object',
+        properties: {
+          nomePaciente: {
+            type: ['string', 'null'],
+            description: 'Nome da criança que vai fazer as terapias, como o responsável falou. null se ele não disse.',
+          },
+          dataNascimento: {
+            type: ['string', 'null'],
+            description:
+              'Data de nascimento da criança, como o responsável escreveu (ex.: "12/03/2019", "12 de março de 2019"). '
+              + 'Não converta o formato. null se ele não disse.',
+          },
+          nomeResponsavel: {
+            type: ['string', 'null'],
+            description: 'Nome de quem está conversando com você e é responsável pela criança. null se ele não disse.',
+          },
+          turno: {
+            type: ['string', 'null'],
+            enum: ['manha', 'tarde', 'integral', 'indiferente', null],
+            description:
+              'Turno em que a criança pode fazer as terapias. '
+              + 'Use indiferente quando ele disser que tanto faz — isso é uma resposta, não uma falta de resposta. '
+              + 'null se o assunto não veio à tona.',
+          },
+          planoSaude: {
+            type: ['string', 'null'],
+            description: 'Nome do plano de saúde ou convênio, como o responsável falou. null se ele não disse.',
+          },
+        },
+        required: ['nomePaciente', 'dataNascimento', 'nomeResponsavel', 'turno', 'planoSaude'],
+        additionalProperties: false,
+      },
+    },
+  },
 ] as const
 
 // LIMITAÇÃO CONHECIDA: não há como deixar um recado para quem vai assumir.
@@ -369,6 +426,16 @@ export class FerramentasAgente {
     // mora em ConversationService.escalarParaAtendimentoHumano, onde o worker
     // também a alcança.
     private readonly conversas:    ConversationService | null = null,
+    // Para `registrar_dados_do_paciente`. Opcional pela mesma razão que
+    // `conversas`: os testes das ferramentas de agenda não precisam dele, e é
+    // melhor a ferramenta recusar dizendo que não conseguiu anotar do que o
+    // worker explodir na construção e o responsável ficar sem resposta.
+    //
+    // Vai por SERVICE, não por cliente supabase: "as ferramentas NÃO falam com o
+    // banco" (topo deste arquivo). A regra de que o cadastro do TiTa vence o que
+    // a Maia ouviu mora em FichaService, onde o painel também a alcança — se a
+    // ferramenta tivesse caminho próprio, as duas superfícies discordariam.
+    private readonly fichas:       FichaService | null = null,
   ) {}
 
   // A escalada pedida NESTE turno, ou null. Lida pelo worker depois de
@@ -409,6 +476,7 @@ export class FerramentasAgente {
         case 'reagendar_sessao':                     return await this.reagendar(args)
         case 'cancelar_sessao':                      return await this.cancelar(args)
         case 'escalar_para_humano':                  return await this.escalarParaHumano(args)
+        case 'registrar_dados_do_paciente':          return await this.registrarDadosDoPaciente(args)
         default:
           return recusa(MOTIVO.ERRO_INTERNO, `Ferramenta desconhecida: ${nome}`)
       }
@@ -897,6 +965,72 @@ export class FerramentasAgente {
     }
   }
 
+  // --------------------------------------------------------------------------
+  // registrar_dados_do_paciente
+  //
+  // Anota na ficha o que o responsável acabou de informar. O modelo manda os
+  // cinco campos (strict exige todos), e quase sempre quatro deles são null.
+  //
+  // O RETORNO É A PRÓXIMA PERGUNTA DELA
+  //
+  // Esta ferramenta devolve `faltam` e, quando algo foi recusado, o motivo em
+  // português. Não é diagnóstico para o log: é o que o modelo lê para decidir o
+  // que perguntar em seguida. Uma recusa genérica ("valor inválido") faria a
+  // Maia repetir a mesma pergunta com as mesmas palavras — e a repetição exata
+  // cai no detector de laço do orquestrador, que escala a conversa para um
+  // humano por causa de uma data mal digitada.
+  // --------------------------------------------------------------------------
+  private async registrarDadosDoPaciente(args: Record<string, any>): Promise<ResultadoFerramenta> {
+    if (!this.fichas || !this.contexto.contactId) {
+      // Falha de montagem, não algo que o modelo possa contornar. A mensagem
+      // manda seguir a conversa: não anotar o nome não é motivo para interromper
+      // um atendimento que está funcionando.
+      return recusa(
+        MOTIVO.ERRO_INTERNO,
+        'Não consegui anotar agora. Siga a conversa normalmente e não repita a tentativa.',
+      )
+    }
+
+    const { gravados, recusados } = await this.fichas.registrar(
+      this.contexto.orgId,
+      this.contexto.contactId,
+      {
+        patient_name:  texto(args.nomePaciente),
+        birth_date:    texto(args.dataNascimento),
+        guardian_name: texto(args.nomeResponsavel),
+        shift:         texto(args.turno),
+        health_plan:   texto(args.planoSaude),
+      },
+      'ia',
+    )
+
+    if (gravados.length === 0 && recusados.length === 0) {
+      // O modelo chamou sem nada dentro. Acontece quando ele "confirma" um dado
+      // que já tinha anotado — dizer isso evita que ele chame de novo.
+      return {
+        ok: true,
+        anotado: false,
+        avisoInterno: 'Nada novo para anotar. Continue a conversa e chame esta ferramenta só quando o responsável informar um dado novo.',
+      }
+    }
+
+    const ficha = await this.fichas.montar(this.contexto.orgId, this.contexto.contactId)
+
+    return {
+      ok: true,
+      anotado: gravados.length > 0,
+      // Nomes em português, porque quem lê isto é o modelo montando a próxima
+      // frase — não um desenvolvedor lendo um log.
+      faltam: ficha.faltantes.map((c) => ROTULO_CAMPO[c]),
+      ...(recusados.length > 0 && {
+        recusados: recusados.map((r) => ({ campo: ROTULO_CAMPO[r.campo], motivo: r.motivo })),
+      }),
+      avisoInterno: ficha.faltantes.length === 0
+        ? 'A ficha está completa. Não pergunte mais nada sobre cadastro.'
+        : 'Não pergunte tudo de uma vez: siga o assunto da conversa e pergunte UM item por vez, quando fizer sentido.',
+    }
+  }
+
   // Traduz erro de domínio em recusa com motivo estável.
   // Cada motivo pede uma reação diferente do agente, e é por isso que os três
   // tipos de falha de vaga não são fundidos num "não deu".
@@ -927,6 +1061,27 @@ export class FerramentasAgente {
 
 function recusa(motivo: string, mensagem: string): ResultadoFerramenta {
   return { ok: false, motivo, mensagem }
+}
+
+// O modelo manda `null` no que não sabe (strict exige todos os campos), e às
+// vezes manda a string "null" ou espaços. Os três significam a mesma coisa:
+// não informado. Devolver undefined é o que faz o service não mexer no campo.
+function texto(v: unknown): string | undefined {
+  if (v === null || v === undefined) return undefined
+  const s = String(v).trim()
+  if (s === '' || s.toLowerCase() === 'null') return undefined
+  return s
+}
+
+// Como cada campo é chamado NA CONVERSA. Vai no retorno da ferramenta porque
+// quem lê é o modelo montando a próxima pergunta — 'guardian_name' não é uma
+// palavra que se use com a mãe de um paciente.
+const ROTULO_CAMPO: Record<CampoFicha, string> = {
+  patient_name:  'nome da criança',
+  birth_date:    'data de nascimento',
+  guardian_name: 'nome do responsável',
+  shift:         'turno para as terapias',
+  health_plan:   'plano de saúde',
 }
 
 // Os valores do enum de `escalar_para_humano`, para validar o que chega do modelo.

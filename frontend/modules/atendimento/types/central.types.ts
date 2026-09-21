@@ -503,6 +503,84 @@ export interface LeituraSentimento {
   anterior: ContactSentimentReading | null
 }
 
+// ----------------------------------------------------------------------------
+// Ficha do paciente — central.contact_intake (20260921180000)
+//
+// Os seis campos do bloco "Ficha do paciente" do painel. Quem já é da clínica
+// tem quatro deles em `public.pacientes`; quem é novo tem o que a Maia coletou
+// na conversa. O merge é feito na leitura, em services/ficha.service.ts.
+// ----------------------------------------------------------------------------
+
+// central.therapy_shift. 'indiferente' NÃO é o mesmo que ausente: null é "ainda
+// não perguntado", 'indiferente' é "perguntou e tanto faz". Sem a distinção a
+// Maia perguntaria de novo a cada turno.
+export type TherapyShift = 'manha' | 'tarde' | 'integral' | 'indiferente'
+
+// De onde veio o valor de um campo. Chega à tela porque o atendente precisa
+// distinguir o que a Maia ouviu no WhatsApp do que tem lastro:
+//   'cadastro'  — public.pacientes, via contact_patient_links
+//   'ia'        — a Maia registrou durante a conversa
+//   'atendente' — um humano digitou ou corrigiu no painel
+export type OrigemCampo = 'cadastro' | 'ia' | 'atendente'
+
+// A linha crua da tabela: SÓ o que a conversa revelou. Não há cópia do cadastro
+// aqui, de propósito — ver o cabeçalho da migration.
+export interface ContactIntake {
+  contact_id:       string
+  organization_id:  string
+  patient_name:     string | null
+  birth_date:       string | null   // date (YYYY-MM-DD), sem fuso
+  guardian_name:    string | null
+  shift:            TherapyShift | null
+  health_plan:      string | null
+  fontes:           Partial<Record<CampoFicha, Exclude<OrigemCampo, 'cadastro'>>>
+  coleta_concluida: boolean
+  created_at:       string
+  updated_at:       string
+}
+
+// Os campos coletáveis, na ORDEM em que a Maia deve perguntar. A ordem não é
+// cosmética: é ela que o montador de contexto usa para dizer qual é a próxima
+// pergunta, e começa pelo nome do paciente porque é o que permite tratar a
+// criança pelo nome no resto da conversa.
+export const CAMPOS_FICHA = [
+  'patient_name',
+  'birth_date',
+  'guardian_name',
+  'shift',
+  'health_plan',
+] as const
+export type CampoFicha = typeof CAMPOS_FICHA[number]
+
+// Um campo já resolvido, pronto para a tela. `valor` null significa que ninguém
+// sabe — nem o cadastro, nem a conversa.
+export interface CampoResolvido {
+  valor:  string | null
+  origem: OrigemCampo | null
+}
+
+// O que a rota devolve ao painel: a ficha depois do merge.
+//
+// `vinculado` é o que decide os dois mundos do bloco. Com vínculo, o cadastro
+// manda e a Maia não pergunta nada; sem vínculo, tudo o que existe veio da
+// conversa. A tela precisa dizer qual dos dois é o caso, porque "campo vazio
+// porque a Maia ainda não perguntou" e "campo vazio porque o cadastro não tem"
+// pedem ações diferentes de quem está lendo.
+export interface FichaPaciente {
+  contact_id:    string
+  vinculado:     boolean
+  campos:        Record<CampoFicha, CampoResolvido>
+  // Idade em anos, derivada de birth_date. Calculada a cada leitura e NUNCA
+  // persistida: guardá-la produziria um número certo no dia da escrita e errado
+  // daí em diante, de um jeito que ninguém percebe.
+  idade:         number | null
+  faltantes:     CampoFicha[]
+  // Quando o cadastro foi sincronizado do TiTa. Null para contato sem vínculo.
+  // Vai à tela porque `convenio_nome` é cache derivado de agenda_tita — o
+  // atendente precisa poder datar o plano que está lendo.
+  sincronizado_em: string | null
+}
+
 // Retorno de central.listar_vagas_disponiveis.
 // Não é uma tabela: é a grade do TiTa menos o que já prometemos.
 export interface VagaDisponivel {

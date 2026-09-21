@@ -682,6 +682,9 @@ const ChatInterface: React.FC = () => {
                 carregandoSentimento: painel.carregandoSentimento,
                 analisandoSentimento: painel.analisandoSentimento,
                 erroSentimento:       painel.erroSentimento,
+                ficha:           painel.ficha,
+                carregandoFicha: painel.carregandoFicha,
+                erroFicha:       painel.erroFicha,
               }}
               acoes={{
                 salvarOrigem:        handleSalvarOrigem,
@@ -694,6 +697,10 @@ const ChatInterface: React.FC = () => {
                 // `void`: o bloco não espera a promessa — o estado de
                 // "analisando" já vive no hook e é ele que desenha o spinner.
                 reanalisarSentimento: () => { void painel.reanalisarSentimento() },
+                // Aqui a promessa É esperada: o bloco desenha o spinner do
+                // botão de salvar enquanto ela não resolve, e fecha a edição
+                // inline só depois que o servidor confirmou.
+                salvarCampoFicha:     painel.salvarCampoFicha,
               }}
               aoFechar={() => setShowProfileInfo(false)}
             />

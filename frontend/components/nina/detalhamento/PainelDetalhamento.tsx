@@ -8,9 +8,12 @@ import type {
   Task,
   TagDefinition,
   LeituraSentimento,
+  FichaPaciente,
+  CampoFicha,
 } from '@/modules/atendimento/types/central.types'
 import { rotuloTipoContato } from '../adapters/centralToNina'
 import { Avatar } from '../Avatar'
+import { BlocoFicha }        from './BlocoFicha'
 import { BlocoSentimento }   from './BlocoSentimento'
 import { BlocoCanal }        from './BlocoCanal'
 import { BlocoOrigem }       from './BlocoOrigem'
@@ -42,6 +45,9 @@ export interface DadosPainel {
   carregandoSentimento: boolean
   analisandoSentimento: boolean
   erroSentimento:       string | null
+  ficha:           FichaPaciente | null
+  carregandoFicha: boolean
+  erroFicha:       string | null
 }
 
 export interface AcoesPainel {
@@ -53,6 +59,7 @@ export interface AcoesPainel {
   designarTarefa?: () => void
   concluirTarefa?: (id: string) => Promise<void>
   reanalisarSentimento?: () => void
+  salvarCampoFicha?: (campo: CampoFicha, valor: string | null) => Promise<void>
 }
 
 export const PainelDetalhamento: React.FC<{
@@ -117,9 +124,19 @@ export const PainelDetalhamento: React.FC<{
             </div>
           </header>
 
-          {/* Antes de tudo: é o que se lê ANTES de escrever uma resposta, e
-              não mais um campo da ficha. Canal, origem e tags descrevem o
-              cadastro; isto descreve o estado da pessoa agora. */}
+          {/* Primeiro de todos: QUEM é o paciente se lê antes de COMO o
+              responsável está. Os dois vêm antes de canal, origem e tags, que
+              descrevem o cadastro do contato e não o atendimento. */}
+          <BlocoFicha
+            ficha={dados.ficha}
+            carregando={dados.carregandoFicha}
+            erro={dados.erroFicha}
+            // Sem contato não há ficha para corrigir — a rota é por contactId.
+            aoSalvar={contato ? acoes.salvarCampoFicha : undefined}
+          />
+
+          {/* É o que se lê ANTES de escrever uma resposta, e não mais um campo
+              da ficha: descreve o estado da pessoa agora. */}
           <BlocoSentimento
             leitura={dados.sentimento}
             carregando={dados.carregandoSentimento}

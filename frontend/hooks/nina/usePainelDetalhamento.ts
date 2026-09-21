@@ -6,6 +6,8 @@ import type {
   Task,
   TagDefinition,
   LeituraSentimento,
+  FichaPaciente,
+  CampoFicha,
 } from '@/modules/atendimento/types/central.types'
 import type { UsuarioAtribuivel } from '@/components/nina/detalhamento/BlocoResponsavel'
 
@@ -61,6 +63,13 @@ export interface UsePainelDetalhamento {
   analisandoSentimento:  boolean
   erroSentimento:        string | null
   reanalisarSentimento:  () => Promise<void>
+
+  // Ficha do paciente — mesmo desenho do sentimento, pela mesma razão: a ação
+  // (corrigir um campo) escreve no banco e o erro precisa chegar à tela.
+  ficha:            FichaPaciente | null
+  carregandoFicha:  boolean
+  erroFicha:        string | null
+  salvarCampoFicha: (campo: CampoFicha, valor: string | null) => Promise<void>
 }
 
 export function usePainelDetalhamento(contactId: string | null): UsePainelDetalhamento {
@@ -74,6 +83,10 @@ export function usePainelDetalhamento(contactId: string | null): UsePainelDetalh
   const [carregandoSentimento, setCarregandoSentimento] = useState(false)
   const [analisandoSentimento, setAnalisando]           = useState(false)
   const [erroSentimento, setErroSentimento]             = useState<string | null>(null)
+
+  const [ficha, setFicha]                     = useState<FichaPaciente | null>(null)
+  const [carregandoFicha, setCarregandoFicha] = useState(false)
+  const [erroFicha, setErroFicha]             = useState<string | null>(null)
 
   // ------------------------------------------------------------------------
   // Catálogos — uma vez, no mount
@@ -217,8 +230,78 @@ export function usePainelDetalhamento(contactId: string | null): UsePainelDetalh
     }
   }, [contactId, analisandoSentimento, carregarSentimento])
 
+  // ------------------------------------------------------------------------
+  // Ficha do paciente
+  //
+  // GET na troca de contato, como o sentimento. NÃO entra no polling de 5s de
+  // propósito, embora a Maia possa preencher um campo a qualquer momento: o
+  // painel de detalhamento é aberto sob demanda e a ficha muda no ritmo de uma
+  // conversa, não de uma mensagem. Quem quiser ver a coleta avançar reabre o
+  // painel — é mais barato que uma rota extra a cada 5 segundos por atendente.
+  //
+  // O PATCH leva a barra final pela mesma razão que o POST do sentimento:
+  // `trailingSlash: true` transforma um PATCH sem barra num 308, e o corpo nunca
+  // chega ao handler. O sintoma seria uma correção que some sem erro nenhum.
+
+  const carregarFicha = useCallback(async (signal: AbortSignal) => {
+    if (!contactId) {
+      setFicha(null)
+      return
+    }
+    try {
+      setFicha(await buscar<FichaPaciente>(`/api/central/contacts/${contactId}/ficha/`, signal))
+    } catch (e) {
+      if ((e as Error).name === 'AbortError') return
+      // Some com a ficha velha: ela é de OUTRA criança se a troca de contato foi
+      // o que disparou esta carga, e mostrar o nome do paciente errado no painel
+      // é o pior defeito possível desta tela.
+      setFicha(null)
+    }
+  }, [contactId])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    let vivo = true
+    setCarregandoFicha(true)
+    setErroFicha(null)
+    carregarFicha(controller.signal).finally(() => {
+      if (vivo) setCarregandoFicha(false)
+    })
+    return () => { vivo = false; controller.abort() }
+  }, [carregarFicha])
+
+  const salvarCampoFicha = useCallback(async (campo: CampoFicha, valor: string | null) => {
+    if (!contactId) return
+
+    setErroFicha(null)
+    try {
+      const res = await fetch(`/api/central/contacts/${contactId}/ficha/`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ [campo]: valor }),
+      })
+      const json = await res.json().catch(() => null)
+
+      if (!res.ok) {
+        // A mensagem do servidor é o que distingue "essa data não existe" de
+        // "esse contato não é seu". A primeira o atendente corrige digitando de
+        // novo; a segunda não tem conserto na tela.
+        setErroFicha(json?.error?.message ?? `A edição respondeu ${res.status}.`)
+        return
+      }
+
+      // O PATCH devolve a ficha inteira remontada: salvar um campo pode mudar a
+      // procedência de outro, e recompor isso no cliente duplicaria o merge que
+      // o service já faz.
+      if (json?.data) setFicha(json.data as FichaPaciente)
+    } catch (e) {
+      setErroFicha((e as Error).message || 'Falha de rede ao salvar.')
+    }
+  }, [contactId])
+
   return {
     catalogoTags, usuarios, agendamentos, tarefas, carregandoListas, recarregarListas,
     sentimento, carregandoSentimento, analisandoSentimento, erroSentimento, reanalisarSentimento,
+    ficha, carregandoFicha, erroFicha, salvarCampoFicha,
   }
 }

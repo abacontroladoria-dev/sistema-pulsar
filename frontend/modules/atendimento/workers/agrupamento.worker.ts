@@ -15,6 +15,8 @@ import { openAiProvider } from '../llm/openai.provider'
 import { lerAgentSettings } from '../agente/agent-settings'
 import { resolverModoEfetivo } from '../agente/modo-efetivo'
 import { decidirEntrega } from '../agente/entrega'
+import { createFichaService } from '../services/ficha.service'
+import type { FichaPaciente } from '../types/central.types'
 
 // ============================================================================
 // Worker de agrupamento — o miolo do pipeline
@@ -267,10 +269,35 @@ async function processarContato(
     limit: LIMITE_HISTORICO,
   })
 
+  // A ficha do paciente, e a decisão de coletar ou não.
+  //
+  // `deveColetar` é false para quem JÁ está vinculado a um paciente do TiTa: o
+  // cadastro tem os campos, e perguntar de novo a quem é da clínica há dois anos
+  // soaria como se ninguém ali soubesse quem ele é.
+  //
+  // Quando é false, duas coisas somem juntas — o bloco de cadastro do contexto e
+  // a ferramenta de registro. Retirar a CAPACIDADE é mais confiável que instruir
+  // a contenção: uma regra de prompt dizendo "não pergunte a quem já é paciente"
+  // dependeria de o modelo saber quem já é paciente, e ele não sabe.
+  //
+  // A falha é isolada de propósito. Não conseguir ler a ficha não pode calar a
+  // atendente: o responsável perguntou um horário e merece a resposta, com ou
+  // sem coleta de cadastro.
+  const fichas = createFichaService(supabase)
+  let ficha: FichaPaciente | null = null
+  try {
+    if (await fichas.deveColetar(orgId, contato.id)) {
+      ficha = await fichas.montar(orgId, contato.id)
+    }
+  } catch (err) {
+    console.warn('[worker agrupamento] ficha do paciente indisponível; seguindo sem coleta', err)
+  }
+
   const contexto = montarContexto({
     systemPrompt: settings.system_prompt,
     memoriaContato: (contato as { ai_memory?: unknown }).ai_memory ?? null,
     nomeContato: contato.name,
+    ficha,
     // O histórico já inclui as mensagens recém-gravadas; a última é a própria
     // fala do turno, que o orquestrador acrescenta. Cortá-la aqui evita que o
     // modelo a leia duas vezes.
@@ -286,6 +313,10 @@ async function processarContato(
     // lá embaixo: pedido do responsável e falha técnica escrevem pelo mesmo
     // caminho, com `origem` diferente.
     conversationService,
+    // Para `registrar_dados_do_paciente`. Passado apenas quando há coleta a
+    // fazer: sem ele a ferramenta recusa, e não oferecê-la é o que garante que a
+    // Maia não pergunte cadastro a quem já é paciente da clínica.
+    ficha ? fichas : null,
   )
 
   // 7. O turno.
@@ -306,6 +337,10 @@ async function processarContato(
       ferramentas,
       contexto,
       agendamentoHabilitado: settings.ai_scheduling_enabled,
+      // `ficha` só é não-nula quando há cadastro a coletar. É a mesma condição
+      // que decide o bloco de contexto, de propósito: a ferramenta e a
+      // informação sobre o que falta precisam aparecer e sumir juntas.
+      coletaDeCadastro: ficha !== null,
       aoChamarFerramenta: (registro) => {
         void auditoria.insert({
           organization_id: orgId,

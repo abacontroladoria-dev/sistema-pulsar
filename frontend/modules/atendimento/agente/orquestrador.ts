@@ -67,6 +67,15 @@ export interface DepsTurno {
   // conversa mas não recebe ferramenta nenhuma, logo não pode escrever na
   // agenda. É o botão de pânico da entrega.
   agendamentoHabilitado: boolean
+  // Se este contato ainda precisa ter o cadastro coletado — isto é, se NÃO está
+  // vinculado a um paciente do TiTa e a ficha não está completa. Só então a
+  // ferramenta `registrar_dados_do_paciente` é oferecida ao modelo.
+  //
+  // Opcional e default falso: é a escolha segura. Uma chamada que esqueça de
+  // passá-lo produz uma Maia que não pergunta cadastro — chato, mas correto. O
+  // inverso (default verdadeiro) faria a clínica perguntar nome e plano a um
+  // paciente antigo, que é o defeito visível para quem está do outro lado.
+  coletaDeCadastro?: boolean
   // Rastro opcional das chamadas de ferramenta.
   //
   // Existe porque "a IA ofereceu horário da unidade errada" era
@@ -213,7 +222,8 @@ export async function executarTurno(
   ]
 
   // A lista do turno: as de agenda só entram com o interruptor ligado; as de
-  // FERRAMENTAS_SEMPRE entram sempre.
+  // FERRAMENTAS_SEMPRE entram independentemente dele — com uma exceção, a coleta
+  // de cadastro, explicada no filtro abaixo.
   //
   // O interruptor continua sendo o botão de pânico que era — com ele desligado o
   // modelo não recebe NENHUMA ferramenta de agenda e não tem como escrever na
@@ -225,9 +235,22 @@ export async function executarTurno(
   // Nunca mais é `undefined` — antes disso o provider omitia a chave `tools` e o
   // modelo nem sabia que poderia agendar. Agora sempre há ao menos uma ferramenta,
   // e a de agenda continua invisível quando desligada, que é o que importa.
-  const ferramentas = deps.agendamentoHabilitado
-    ? [...DEFINICOES_FERRAMENTAS, ...FERRAMENTAS_SEMPRE]
-    : [...FERRAMENTAS_SEMPRE]
+  const ferramentas = (
+    deps.agendamentoHabilitado
+      ? [...DEFINICOES_FERRAMENTAS, ...FERRAMENTAS_SEMPRE]
+      : [...FERRAMENTAS_SEMPRE]
+  ).filter((f) => (
+    // A coleta de cadastro é a única de FERRAMENTAS_SEMPRE que NÃO vale sempre:
+    // ela só existe para quem ainda não é paciente da clínica. Quem já tem
+    // vínculo no TiTa tem os campos no cadastro, e ser perguntado de novo soaria
+    // como se ninguém ali soubesse quem ele é.
+    //
+    // O filtro mora aqui, e não numa regra de prompt, porque uma instrução do
+    // tipo "não pergunte a quem já é paciente" dependeria de o modelo saber
+    // quem já é paciente — e ele não sabe. Retirar a capacidade é a única forma
+    // confiável de retirar o comportamento.
+    f.function.name !== 'registrar_dados_do_paciente' || deps.coletaDeCadastro === true
+  ))
 
   const jaChamadas = new Set<string>()
 
