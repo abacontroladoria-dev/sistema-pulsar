@@ -195,9 +195,19 @@ export const DEFINICOES_FERRAMENTAS = [
       parameters: {
         type: 'object',
         properties: {
-          profissionalId: { type: 'integer', description: 'profissionalId do horário escolhido.' },
-          data:           { type: 'string',  description: 'data do horário escolhido, YYYY-MM-DD.' },
-          hora:           { type: 'string',  description: 'hora do horário escolhido, HH:MM.' },
+          // A description diz COPIE e avisa que o número é grande porque o
+          // modelo mandou `1` para uma vaga cujo id é 8704 (21/09/2026). Um id
+          // pequeno é o sintoma de um valor inventado: eles têm quatro ou cinco
+          // dígitos, e "1" é o que sai quando se preenche um inteiro obrigatório
+          // sem ter fonte para ele — o mesmo defeito que `terapiaId` teve.
+          profissionalId: {
+            type: 'integer',
+            description:
+              'COPIE o profissionalId do horário escolhido, exatamente como veio em consultar_horarios_disponiveis. '
+              + 'São números de 4 ou 5 dígitos (ex.: 8704). NUNCA invente, deduza ou use um número pequeno como 1.',
+          },
+          data:           { type: 'string',  description: 'COPIE a data do horário escolhido, YYYY-MM-DD.' },
+          hora:           { type: 'string',  description: 'COPIE a hora do horário escolhido, HH:MM.' },
           tipo: {
             type: ['string', 'null'],
             enum: ['triagem', 'retorno', 'reuniao', 'followup', 'other', null],
@@ -455,6 +465,15 @@ export class FerramentasAgente {
   // O escopo é o turno porque a instância é construída uma vez por turno no
   // worker. Não é estado global, e não sobrevive à conversa seguinte.
   private escalouNesteTurno: { motivoEscalada: string } | null = null
+
+  // As vagas que ESTE turno ofereceu ao modelo, para `agendar_sessao` conferir
+  // contra elas. Escopo de turno, como `escalouNesteTurno`: a instância é
+  // construída uma vez por turno no worker.
+  //
+  // Guardar o mínimo — a identidade da vaga e o nome de quem atende — porque é
+  // só isso que a conferência precisa devolver numa recusa. O resto da vaga
+  // (sala, terapia, unidade) já foi para o modelo e não ajuda a corrigir um id.
+  private vagasOferecidas: { profissionalId: number; data: string; hora: string; profissional: string | null }[] = []
 
   escaladaPedida(): { motivoEscalada: string } | null {
     return this.escalouNesteTurno
@@ -719,6 +738,24 @@ export class FerramentasAgente {
       )
     }
 
+    // Registra o que está sendo oferecido, para `agendar_sessao` poder dizer
+    // "o id é 8704, não 1" em vez de "consulte de novo". ACUMULA entre chamadas
+    // do mesmo turno: o modelo consulta terça, depois quarta, e o responsável
+    // pode escolher da primeira lista — descartar a anterior recusaria uma
+    // escolha legítima.
+    for (const v of vagas) {
+      this.vagasOferecidas.push({
+        profissionalId: v.profissional_id,
+        data:           v.data,
+        // `horaCurta` devolve null para hora ausente. Uma vaga sem hora não é
+        // agendável e não precisa entrar na conferência — mas cair para '' em
+        // vez de null mantém a comparação simples e nunca casa com o que o
+        // modelo envia (ele manda 'HH:MM' ou a chamada já falha na guarda).
+        hora:           horaCurta(v.hora_inicial) ?? '',
+        profissional:   v.profissional_nome,
+      })
+    }
+
     return {
       ok: true,
       horarios: vagas.map(v => ({
@@ -780,6 +817,37 @@ export class FerramentasAgente {
         'Faltam profissionalId, data ou hora. Consulte os horários disponíveis e use exatamente os valores retornados.',
       )
     }
+
+    // ------------------------------------------------------------------------
+    // A vaga precisa ser uma das que ESTA conversa ofereceu.
+    //
+    // O DEFEITO QUE ISTO CONSERTA (medido em 21/09/2026, conversa das 15:21)
+    //
+    // O modelo chamou `agendar_sessao` com `profissionalId: 1` para reservar o
+    // horário da Thais, cujo id é 8704 e que ele tinha acabado de listar. O
+    // banco respondeu `vaga_inexistente`, a ferramenta devolveu "consulte os
+    // horários novamente e use exatamente um deles", ele consultou, recebeu a
+    // MESMA lista e chamou de novo com `profissionalId: 1`. Duas vezes, até o
+    // turno acabar — o responsável disse "sim" e nunca foi agendado.
+    //
+    // O detector de laço do orquestrador não pega isto: ele compara assinaturas
+    // dentro de UM turno, e aqui cada tentativa veio num turno diferente,
+    // separada por uma mensagem do responsável.
+    //
+    // POR QUE A RECUSA ANTIGA ALIMENTAVA O LAÇO
+    //
+    // Ela mandava fazer exatamente o que acabara de falhar, sem dizer QUAL dos
+    // três campos estava errado. Para o modelo, "use exatamente um deles" já
+    // descrevia o que ele acreditava ter feito — então ele repetia. Uma recusa
+    // que não distingue as causas não é acionável, e uma instrução que manda
+    // repetir a ação fracassada é um convite ao laço.
+    //
+    // A validação local existe porque ela sabe algo que o banco não sabe: QUAIS
+    // vagas foram oferecidas nesta conversa. O banco só pode dizer "essa
+    // combinação não existe na grade"; aqui dá para dizer "o id é 8704, não 1".
+    // ------------------------------------------------------------------------
+    const conferencia = this.conferirVagaOferecida(profissionalId, String(args.data), String(args.hora))
+    if (conferencia) return conferencia
 
     const criado = await this.agendamentos.agendarVaga(this.contexto.orgId, {
       profissionalId,
@@ -1029,6 +1097,55 @@ export class FerramentasAgente {
         ? 'A ficha está completa. Não pergunte mais nada sobre cadastro.'
         : 'Não pergunte tudo de uma vez: siga o assunto da conversa e pergunte UM item por vez, quando fizer sentido.',
     }
+  }
+
+  // --------------------------------------------------------------------------
+  // A vaga pedida está entre as oferecidas? Devolve a recusa, ou null se passa.
+  //
+  // Três casos, três mensagens DIFERENTES — e é a diferença que quebra o laço:
+  // uma recusa só serve se disser o que mudar na próxima tentativa.
+  // --------------------------------------------------------------------------
+  private conferirVagaOferecida(
+    profissionalId: number,
+    data: string,
+    hora: string,
+  ): ResultadoFerramenta | null {
+    // Nenhuma consulta neste turno: não há com o que comparar. Deixa passar e o
+    // banco decide — é o comportamento de antes, e vale para o caso legítimo de
+    // o modelo agendar a partir de uma lista de um turno anterior.
+    if (this.vagasOferecidas.length === 0) return null
+
+    const exata = this.vagasOferecidas.find(
+      (v) => v.profissionalId === profissionalId && v.data === data && v.hora === hora,
+    )
+    if (exata) return null
+
+    // O horário existe, mas com OUTRO profissional. É o caso do incidente: o
+    // modelo acertou dia e hora e inventou o id. Dizer o id certo transforma a
+    // recusa numa instrução que ele consegue seguir.
+    const mesmoHorario = this.vagasOferecidas.filter((v) => v.data === data && v.hora === hora)
+    if (mesmoHorario.length > 0) {
+      const certos = mesmoHorario
+        .map((v) => `profissionalId ${v.profissionalId} (${v.profissional ?? 'profissional'})`)
+        .join(' ou ')
+      return recusa(
+        MOTIVO.VAGA_INEXISTENTE,
+        `O profissionalId ${profissionalId} não é o desse horário. Em ${data} às ${hora} a vaga é com ${certos}. `
+        + 'Chame agendar_sessao de novo com esse profissionalId, sem consultar os horários outra vez.',
+      )
+    }
+
+    // Dia e hora que nunca foram oferecidos. Listar o que existe é mais útil que
+    // mandar reconsultar: a lista que ele precisa já passou por ele.
+    const amostra = this.vagasOferecidas
+      .slice(0, 5)
+      .map((v) => `${v.data} ${v.hora} (profissionalId ${v.profissionalId})`)
+      .join('; ')
+    return recusa(
+      MOTIVO.VAGA_INEXISTENTE,
+      `Não ofereci a vaga de ${data} às ${hora}. As que ofereci foram: ${amostra}. `
+      + 'Escolha uma destas com o responsável, ou consulte outro período antes de agendar.',
+    )
   }
 
   // Traduz erro de domínio em recusa com motivo estável.
