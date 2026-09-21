@@ -25,7 +25,7 @@
 
 import { MetaWabaProvider, JanelaAtendimentoFechadaError } from './meta-waba.provider.js'
 import { normalizarMensagemMeta } from './meta-waba.normalizar.js'
-import { ProviderError, ProviderNotImplementedError } from '../types/errors.types.js'
+import { ProviderError } from '../types/errors.types.js'
 import type { Channel } from '../types/central.types.js'
 
 let falhas = 0
@@ -188,11 +188,122 @@ console.log('\n3. configuração ausente')
   process.env.META_WABA_TOKEN = salvo
 }
 
+// ----------------------------------------------------------------------------
+console.log('\n3b. mídia: envio por media ID, nunca por URL pública')
+
 {
+  // Sem mediaId não há o que enviar, e a falha precisa dizer o que falta —
+  // "chame uploadMedia antes" é acionável, um 400 da Meta não é.
   const p = new MetaWabaProvider(supabaseCom({ phone_number_id: 'PHONE123' }))
-  const e = await capturar(() => p.sendMedia())
-  checar(e instanceof ProviderNotImplementedError,
-    'sendMedia lança em vez de degradar em silêncio (o caller precisa saber que não foi)', e)
+  let tocouRede = false
+  globalThis.fetch = (async () => { tocouRede = true; return new Response('{}') }) as typeof globalThis.fetch
+  const e = await capturar(() => p.sendMedia(CANAL, { to: '5511988887777', messageType: 'image' }))
+  checar(e instanceof ProviderError && String((e as Error).message).includes('uploadMedia'),
+    'sendMedia sem mediaId aponta o uploadMedia que falta', e)
+  checar(!tocouRede, 'não gasta chamada à Meta sem mediaId')
+}
+
+{
+  // O corpo montado é o contrato com a Graph API. O que se prova aqui é que a
+  // mídia vai por `id` — se um dia alguém trocar por `link`, o bucket teria que
+  // virar público e o áudio de paciente ficaria servível a quem souber o path.
+  const p = new MetaWabaProvider(supabaseCom({ phone_number_id: 'PHONE123' }))
+  let enviado: any = null
+  globalThis.fetch = (async (_u: any, init: any) => {
+    enviado = JSON.parse(init.body)
+    return new Response(JSON.stringify({ messages: [{ id: 'wamid.MEDIA' }] }))
+  }) as typeof globalThis.fetch
+
+  const r = await p.sendMedia(CANAL, {
+    to: '+55 (11) 98888-7777', messageType: 'image',
+    mediaId: 'MEDIA_ID_1', caption: 'o laudo dele',
+  })
+
+  checar(enviado?.type === 'image', 'type é o da mídia, não "text"', enviado?.type)
+  checar(enviado?.image?.id === 'MEDIA_ID_1', 'a mídia vai por ID', enviado?.image)
+  checar(enviado?.image?.link === undefined,
+    'NUNCA por link: link exigiria bucket público com dado de paciente', enviado?.image)
+  checar(enviado?.image?.caption === 'o laudo dele', 'legenda acompanha a imagem')
+  checar(enviado?.to === '5511988887777', 'o destino é normalizado para só dígitos', enviado?.to)
+  checar(r.externalId === 'wamid.MEDIA' && r.status === 'sent', 'devolve o id da Meta e status sent', r)
+}
+
+{
+  // Áudio com legenda: a Meta RECUSA a chamada inteira se `caption` vier num
+  // áudio. O filtro é por tipo, e não geral, porque imagem e documento aceitam.
+  const p = new MetaWabaProvider(supabaseCom({ phone_number_id: 'PHONE123' }))
+  let enviado: any = null
+  globalThis.fetch = (async (_u: any, init: any) => {
+    enviado = JSON.parse(init.body)
+    return new Response(JSON.stringify({ messages: [{ id: 'wamid.A' }] }))
+  }) as typeof globalThis.fetch
+
+  await p.sendMedia(CANAL, {
+    to: '5511988887777', messageType: 'audio', mediaId: 'M2', caption: 'escuta isso',
+  })
+  checar(enviado?.audio?.caption === undefined,
+    'áudio NÃO leva legenda — a Meta recusaria o envio inteiro', enviado?.audio)
+}
+
+{
+  // `filename` só existe em documento, e é o que o destinatário vê na bolha.
+  // Sem ele a Meta inventa um nome e ninguém sabe o que recebeu.
+  const p = new MetaWabaProvider(supabaseCom({ phone_number_id: 'PHONE123' }))
+  let enviado: any = null
+  globalThis.fetch = (async (_u: any, init: any) => {
+    enviado = JSON.parse(init.body)
+    return new Response(JSON.stringify({ messages: [{ id: 'wamid.D' }] }))
+  }) as typeof globalThis.fetch
+
+  await p.sendMedia(CANAL, {
+    to: '5511988887777', messageType: 'document', mediaId: 'M3',
+    fileName: 'laudo.pdf', caption: 'segue',
+  })
+  checar(enviado?.document?.filename === 'laudo.pdf', 'documento leva o nome do arquivo', enviado?.document)
+  checar(enviado?.document?.caption === 'segue', 'documento também aceita legenda')
+}
+
+{
+  // Figurinha não é enviável como sticker (exige WebP com restrições próprias).
+  // Degradar para documento entrega o arquivo; recusar não entregaria nada.
+  const p = new MetaWabaProvider(supabaseCom({ phone_number_id: 'PHONE123' }))
+  let enviado: any = null
+  globalThis.fetch = (async (_u: any, init: any) => {
+    enviado = JSON.parse(init.body)
+    return new Response(JSON.stringify({ messages: [{ id: 'wamid.S' }] }))
+  }) as typeof globalThis.fetch
+
+  await p.sendMedia(CANAL, { to: '5511988887777', messageType: 'sticker', mediaId: 'M4' })
+  checar(enviado?.type === 'document', 'tipo desconhecido degrada para documento', enviado?.type)
+}
+
+{
+  // O upload é multipart e NÃO pode declarar Content-Type à mão: o boundary é
+  // gerado pelo runtime, e um header fixo produziria um boundary que não bate
+  // com o corpo — a Meta recusa com uma mensagem que não ajuda ninguém.
+  const p = new MetaWabaProvider(supabaseCom({ phone_number_id: 'PHONE123' }))
+  let init: any = null
+  let url = ''
+  globalThis.fetch = (async (u: any, i: any) => {
+    url = String(u); init = i
+    return new Response(JSON.stringify({ id: 'MEDIA_NOVO' }))
+  }) as typeof globalThis.fetch
+
+  const r = await p.uploadMedia(CANAL, {
+    bytes: new TextEncoder().encode('conteudo').buffer as ArrayBuffer,
+    mimeType: 'application/pdf',
+    fileName: 'laudo.pdf',
+  })
+
+  checar(r.externalId === 'MEDIA_NOVO', 'devolve o media ID', r)
+  checar(url.endsWith('/PHONE123/media'), 'usa o endpoint de mídia do número', url)
+  checar(init?.body instanceof FormData, 'o corpo é multipart')
+  checar(
+    !Object.keys(init?.headers ?? {}).some(h => h.toLowerCase() === 'content-type'),
+    'não define Content-Type à mão — o boundary é do runtime',
+    init?.headers,
+  )
+  checar(init?.headers?.Authorization === 'Bearer token-de-teste', 'o upload leva o token')
 }
 
 // ----------------------------------------------------------------------------

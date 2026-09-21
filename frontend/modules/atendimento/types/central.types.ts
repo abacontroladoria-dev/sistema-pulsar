@@ -198,6 +198,10 @@ export interface MessageAttachment {
   storage_path:    string | null
   external_url:    string | null
   storage_status:  StorageStatus
+  // Por que o download falhou, em texto (20260921160000). NULL quando não
+  // falhou. `storage_status: 'failed'` diz QUE falhou; este diz se adianta
+  // retentar — mídia expirada na Meta é irrecuperável, token vencido não.
+  storage_error:   string | null
   duration_secs:   number | null
   thumbnail_path:  string | null
   created_at:      string
@@ -303,9 +307,21 @@ export interface ProviderSendInput {
   body?:       string
   messageType: string
   mediaUrl?:   string
+  // O identificador da mídia JÁ carregada no provider (`uploadMedia`). É o
+  // caminho preferido do meta_waba: a Graph API aceita um media ID e não exige
+  // que o arquivo esteja acessível pela internet, o que é o que permite manter
+  // o bucket privado. `mediaUrl` continua no tipo para providers que só saibam
+  // enviar por URL.
+  mediaId?:    string
   caption?:    string
   fileName?:   string
   replyToId?:  string    // external_message_id da mensagem citada
+}
+
+// O que o provider devolve depois de receber os bytes. `externalId` é o media
+// ID — no meta_waba ele vale 30 dias, e é o que `sendMedia` consome.
+export interface ProviderUploadResult {
+  externalId: string
 }
 
 export interface ProviderSendResult {
@@ -333,6 +349,21 @@ export interface NormalizedIncomingMessage {
 export interface MessagingProvider {
   sendMessage(channel: Channel, input: ProviderSendInput): Promise<ProviderSendResult>
   sendMedia(channel: Channel, input: ProviderSendInput): Promise<ProviderSendResult>
+  // Entrega os BYTES ao provider e recebe um identificador de mídia, separado
+  // do envio de propósito: o upload é a parte cara e a que pode ser reaproveitada
+  // (o mesmo arquivo para dois contatos sobe uma vez só), enquanto `sendMedia`
+  // é barato e específico por destinatário.
+  uploadMedia(
+    channel: Channel,
+    arquivo: { bytes: ArrayBuffer; mimeType: string; fileName: string },
+  ): Promise<ProviderUploadResult>
+  // Puxa do provider uma mídia RECEBIDA, a partir do identificador que o
+  // webhook guardou. Existe porque a URL que a Graph devolve vale 5 minutos e
+  // exige o token — ninguém consegue baixá-la do navegador.
+  baixarMedia(
+    channel: Channel,
+    mediaId: string,
+  ): Promise<{ bytes: ArrayBuffer; mimeType: string; fileSize: number }>
   getStatus(channel: Channel): Promise<ChannelStatus>
   processWebhook(raw: unknown): Promise<NormalizedIncomingMessage>
 }

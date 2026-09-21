@@ -47,6 +47,11 @@ const TETO_CONTATOS = 50
 
 const MAX_CARACTERES = 4096
 
+// 16 MiB — o teto da Meta para áudio e vídeo, e o do bucket. Duplicado aqui de
+// propósito: o módulo do backend é `server-only` e importá-lo puxaria o
+// service inteiro para o bundle do cliente.
+const MAX_BYTES_ANEXO = 16 * 1024 * 1024
+
 export type InboxErro =
   // 401/403: a sessão é válida, o que falta é `central_role` em public.usuarios.
   // Merece tela própria — vazio silencioso não diz ao operador o que fazer.
@@ -126,6 +131,10 @@ export interface UseCentralInbox {
   erro:          InboxErro
   enviar:        (texto: string) => Promise<void>
   enviando:      boolean
+  // Manda um arquivo. A legenda é o texto que estiver no compositor — a mesma
+  // convenção do WhatsApp, onde o que você digitou vira legenda do anexo.
+  enviarMidia:   (arquivo: File, legenda?: string) => Promise<void>
+  enviandoMidia: boolean
   modoIa:        ModoIa | null
   definirModoIa: (modo: AIMode | null) => Promise<void>
   salvandoModo:  boolean
@@ -148,6 +157,7 @@ export function useCentralInbox(): UseCentralInbox {
   const [loadingChat, setLoadingChat]     = useState(false)
   const [erro, setErro]                   = useState<InboxErro>(null)
   const [enviando, setEnviando]           = useState(false)
+  const [enviandoMidia, setEnviandoMidia] = useState(false)
   const [modoIa, setModoIa]               = useState<ModoIa | null>(null)
   const [salvandoModo, setSalvandoModo]   = useState(false)
   const [detalhe, setDetalhe]             = useState<DetalheConversa | null>(null)
@@ -342,6 +352,54 @@ export function useCentralInbox(): UseCentralInbox {
     }
   }, [selectedId, carregarDetalhe])
 
+  const enviarMidia = useCallback(async (arquivo: File, legenda?: string) => {
+    if (!selectedId) return
+
+    // Barrado aqui ANTES de subir: descobrir o limite depois de esperar 16 MB
+    // atravessarem a rede é a pior forma de aprender que ele existe. O backend
+    // valida de novo — esta checagem é sobre a espera, não sobre segurança.
+    if (arquivo.size > MAX_BYTES_ANEXO) {
+      const mb = (arquivo.size / 1_048_576).toFixed(1).replace('.', ',')
+      throw new Error(`O arquivo tem ${mb} MB e o limite do WhatsApp é 16 MB.`)
+    }
+    if (arquivo.size === 0) {
+      throw new Error('O arquivo está vazio.')
+    }
+
+    // Mandar arquivo é responder. Ver o mesmo trecho em `enviar`.
+    naoRemarcar.current = null
+
+    const form = new FormData()
+    form.append('conversationId', selectedId)
+    form.append('arquivo', arquivo)
+    if (legenda?.trim()) form.append('legenda', legenda.trim())
+
+    setEnviandoMidia(true)
+    try {
+      // A BARRA FINAL É OBRIGATÓRIA: `trailingSlash: true` faz o POST sem ela
+      // virar 308, e o corpo multipart não sobrevive ao redirecionamento.
+      // Ver reference_trailing_slash_post_api_interna.
+      const res = await fetch('/api/central/messages/midia/', {
+        method: 'POST',
+        // Sem Content-Type: o fetch o define com o boundary do multipart.
+        body:   form,
+      })
+
+      if (!res.ok) {
+        const json = await res.json().catch(() => null)
+        throw new Error(json?.error?.message ?? `O envio falhou com ${res.status}.`)
+      }
+
+      const controller = new AbortController()
+      const { chat, modo, detalhe: d } = await carregarDetalhe(selectedId, controller.signal)
+      setActiveChat(chat)
+      setModoIa(modo)
+      setDetalhe(d)
+    } finally {
+      setEnviandoMidia(false)
+    }
+  }, [selectedId, carregarDetalhe])
+
   // ------------------------------------------------------------------------
   // Chave Maia / Atendente
 
@@ -489,6 +547,7 @@ export function useCentralInbox(): UseCentralInbox {
   return {
     conversations, activeChat, selectedId, select,
     loading, loadingChat, erro, enviar, enviando,
+    enviarMidia, enviandoMidia,
     modoIa, definirModoIa, salvandoModo,
     detalhe, recarregarDetalhe, marcarComoNaoLida,
   }

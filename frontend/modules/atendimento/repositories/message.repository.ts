@@ -211,6 +211,89 @@ export class MessageRepository {
     return { ...(data as Message), attachments: [] }
   }
 
+  // --------------------------------------------------------------------------
+  // Um anexo para uma mensagem QUE JÁ EXISTE.
+  //
+  // `createWithAttachments` serve ao caminho de ENTRADA, onde mensagem e anexo
+  // nascem juntos do mesmo webhook e a atomicidade importa (mensagem de áudio
+  // sem anexo é indistinguível de mensagem vazia). A saída é o inverso: o
+  // arquivo já está no bucket e o que falta é registrar onde — a mensagem foi
+  // criada antes, no passo que registra a intenção de enviar.
+  //
+  // Não passa pela RPC porque ela não aceita `storage_path`: foi escrita para
+  // anexo recém-chegado, que por definição ainda não foi baixado.
+  // --------------------------------------------------------------------------
+  async criarAnexo(input: CreateAttachmentInput): Promise<MessageAttachment> {
+    const { data, error } = await (this.escrita as any)
+      .schema('central')
+      .from('message_attachments')
+      .insert({
+        organization_id: input.organization_id,
+        message_id:      input.message_id,
+        file_name:       input.file_name      ?? null,
+        file_type:       input.file_type      ?? null,
+        file_size:       input.file_size      ?? null,
+        external_url:    input.external_url   ?? null,
+        storage_path:    input.storage_path   ?? null,
+        storage_status:  input.storage_status ?? 'pending',
+        duration_secs:   input.duration_secs  ?? null,
+      })
+      .select('*')
+      .single()
+
+    if (error) throw error
+    return data as MessageAttachment
+  }
+
+  // Fecha o download de uma mídia RECEBIDA: o arquivo foi para o bucket e o
+  // anexo passa a apontar para lá. Limpa `storage_error` de propósito — uma
+  // retentativa bem-sucedida não pode deixar para trás a explicação da falha
+  // anterior, que passaria a descrever um estado que não existe mais.
+  async marcarAnexoArmazenado(
+    id: string,
+    storagePath: string,
+    extras: { file_type?: string; file_size?: number } = {},
+  ): Promise<void> {
+    const { error } = await (this.escrita as any)
+      .schema('central')
+      .from('message_attachments')
+      .update({
+        storage_path:   storagePath,
+        storage_status: 'stored',
+        storage_error:  null,
+        ...(extras.file_type ? { file_type: extras.file_type } : {}),
+        ...(extras.file_size ? { file_size: extras.file_size } : {}),
+      })
+      .eq('id', id)
+
+    if (error) throw error
+  }
+
+  // O porquê da falha, em texto. `storage_status` sozinho não distingue mídia
+  // expirada na Meta (irrecuperável) de token vencido (retentável depois de
+  // corrigir) — e as duas pedem ações opostas de quem for investigar.
+  async marcarAnexoFalho(id: string, motivo: string): Promise<void> {
+    const { error } = await (this.escrita as any)
+      .schema('central')
+      .from('message_attachments')
+      .update({ storage_status: 'failed', storage_error: motivo.slice(0, 500) })
+      .eq('id', id)
+
+    if (error) throw error
+  }
+
+  async buscarAnexo(id: string): Promise<MessageAttachment | null> {
+    const { data, error } = await (this.supabase as any)
+      .schema('central')
+      .from('message_attachments')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle()
+
+    if (error) throw error
+    return (data ?? null) as MessageAttachment | null
+  }
+
   // Atualiza status de entrega: pending → sent → delivered → read.
   // Disparado por webhooks de status do provider (Evolution: MESSAGE_UPDATE).
   // Supabase Realtime emite o evento de UPDATE automaticamente → UI atualiza tick.

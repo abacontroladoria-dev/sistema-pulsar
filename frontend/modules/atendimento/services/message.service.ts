@@ -18,7 +18,13 @@ import {
   MissingContactPhoneError,
   ChannelNotFoundError,
   ProviderError,
+  AnexoNaoEncontradoError,
+  AnexoIndisponivelError,
 } from '../types/errors.types'
+import {
+  AnexoStorageRepository,
+  montarPath,
+} from '../repositories/anexo-storage.repository'
 import { mapProviderStatus } from '../utils/provider-status'
 import { isUniqueViolation } from '../utils/pg-errors'
 
@@ -51,6 +57,21 @@ export interface SendMessageInput {
   sentByAi?:          boolean
   // UUID local já resolvido pelo caller — não o external_message_id do provider
   replyToMessageId?:  string
+}
+
+export interface EnviarMidiaInput {
+  conversationId: string
+  // Os bytes já em memória. A rota é quem lê o multipart e valida o tamanho —
+  // o service recebe o arquivo pronto e não conhece HTTP.
+  bytes:          ArrayBuffer
+  mimeType:       string
+  fileName:       string
+  // 'image' | 'audio' | 'video' | 'document', já derivado do MIME pela rota.
+  messageType:    string
+  // O texto que o operador digitou junto. Vira legenda na Meta (exceto em
+  // áudio, que a Meta não aceita legendar) e `body` na nossa mensagem.
+  caption?:       string
+  sentByUserId?:  string
 }
 
 export interface ReceiveMessageInput {
@@ -93,8 +114,23 @@ export class MessageService {
     // A dependência é de mão única — mensagem conhece conversa, nunca o inverso —
     // então não há ciclo. Opcional para não quebrar composições em teste que
     // instanciam MessageService sozinho; sem ele, o envio só deixa de assumir.
-    private readonly conversas?: ConversationService
+    private readonly conversas?: ConversationService,
+    // O bucket dos anexos. Opcional pela mesma razão de `conversas`: composições
+    // de teste que só exercitam texto não precisam dele. Sem ele, os caminhos de
+    // mídia lançam dizendo o que falta, em vez de falharem com
+    // "cannot read property of undefined".
+    private readonly anexos?: AnexoStorageRepository,
   ) {}
+
+  private get storage(): AnexoStorageRepository {
+    if (!this.anexos) {
+      throw new Error(
+        'MessageService foi construído sem AnexoStorageRepository — '
+        + 'use createMessageService, que o injeta.',
+      )
+    }
+    return this.anexos
+  }
 
   // -------------------------------------------------------------------------
   // send
@@ -211,6 +247,218 @@ export class MessageService {
     }
 
     return message
+  }
+
+  // -------------------------------------------------------------------------
+  // enviarMidia
+  //
+  // Mesma coreografia do `send` — persiste, envia, confirma — e pelo mesmo
+  // motivo: se a Meta aceitar e o registro falhar, o arquivo existe no WhatsApp
+  // do responsável e não existe no histórico da clínica, sem rastro de nada.
+  //
+  // A ORDEM DOS QUATRO PASSOS
+  //
+  // 1. mensagem 'pending'  — para existir a quem culpar se o resto falhar
+  // 2. bucket              — nossa cópia, que é o que a bolha vai exibir
+  // 3. upload à Meta       — vira media ID
+  // 4. envio               — consome o media ID
+  //
+  // O bucket vem ANTES da Meta de propósito. Invertido, um upload aceito pela
+  // Meta seguido de falha no bucket entregaria ao responsável um arquivo que a
+  // clínica não tem — e é exatamente o caso em que alguém vai precisar rever o
+  // que foi mandado.
+  //
+  // O anexo só é registrado depois do envio confirmado, com o media ID em
+  // `external_url`: assim uma linha de anexo nunca aponta para algo que não
+  // chegou ao destinatário.
+  // -------------------------------------------------------------------------
+  async enviarMidia(input: EnviarMidiaInput): Promise<Message> {
+    const conversation = await this.conv.findById(input.conversationId)
+    if (!conversation) throw new ConversationNotFoundError(input.conversationId)
+    if (CLOSED_STATUSES.includes(conversation.status as typeof CLOSED_STATUSES[number])) {
+      throw new ConversationAlreadyClosedError(input.conversationId, conversation.status)
+    }
+
+    const channel = await this.resolveChannel(conversation.channel_id)
+    const contact = await this.contact.findById(conversation.contact_id)
+    if (!contact) throw new ContactNotFoundError(conversation.contact_id)
+    if (!contact.display_phone) throw new MissingContactPhoneError(conversation.contact_id)
+
+    const provider = this.factory.get(channel.provider)
+
+    // 1. A intenção, antes de qualquer rede.
+    //
+    // `body` guarda a LEGENDA, não um placeholder. O adapter já sabe esconder
+    // o corpo quando ele é só o marcador — e aqui não há marcador a escrever:
+    // o chip do anexo diz o que é.
+    const pendente = await this.msg.create({
+      organization_id:     conversation.organization_id,
+      conversation_id:     input.conversationId,
+      direction:           'outbound',
+      message_type:        input.messageType,
+      body:                input.caption,
+      provider:            channel.provider,
+      sent_by_user_id:     input.sentByUserId,
+      sent_by_ai:          false,
+      status:              'pending',
+    })
+
+    // A partir daqui toda falha marca a mensagem e repropaga: mensagem some da
+    // tela é pior que mensagem visivelmente falha.
+    const falhar = async (err: unknown): Promise<never> => {
+      await this.msg.updateStatus(pendente.id, 'failed').catch(erroStatus => {
+        console.error('[MessageService] falha ao marcar mídia como failed', {
+          messageId: pendente.id,
+          erroStatus: erroStatus instanceof Error ? erroStatus.message : String(erroStatus),
+        })
+      })
+      throw err instanceof ProviderError ? err : new ProviderError(channel.provider, err)
+    }
+
+    // 2. Nossa cópia primeiro.
+    const path = montarPath(
+      conversation.organization_id,
+      input.conversationId,
+      pendente.id,
+      input.mimeType,
+    )
+    try {
+      await this.storage.salvar(path, input.bytes, input.mimeType)
+    } catch (err) {
+      return falhar(err)
+    }
+
+    // 3 e 4. Meta: bytes viram media ID, media ID vira mensagem entregue.
+    let result
+    try {
+      const { externalId: mediaId } = await provider.uploadMedia(channel, {
+        bytes:    input.bytes,
+        mimeType: input.mimeType,
+        fileName: input.fileName,
+      })
+      result = await provider.sendMedia(channel, {
+        to:          contact.display_phone,
+        messageType: input.messageType,
+        mediaId,
+        caption:     input.caption,
+        fileName:    input.fileName,
+      })
+      // O media ID fica no anexo: vale 30 dias na Meta e é o que permite
+      // reenviar o mesmo arquivo sem subir de novo.
+      await this.msg.criarAnexo({
+        organization_id: conversation.organization_id,
+        message_id:      pendente.id,
+        file_name:       input.fileName,
+        file_type:       input.mimeType,
+        file_size:       input.bytes.byteLength,
+        external_url:    mediaId,
+        storage_path:    path,
+        // 'stored' porque o arquivo JÁ está no nosso bucket — foi de lá que ele
+        // saiu. Mídia de saída nunca passa por 'pending'.
+        storage_status:  'stored',
+      })
+    } catch (err) {
+      return falhar(err)
+    }
+
+    const message = await this.msg.confirmarEnvio(pendente.id, result.externalId, result.sentAt)
+
+    void this.audit.insert({
+      organization_id: conversation.organization_id,
+      conversation_id: input.conversationId,
+      event_type:      'message.sent',
+      performed_by:    input.sentByUserId,
+      payload:         {
+        messageId: message.id,
+        provider:  channel.provider,
+        midia:     { tipo: input.messageType, bytes: input.bytes.byteLength },
+      },
+    })
+
+    this.events.emit('message.sent', {
+      message,
+      conversation: {
+        id:              conversation.id,
+        organization_id: conversation.organization_id,
+        inbox_id:        conversation.inbox_id,
+      },
+      actorId: input.sentByUserId ?? 'system',
+    })
+
+    // Quem responde, assume — mandar um arquivo é responder.
+    if (input.sentByUserId && this.conversas) {
+      await this.conversas.assumirAoResponder(conversation, input.sentByUserId)
+    }
+
+    return message
+  }
+
+  // -------------------------------------------------------------------------
+  // urlDoAnexo
+  //
+  // O endereço temporário que a bolha consome. Duas responsabilidades, e as
+  // duas precisam estar aqui e não na rota:
+  //
+  //  • CONFERIR A ORGANIZAÇÃO. A RLS do bucket já isola por org, mas depender
+  //    só dela faria um anexo de outra organização virar um erro de storage
+  //    ilegível em vez de um 404 honesto.
+  //  • BAIXAR SOB DEMANDA. Um anexo 'pending' é mídia recebida que ninguém
+  //    trouxe da Meta ainda. Em vez de mostrar "indisponível" e esperar um
+  //    worker, busca na hora: quem abriu a conversa está olhando para ela.
+  // -------------------------------------------------------------------------
+  async urlDoAnexo(anexoId: string, orgId: string): Promise<string> {
+    const anexo = await this.msg.buscarAnexo(anexoId)
+    if (!anexo || anexo.organization_id !== orgId) {
+      throw new AnexoNaoEncontradoError(anexoId)
+    }
+
+    if (anexo.storage_status === 'stored' && anexo.storage_path) {
+      return this.storage.urlAssinada(anexo.storage_path)
+    }
+
+    // Não está no bucket. `external_url` guarda o media ID da Meta — que vale
+    // 7 dias para mídia recebida, contra os 5 MINUTOS da URL que a Graph
+    // devolve. É por isso que o webhook guarda o id e não a URL.
+    if (!anexo.external_url) {
+      throw new AnexoIndisponivelError(anexoId, 'o anexo não tem identificador de mídia')
+    }
+
+    const mensagem = await this.msg.findById(anexo.message_id)
+    if (!mensagem) throw new AnexoNaoEncontradoError(anexoId)
+
+    const conversation = await this.conv.findById(mensagem.conversation_id)
+    if (!conversation) throw new AnexoNaoEncontradoError(anexoId)
+
+    const channel  = await this.resolveChannel(conversation.channel_id)
+    const provider = this.factory.get(channel.provider)
+
+    let baixado
+    try {
+      baixado = await provider.baixarMedia(channel, anexo.external_url)
+    } catch (err) {
+      // O motivo fica gravado: mídia expirada na Meta é irrecuperável e não
+      // adianta a pessoa clicar de novo; token vencido conserta-se e a próxima
+      // tentativa funciona. Sem isto, os dois são "não carregou".
+      const motivo = err instanceof Error ? err.message : String(err)
+      await this.msg.marcarAnexoFalho(anexo.id, motivo).catch(() => {})
+      throw new AnexoIndisponivelError(anexoId, motivo)
+    }
+
+    const path = montarPath(
+      orgId,
+      conversation.id,
+      mensagem.id,
+      baixado.mimeType,
+    )
+    await this.storage.salvar(path, baixado.bytes, baixado.mimeType)
+    // O file_type da Graph é mais confiável que o que o webhook capturou, e o
+    // tamanho só se conhece depois de baixar.
+    await this.msg.marcarAnexoArmazenado(anexo.id, path, {
+      file_type: baixado.mimeType,
+      file_size: baixado.fileSize,
+    })
+
+    return this.storage.urlAssinada(path)
   }
 
   // -------------------------------------------------------------------------

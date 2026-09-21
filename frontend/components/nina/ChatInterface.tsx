@@ -2,8 +2,9 @@
 
 import React, { useState, useRef, useEffect } from 'react'
 import {
-  Search, MessageSquare, Loader2, Info, Bot, User, Pause, Send, Check, CheckCheck, ShieldAlert, AlertCircle, WifiOff, MailX
+  Search, MessageSquare, Loader2, Info, Bot, User, Pause, Send, Check, CheckCheck, ShieldAlert, AlertCircle, WifiOff, MailX, Paperclip
 } from 'lucide-react'
+
 import { ConversationStatus, MessageDirection } from '@/types/nina'
 import { useCentralInbox, type ModoIa } from '@/hooks/nina/useCentralInbox'
 import { usePainelDetalhamento } from '@/hooks/nina/usePainelDetalhamento'
@@ -16,12 +17,25 @@ import { ModalDesignarTarefa } from './detalhamento/ModalDesignarTarefa'
 import { Button } from './Button'
 import { toast } from 'sonner'
 
+// O que o seletor de arquivo do sistema mostra. Precisa concordar com
+// TIPOS_ACEITOS da rota /api/central/messages/midia e com `allowed_mime_types`
+// do bucket (20260921160000) — um tipo oferecido aqui e recusado lá viraria uma
+// mensagem 'failed' na conversa depois de o arquivo já ter subido.
+const TIPOS_ACEITOS = [
+  'image/jpeg', 'image/png', 'image/webp',
+  'audio/aac', 'audio/amr', 'audio/mpeg', 'audio/mp4', 'audio/ogg',
+  'video/mp4', 'video/3gpp',
+  'application/pdf', 'text/plain', 'text/csv',
+  '.doc', '.docx', '.xls', '.xlsx',
+].join(',')
+
 const ChatInterface: React.FC = () => {
   const {
     conversations, activeChat, selectedId, select,
     loading, erro, enviar, enviando,
     modoIa, definirModoIa, salvandoModo,
     detalhe, recarregarDetalhe, marcarComoNaoLida,
+    enviarMidia, enviandoMidia,
   } = useCentralInbox()
 
   // Fontes do painel que não vêm no detalhe da conversa (catálogo de tags,
@@ -36,6 +50,12 @@ const ChatInterface: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef    = useRef<HTMLTextAreaElement>(null)
+  const arquivoRef     = useRef<HTMLInputElement>(null)
+
+  // Texto e arquivo disputam o mesmo compositor: o texto digitado vira legenda
+  // do anexo, então mandar os dois ao mesmo tempo significaria mandar a legenda
+  // duas vezes. Um estado só para os dois botões evita essa corrida.
+  const ocupado = enviando || enviandoMidia
 
   const setSelectedChatId = select
   const selectedChatId    = selectedId
@@ -246,7 +266,7 @@ const ChatInterface: React.FC = () => {
 
   const handleSendMessage = async (e?: React.FormEvent) => {
     e?.preventDefault()
-    if (!inputText.trim() || !activeChat || enviando) return
+    if (!inputText.trim() || !activeChat || ocupado) return
 
     const texto = inputText
     try {
@@ -283,6 +303,25 @@ const ChatInterface: React.FC = () => {
       const pos = inicio + emoji.length
       campo.setSelectionRange(pos, pos)
     })
+  }
+
+  // O texto que estiver no compositor vira LEGENDA do anexo — a convenção do
+  // WhatsApp, e a que o operador já espera. Limpa junto com o envio.
+  const handleEscolherArquivo = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const arquivo = e.target.files?.[0]
+    // Zera o input ANTES de qualquer await: sem isso, escolher o mesmo arquivo
+    // duas vezes seguidas não dispara `change` na segunda, e o botão parece
+    // quebrado justamente quando alguém reenvia algo que falhou.
+    e.target.value = ''
+    if (!arquivo || !activeChat) return
+
+    const legenda = inputText
+    try {
+      await enviarMidia(arquivo, legenda)
+      setInputText('')
+    } catch (err) {
+      toast.error((err as Error).message)
+    }
   }
 
   const handleMarcarNaoLida = async () => {
@@ -568,7 +607,32 @@ const ChatInterface: React.FC = () => {
                 {/* Fora do campo, e não dentro dele: o painel abre para cima a
                     partir daqui, e ancorá-lo no textarea o faria saltar de
                     posição conforme o campo cresce com o texto. */}
-                <SeletorEmoji aoEscolher={inserirEmoji} desabilitado={enviando} />
+                <SeletorEmoji aoEscolher={inserirEmoji} desabilitado={ocupado} />
+
+                {/* O input fica escondido e o botão o aciona: o <input type=file>
+                    nativo não é estilizável e destoaria da barra inteira.
+                    O `accept` filtra o seletor do sistema pelos tipos que a Meta
+                    aceita — a rota valida de novo, mas ver só o que serve evita
+                    a frustração de escolher um .zip e levar erro depois. */}
+                <input
+                  ref={arquivoRef}
+                  type="file"
+                  className="hidden"
+                  accept={TIPOS_ACEITOS}
+                  onChange={handleEscolherArquivo}
+                />
+                <button
+                  type="button"
+                  onClick={() => arquivoRef.current?.click()}
+                  disabled={ocupado}
+                  title="Anexar arquivo"
+                  aria-label="Anexar arquivo"
+                  className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {enviandoMidia
+                    ? <Loader2 className="w-5 h-5 animate-spin" />
+                    : <Paperclip className="w-5 h-5" />}
+                </button>
 
                 <div className="flex-1 bg-background rounded-2xl border border-border focus-within:ring-2 focus-within:ring-cyan-500/30 focus-within:border-cyan-500/50 transition-all shadow-inner">
                   <textarea
@@ -589,9 +653,9 @@ const ChatInterface: React.FC = () => {
 
                 <Button
                   type="submit"
-                  disabled={!inputText.trim() || enviando}
+                  disabled={!inputText.trim() || ocupado}
                   className={`rounded-full w-12 h-12 p-0 transition-all ${
-                    inputText.trim() && !enviando
+                    inputText.trim() && !ocupado
                       ? 'shadow-lg shadow-cyan-500/20 hover:scale-105 active:scale-95'
                       : 'opacity-50 cursor-not-allowed'
                   }`}

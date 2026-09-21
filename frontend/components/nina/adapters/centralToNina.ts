@@ -54,26 +54,24 @@ export interface NinaMessage extends UIMessage {
 // ----------------------------------------------------------------------------
 // Anexo, do ponto de vista da bolha
 //
-// `central.message_attachments` guarda DOIS endereços possíveis e nenhum deles
-// é utilizável hoje:
+// `central.message_attachments` guarda DOIS endereços, e nenhum deles pode ir
+// direto para a tela:
 //
-//   • `storage_path` — o destino final, no Storage. Todo anexo em produção está
-//     com `storage_status: 'pending'`, porque o worker que baixa a mídia da
-//     Meta nunca foi construído (não existe bucket para a Central).
-//   • `external_url` — a URL temporária da Meta. Expira em 24h E exige o token
-//     da WABA no header, então colocá-la num <img src> não renderiza nada: o
-//     navegador faz a requisição sem o Authorization e leva 401.
+//   • `storage_path` — o arquivo no nosso bucket. O bucket é PRIVADO, então o
+//     path não serve de src: quem exibe é uma URL assinada emitida pela rota
+//     /api/central/anexos/[id] depois de conferir a sessão. Mandar o path ao
+//     cliente também contaria, pelo padrão dele, quantas conversas a
+//     organização tem e quando aconteceram.
+//   • `external_url` — apesar do nome, guarda o MEDIA ID da Meta, não uma URL.
+//     É deliberado: o id vale 7 dias para mídia recebida, enquanto a URL que a
+//     Graph devolve em troca dele expira em 5 MINUTOS e exige o token da WABA
+//     no header. Guardar a URL teria perdido toda mídia não aberta no mesmo
+//     minuto.
 //
-// Ou seja, não há como exibir a mídia recebida enquanto o pipeline de download
-// não existir. O que dá para fazer AGORA, e é o que este tipo carrega, é parar
-// de mentir: em vez do placeholder `[imagem]` que o webhook escreve no `body`,
-// a bolha diz o que chegou (um áudio de 12s, um PDF chamado laudo.pdf) e que
-// ele ainda não está disponível. Saber que existe um laudo é acionável — o
-// atendente pede de novo, ou abre o WhatsApp. `[imagem]` não é.
-//
-// `disponivel` é o fio que a fatia do bucket vai religar: quando
-// `storage_status` virar 'stored', ele passa a true e a bolha troca o chip pela
-// mídia.
+// Por isso o anexo aqui é uma REFERÊNCIA (`id`) com o que dá para dizer sem
+// baixar nada — o tipo, o nome, o tamanho. O endereço é resolvido no clique,
+// em ChipAnexo: abrir uma conversa com trinta áudios não pode disparar trinta
+// downloads dos quais o atendente vai ouvir um.
 // ----------------------------------------------------------------------------
 export interface AnexoUI {
   id:         string
@@ -143,9 +141,10 @@ export function toAnexoUI(a: MessageAttachment, messageType: string): AnexoUI {
     rotulo:  rotuloAnexo(a, messageType),
     nome:    a.file_name?.trim() || null,
     detalhe: detalheAnexo(a),
-    // Só 'stored' significa que o arquivo é nosso e pode ser servido. 'pending'
-    // e 'failed' são ambos indisponíveis, por motivos diferentes que a bolha
-    // não precisa distinguir — em nenhum dos dois há o que mostrar.
+    // O arquivo JÁ é nosso? 'stored' é o único estado em que ele está no
+    // bucket. 'pending' e 'failed' não impedem abrir — o primeiro clique busca
+    // na Meta e guarda —, mas mudam o que a bolha promete: o primeiro acesso
+    // paga uma ida à Graph, os seguintes leem do bucket.
     disponivel: a.storage_status === 'stored',
   }
 }

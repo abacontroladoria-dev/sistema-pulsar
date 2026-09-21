@@ -18,6 +18,8 @@ import {
   TtsProviderError,
   TagDesconhecidaError,
   TaskNotFoundError,
+  AnexoNaoEncontradoError,
+  AnexoIndisponivelError,
 } from '@/modules/atendimento/types/errors.types'
 import { JanelaAtendimentoFechadaError } from '@/modules/atendimento/providers/meta-waba.provider'
 import {
@@ -71,6 +73,10 @@ export function mapCentralError(err: unknown): NextResponse {
   if (err instanceof ChannelNotFoundError)        return notFound(err.code, err.message)
   if (err instanceof AppointmentNotFoundError)    return notFound(err.code, err.message)
   if (err instanceof TaskNotFoundError)           return notFound(err.code, err.message)
+  if (err instanceof AnexoNaoEncontradoError)     return notFound(err.code, err.message)
+  // 422 e não 404: o anexo EXISTE, o arquivo é que não veio. A mensagem carrega
+  // o motivo, que é o que diz se adianta tentar de novo.
+  if (err instanceof AnexoIndisponivelError)      return unprocessable(err.code, err.message)
   if (err instanceof ConversationAlreadyClosedError) return conflict(err.code, err.message)
   // 409: a vaga existia e foi tomada — retentar com outro horário resolve.
   if (err instanceof SlotAlreadyBookedError)      return conflict(err.code, err.message)

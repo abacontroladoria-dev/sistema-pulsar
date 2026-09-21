@@ -18,6 +18,7 @@ import { TagDefinitionRepository }    from '../repositories/tag-definition.repos
 import { CentralUserRepository }      from '../repositories/central-user.repository'
 import { TaskRepository }             from '../repositories/task.repository'
 import { SentimentoRepository }       from '../repositories/sentimento.repository'
+import { AnexoStorageRepository }     from '../repositories/anexo-storage.repository'
 
 import { ConversationService }  from './conversation.service'
 import { MessageService }       from './message.service'
@@ -124,7 +125,13 @@ export function createMessageService(userClient: SupabaseClient): MessageService
     // Para o envio assumir a conversa em nome de quem respondeu. Recebe o MESMO
     // repositório: dois clientes diferentes para a mesma conversa poderiam ver
     // estados distintos dentro de uma única chamada de send().
-    new ConversationService(convRepo, auditRepo, caEventBus)
+    new ConversationService(convRepo, auditRepo, caEventBus),
+    // O bucket dos anexos vai com o client do USUÁRIO: as policies de
+    // storage.objects isolam por `central.current_organization_id()`, que só
+    // existe quando há sessão. Com service role elas seriam contornadas, e o
+    // isolamento por organização passaria a depender exclusivamente do path
+    // que o nosso código monta — uma proteção a menos, de graça.
+    new AnexoStorageRepository(userClient),
   )
 }
 
@@ -157,7 +164,14 @@ export function createSystemServices(): {
       // Passado por completude, mas o worker nunca aciona a assunção: ele envia
       // com `sentByAi: true` e sem `sentByUserId`, e send() exige os dois
       // invertidos. É a Maia respondendo — ela não assume conversa nenhuma.
-      conversationService
+      conversationService,
+      // Com service role: aqui não há sessão de usuário, então
+      // `central.current_organization_id()` é nulo e as policies do bucket
+      // barrariam tudo. O isolamento por organização continua garantido pelo
+      // path, que o service monta a partir da conversa — nunca de entrada do
+      // cliente. É o mesmo raciocínio que já vale para `central.messages` neste
+      // caminho.
+      new AnexoStorageRepository(supabaseService),
     ),
   }
 }

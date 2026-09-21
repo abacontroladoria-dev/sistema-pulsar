@@ -8,9 +8,10 @@ import type {
   ChannelStatus,
   ProviderSendInput,
   ProviderSendResult,
+  ProviderUploadResult,
   NormalizedIncomingMessage,
 } from '../types/central.types'
-import { ProviderError, ProviderNotImplementedError } from '../types/errors.types'
+import { ProviderError } from '../types/errors.types'
 import { normalizarMensagemMeta } from './meta-waba.normalizar'
 
 // ============================================================================
@@ -47,6 +48,11 @@ const BASE_URL = `https://graph.facebook.com/${GRAPH_VERSION}`
 // 20s. O envio está no caminho de alguém esperando resposta no WhatsApp; se a
 // Meta não respondeu em 20s, o worker prefere devolver o item à fila.
 const TIMEOUT_MS = 20_000
+
+// Mídia é outra ordem de grandeza: 16 MiB subindo por uma rota Next não cabem
+// em 20s numa conexão de recepção. Ninguém está esperando em tempo real por um
+// upload como se espera por uma resposta de texto.
+const TIMEOUT_UPLOAD_MS = 90_000
 
 // Código da Meta para "fora da janela de 24h". Documentado porque o número, e
 // não a mensagem, é o que se pode comparar com segurança.
@@ -123,10 +129,192 @@ export class MetaWabaProvider implements MessagingProvider {
     }
   }
 
-  // Mídia fica para depois desta entrega — é o item 3 da lista de corte. Lança
-  // em vez de degradar em silêncio: o caller precisa saber que não foi enviado.
-  async sendMedia(): Promise<ProviderSendResult> {
-    throw new ProviderNotImplementedError('meta_waba (sendMedia)')
+  // --------------------------------------------------------------------------
+  // Mídia
+  //
+  // POR QUE POR MEDIA ID, E NÃO POR URL
+  //
+  // A Graph API aceita as duas formas: `{"image":{"link":"https://..."}}` ou
+  // `{"image":{"id":"<media-id>"}}`. A primeira exige que o arquivo esteja
+  // acessível pela internet SEM autenticação, porque quem busca é a Meta.
+  //
+  // Para esta clínica isso significaria bucket público com áudio de mãe
+  // descrevendo crise do filho e laudo neuropediátrico servidos a quem souber
+  // o path. O media ID evita isso inteiro: nós entregamos os bytes, a Meta
+  // devolve um identificador, e o arquivo nunca precisa ser alcançável de fora.
+  //
+  // É por isso que o desenho do repo de referência (que sobe para bucket
+  // público e manda o link) não foi copiado.
+  // --------------------------------------------------------------------------
+
+  async sendMedia(
+    channel: Channel,
+    input: ProviderSendInput,
+  ): Promise<ProviderSendResult> {
+    if (!input.mediaId) {
+      throw new ProviderError(
+        'meta_waba',
+        new Error('sendMedia exige mediaId — chame uploadMedia antes.'),
+      )
+    }
+
+    const phoneNumberId = await this.resolverPhoneNumberId(channel)
+    const tipo = tipoDeMidiaMeta(input.messageType)
+
+    // A Meta aceita legenda em imagem, vídeo e documento; em ÁUDIO não. Mandar
+    // `caption` num áudio faz a chamada inteira ser recusada — por isso o campo
+    // é montado por tipo, e não espalhado em todos.
+    const midia: Record<string, unknown> = { id: input.mediaId }
+    if (tipo !== 'audio' && input.caption) midia.caption = input.caption
+    // `filename` só existe em documento, e é o que o WhatsApp mostra na bolha.
+    // Sem ele o destinatário recebe um nome gerado pela Meta e não sabe o que é.
+    if (tipo === 'document' && input.fileName) midia.filename = input.fileName
+
+    const corpo = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: soDigitos(input.to),
+      type: tipo,
+      [tipo]: midia,
+      ...(input.replyToId ? { context: { message_id: input.replyToId } } : {}),
+    }
+
+    const json = await this.chamar(`/${phoneNumberId}/messages`, corpo, input.to)
+
+    const externalId = json?.messages?.[0]?.id
+    if (!externalId) {
+      throw new ProviderError(
+        'meta_waba',
+        new Error(`resposta 200 sem messages[0].id: ${JSON.stringify(json).slice(0, 200)}`),
+      )
+    }
+
+    return { externalId, status: 'sent', sentAt: new Date().toISOString() }
+  }
+
+  // Entrega os bytes e recebe o media ID (válido por 30 dias na Meta).
+  //
+  // Não passa por `chamar()`: aquele método serializa JSON e fixa o
+  // Content-Type. Aqui o corpo é multipart, e o boundary precisa ser gerado
+  // pelo runtime — definir o header à mão produz um boundary que não bate com
+  // o corpo e a Meta recusa com uma mensagem que não ajuda ninguém.
+  async uploadMedia(
+    channel: Channel,
+    arquivo: { bytes: ArrayBuffer; mimeType: string; fileName: string },
+  ): Promise<ProviderUploadResult> {
+    const phoneNumberId = await this.resolverPhoneNumberId(channel)
+    const token = this.token()
+
+    const form = new FormData()
+    form.append('messaging_product', 'whatsapp')
+    form.append('type', arquivo.mimeType)
+    form.append(
+      'file',
+      new Blob([arquivo.bytes], { type: arquivo.mimeType }),
+      arquivo.fileName,
+    )
+
+    let resposta: Response
+    try {
+      resposta = await fetch(`${BASE_URL}/${phoneNumberId}/media`, {
+        method: 'POST',
+        // Sem Content-Type: o fetch o define com o boundary correto.
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+        signal: AbortSignal.timeout(TIMEOUT_UPLOAD_MS),
+        cache: 'no-store',
+      })
+    } catch (err) {
+      if (err instanceof Error && err.name === 'TimeoutError') {
+        throw new ProviderError(
+          'meta_waba',
+          new Error(`o upload não completou em ${TIMEOUT_UPLOAD_MS}ms`),
+        )
+      }
+      throw new ProviderError('meta_waba', err)
+    }
+
+    const texto = await resposta.text()
+    if (!resposta.ok) {
+      throw new ProviderError(
+        'meta_waba',
+        new Error(`HTTP ${resposta.status} no upload: ${extrairErroMeta(texto).mensagem}`),
+      )
+    }
+
+    const id = (JSON.parse(texto) as { id?: string }).id
+    if (!id) {
+      throw new ProviderError(
+        'meta_waba',
+        new Error(`upload aceito mas sem id: ${texto.slice(0, 200)}`),
+      )
+    }
+    return { externalId: id }
+  }
+
+  // Duas idas: o id vira URL, a URL vira bytes. As duas exigem o token.
+  //
+  // A URL intermediária vale 5 MINUTOS, o que é a razão de este método existir
+  // em vez de a gente guardar a URL no banco e deixar o navegador buscar: ela
+  // expiraria antes de alguém abrir a conversa, e nem com ela válida o
+  // navegador conseguiria — o download exige o Authorization.
+  async baixarMedia(
+    channel: Channel,
+    mediaId: string,
+  ): Promise<{ bytes: ArrayBuffer; mimeType: string; fileSize: number }> {
+    const token = this.token()
+
+    // O phone_number_id não é obrigatório aqui, mas a Meta o usa para
+    // desambiguar quando o app atende vários números.
+    const phoneNumberId = await this.resolverPhoneNumberId(channel)
+    const meta = await this.chamar(
+      `/${mediaId}?phone_number_id=${encodeURIComponent(phoneNumberId)}`,
+      null,
+      '',
+    )
+
+    const url = meta?.url
+    if (typeof url !== 'string' || !url) {
+      throw new ProviderError(
+        'meta_waba',
+        new Error(`mídia ${mediaId} sem url na resposta — provavelmente expirou.`),
+      )
+    }
+
+    let resposta: Response
+    try {
+      resposta = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(TIMEOUT_UPLOAD_MS),
+        cache: 'no-store',
+      })
+    } catch (err) {
+      if (err instanceof Error && err.name === 'TimeoutError') {
+        throw new ProviderError(
+          'meta_waba',
+          new Error(`o download não completou em ${TIMEOUT_UPLOAD_MS}ms`),
+        )
+      }
+      throw new ProviderError('meta_waba', err)
+    }
+
+    if (!resposta.ok) {
+      throw new ProviderError(
+        'meta_waba',
+        new Error(`HTTP ${resposta.status} ao baixar a mídia ${mediaId}`),
+      )
+    }
+
+    const bytes = await resposta.arrayBuffer()
+    return {
+      bytes,
+      // O mime_type da Graph é mais confiável que o Content-Type do CDN, que
+      // às vezes volta como application/octet-stream.
+      mimeType: typeof meta?.mime_type === 'string'
+        ? meta.mime_type
+        : (resposta.headers.get('content-type') ?? 'application/octet-stream'),
+      fileSize: bytes.byteLength,
+    }
   }
 
   // Uma leitura do número na Graph API. Serve para /api/central/health dizer se
@@ -186,13 +374,10 @@ export class MetaWabaProvider implements MessagingProvider {
     return phoneNumberId
   }
 
-  // Uma ida à Graph API. Mesma forma de voz/elevenlabs.ts: timeout explícito,
-  // sem cache, erro tipado, e a classificação vinda do CORPO e não do status.
-  private async chamar(
-    caminho: string,
-    corpo: unknown | null,
-    destino: string,
-  ): Promise<Record<string, any>> {
+  // O token, ou um erro que diz onde defini-lo. Extraído de `chamar` porque o
+  // upload e o download da mídia não passam por lá — o primeiro é multipart, o
+  // segundo busca um CDN fora da Graph.
+  private token(): string {
     const token = (process.env.META_WABA_TOKEN ?? '').trim()
     if (!token) {
       throw new ProviderError(
@@ -203,6 +388,17 @@ export class MetaWabaProvider implements MessagingProvider {
         ),
       )
     }
+    return token
+  }
+
+  // Uma ida à Graph API. Mesma forma de voz/elevenlabs.ts: timeout explícito,
+  // sem cache, erro tipado, e a classificação vinda do CORPO e não do status.
+  private async chamar(
+    caminho: string,
+    corpo: unknown | null,
+    destino: string,
+  ): Promise<Record<string, any>> {
+    const token = this.token()
 
     let resposta: Response
     try {
@@ -282,6 +478,21 @@ function extrairErroMeta(corpo: string): { codigo: number | null; mensagem: stri
     // não é JSON — cai no recorte
   }
   return { codigo: null, mensagem: corpo.slice(0, 300) }
+}
+
+// O `message_type` do nosso schema para o campo que a Graph API espera.
+//
+// São quase iguais, e a exceção é a que importa: 'sticker' existe no nosso
+// enum (o webhook o normaliza) mas enviar figurinha exige WebP com restrições
+// próprias que não vamos produzir. Cai em 'document', que sempre funciona —
+// degradar para um tipo que entrega é melhor que recusar o envio.
+function tipoDeMidiaMeta(messageType: string): 'image' | 'audio' | 'video' | 'document' {
+  switch (messageType) {
+    case 'image': return 'image'
+    case 'audio': return 'audio'
+    case 'video': return 'video'
+    default:      return 'document'
+  }
 }
 
 // A Meta rejeita `+`, espaço e parêntese no campo `to`. `display_phone` do

@@ -48,7 +48,8 @@ function anexo(over: Partial<MessageAttachment> = {}): MessageAttachment {
     id: 'a1', organization_id: 'o1', message_id: 'm1',
     file_name: null, file_type: null, file_size: null,
     storage_path: null, external_url: 'https://lookaside.fb/x',
-    storage_status: 'pending', duration_secs: null, thumbnail_path: null,
+    storage_status: 'pending', storage_error: null,
+    duration_secs: null, thumbnail_path: null,
     created_at: '2026-09-01T13:32:42Z', updated_at: '2026-09-01T13:32:42Z',
     ...over,
   }

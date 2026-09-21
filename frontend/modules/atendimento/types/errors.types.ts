@@ -78,6 +78,28 @@ export class ContactNotFoundError extends CentralError {
   }
 }
 
+// O anexo não existe, ou é de outra organização. Os dois casos colapsam num
+// 404 de propósito: distinguir "não existe" de "não é seu" confirmaria a
+// existência de um anexo alheio a quem tentou adivinhar o id.
+export class AnexoNaoEncontradoError extends CentralError {
+  constructor(anexoId: string) {
+    super(`Anexo não encontrado: ${anexoId}`, 'ANEXO_NAO_ENCONTRADO', { anexoId })
+  }
+}
+
+// O anexo existe mas o arquivo não pôde ser obtido. Separado do 404 porque a
+// ação de quem lê é outra: aqui a conversa TEM o arquivo, ele é que não veio —
+// e o motivo (mídia expirada na Meta, token vencido) diz se adianta insistir.
+export class AnexoIndisponivelError extends CentralError {
+  constructor(anexoId: string, motivo: string) {
+    super(
+      `O arquivo não pôde ser carregado: ${motivo}`,
+      'ANEXO_INDISPONIVEL',
+      { anexoId, motivo },
+    )
+  }
+}
+
 export class MissingContactPhoneError extends CentralError {
   constructor(contactId: string) {
     super(
