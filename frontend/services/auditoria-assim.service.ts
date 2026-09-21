@@ -217,10 +217,14 @@ export async function buscarVinculosDosBlocos(
     .select(COLUNAS_VINCULO)
     .in('bloco_id', blocoIds)
     .is('desfeito_em', null)
-    // Só 'vinculo' cobre sessão. 'sem_sessao' é a guia extra que o operador
-    // descartou, e a constraint da tabela garante que ela nem tem bloco_id —
-    // o filtro é redundante de propósito, para o dia em que a constraint mudar.
-    .eq('tipo', 'vinculo')
+    // 'sem_sessao' fica fora: é a guia extra que o operador descartou, e a
+    // constraint da tabela garante que ela nem tem bloco_id — o filtro é
+    // redundante de propósito, para o dia em que a constraint mudar.
+    //
+    // 'falta_terapeuta' entra, apontando para o bloco SINTÉTICO de uma falta.
+    // Ele não afirma cobertura (`situacaoComVinculo` devolve a falta intacta):
+    // serve para o slot dizer qual guia o autorizou.
+    .in('tipo', ['vinculo', 'falta_terapeuta'])
 
   if (error) {
     console.error('Erro ao buscar vínculos da auditoria:', error.message, error.details)

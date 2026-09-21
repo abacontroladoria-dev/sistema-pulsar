@@ -295,13 +295,29 @@ function SeloDoPar({
  * cartão. A candidata já coberta veste slate e some do primeiro plano sem sair
  * da tela, porque é justamente ela que revela a guia extra.
  */
-function Tarja({ papel, distancia }: { papel: PapelNaSelecao; distancia: number | null }) {
+function Tarja({
+  papel,
+  distancia,
+  ehFalta,
+}: {
+  papel: PapelNaSelecao
+  distancia: number | null
+  /**
+   * O alvo é uma FALTA, e não uma sessão. Diz "Esta falta", porque "Esta sessão"
+   * prometeria um atendimento que não houve — a falta continua falta, e o que se
+   * registra ali é de onde veio a autorização, não uma cobertura.
+   *
+   * Um flag e não um quinto `PapelNaSelecao`: papel é o estado do cartão DENTRO
+   * da escolha, não a espécie do cartão. As duas perguntas são independentes.
+   */
+  ehFalta?: boolean
+}) {
   if (papel === 'inerte') return null
 
   const conteudo: Record<'foco' | 'alvo' | 'coberta', { Icone: LucideIcon; texto: string }> = {
     foco: { Icone: Link2, texto: 'Esta guia' },
-    alvo: { Icone: Link2, texto: 'Esta sessão' },
-    coberta: { Icone: CheckCircle2, texto: 'já coberta' },
+    alvo: { Icone: Link2, texto: ehFalta ? 'Esta falta' : 'Esta sessão' },
+    coberta: { Icone: CheckCircle2, texto: ehFalta ? 'já autorizada' : 'já coberta' },
   }
   const { Icone, texto } = conteudo[papel]
   const alvo = papel === 'alvo'
@@ -594,6 +610,7 @@ const CartaoAtendimento = memo(function CartaoAtendimento({
   papel,
   atenuar,
   distanciaSelecao,
+  ehFaltaNaSelecao,
 }: {
   cartao: CartaoGrade
   codigosGlosa: Map<string, string>
@@ -612,6 +629,12 @@ const CartaoAtendimento = memo(function CartaoAtendimento({
    */
   atenuar?: boolean
   distanciaSelecao?: number | null
+  /**
+   * O alvo da escolha é uma falta de terapeuta. Muda só o vocabulário da tarja e
+   * do `title` — a cor, a silhueta e o estado do cartão continuam sendo os da
+   * falta, que é exatamente o ponto: vincular não a transforma em sessão.
+   */
+  ehFaltaNaSelecao?: boolean
 }) {
   // Duas coisas diferentes, e por isso duas variáveis. No modo de vínculo o
   // ÚNICO cartão que aceita clique é o alvo — abrir a gaveta de detalhe no meio
@@ -628,13 +651,20 @@ const CartaoAtendimento = memo(function CartaoAtendimento({
   // Uma tarja de cada vez, e a da seleção vence: enquanto se escolhe a sessão de
   // uma guia, o rodapé do cartão responde à pergunta do MODO ("esta é a que você
   // pode clicar"), não ao histórico dele.
-  const tarjaSelecao = papel ? <Tarja papel={papel} distancia={distanciaSelecao ?? null} /> : null
+  const tarjaSelecao = papel ? (
+    <Tarja papel={papel} distancia={distanciaSelecao ?? null} ehFalta={ehFaltaNaSelecao} />
+  ) : null
   // No modo de vínculo o `title` responde à pergunta do modo, não à do cartão.
   const tituloSelecao =
     papel === 'alvo'
-      ? (distanciaPorExtenso(distanciaSelecao ?? null) ?? 'vincular a guia a esta sessão')
+      ? (distanciaPorExtenso(distanciaSelecao ?? null) ??
+        (ehFaltaNaSelecao
+          ? 'registrar que esta guia foi a autorização desta falta'
+          : 'vincular a guia a esta sessão'))
       : papel === 'coberta'
-        ? 'esta sessão já está coberta — não pode receber a guia'
+        ? ehFaltaNaSelecao
+          ? 'esta falta já tem uma autorização registrada'
+          : 'esta sessão já está coberta — não pode receber a guia'
         : papel === 'foco'
           ? 'a guia que está sendo vinculada'
           : papel === 'inerte'

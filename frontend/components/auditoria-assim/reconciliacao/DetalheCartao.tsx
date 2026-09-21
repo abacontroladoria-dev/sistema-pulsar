@@ -356,10 +356,34 @@ export default function DetalheCartao({
           sessão vinculada —, e o que muda é qual dos dois lados já está na tela.
           Na guia falta dizer a SESSÃO; na sessão falta dizer a GUIA. */}
       {vinculo && (
-        <Secao titulo={vinculo.tipo === 'vinculo' ? 'Vínculo' : 'Triagem'}>
+        <Secao
+          titulo={
+            vinculo.tipo === 'vinculo'
+              ? 'Vínculo'
+              : vinculo.tipo === 'falta_terapeuta'
+                ? 'Autorização da falta'
+                : 'Triagem'
+          }
+        >
           {daSessao ? (
-            <Campo rotulo="Coberta pela guia">
+            <Campo rotulo={vinculo.tipo === 'falta_terapeuta' ? 'Autorizada pela guia' : 'Coberta pela guia'}>
               <span className="font-mono tabular-nums">{vinculo.guia}</span>
+              {vinculo.tipo === 'falta_terapeuta' && (
+                // A falta continua falta, e a gaveta é onde alguém vem
+                // justamente para entender o que aquele selo significa.
+                <span className="mt-0.5 block text-[11px] font-normal text-slate-500">
+                  a falta continua registrada como falta — a guia só diz de onde veio a autorização
+                </span>
+              )}
+            </Campo>
+          ) : vinculo.tipo === 'falta_terapeuta' ? (
+            <Campo rotulo="Autorizou a falta de">
+              {/* `sessaoDoBloco` devolve nulo aqui de propósito (o bloco da falta
+                  tem cinco pedaços e outra ordem). O dia e a hora vêm do próprio
+                  cartão da guia quando a falta não está na semana carregada. */}
+              <span className="font-normal text-slate-500">
+                uma falta de terapeuta — nenhuma sessão foi coberta
+              </span>
             </Campo>
           ) : vinculo.tipo === 'vinculo' ? (
             <Campo rotulo="Cobre a sessão de">

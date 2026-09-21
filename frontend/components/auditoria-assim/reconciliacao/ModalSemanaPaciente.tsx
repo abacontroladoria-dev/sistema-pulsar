@@ -201,7 +201,7 @@ function BarraVinculo({
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
               <span className="font-semibold text-brand-fg">
                 {nesta > 0
-                  ? 'Clique na sessão marcada que ela cobre.'
+                  ? 'Clique na sessão — ou na falta de terapeuta — que esta guia autorizou.'
                   : 'Nenhuma candidata nesta semana.'}
               </span>
               {outras.map((s) => (

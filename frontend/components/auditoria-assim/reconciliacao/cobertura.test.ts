@@ -208,13 +208,67 @@ describe('cobertaPorAvulsa', () => {
   })
 })
 
-function vinculo(p: Partial<VinculoAutorizacao> & { guia: string; tipo: 'vinculo' | 'sem_sessao' }): VinculoAutorizacao {
+function vinculo(
+  p: Partial<VinculoAutorizacao> & { guia: string; tipo: VinculoAutorizacao['tipo'] }
+): VinculoAutorizacao {
   return {
     id: 'v', bloco_id: null, guia_original: null, observacao: null,
     vinculado_por: null, vinculado_em: null,
     ...p,
   }
 }
+
+/*
+  A FALTA AUTORIZADA — o que vincular a uma falta de terapeuta NÃO faz.
+
+  A ação existe desde 2026-09-21 e é vínculo PURO: a guia sai da fila de órfãs e
+  o slot passa a dizer de onde veio a autorização, e mais nada. Estes testes
+  existem para que a palavra "vínculo" no nome do tipo nunca convença ninguém a
+  tratá-lo como cobertura — a sessão não aconteceu, e uma guia não a faz
+  acontecer. Se algum dia alguém "consertar" isto para LIBERADA, é aqui que a
+  conta quebra antes de quebrar a assiduidade de um paciente.
+*/
+describe('falta autorizada por uma guia (tipo falta_terapeuta)', () => {
+  it('a falta continua falta — nenhuma situação sem sessão é promovida', () => {
+    for (const s of ['FALTA', 'FALTA_TERAPEUTA', 'UNIDADE_FECHADA']) {
+      expect(situacaoComVinculo(s, { tipo: 'falta_terapeuta' }), s).toBe(s)
+      // E o mesmo vale pelo outro caminho: um vínculo comum apontado a uma falta
+      // (o bloco virou falta depois de vinculado) também não a promove.
+      expect(situacaoComVinculo(s, { tipo: 'vinculo' }), s).toBe(s)
+    }
+  })
+
+  it('não afirma cobertura em situação nenhuma — nem nas que o vínculo cobriria', () => {
+    // `falta_terapeuta` nunca chega a um bloco de sessão; se chegasse, ainda
+    // assim não poderia cobrir. Só `tipo: 'vinculo'` afirma cobertura.
+    for (const s of ['GLOSA', 'NAO_SOLICITADA', 'CANCELADA']) {
+      expect(situacaoComVinculo(s, { tipo: 'falta_terapeuta' }), s).toBe(s)
+    }
+  })
+
+  it('não pinta a marca de cobertura por avulsa', () => {
+    // A marca responde "houve triagem manual COBRINDO esta sessão?", e aqui não
+    // houve cobertura nenhuma — o matiz continua sendo o da falta.
+    expect(cobertaPorAvulsa('FALTA_TERAPEUTA', { tipo: 'falta_terapeuta' })).toBe(false)
+    expect(cobertaPorAvulsa('GLOSA', { tipo: 'falta_terapeuta' })).toBe(false)
+  })
+
+  it('a falta não conta como sessão sem cobertura, nem antes nem depois', () => {
+    // Uma falta nunca foi pendência (não havia sessão para autorizar), e
+    // registrar a autorização não pode torná-la uma.
+    const falta = sessao({ bloco_id: 'falta_1_2026-08-19_08:00:00_22070435', situacao: 'FALTA_TERAPEUTA' })
+    const mapa = new Map([[falta.bloco_id!, { tipo: 'falta_terapeuta' as const }]])
+    expect(sessaoSemCobertura(falta, '2026-08-31T23:59', mapa)).toBe(false)
+    expect(sessaoSemCobertura(falta, '2026-08-31T23:59', new Map())).toBe(false)
+  })
+
+  it('é idempotente, como as outras', () => {
+    for (const crua of ['FALTA_TERAPEUTA', 'GLOSA', 'LIBERADA']) {
+      const uma = situacaoComVinculo(crua, { tipo: 'falta_terapeuta' })
+      expect(situacaoComVinculo(uma, { tipo: 'falta_terapeuta' }), crua).toBe(uma)
+    }
+  })
+})
 
 describe('guiasSubstituidas', () => {
   it('tipo "vinculo" aposenta a guia da sessão que ele cobre', () => {
@@ -246,5 +300,15 @@ describe('guiasSubstituidas', () => {
     const s = sessao({ bloco_id: 'b1', guia: null })
     const mapa = new Map([['b1', vinculo({ guia: '15032', tipo: 'vinculo' })]])
     expect(guiasSubstituidas([s], mapa).size).toBe(0)
+  })
+
+  it('tipo "falta_terapeuta" NÃO aposenta guia nenhuma', () => {
+    // Aposentar é o gesto de "esta guia glosada deixou de pedir tratativa porque
+    // outra a substituiu na sessão". Numa falta não há sessão nem cobertura, e a
+    // falta sintetizada nem carrega `guia` — se um dia carregar, continua não
+    // sendo substituída por uma autorização que não cobriu nada.
+    const falta = sessao({ bloco_id: 'falta_1_2026-08-19_08:00:00_22070435', guia: 'G-QUALQUER' })
+    const mapa = new Map([[falta.bloco_id!, vinculo({ guia: '15032', tipo: 'falta_terapeuta' })]])
+    expect(guiasSubstituidas([falta], mapa).size).toBe(0)
   })
 })

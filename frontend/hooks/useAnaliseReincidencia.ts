@@ -323,7 +323,12 @@ function estadoDeUmaGuia(
 ): EstadoAutorizacao {
   if (ehOrfa(guia)) return 'sem-vinculo'
   const vinculo = vinculosPorGuia.get(guia)
-  if (vinculo) return vinculo.tipo === 'vinculo' ? 'vinculada' : 'sem-sessao'
+  // `falta_terapeuta` é `vinculada` tanto quanto `vinculo`, e a ideia é a mesma:
+  // alguém disse a que aquela guia corresponde, e ela parou de pedir trabalho. O
+  // que diferencia os dois é o CARTÃO para o qual ela aponta — a falta continua
+  // falta, a glosa vira coberta —, não o estado da guia. Só `sem_sessao` é outra
+  // coisa: ali ninguém apontou para nada.
+  if (vinculo) return vinculo.tipo === 'sem_sessao' ? 'sem-sessao' : 'vinculada'
   return pareadas.has(guia) ? 'pareada' : 'fora-da-semana'
 }
 
@@ -685,9 +690,14 @@ export function useAnaliseReincidencia(dataInicial: string, pacienteInicial: str
    * As triagens indexadas pelas duas pontas do mesmo fato.
    *
    * Um mapa por guia (a guia precisa saber que sessão cobre) e um por bloco (a
-   * sessão precisa saber que guia a cobriu). Só `tipo = 'vinculo'` entra no
-   * segundo: a constraint da tabela garante `bloco_id` nulo em `sem_sessao`, e
-   * indexá-lo daria uma chave `''` cobrindo todo bloco sem id.
+   * sessão precisa saber que guia a cobriu). Só `sem_sessao` fica FORA do
+   * segundo: a constraint da tabela garante `bloco_id` nulo nele, e indexá-lo
+   * daria uma chave `''` cobrindo todo bloco sem id.
+   *
+   * `falta_terapeuta` entra (2026-09-21), e o bloco dele é o SINTÉTICO da falta
+   * — a mesma chave que o cartão da falta usa na grade. Indexá-lo aqui é o que
+   * faz o slot mostrar de onde veio a autorização; não é o que decide cobertura,
+   * que continua sendo decidida por `situacaoComVinculo` e só para `vinculo`.
    */
   const vinculos = useMemo<Vinculos>(() => {
     if (triagens.length === 0) return SEM_VINCULOS
@@ -695,7 +705,7 @@ export function useAnaliseReincidencia(dataInicial: string, pacienteInicial: str
     const porBloco = new Map<string, VinculoAutorizacao>()
     for (const v of triagens) {
       porGuia.set(v.guia, v)
-      if (v.tipo === 'vinculo' && v.bloco_id) porBloco.set(v.bloco_id, v)
+      if (v.tipo !== 'sem_sessao' && v.bloco_id) porBloco.set(v.bloco_id, v)
     }
     return { porGuia, porBloco }
   }, [triagens])

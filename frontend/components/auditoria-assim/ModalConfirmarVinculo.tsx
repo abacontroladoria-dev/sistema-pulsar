@@ -106,6 +106,14 @@ export default function ModalConfirmarVinculo({
   if (!open || !guia) return null
 
   const ehDescarte = candidata === null
+  /**
+   * O destino é uma FALTA DE TERAPEUTA, e não uma sessão.
+   *
+   * Muda o vocabulário inteiro deste modal, porque "cobertura" é a palavra
+   * errada ali: não houve atendimento a cobrir. O que se registra é de onde veio
+   * a autorização — a falta continua falta.
+   */
+  const ehFalta = !ehDescarte && candidata.situacao === 'FALTA_TERAPEUTA'
 
   async function confirmar() {
     setErro(null)
@@ -135,12 +143,16 @@ export default function ModalConfirmarVinculo({
             <h2 id={idTitulo} className="flex items-center gap-2 text-base font-semibold text-slate-900">
               {ehDescarte
                 ? <><Ban size={17} className="text-slate-500" aria-hidden /> Marcar como sem sessão correspondente</>
-                : <><Link2 size={17} className="text-emerald-600" aria-hidden /> Confirmar cobertura da sessão</>}
+                : ehFalta
+                  ? <><Link2 size={17} className="text-amber-600" aria-hidden /> Registrar a autorização desta falta</>
+                  : <><Link2 size={17} className="text-emerald-600" aria-hidden /> Confirmar cobertura da sessão</>}
             </h2>
             <p className="mt-0.5 text-[12px] text-slate-500">
               {ehDescarte
                 ? 'A guia sai da fila de trabalho sem afirmar que cobre alguma sessão.'
-                : 'A glosa continua registrada. O que passa a existir é a relação entre as duas.'}
+                : ehFalta
+                  ? 'A falta continua registrada como falta. O que passa a existir é a relação entre as duas.'
+                  : 'A glosa continua registrada. O que passa a existir é a relação entre as duas.'}
             </p>
           </div>
           <button
@@ -166,21 +178,26 @@ export default function ModalConfirmarVinculo({
             {!ehDescarte && (
               <>
                 <ArrowRight size={20} className="mx-auto shrink-0 rotate-90 text-slate-400 sm:rotate-0" aria-hidden />
-                <Painel titulo="Sessão coberta" tom="destino">
+                <Painel titulo={ehFalta ? 'Falta autorizada' : 'Sessão coberta'} tom="destino">
                   <Campo rotulo="Data" valor={dia(candidata.data_atendimento)} forte />
                   <Campo rotulo="Horário" valor={(candidata.hora_inicial ?? '').slice(0, 5) || '—'} forte />
                   <Campo rotulo="TUSS" valor={candidata.codigo_tuss} />
                   <Campo rotulo="Terapia" valor={candidata.terapias} />
                   <Campo rotulo="Profissional" valor={candidata.profissionais} />
                   <Campo rotulo="Situação" valor={<SituacaoBadge situacao={candidata.situacao} />} />
-                  <Campo
-                    rotulo="Guia original"
-                    valor={
-                      candidata.guia_atual
-                        ? <span className="tabular-nums">{candidata.guia_atual}</span>
-                        : <span className="text-slate-400">sem solicitação no Pulsar</span>
-                    }
-                  />
+                  {/* Uma falta não tem guia anterior a substituir: ela nunca foi
+                      autorizada, é isso que a torna falta. Imprimir o campo ali
+                      só pediria uma explicação que não existe. */}
+                  {!ehFalta && (
+                    <Campo
+                      rotulo="Guia original"
+                      valor={
+                        candidata.guia_atual
+                          ? <span className="tabular-nums">{candidata.guia_atual}</span>
+                          : <span className="text-slate-400">sem solicitação no Pulsar</span>
+                      }
+                    />
+                  )}
                   {candidata.motivo_glosa_descricao && (
                     <Campo
                       rotulo="Motivo"
@@ -208,11 +225,35 @@ export default function ModalConfirmarVinculo({
             </p>
           )}
 
-          {!ehDescarte && candidata.fila_id == null && (
+          {!ehDescarte && !ehFalta && candidata.fila_id == null && (
             <p className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[12px] text-slate-600">
               Esta sessão não tem solicitação no Pulsar, então o vínculo fica sem rastro de
               solicitação original. A cobertura funciona igual.
             </p>
+          )}
+
+          {/* O que este registro FAZ e o que ele não faz.
+              Dito por extenso e no último clique porque "vincular" é a palavra
+              que a tela usa para cobrir uma sessão, e aqui ela significa outra
+              coisa — deixar isso implícito seria deixar o operador concluir que
+              a falta foi resolvida. */}
+          {ehFalta && (
+            <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] leading-relaxed text-amber-900">
+              <p>
+                <strong className="font-semibold">A falta continua sendo falta.</strong> Nenhuma
+                sessão é criada, e assiduidade, cota e glosa não mudam. O que este registro faz é
+                tirar a guia da fila de autorizações sem vínculo e mostrar, no slot da falta, de
+                onde veio a autorização.
+              </p>
+              {/* O efeito colateral real, anunciado antes de acontecer. Sem esta
+                  frase ele acontece igual, e é descoberto pela grade. */}
+              <p className="mt-1.5">
+                Esta guia também deixa de disputar posição no pareamento automático de{' '}
+                <span className="tabular-nums">{dia(guia.data_execucao?.slice(0, 10) ?? null)}</span>.
+                Se ela estava casada com alguma sessão daquele dia por posição, essa sessão volta a
+                aparecer sem cobertura.
+              </p>
+            </div>
           )}
 
           <label className="mt-4 block">
@@ -225,7 +266,9 @@ export default function ModalConfirmarVinculo({
               rows={2}
               placeholder={ehDescarte
                 ? 'Por que esta guia não corresponde a nenhuma sessão'
-                : 'Ex.: reautorizada no portal pelo setor de autorização'}
+                : ehFalta
+                  ? 'Ex.: autorizada antes de o terapeuta avisar a falta'
+                  : 'Ex.: reautorizada no portal pelo setor de autorização'}
               className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-[13px] text-slate-800 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none"
             />
             <span className="text-[11px] text-slate-400">{observacao.length}/500</span>
@@ -251,11 +294,18 @@ export default function ModalConfirmarVinculo({
             onClick={confirmar}
             disabled={salvando}
             className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-[13px] font-semibold text-white disabled:opacity-60 ${
-              ehDescarte ? 'bg-slate-700 hover:bg-slate-800' : 'bg-emerald-600 hover:bg-emerald-700'
+              ehDescarte
+                ? 'bg-slate-700 hover:bg-slate-800'
+                : ehFalta
+                  ? // Âmbar, e não esmeralda: o verde desta tela significa
+                    // "coberto", e aqui nada foi coberto. O matiz da falta é o
+                    // que o botão deve prometer.
+                    'bg-amber-600 hover:bg-amber-700'
+                  : 'bg-emerald-600 hover:bg-emerald-700'
             }`}
           >
             {salvando && <Loader2 size={15} className="animate-spin" aria-hidden />}
-            {ehDescarte ? 'Marcar sem sessão' : 'Confirmar vínculo'}
+            {ehDescarte ? 'Marcar sem sessão' : ehFalta ? 'Registrar autorização' : 'Confirmar vínculo'}
           </button>
         </footer>
       </div>

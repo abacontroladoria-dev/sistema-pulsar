@@ -557,9 +557,30 @@ export type VinculoAutorizacao = {
   id: string
   /** A guia da ASSIM que foi triada. É a chave da triagem: uma ativa por guia. */
   guia: string
-  /** `vinculo` = cobre `bloco_id`; `sem_sessao` = autorização extra, sem sessão. */
-  tipo: 'vinculo' | 'sem_sessao'
-  /** A sessão coberta. Sempre nula em `sem_sessao` (a constraint da tabela exige). */
+  /**
+   * O desfecho da triagem — e são TRÊS, não dois.
+   *
+   * - `vinculo` — cobre a sessão em `bloco_id`. Só este afirma COBERTURA, e é por
+   *   isso que todo leitor que decide cobertura filtra exatamente por ele;
+   * - `sem_sessao` — autorização extra, não cobre sessão nenhuma;
+   * - `falta_terapeuta` — a guia autorizou um horário em que o TERAPEUTA faltou
+   *   (2026-09-21). É vínculo PURO: registra de onde veio a autorização e tira a
+   *   guia da fila de órfãs, mas a falta continua sendo falta — nenhuma sessão é
+   *   criada, e assiduidade, cota, glosa e KPIs não mudam. `bloco_id` é o bloco
+   *   SINTÉTICO da falta (`falta_…`), que não existe em `fn_blocos_assim` e
+   *   portanto nunca casa com o join de cobertura da Conferência.
+   *
+   * O valor novo é invisível para os leitores de cobertura por construção: todos
+   * filtram `tipo = 'vinculo'`. As duas exceções — os `NOT EXISTS` que tiram a
+   * guia triada do pareamento posicional — não filtram tipo DE PROPÓSITO: uma
+   * guia que autorizou uma falta não deve seguir disputando posição, e é o mesmo
+   * predicado que a tira da fila de órfãs.
+   */
+  tipo: 'vinculo' | 'sem_sessao' | 'falta_terapeuta'
+  /**
+   * A sessão coberta, ou a falta autorizada. Sempre nula em `sem_sessao` (a
+   * constraint da tabela exige); em `falta_terapeuta` é o bloco sintético.
+   */
   bloco_id: string | null
   /** A guia glosada que esta substituiu, congelada no momento do vínculo. */
   guia_original: string | null
@@ -658,7 +679,15 @@ export type ReclassificacaoSituacao = {
   desfeito_motivo: string | null
 }
 
-/** Uma sessão que a guia órfã selecionada poderia estar cobrindo. */
+/**
+ * Uma sessão que a guia órfã selecionada poderia estar cobrindo — ou, desde
+ * 2026-09-21, uma FALTA DE TERAPEUTA que ela pode ter autorizado.
+ *
+ * As duas espécies chegam pela mesma RPC e se distinguem por `situacao`:
+ * `FALTA_TERAPEUTA` é a falta, e ela tem `bloco_id` sintético (`falta_…`) e
+ * `fila_id` sempre presente. Quem roteia a escrita lê a SITUAÇÃO, nunca o
+ * prefixo do bloco — a situação é o dado do domínio, o prefixo é serialização.
+ */
 export type CandidataVinculo = {
   bloco_id: string
   paciente_id: string | null
@@ -669,8 +698,20 @@ export type CandidataVinculo = {
   terapias: string | null
   profissionais: string | null
   quantidade_sessoes: number | null
-  /** Mesma `situacao` que a Conferência mostra — vem da mesma RPC. */
+  /**
+   * Mesma `situacao` que a Conferência mostra — vem da mesma RPC.
+   *
+   * `FALTA_TERAPEUTA` aqui significa que a candidata é uma FALTA, e não uma
+   * sessão: ela não pode ser "coberta", só pode ter sua autorização registrada.
+   */
   situacao: string | null
+  /**
+   * O tipo de falta, quando a candidata é uma. Nulo nas sessões.
+   *
+   * Só faltas de TERAPEUTA são oferecidas (a RPC filtra, e a de escrita valida
+   * de novo): falta do paciente e unidade fechada ficam de fora de propósito.
+   */
+  tipo_falta: string | null
   /** A guia que hoje está casada com esta sessão (a glosada, tipicamente). */
   guia_atual: string | null
   status_assim: string | null

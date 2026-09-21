@@ -6,6 +6,7 @@ import {
   listarCandidatasVinculo,
   marcarGuiaSemSessao,
   vincularAutorizacao,
+  vincularAutorizacaoFalta,
 } from '@/services/reconciliacao-assim.service'
 import { getSupabaseClient } from '@/lib/supabase/client'
 import type { CandidataVinculo } from '@/components/auditoria-assim/types'
@@ -154,13 +155,32 @@ export function useReconciliacaoAssim(aoMudarExternamente?: () => void) {
     if (!guiaSelecionada) return
     setSalvando(true)
     try {
-      await vincularAutorizacao({
-        guia: guiaSelecionada,
-        blocoId: candidata.bloco_id,
-        filaId: candidata.fila_id,
-        observacao,
-        janelaDias: JANELA_PADRAO,
-      })
+      if (candidata.situacao === 'FALTA_TERAPEUTA') {
+        // Roteia pela SITUAÇÃO, e não pelo prefixo `falta_` do bloco: a situação
+        // é o dado do domínio, o prefixo é detalhe de serialização. A falta tem
+        // RPC própria — ela não passa por `fn_blocos_assim` nem pelo parser do
+        // bloco real, e sua identidade é o `fila_id`.
+        if (!candidata.fila_id) {
+          // A constraint da tabela e a RPC exigem `fila_id`; uma falta sem ele
+          // não é vinculável. Falhar aqui, com o nome do caso, é melhor que
+          // mandar `null` e receber um erro do banco que não diz o que houve.
+          throw new Error('Esta falta não tem solicitação na fila — não é vinculável.')
+        }
+        await vincularAutorizacaoFalta({
+          guia: guiaSelecionada,
+          filaId: candidata.fila_id,
+          observacao,
+          janelaDias: JANELA_PADRAO,
+        })
+      } else {
+        await vincularAutorizacao({
+          guia: guiaSelecionada,
+          blocoId: candidata.bloco_id,
+          filaId: candidata.fila_id,
+          observacao,
+          janelaDias: JANELA_PADRAO,
+        })
+      }
       setGuiaSelecionada(null)
       setCandidatas([])
     } finally {

@@ -238,6 +238,10 @@ export default function GradeSemana({
                                 papel={papel}
                                 atenuar={haAlvo}
                                 distanciaSelecao={candidata?.distancia_horas ?? null}
+                                // Pela SITUAÇÃO da candidata, e não pelo prefixo
+                                // `falta_` do bloco: a situação é o dado, o
+                                // prefixo é serialização.
+                                ehFaltaNaSelecao={candidata?.situacao === 'FALTA_TERAPEUTA'}
                               />
                             </div>
                           )

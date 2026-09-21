@@ -16,6 +16,7 @@ function candidata(p: Partial<CandidataVinculo> & { bloco_id: string }): Candida
     codigo_tuss: null, terapias: null, profissionais: null, quantidade_sessoes: null,
     situacao: null, guia_atual: null, status_assim: null, motivo_glosa_codigo: null,
     motivo_glosa_descricao: null, nota_manual: null, observacao: null, fila_id: null,
+    tipo_falta: null,
     distancia_horas: null, ja_vinculado: false, elegivel: true,
     ...p,
   }
@@ -123,6 +124,83 @@ describe('mapearCandidatas', () => {
  * pode estar noutra semana — a janela é de 7 dias retroativos —, e nesse caso a
  * linha da sessão não está carregada para consultar.
  */
+describe('a falta de terapeuta como candidata', () => {
+  /*
+    O ACOPLAMENTO DE FORMATO, e por que ele merece teste próprio.
+
+    A candidata-falta chega de `get_candidatas_vinculo` com um `bloco_id`
+    SINTÉTICO, e é por essa string que ela encontra o cartão da falta na grade —
+    `mapearCandidatas` casa `c.bloco_id` contra as chaves dos cartões, e a chave
+    do cartão de falta é o bloco que `auditoria-assim.service.ts` monta.
+
+    São dois lugares montando a MESMA string, em linguagens diferentes: a RPC
+    (`'falta_' || paciente || '_' || data || '_' || horario || '_' || tuss`) e o
+    serviço do cliente. Se divergirem — `08:00` contra `08:00:00` é o jeito mais
+    fácil —, nada dá erro: a candidata simplesmente não vira alvo, e o cartão
+    fica lá, não clicável, sem nenhuma pista do porquê. Este teste é a pista.
+
+    A forma vem de produção: cinco pedaços, e a HORA antes do TUSS — ordem
+    diferente do bloco real, que é `paciente_data_TUSS_hora`.
+  */
+  const BLOCO_FALTA = 'falta_11649_2026-08-19_08:00:00_22070435'
+
+  it('a falta desenhada na grade vira alvo, como qualquer candidata', () => {
+    const mapa = mapearCandidatas(
+      [candidata({
+        bloco_id: BLOCO_FALTA,
+        data_atendimento: '2026-08-19',
+        situacao: 'FALTA_TERAPEUTA',
+        tipo_falta: 'terapeuta',
+      })],
+      SEMANAS,
+      '2026-08-17',
+      new Set([BLOCO_FALTA])
+    )
+    expect(mapa.naGrade.get(BLOCO_FALTA)?.situacao).toBe('FALTA_TERAPEUTA')
+    expect(mapa.totalElegiveis).toBe(1)
+    expect(mapa.porSemana.get('2026-08-17')).toBe(1)
+    // E não cai em nenhuma das duas listas de "não está onde você a procura".
+    expect(mapa.semCartao).toHaveLength(0)
+    expect(mapa.foraDoMes).toHaveLength(0)
+  })
+
+  it('a falta JÁ autorizada continua visível, marcada como não escolhível', () => {
+    // Mesma regra das sessões já cobertas: sumir da tela é o único desfecho
+    // proibido — é vendo-a ali que se percebe que a guia é extra.
+    const mapa = mapearCandidatas(
+      [candidata({
+        bloco_id: BLOCO_FALTA,
+        data_atendimento: '2026-08-19',
+        situacao: 'FALTA_TERAPEUTA',
+        elegivel: false,
+        ja_vinculado: true,
+      })],
+      SEMANAS,
+      '2026-08-17',
+      new Set([BLOCO_FALTA])
+    )
+    expect(mapa.naGrade.has(BLOCO_FALTA)).toBe(true)
+    expect(mapa.totalElegiveis).toBe(0)
+  })
+
+  it('uma falta que a grade não desenhou é contada, não some', () => {
+    // O bloco divergindo por um caractere é exatamente este caso, e ele aparece
+    // escrito na barra em vez de virar uma candidata fantasma.
+    const mapa = mapearCandidatas(
+      [candidata({
+        bloco_id: BLOCO_FALTA,
+        data_atendimento: '2026-08-19',
+        situacao: 'FALTA_TERAPEUTA',
+      })],
+      SEMANAS,
+      '2026-08-17',
+      new Set(['falta_11649_2026-08-19_08:00_22070435']) // hora sem os segundos
+    )
+    expect(mapa.naGrade.size).toBe(0)
+    expect(mapa.semCartao).toHaveLength(1)
+  })
+})
+
 describe('sessaoDoBloco', () => {
   it('lê dia e hora do bloco real da produção', () => {
     expect(sessaoDoBloco('11649_2026-08-03_22070435_11:20:00')).toEqual({

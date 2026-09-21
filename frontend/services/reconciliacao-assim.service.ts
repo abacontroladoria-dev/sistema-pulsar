@@ -133,6 +133,39 @@ export async function vincularAutorizacao(params: {
 }
 
 /**
+ * Registra que a guia autorizou um horário em que o TERAPEUTA faltou.
+ *
+ * VÍNCULO PURO, e a palavra importa: nenhuma sessão é criada, a falta continua
+ * falta, e assiduidade, cota, glosa e KPIs não mudam. O que muda é só isto — a
+ * guia sai da fila de órfãs e o slot da falta passa a dizer de onde veio a
+ * autorização. Sem esta ação a guia voltaria à fila todo dia sem ter para onde
+ * ir, ou seria descartada como "autorização extra", que apaga o que se sabe.
+ *
+ * A chave é o `filaId` da falta, e não um bloco: o bloco da falta é sintético
+ * (`falta_…`), não existe em `fn_blocos_assim`, e é a RPC que o monta — aceitá-lo
+ * do cliente deixaria o formato divergir do que a grade usa como chave.
+ *
+ * RPC própria e não um ramo de `vincular_autorizacao`: daquelas 8 guardas, 6
+ * dependem do bloco real e da Conferência. O que sobraria não é a mesma função.
+ */
+export async function vincularAutorizacaoFalta(params: {
+  guia: string
+  filaId: string
+  observacao?: string | null
+  janelaDias?: number
+}): Promise<string> {
+  const { data, error } = await supabase.rpc('vincular_autorizacao_falta', {
+    p_guia: params.guia,
+    p_fila_id: params.filaId,
+    p_observacao: params.observacao ?? null,
+    p_janela_dias: params.janelaDias ?? 7,
+  })
+
+  if (error) throw error
+  return data as string
+}
+
+/**
  * Marca a guia como autorização extra, sem sessão correspondente.
  *
  * Não é enfeite: 7 das 18 órfãs medidas na Etapa 0 têm como candidata mais

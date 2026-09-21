@@ -24,6 +24,18 @@ import type { AuditoriaAssimItem, VinculoAutorizacao } from '../types'
 export const SITUACOES_SEM_SESSAO = new Set(['FALTA', 'FALTA_TERAPEUTA', 'UNIDADE_FECHADA'])
 
 /**
+ * O mínimo que estas funções precisam saber de uma triagem: o seu tipo.
+ *
+ * Um alias e não o `VinculoAutorizacao` inteiro, porque é justamente o que
+ * mantém este arquivo testável sem montar uma linha de banco inteira — os testes
+ * passam `{ tipo: 'vinculo' }` e nada mais. O tipo mora em `../types` para não
+ * existirem duas listas do que é um desfecho de triagem: quando
+ * `falta_terapeuta` entrou (2026-09-21), a união estava escrita à mão em quatro
+ * assinaturas deste arquivo e o compilador teve de apontar as quatro.
+ */
+type TipoDaTriagem = { tipo: VinculoAutorizacao['tipo'] }
+
+/**
  * Os dois desfechos em que a sessão saiu coberta por uma liberação.
  *
  * Não é lista de conveniência: são exatamente os dois ramos que a migration
@@ -75,7 +87,7 @@ export const SITUACOES_COM_VEREDITO = new Set(['GLOSA', 'CANCELADA'])
  */
 export function situacaoComVinculo(
   situacao: string | null,
-  vinculo: { tipo: 'vinculo' | 'sem_sessao' } | null | undefined
+  vinculo: TipoDaTriagem | null | undefined
 ): string | null {
   if (!vinculo || vinculo.tipo !== 'vinculo') return situacao
   // Falta continua sendo falta: a sessão não aconteceu, e uma guia não a faz
@@ -141,7 +153,7 @@ export function situacaoComVinculo(
  */
 export function cobertaPorAvulsa(
   situacaoCrua: string | null,
-  vinculo: { tipo: 'vinculo' | 'sem_sessao' } | null | undefined
+  vinculo: TipoDaTriagem | null | undefined
 ): boolean {
   if (!vinculo || vinculo.tipo !== 'vinculo') return false
   return !SITUACOES_SEM_SESSAO.has(situacaoCrua ?? '')
@@ -190,7 +202,7 @@ export function sessaoSemCobertura(
    * contando como "faltando" no cabeçalho e como cartão marcado na faixa de
    * semanas. Ver `situacaoComVinculo`.
    */
-  vinculosPorBloco: ReadonlyMap<string, { tipo: 'vinculo' | 'sem_sessao' }> = new Map()
+  vinculosPorBloco: ReadonlyMap<string, TipoDaTriagem> = new Map()
 ): boolean {
   if (SITUACOES_SEM_SESSAO.has(s.situacao ?? '')) return false
   if (!sessaoDecorrida(s, cutoff)) return false
@@ -226,7 +238,7 @@ export function sessaoSemCobertura(
 export function sessaoNaoSolicitada(
   s: AuditoriaAssimItem,
   cutoff: string,
-  vinculosPorBloco: ReadonlyMap<string, { tipo: 'vinculo' | 'sem_sessao' }> = new Map()
+  vinculosPorBloco: ReadonlyMap<string, TipoDaTriagem> = new Map()
 ): boolean {
   if (!sessaoSemCobertura(s, cutoff, vinculosPorBloco)) return false
   const situacao = situacaoComVinculo(s.situacao, vinculosPorBloco.get(s.bloco_id ?? ''))
