@@ -15,6 +15,9 @@
 //   4. 'pending' SOZINHO NÃO É RASCUNHO — existe a janela entre persistir e o
 //      provider confirmar. Marcar aquilo como rascunho seria falso positivo.
 //   5. STATUS usa dois eixos (status + ai_mode), porque são ortogonais no banco.
+//   5b. E o ai_mode é o EFETIVO, com a herança do padrão da clínica resolvida.
+//      A coluna crua é NULL na maioria das linhas; lê-la direto marcava como
+//      humana toda conversa que a Maia atende por herança.
 //   6. FAILED não ganha tique de enviado.
 //
 // Sem framework, como os outros testes do módulo.
@@ -107,20 +110,20 @@ eq(toUIMessage(msg({ body: null })).content, '', 'body null → string vazia')
 ok(toUIMessage(msg({ sent_at: null, created_at: '2026-09-01T10:05:00Z' })).timestamp !== '',
    'sent_at null usa created_at')
 
-const semNome = toUIConversation(conv(), contato({ name: null }), [])
+const semNome = toUIConversation(conv(), contato({ name: null }), [], 'off')
 eq(semNome.contactName, '5521999185733', 'name null cai no telefone')
 
-const semNada = toUIConversation(conv(), contato({ name: null, display_phone: null }), [])
+const semNada = toUIConversation(conv(), contato({ name: null, display_phone: null }), [], 'off')
 eq(semNada.contactName, 'Contato sem nome', 'sem nome e sem telefone → rótulo explícito')
 
-const semContato = toUIConversation(conv(), null, [])
+const semContato = toUIConversation(conv(), null, [], 'off')
 eq(semContato.contactName, 'Contato sem nome', 'contato ausente não quebra')
 eq(semContato.contactPhone, '', 'telefone ausente → string vazia')
 
-eq(toUIConversation(conv(), contato({ avatar_url: null }), []).contactAvatar, '',
+eq(toUIConversation(conv(), contato({ avatar_url: null }), [], 'off').contactAvatar, '',
    'avatar null → vazio (a UI decide desenhar iniciais)')
 
-eq(toUIConversation(conv(), contato(), []).lastMessage, 'Sem mensagens',
+eq(toUIConversation(conv(), contato(), [], 'off').lastMessage, 'Sem mensagens',
    'conversa sem mensagem não mostra "undefined"')
 
 // ---------------------------------------------------------------------------
@@ -183,18 +186,51 @@ eq(toUIMessage(msg({
 // ---------------------------------------------------------------------------
 console.log('\n5. Status por dois eixos')
 
-eq(mapStatus(conv({ status: 'open',     ai_mode: 'off' })), 'human',  'open → human')
-eq(mapStatus(conv({ status: 'assigned', ai_mode: 'off' })), 'human',  'assigned → human')
-eq(mapStatus(conv({ status: 'waiting',  ai_mode: 'off' })), 'paused', 'waiting → paused')
-eq(mapStatus(conv({ status: 'resolved', ai_mode: 'off' })), 'paused', 'resolved → paused')
-eq(mapStatus(conv({ status: 'archived', ai_mode: 'off' })), 'paused', 'archived → paused')
+eq(mapStatus(conv({ status: 'open',     ai_mode: 'off' }), 'off'), 'human',  'open → human')
+eq(mapStatus(conv({ status: 'assigned', ai_mode: 'off' }), 'off'), 'human',  'assigned → human')
+eq(mapStatus(conv({ status: 'waiting',  ai_mode: 'off' }), 'off'), 'paused', 'waiting → paused')
+eq(mapStatus(conv({ status: 'resolved', ai_mode: 'off' }), 'off'), 'paused', 'resolved → paused')
+eq(mapStatus(conv({ status: 'archived', ai_mode: 'off' }), 'off'), 'paused', 'archived → paused')
 
 // 'nina' sai de ai_mode, não de status — a badge violeta afirma que a IA está
 // conduzindo, e só ai_mode='autonomous' justifica essa afirmação.
-eq(mapStatus(conv({ status: 'open', ai_mode: 'autonomous' })), 'nina',
+eq(mapStatus(conv({ status: 'open', ai_mode: 'autonomous' }), 'off'), 'nina',
    'autonomous → nina, mesmo com status open')
-eq(mapStatus(conv({ status: 'open', ai_mode: 'assisted' })), 'human',
+eq(mapStatus(conv({ status: 'open', ai_mode: 'assisted' }), 'off'), 'human',
    'assisted NÃO é nina — a resposta ainda passa por humano')
+
+// ---------------------------------------------------------------------------
+console.log('\n5b. Herança do ai_mode — o bug da Kelly')
+
+// `conversations.ai_mode` NULL é o caso da MAIORIA das linhas e significa
+// "ninguém decidiu nesta conversa, vale o padrão da clínica" (20260915220000).
+// A badge lia a coluna crua: NULL !== 'autonomous', então caía em 'human' e
+// contradizia a triagem, que resolve a herança no servidor. A mesma conversa
+// aparecia na coluna Maia de /atendimentos e com selo de humano no /inbox.
+eq(mapStatus(conv({ status: 'open', ai_mode: null }), 'autonomous'), 'nina',
+   'coluna NULL + padrão autonomous → nina (era o bug: dava human)')
+eq(mapStatus(conv({ status: 'open', ai_mode: null }), 'off'), 'human',
+   'coluna NULL + padrão off → human')
+eq(mapStatus(conv({ status: 'open', ai_mode: null }), 'assisted'), 'human',
+   'coluna NULL + padrão assisted → human (assisted não é a Maia atendendo)')
+
+// A decisão da conversa VENCE o padrão, nas duas direções. É o que faz a chave
+// Maia/Atendente do inbox valer alguma coisa.
+eq(mapStatus(conv({ status: 'open', ai_mode: 'off' }), 'autonomous'), 'human',
+   'desligar na conversa vence o padrão autonomous')
+eq(mapStatus(conv({ status: 'open', ai_mode: 'autonomous' }), 'off'), 'nina',
+   'ligar na conversa vence o padrão off')
+
+// A herança não ressuscita conversa encerrada: quem decide 'paused' é o status,
+// e ele é consultado depois do modo só quando o modo não é autonomous. Uma
+// arquivada com padrão autonomous continua sendo tratada como Maia pela badge —
+// a triagem resolve isso na caixa 'encerradas', que vence tudo (ver caixas.ts).
+eq(mapStatus(conv({ status: 'archived', ai_mode: null }), 'off'), 'paused',
+   'arquivada com padrão off → paused')
+
+// O adapter inteiro propaga a herança, não só mapStatus.
+eq(toUIConversation(conv({ status: 'open', ai_mode: null }), contato(), [], 'autonomous').status,
+   'nina', 'toUIConversation repassa o padrão para a badge')
 
 // ---------------------------------------------------------------------------
 console.log('\n6. failed não parece enviada')
@@ -210,7 +246,7 @@ console.log('\n7. Ordem e rótulo de tipo')
 const comHistorico = toUIConversation(conv(), contato(), [
   msg({ id: 'm1', body: 'primeira' }),
   msg({ id: 'm2', body: 'última' }),
-])
+], 'off')
 eq(comHistorico.messages.length, 2, 'duas mensagens')
 eq(comHistorico.lastMessage, 'última', 'lastMessage é a ÚLTIMA do array')
 
@@ -223,7 +259,7 @@ eq(rotuloTipoContato(contato({ is_provisional: true })), 'Responsável · não c
 eq(rotuloTipoContato(null), 'Contato', 'sem contato não quebra')
 
 // Campos sem origem no banco: zero e vazio, nunca inventados.
-const c = toUIConversation(conv(), contato(), [])
+const c = toUIConversation(conv(), contato(), [], 'off')
 eq(c.unreadCount, 0, 'unreadCount sempre 0 (não existe no schema)')
 // `tags` EXISTE no schema (TEXT[] em conversations e contacts). Fica vazio aqui
 // porque as tags do produto são do contato e quem as mostra é o painel de
@@ -232,7 +268,7 @@ eq(c.tags.length, 0, 'tags vazio: a lista de conversas não desenha tags')
 // Prova de que é decisão, e não repasse: mesmo com tags nos dois lados, o
 // adapter não as propaga.
 eq(
-  toUIConversation(conv({ tags: ['urgente'] }), contato({ tags: ['convenio'] }), []).tags.length,
+  toUIConversation(conv({ tags: ['urgente'] }), contato({ tags: ['convenio'] }), [], 'off').tags.length,
   0,
   'não propaga tags nem da conversa nem do contato',
 )

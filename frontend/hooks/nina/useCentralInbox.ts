@@ -60,7 +60,8 @@ class ErroApi extends Error {
   }
 }
 
-async function buscar<T>(url: string, signal: AbortSignal): Promise<T> {
+// O corpo inteiro, para quem precisa do que vem ao lado de `data`.
+async function buscarCorpo(url: string, signal: AbortSignal): Promise<Record<string, unknown>> {
   const res = await fetch(url, { signal, cache: 'no-store' })
   const json = await res.json().catch(() => null)
 
@@ -71,8 +72,12 @@ async function buscar<T>(url: string, signal: AbortSignal): Promise<T> {
       json?.error?.message ?? `A rota respondeu ${res.status}.`,
     )
   }
+  return json ?? {}
+}
+
+async function buscar<T>(url: string, signal: AbortSignal): Promise<T> {
   // Envelope do repo: sempre { data } (lib/central/response.ts).
-  return json.data as T
+  return (await buscarCorpo(url, signal)).data as T
 }
 
 // A resposta de GET /conversations/[id] — conversa com os vizinhos embutidos.
@@ -170,17 +175,23 @@ export function useCentralInbox(): UseCentralInbox {
 
     async function carregar() {
       try {
-        const [lista, contatos] = await Promise.all([
-          buscar<Conversation[]>('/api/central/conversations?limit=50', controller.signal),
+        const [corpo, contatos] = await Promise.all([
+          buscarCorpo('/api/central/conversations?limit=50', controller.signal),
           buscar<Contact[]>(`/api/central/contacts?limit=${TETO_CONTATOS}`, controller.signal),
         ])
+
+        const lista = (corpo.data ?? []) as Conversation[]
+        // Vem ao lado de `data`. Sem ele a badge não sabe resolver a herança do
+        // ai_mode; 'off' é a falha fechada, a mesma do servidor.
+        const modoPadrao = (corpo.modoPadrao as string) ?? 'off'
 
         const porId = new Map(contatos.map(c => [c.id, c]))
         if (!vivo) return
 
         // Mensagens ficam vazias aqui de propósito: a lista mostra só o
         // cabeçalho. O histórico vem do detalhe, quando o operador abre.
-        setConversations(lista.map(c => toUIConversation(c, porId.get(c.contact_id) ?? null, [])))
+        setConversations(lista.map(c =>
+          toUIConversation(c, porId.get(c.contact_id) ?? null, [], modoPadrao)))
         setErro(null)
       } catch (e) {
         if (!vivo || (e as Error).name === 'AbortError') return
@@ -209,7 +220,11 @@ export function useCentralInbox(): UseCentralInbox {
     // tela lê de cima para baixo — a inversão acontece UMA vez, aqui na borda.
     const cronologicas = [...(d.recentMessages ?? [])].reverse()
     return {
-      chat: toUIConversation(d, d.contact ?? null, cronologicas),
+      // O detalhe não precisa do padrão da clínica: a rota já devolve o modo
+      // EFETIVO desta conversa. Passá-lo como "padrão" dá o mesmo resultado em
+      // mapStatus — resolverModoEfetivo só consulta o padrão quando a coluna é
+      // NULL, que é exatamente o caso em que aiModeEfetivo JÁ é o padrão.
+      chat: toUIConversation(d, d.contact ?? null, cronologicas, d.aiModeEfetivo),
       // Fora do NinaConversation de propósito: são campos do `central` que a
       // tela do Nina não tem, e enfiá-los no tipo da UI misturaria os dois
       // vocabulários que o adapter existe para manter separados.

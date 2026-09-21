@@ -91,6 +91,11 @@ export function useCaixasAtendimento(): UseCaixasAtendimento {
 
         const porId = new Map(contatos.map(c => [c.id, c]))
 
+        // O mesmo padrão que o servidor usou para montar as colunas. Vai ao
+        // adapter para a badge DENTRO do card concordar com a coluna que o
+        // contém: sem ele, um card na coluna "Maia" exibia badge de humano.
+        const padrao = corpo.modoPadrao ?? 'off'
+
         const montadas = {} as Filas
         for (const caixa of CAIXAS) {
           const bruta = corpo.caixas?.[caixa]
@@ -100,7 +105,7 @@ export function useCaixasAtendimento(): UseCaixasAtendimento {
             // Mensagens vazias: a triagem mostra só o cabeçalho de cada conversa.
             // O histórico é do chat, que abre quando alguém clica.
             conversas: cruas.map(c =>
-              toUIConversation(c, porId.get(c.contact_id) ?? null, [])),
+              toUIConversation(c, porId.get(c.contact_id) ?? null, [], padrao)),
             total: bruta?.total ?? 0,
             // Lê `priority` do CRU, nunca do convertido. NinaConversation não tem
             // o campo — o adapter não o carrega — então tirar esta linha de dentro
@@ -112,7 +117,7 @@ export function useCaixasAtendimento(): UseCaixasAtendimento {
         }
 
         setFilas(montadas)
-        setModoPadrao(corpo.modoPadrao ?? 'off')
+        setModoPadrao(padrao)
         setErro(null)
       } catch (e) {
         if (!vivo || (e as Error).name === 'AbortError') return
