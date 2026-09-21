@@ -28,6 +28,17 @@ export type ConversationEventType =
   | 'conversation.resolved'
   | 'conversation.archived'
   | 'conversation.reopened'
+  // Alguém devolveu a conversa à fila de "precisa de retorno" recuando a marca
+  // d'água de leitura (20260921140000). payload: { lastReadAt, anterior }.
+  //
+  // Só o lado MANUAL é auditado. Marcar como lida acontece a cada abertura de
+  // conversa — auditar isso afogaria a trilha que existe para responder "por
+  // que ninguém respondeu a essa pessoa", que é justamente o que este evento
+  // ajuda a reconstituir.
+  //
+  // Não está no CAEventMap: nada no domínio reage a isso, e emitir no
+  // barramento seria ruído a 5s de poll.
+  | 'conversation.marked_unread'
   // Chave Maia / Atendente: quem passou esta conversa da IA para gente (ou de
   // volta), e quando. payload: { de, para } com os ai_mode, onde null significa
   // "seguindo o padrão da inbox/org". performed_by ausente = foi a própria IA

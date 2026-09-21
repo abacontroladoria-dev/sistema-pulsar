@@ -1,6 +1,7 @@
 import type {
   Conversation,
   Message,
+  MessageAttachment,
   Contact,
 } from '@/modules/atendimento/types/central.types'
 import { resolverModoEfetivo } from '@/modules/atendimento/agente/modo-efetivo'
@@ -44,6 +45,109 @@ export interface NinaMessage extends UIMessage {
   // desta flag, o `else` final da bolha desenhava um Check para qualquer status
   // fora de read/delivered, e uma mensagem que nunca saiu parecia enviada.
   emTransito: boolean
+  // O que veio anexado, já traduzido para o que a bolha desenha. Vazio na
+  // esmagadora maioria das mensagens — é `[]` e não `undefined` para o JSX não
+  // precisar de guarda.
+  anexos: AnexoUI[]
+}
+
+// ----------------------------------------------------------------------------
+// Anexo, do ponto de vista da bolha
+//
+// `central.message_attachments` guarda DOIS endereços possíveis e nenhum deles
+// é utilizável hoje:
+//
+//   • `storage_path` — o destino final, no Storage. Todo anexo em produção está
+//     com `storage_status: 'pending'`, porque o worker que baixa a mídia da
+//     Meta nunca foi construído (não existe bucket para a Central).
+//   • `external_url` — a URL temporária da Meta. Expira em 24h E exige o token
+//     da WABA no header, então colocá-la num <img src> não renderiza nada: o
+//     navegador faz a requisição sem o Authorization e leva 401.
+//
+// Ou seja, não há como exibir a mídia recebida enquanto o pipeline de download
+// não existir. O que dá para fazer AGORA, e é o que este tipo carrega, é parar
+// de mentir: em vez do placeholder `[imagem]` que o webhook escreve no `body`,
+// a bolha diz o que chegou (um áudio de 12s, um PDF chamado laudo.pdf) e que
+// ele ainda não está disponível. Saber que existe um laudo é acionável — o
+// atendente pede de novo, ou abre o WhatsApp. `[imagem]` não é.
+//
+// `disponivel` é o fio que a fatia do bucket vai religar: quando
+// `storage_status` virar 'stored', ele passa a true e a bolha troca o chip pela
+// mídia.
+// ----------------------------------------------------------------------------
+export interface AnexoUI {
+  id:         string
+  // Rótulo do tipo, já em português ('Imagem', 'Áudio', 'Documento'…).
+  rotulo:     string
+  // O nome do arquivo quando a Meta o informou. Documento quase sempre tem;
+  // imagem e áudio quase nunca.
+  nome:       string | null
+  // '12s' ou '1,2 MB' — o que houver. Null quando não há nem duração nem
+  // tamanho, o que acontece mais do que se imagina.
+  detalhe:    string | null
+  disponivel: boolean
+}
+
+const ROTULO_ANEXO: Record<string, string> = {
+  image:    'Imagem',
+  audio:    'Áudio',
+  video:    'Vídeo',
+  document: 'Documento',
+  sticker:  'Figurinha',
+}
+
+// Rótulo pelo MIME, com o message_type como rede de segurança. O MIME é mais
+// específico ('application/pdf' → Documento) e é o que a Meta informa com mais
+// consistência; o message_type cobre a linha antiga que não guardou file_type.
+function rotuloAnexo(a: MessageAttachment, messageType: string): string {
+  const mime = a.file_type ?? ''
+  if (mime.startsWith('image/')) return 'Imagem'
+  if (mime.startsWith('audio/')) return 'Áudio'
+  if (mime.startsWith('video/')) return 'Vídeo'
+  if (mime) return 'Documento'
+  return ROTULO_ANEXO[messageType] ?? 'Arquivo'
+}
+
+// Duração ganha do tamanho: para áudio, "12s" diz mais ao atendente do que
+// "34 KB" — ele decide se para para ouvir.
+function detalheAnexo(a: MessageAttachment): string | null {
+  if (a.duration_secs && a.duration_secs > 0) return `${a.duration_secs}s`
+  if (a.file_size && a.file_size > 0) {
+    const mb = a.file_size / 1_048_576
+    return mb >= 1
+      ? `${mb.toFixed(1).replace('.', ',')} MB`
+      : `${Math.max(1, Math.round(a.file_size / 1024))} KB`
+  }
+  return null
+}
+
+// Os placeholders que `meta-waba.normalizar.ts` escreve no body quando a mídia
+// chega SEM legenda: '[áudio]', '[áudio de voz]', '[imagem]', '[vídeo]',
+// '[figurinha]', '[documento]', '[documento: laudo.pdf]'.
+//
+// O casamento é sobre o corpo INTEIRO, e isso é proposital: naquele arquivo a
+// legenda vence o placeholder (`caption?.trim() || '[imagem]'`), então um corpo
+// que contém o marcador mas não é só ele foi escrito por uma pessoa — e apagar
+// pedaço de mensagem de gente é pior do que deixar um marcador na tela.
+const PLACEHOLDER_ANEXO =
+  /^\[(áudio(?: de voz)?|imagem|vídeo|figurinha|documento(?::[^\]]*)?)\]$/i
+
+function semPlaceholder(body: string | null): string {
+  const texto = body?.trim() ?? ''
+  return PLACEHOLDER_ANEXO.test(texto) ? '' : texto
+}
+
+export function toAnexoUI(a: MessageAttachment, messageType: string): AnexoUI {
+  return {
+    id:      a.id,
+    rotulo:  rotuloAnexo(a, messageType),
+    nome:    a.file_name?.trim() || null,
+    detalhe: detalheAnexo(a),
+    // Só 'stored' significa que o arquivo é nosso e pode ser servido. 'pending'
+    // e 'failed' são ambos indisponíveis, por motivos diferentes que a bolha
+    // não precisa distinguir — em nenhum dos dois há o que mostrar.
+    disponivel: a.storage_status === 'stored',
+  }
 }
 
 // `Omit` de messages e clientMemory antes de reintroduzi-los:
@@ -56,6 +160,10 @@ export interface NinaMessage extends UIMessage {
 //    medida real. Sai do tipo em vez de virar dado falso.
 export type NinaConversation = Omit<UIConversation, 'messages' | 'clientMemory'> & {
   messages: NinaMessage[]
+  // "Tem mensagem depois da última leitura?" — derivada das duas colunas da
+  // conversa, sem depender do histórico. É o que a LISTA usa, onde `messages`
+  // chega vazio e `unreadCount` não teria como ser calculado. Ver temNaoLidas.
+  naoLida: boolean
   // Rótulo já resolvido do contact_type. Vai junto da conversa porque a tela
   // não recebe o Contact cru — e derivá-lo no JSX espalharia o de-para.
   rotuloTipo: string
@@ -129,10 +237,18 @@ export function toUIMessage(m: Message): NinaMessage {
   const isAiDraft =
     m.sent_by_ai && m.status === 'pending' && !m.external_message_id
 
+  const anexos = (m.attachments ?? []).map(a => toAnexoUI(a, m.message_type))
+
   return {
     id:        m.id,
     // `body` é nullable no banco (mensagem só com anexo, por exemplo).
-    content:   m.body ?? '',
+    //
+    // Quando há anexo, o webhook grava um placeholder textual no body
+    // ('[imagem]', '[documento: laudo.pdf]') — ver message.service.ts. O chip
+    // do anexo diz a mesma coisa e diz melhor, então o placeholder sai: repetir
+    // "[imagem]" acima de um chip escrito "Imagem" é ruído, e um WhatsApp com
+    // legenda ficaria com a legenda enterrada sob o marcador.
+    content:   anexos.length > 0 ? semPlaceholder(m.body) : (m.body ?? ''),
     timestamp: horaDoRelogio(m.sent_at ?? m.created_at),
     direction: mapDirection(m.direction),
     type:      mapType(m.message_type),
@@ -143,7 +259,50 @@ export function toUIMessage(m: Message): NinaMessage {
     // Rascunho já é sinalizado à parte; aqui só o que tentou sair e não
     // confirmou.
     emTransito: !isAiDraft && m.status === 'pending' && !m.external_message_id,
+    anexos,
   }
+}
+
+// ----------------------------------------------------------------------------
+// Não lidas (20260921140000)
+//
+// Uma COMPARAÇÃO, não um contador guardado. A conta é feita sobre as mensagens
+// que a tela já tem em mãos: quantas entradas do contato são mais novas que a
+// marca d'água.
+//
+// `last_read_at` NULL significa "ninguém abriu" — toda mensagem do contato
+// conta. É por isso que a migration não faz backfill: a alternativa seria
+// marcar tudo como lido e apagar de uma vez as conversas que esperam retorno.
+//
+// LIMITE CONHECIDO, e ele é real: a LISTA de conversas não carrega mensagens
+// (o hook passa `[]` de propósito — só o detalhe traz o histórico). Então o
+// número exato só existe na conversa aberta. Para a lista, o que importa não é
+// "quantas" e sim "tem?", e isso `temNaoLidas` responde com as duas colunas da
+// própria conversa, sem carregar mensagem nenhuma.
+// ----------------------------------------------------------------------------
+export function contarNaoLidas(mensagens: Message[], lastReadAt: string | null): number {
+  const marca = lastReadAt ? new Date(lastReadAt).getTime() : 0
+  return mensagens.filter(m => {
+    if (m.direction !== 'inbound') return false
+    const quando = m.sent_at ?? m.created_at
+    if (!quando) return false
+    return new Date(quando).getTime() > marca
+  }).length
+}
+
+// A pergunta que a lista consegue responder sem carregar o histórico: existe
+// mensagem depois da marca? `last_message_at` inclui as NOSSAS mensagens, então
+// isto superestima — uma conversa onde o atendente foi o último a falar e
+// ninguém reabriu apareceria como não lida.
+//
+// Na prática isso não acontece, porque responder abre a conversa e abrir marca
+// como lida. E o erro, quando ocorre, é para o lado seguro: acende um ponto a
+// mais, nunca esconde mensagem que chegou. O contrário — deixar de acender —
+// é o defeito que fez a badge ser removida desta tela em primeiro lugar.
+export function temNaoLidas(c: Conversation): boolean {
+  if (!c.last_message_at) return false
+  if (!c.last_read_at)    return true
+  return new Date(c.last_message_at).getTime() > new Date(c.last_read_at).getTime()
 }
 
 export function toUIConversation(
@@ -174,10 +333,13 @@ export function toUIConversation(
     // vazia em vez de um caminho de imagem que pode não existir.
     contactAvatar: contato?.avatar_url ?? '',
     status:        mapStatus(c, modoPadrao),
-    // Não existe no schema: não há registro de leitura por usuário. Zero, e a
-    // UI não desenha a badge. Um número inventado faria o operador confiar e
-    // deixar de abrir a conversa que tem mensagem nova de verdade.
-    unreadCount:  0,
+    // Agora tem lastro: `last_read_at` existe desde 20260921140000 e o número
+    // é contado sobre as mensagens em mãos. Na LISTA, `mensagens` vem vazio de
+    // propósito e isto dá 0 — quem acende o ponto lá é `temNaoLidas`, que não
+    // precisa do histórico. Ver o comentário em contarNaoLidas.
+    unreadCount:  contarNaoLidas(mensagens, c.last_read_at),
+    // A pergunta binária, que vale inclusive sem histórico carregado.
+    naoLida:      temNaoLidas(c),
     // Vazio de propósito, e não por ausência de dado: as colunas `tags`
     // existem (em conversations E em contacts, TEXT[] desde a 20260701010000),
     // mas as tags do produto vivem no CONTATO e quem as mostra é o painel de

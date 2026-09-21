@@ -117,6 +117,14 @@ export async function PATCH(request: NextRequest, ctx: Ctx) {
       case 'set_ai_mode':
         await service.setAiMode(id, parsed.data.aiMode, user.id)
         break
+      // Marca d'água de leitura. Sem `actorId` na leitura porque não é auditada
+      // — ver o comentário no service.
+      case 'mark_read':
+        await service.marcarComoLida(id)
+        break
+      case 'mark_unread':
+        await service.marcarComoNaoLida(id, user.id)
+        break
     }
 
     return noContent()

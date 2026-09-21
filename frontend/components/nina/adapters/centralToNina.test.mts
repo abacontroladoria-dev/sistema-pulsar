@@ -19,6 +19,12 @@
 //      A coluna crua é NULL na maioria das linhas; lê-la direto marcava como
 //      humana toda conversa que a Maia atende por herança.
 //   6. FAILED não ganha tique de enviado.
+//   8. NÃO LIDAS são uma COMPARAÇÃO com last_read_at, não um contador. O caso
+//      que mais importa: a nossa própria resposta nunca acende o não-lido —
+//      senão responder deixaria a conversa acesa para sempre.
+//   9. ANEXOS — o chip substitui o placeholder '[imagem]' que o webhook grava,
+//      mas só quando o corpo é EXATAMENTE o marcador. Legenda escrita pela
+//      pessoa sobrevive; apagar texto de gente é pior que deixar o marcador.
 //
 // Sem framework, como os outros testes do módulo.
 
@@ -29,8 +35,24 @@ import {
   toUIMessage,
   toUIConversation,
   rotuloTipoContato,
+  contarNaoLidas,
+  temNaoLidas,
+  toAnexoUI,
 } from './centralToNina.js'
-import type { Conversation, Message, Contact } from '@/modules/atendimento/types/central.types'
+import type {
+  Conversation, Message, Contact, MessageAttachment,
+} from '@/modules/atendimento/types/central.types'
+
+function anexo(over: Partial<MessageAttachment> = {}): MessageAttachment {
+  return {
+    id: 'a1', organization_id: 'o1', message_id: 'm1',
+    file_name: null, file_type: null, file_size: null,
+    storage_path: null, external_url: 'https://lookaside.fb/x',
+    storage_status: 'pending', duration_secs: null, thumbnail_path: null,
+    created_at: '2026-09-01T13:32:42Z', updated_at: '2026-09-01T13:32:42Z',
+    ...over,
+  }
+}
 
 let falhas = 0
 function ok(condicao: boolean, oque: string) {
@@ -67,7 +89,8 @@ function conv(over: Partial<Conversation> = {}): Conversation {
     id: 'c1', organization_id: 'o1', inbox_id: 'i1', channel_id: 'ch1',
     contact_id: 'ct1', assigned_user_id: null, status: 'open',
     priority: null, intent: null, sentiment: null, ai_mode: 'off', tags: null,
-    last_message_at: '2026-09-01T13:32:42Z', resolved_at: null, archived_at: null,
+    last_message_at: '2026-09-01T13:32:42Z', last_read_at: null,
+    resolved_at: null, archived_at: null,
     created_at: '2026-09-01T13:00:00Z', updated_at: '2026-09-01T13:32:42Z',
     ...over,
   }
@@ -260,7 +283,10 @@ eq(rotuloTipoContato(null), 'Contato', 'sem contato não quebra')
 
 // Campos sem origem no banco: zero e vazio, nunca inventados.
 const c = toUIConversation(conv(), contato(), [], 'off')
-eq(c.unreadCount, 0, 'unreadCount sempre 0 (não existe no schema)')
+// Na LISTA o histórico chega vazio de propósito — sem mensagens, não há o que
+// contar, e o número honesto é 0. Quem acende o ponto lá é `naoLida`, que sai
+// das colunas da conversa. Ver o bloco 8.
+eq(c.unreadCount, 0, 'sem histórico carregado, unreadCount é 0')
 // `tags` EXISTE no schema (TEXT[] em conversations e contacts). Fica vazio aqui
 // porque as tags do produto são do contato e quem as mostra é o painel de
 // detalhamento, lendo o `central` cru — a lista de conversas não as desenha.
@@ -271,6 +297,107 @@ eq(
   toUIConversation(conv({ tags: ['urgente'] }), contato({ tags: ['convenio'] }), [], 'off').tags.length,
   0,
   'não propaga tags nem da conversa nem do contato',
+)
+
+// ---------------------------------------------------------------------------
+console.log('\n8. Não lidas (marca d\'água, não contador)')
+
+const T13 = '2026-09-01T13:00:00Z'
+const T14 = '2026-09-01T14:00:00Z'
+const T15 = '2026-09-01T15:00:00Z'
+
+// Só mensagem do CONTATO conta. A nossa própria resposta, que é mais nova que
+// qualquer marca, nunca pode acender o não-lido — senão responder deixaria a
+// conversa acesa para sempre.
+eq(
+  contarNaoLidas(
+    [msg({ direction: 'inbound', sent_at: T15 }), msg({ direction: 'outbound', sent_at: T15 })],
+    T14,
+  ),
+  1,
+  'só inbound conta como não lida',
+)
+
+eq(contarNaoLidas([msg({ sent_at: T13 })], T14), 0, 'mensagem anterior à marca não conta')
+eq(contarNaoLidas([msg({ sent_at: T15 })], T14), 1, 'mensagem posterior à marca conta')
+
+// NULL = ninguém abriu. É o estado de toda conversa logo após a migration (que
+// não faz backfill de propósito), e nele TUDO é não lido.
+eq(contarNaoLidas([msg({ sent_at: T13 }), msg({ sent_at: T15 })], null), 2,
+  'sem marca, toda mensagem do contato é não lida')
+
+// `sent_at` nullable: cai no created_at em vez de ser descartada.
+eq(
+  contarNaoLidas([msg({ sent_at: null, created_at: T15 })], T14),
+  1,
+  'sent_at nulo usa created_at',
+)
+
+// A pergunta binária da lista, que não precisa de histórico.
+ok(temNaoLidas(conv({ last_message_at: T15, last_read_at: T14 })), 'mensagem depois da leitura')
+ok(!temNaoLidas(conv({ last_message_at: T13, last_read_at: T14 })), 'leitura depois da mensagem')
+ok(temNaoLidas(conv({ last_message_at: T13, last_read_at: null })), 'nunca lida, com mensagem')
+ok(!temNaoLidas(conv({ last_message_at: null, last_read_at: null })),
+  'conversa sem mensagem nenhuma não é não lida')
+
+// ---------------------------------------------------------------------------
+console.log('\n9. Anexos: o chip diz o que o placeholder escondia')
+
+// O MIME manda sobre o message_type — é mais específico e a Meta o informa com
+// mais consistência.
+eq(toAnexoUI(anexo({ file_type: 'image/jpeg' }), 'document').rotulo, 'Imagem',
+  'MIME vence o message_type')
+eq(toAnexoUI(anexo({ file_type: 'application/pdf' }), 'document').rotulo, 'Documento', 'PDF')
+// Linha antiga sem file_type: o message_type é a rede de segurança.
+eq(toAnexoUI(anexo(), 'audio').rotulo, 'Áudio', 'sem MIME, usa o message_type')
+
+// Duração ganha do tamanho: "12s" diz ao atendente se vale parar para ouvir.
+eq(toAnexoUI(anexo({ duration_secs: 12, file_size: 34_000 }), 'audio').detalhe, '12s',
+  'duração vence o tamanho')
+eq(toAnexoUI(anexo({ file_size: 1_572_864 }), 'document').detalhe, '1,5 MB', 'MB com vírgula')
+eq(toAnexoUI(anexo({ file_size: 34_000 }), 'document').detalhe, '33 KB', 'abaixo de 1 MB vira KB')
+eq(toAnexoUI(anexo(), 'image').detalhe, null, 'sem duração nem tamanho, sem detalhe')
+
+// Só 'stored' é exibível. 'pending' é o estado de TODO anexo em produção hoje.
+ok(!toAnexoUI(anexo({ storage_status: 'pending' }), 'image').disponivel, 'pending não é disponível')
+ok(!toAnexoUI(anexo({ storage_status: 'failed' }), 'image').disponivel, 'failed não é disponível')
+ok(toAnexoUI(anexo({ storage_status: 'stored' }), 'image').disponivel, 'stored é disponível')
+
+// O placeholder do webhook sai quando o chip diz a mesma coisa — repetir
+// "[imagem]" acima de um chip escrito "Imagem" é ruído.
+const comAnexo = toUIMessage(msg({
+  message_type: 'image', body: '[imagem]', attachments: [anexo({ file_type: 'image/jpeg' })],
+}))
+eq(comAnexo.content, '', 'placeholder de anexo não vira texto na bolha')
+eq(comAnexo.anexos.length, 1, 'o anexo chega à bolha')
+
+eq(
+  toUIMessage(msg({ message_type: 'document', body: '[documento: laudo.pdf]', attachments: [anexo()] })).content,
+  '',
+  'placeholder com nome de arquivo também sai',
+)
+
+// Legenda de verdade SOBREVIVE. Em meta-waba.normalizar.ts a legenda vence o
+// placeholder, então um corpo que não é só o marcador foi escrito por gente — e
+// apagar pedaço de mensagem de gente é pior que deixar um marcador na tela.
+eq(
+  toUIMessage(msg({ message_type: 'image', body: 'olha o exame dele', attachments: [anexo()] })).content,
+  'olha o exame dele',
+  'legenda do contato não é apagada',
+)
+// Mesmo caso limite: texto que CONTÉM o marcador mas não é só ele.
+eq(
+  toUIMessage(msg({ message_type: 'image', body: 'segue [imagem] do laudo', attachments: [anexo()] })).content,
+  'segue [imagem] do laudo',
+  'marcador no meio da frase não dispara a limpeza',
+)
+
+// Mensagem sem anexo nenhum não passa pela limpeza — se passasse, alguém que
+// escrevesse literalmente "[imagem]" teria a mensagem apagada.
+eq(
+  toUIMessage(msg({ body: '[imagem]', attachments: [] })).content,
+  '[imagem]',
+  'sem anexo, o texto fica intacto',
 )
 
 // ---------------------------------------------------------------------------

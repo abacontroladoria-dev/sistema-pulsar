@@ -152,6 +152,14 @@ export interface Conversation {
   // aplicação — o banco aceita qualquer string aqui.
   tags:             string[] | null
   last_message_at:  string | null
+  // Marca d'água de leitura pela EQUIPE, não por usuário (20260921140000).
+  // Não-lido é uma COMPARAÇÃO, não um contador: existe mensagem inbound com
+  // sent_at > last_read_at. NULL = ninguém abriu ainda.
+  //
+  // Nada a ver com `Message.status`, que é entrega do lado do contato — esse
+  // diz que a pessoa leu o que mandamos, este diz que nós lemos o que ela
+  // mandou.
+  last_read_at:     string | null
   resolved_at:      string | null
   archived_at:      string | null
   created_at:       string

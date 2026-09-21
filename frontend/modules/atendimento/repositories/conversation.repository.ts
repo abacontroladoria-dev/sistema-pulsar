@@ -312,4 +312,49 @@ export class ConversationRepository {
 
     if (error) throw error
   }
+
+  // --------------------------------------------------------------------------
+  // Marca d'água de leitura (20260921140000)
+  //
+  // Escrita crua, sem regra: quem decide QUAL instante gravar é o service. Aqui
+  // só se grava o que mandaram — inclusive `null`, que é um valor legítimo
+  // ("ninguém abriu ainda") e não a ausência de parâmetro.
+  // --------------------------------------------------------------------------
+  async updateLastReadAt(id: string, quando: string | null): Promise<void> {
+    const { error } = await (this.supabase as any)
+      .schema('central')
+      .from('conversations')
+      .update({ last_read_at: quando })
+      .eq('id', id)
+
+    if (error) throw error
+  }
+
+  // O `sent_at` da penúltima mensagem inbound da conversa, ou null quando só
+  // existe uma (ou nenhuma).
+  //
+  // É o instante para onde a marca recua ao "marcar como não lida": posta ali,
+  // a última mensagem do contato passa a ficar DEPOIS da marca, e o não-lido
+  // vira exatamente 1. Recuar mais (para o começo do tempo, ou para null)
+  // ressuscitaria um histórico inteiro de não-lidas — o repo de referência
+  // evita o mesmo problema tocando só a última mensagem.
+  //
+  // `sent_at` pode ser null em linha mal formada; a ordenação com
+  // `nullsFirst: false` mantém essas no fim, e o caller trata o null.
+  async penultimaEntradaEm(conversationId: string): Promise<string | null> {
+    const { data, error } = await (this.supabase as any)
+      .schema('central')
+      .from('messages')
+      .select('sent_at')
+      .eq('conversation_id', conversationId)
+      .eq('direction', 'inbound')
+      .is('deleted_at', null)
+      .order('sent_at', { ascending: false, nullsFirst: false })
+      .limit(2)
+
+    if (error) throw error
+    const linhas = (data ?? []) as { sent_at: string | null }[]
+    // [0] é a última; queremos a de baixo dela.
+    return linhas[1]?.sent_at ?? null
+  }
 }

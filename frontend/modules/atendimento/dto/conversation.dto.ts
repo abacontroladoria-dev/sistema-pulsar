@@ -8,7 +8,14 @@ const isUUID    = (v: unknown): v is string => typeof v === 'string' && UUID_RE.
 const isISODate = (v: unknown): v is string => typeof v === 'string' && !isNaN(new Date(v).getTime())
 
 const VALID_STATUSES: ConversationStatus[] = ['open', 'assigned', 'waiting', 'resolved', 'archived']
-const VALID_ACTIONS = ['assign', 'transfer', 'resolve', 'archive', 'reopen', 'set_ai_mode'] as const
+const VALID_ACTIONS = [
+  'assign', 'transfer', 'resolve', 'archive', 'reopen', 'set_ai_mode',
+  // Marca d'água de leitura (20260921140000). Nenhuma das duas tem campo
+  // próprio: 'mark_read' usa o relógio do servidor e 'mark_unread' deriva o
+  // instante da penúltima mensagem do contato. O cliente não escolhe a data —
+  // se escolhesse, um relógio adiantado apagaria mensagens que não chegaram.
+  'mark_read', 'mark_unread',
+] as const
 export type PatchAction = typeof VALID_ACTIONS[number]
 
 // ----------------------------------------------------------------------------
@@ -107,6 +114,8 @@ export type PatchConversationBody =
   // null é um valor LEGÍTIMO, não "não informado": devolve a conversa ao padrão
   // da inbox/organização, em vez de desligar a IA nela. Ver 20260915220000.
   | { action: 'set_ai_mode'; aiMode: AIMode | null }
+  | { action: 'mark_read' }
+  | { action: 'mark_unread' }
 
 export function parsePatchConversationBody(body: unknown): ParseResult<PatchConversationBody> {
   if (!body || typeof body !== 'object') return { ok: false, errors: ['Body inválido'] }
@@ -157,7 +166,12 @@ export function parsePatchConversationBody(body: unknown): ParseResult<PatchConv
       data: { action, toUserId: b.toUserId as string, reason: b.reason as string | undefined },
     }
   }
-  return { ok: true, data: { action: action as 'resolve' | 'archive' | 'reopen' } }
+  // As ações sem campo próprio. O cast é seguro porque o VALID_ACTIONS já
+  // barrou tudo o mais, e as ações com campo saíram acima com `return`.
+  return {
+    ok: true,
+    data: { action: action as 'resolve' | 'archive' | 'reopen' | 'mark_read' | 'mark_unread' },
+  }
 }
 
 // ----------------------------------------------------------------------------

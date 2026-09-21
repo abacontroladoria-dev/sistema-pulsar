@@ -135,6 +135,9 @@ export interface UseCentralInbox {
   // Para o painel refletir o que ele mesmo gravou (origem, tags, responsável)
   // sem esperar até 5s pelo próximo tique do polling.
   recarregarDetalhe: () => Promise<void>
+  // "Isto ainda precisa de retorno." Recua a marca d'água e deixa a conversa
+  // acesa na lista. Lança em caso de falha — ver o comentário na implementação.
+  marcarComoNaoLida: (id: string) => Promise<void>
 }
 
 export function useCentralInbox(): UseCentralInbox {
@@ -269,7 +272,15 @@ export function useCentralInbox(): UseCentralInbox {
     return () => { vivo = false; controller.abort(); clearInterval(t) }
   }, [selectedId, carregarDetalhe])
 
+  // Declarado aqui, acima de `select`, porque é ele quem libera a trava. Ver o
+  // bloco "Marca d'água de leitura" mais abaixo para o que ela protege.
+  const naoRemarcar = useRef<string | null>(null)
+
   const select = useCallback((id: string | null) => {
+    // Trocar de conversa encerra a decisão de "deixar pendente": ao voltar, a
+    // abertura marca como lida normalmente. Sem isto, uma conversa marcada como
+    // não lida nunca mais seria marcada como lida nesta sessão.
+    naoRemarcar.current = null
     setSelectedId(id)
     // Limpa o chat anterior: mostrar as mensagens de outra pessoa enquanto o
     // novo carrega já é confusão suficiente para o operador responder errado.
@@ -293,6 +304,12 @@ export function useCentralInbox(): UseCentralInbox {
     if (corpo.length > MAX_CARACTERES) {
       throw new Error(`A mensagem tem ${corpo.length} caracteres; o limite do WhatsApp é ${MAX_CARACTERES}.`)
     }
+
+    // Responder é tratar. Se o operador tinha marcado como não lida e mudou de
+    // ideia, a resposta desfaz aquilo — manter a conversa pendente depois de
+    // responder faria a lista cobrar retorno de algo que acabou de ser
+    // respondido. O refetch logo abaixo traz `naoLida` e o efeito marca.
+    naoRemarcar.current = null
 
     setEnviando(true)
     try {
@@ -362,6 +379,94 @@ export function useCentralInbox(): UseCentralInbox {
   }, [selectedId, carregarDetalhe])
 
   // ------------------------------------------------------------------------
+  // Marca d'água de leitura
+  //
+  // Abrir a conversa marca como lida. Isso roda num efeito próprio, e não
+  // dentro do efeito de carga, por dois motivos: a carga se repete a cada 5s
+  // (um PATCH por tique seria absurdo) e marcar leitura não pode participar do
+  // tratamento de erro da carga — um PATCH que falhe não pode pintar a tela de
+  // "Sem acesso".
+  //
+  // A TRAVA, E POR QUE ELA DURA ENQUANTO A CONVERSA ESTIVER ABERTA
+  //
+  // `marcarComoNaoLida` recua `last_read_at`, e o refetch traz a conversa de
+  // volta como não lida — com ela ainda selecionada. Sem trava, este efeito
+  // veria `naoLida: true` numa conversa aberta e marcaria como lida de novo.
+  //
+  // Uma trava de UM disparo (que é o que o repo de referência usa) não basta
+  // aqui, e a diferença é o polling: lá o efeito só reage à mudança do contador;
+  // aqui ele reage a `activeChat`, que é SUBSTITUÍDO a cada 5s. O primeiro
+  // tique seria travado e o segundo desfaria a ação sozinho — o operador veria
+  // a conversa que acabou de marcar apagar em cinco segundos, sem ter tocado em
+  // nada.
+  //
+  // Então a trava vale até a seleção MUDAR. Enquanto o operador estiver com a
+  // conversa aberta, a decisão dele de deixá-la pendente é respeitada; ao sair e
+  // voltar, a abertura volta a marcar como lida, que é o comportamento esperado.
+  //
+  // Mensagem NOVA que chegue durante isso também não remarca — e está certo:
+  // ele marcou como "precisa de retorno" e continua sem ter respondido.
+  //
+  // O ref está declarado lá em cima, junto de `select`, que é quem o libera.
+
+  useEffect(() => {
+    if (!selectedId) return
+    if (naoRemarcar.current === selectedId) return
+
+    // Só quando há o que marcar. Sem esta guarda, o PATCH sairia a cada
+    // seleção, inclusive ao reabrir uma conversa já lida — escrita à toa numa
+    // tabela quente.
+    if (!activeChat?.naoLida) return
+
+    const controller = new AbortController()
+    fetch(`/api/central/conversations/${selectedId}`, {
+      method:  'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ action: 'mark_read' }),
+      signal:  controller.signal,
+    }).catch(() => {
+      // Silêncio deliberado: falhar em marcar como lida não atrapalha o
+      // atendimento — a conversa continua acesa e a próxima abertura tenta de
+      // novo. Um toast de erro aqui interromperia quem só queria ler.
+    })
+
+    return () => controller.abort()
+  }, [selectedId, activeChat?.naoLida])
+
+  const marcarComoNaoLida = useCallback(async (id: string) => {
+    const res = await fetch(`/api/central/conversations/${id}`, {
+      method:  'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ action: 'mark_unread' }),
+    })
+    if (!res.ok) {
+      const json = await res.json().catch(() => null)
+      // Diferente de `mark_read`, esta LANÇA. A leitura falha em silêncio
+      // porque ninguém pediu nada; esta é um pedido explícito do operador, e um
+      // "não lida" que não pegou deixaria a conversa parecendo tratada quando
+      // ele acredita tê-la reaberto.
+      throw new Error(json?.error?.message ?? `A marcação falhou com ${res.status}.`)
+    }
+
+    // Trava o efeito acima ANTES do refetch, que vai trazer a conversa já não
+    // lida e dispararia a remarcação. Vale enquanto esta conversa continuar
+    // selecionada — ver o comentário da trava.
+    naoRemarcar.current = id
+
+    if (id === selectedId) {
+      const controller = new AbortController()
+      try {
+        const { chat, modo, detalhe: d } = await carregarDetalhe(id, controller.signal)
+        setActiveChat(chat)
+        setModoIa(modo)
+        setDetalhe(d)
+      } catch {
+        /* o polling corrige */
+      }
+    }
+  }, [selectedId, carregarDetalhe])
+
+  // ------------------------------------------------------------------------
   // Recarga sob demanda
 
   // Chamada pelo painel depois de gravar. Falha em silêncio de propósito: o
@@ -385,6 +490,6 @@ export function useCentralInbox(): UseCentralInbox {
     conversations, activeChat, selectedId, select,
     loading, loadingChat, erro, enviar, enviando,
     modoIa, definirModoIa, salvandoModo,
-    detalhe, recarregarDetalhe,
+    detalhe, recarregarDetalhe, marcarComoNaoLida,
   }
 }

@@ -498,6 +498,61 @@ export class ConversationService {
   }
 
   // -------------------------------------------------------------------------
+  // marcarComoLida / marcarComoNaoLida
+  //
+  // As duas escrevem a MESMA coluna, e essa simetria é o ponto: não existe
+  // contador para zerar nem badge para acender, só uma marca d'água que anda
+  // para frente ou para trás.
+  //
+  // Nenhuma das duas passa por `requireActive`. Ler uma conversa arquivada é
+  // legítimo — o operador abre o histórico para consultar —, e recusar a
+  // marcação ali faria a conversa resolvida voltar a cobrar atenção para
+  // sempre. Marcar leitura não é ação de ciclo de vida.
+  //
+  // Sem evento no barramento: nada no domínio reage a alguém ter lido. Emitir
+  // um evento por abertura de conversa seria ruído a 5s de poll.
+  // -------------------------------------------------------------------------
+
+  // Chamada ao abrir a conversa. `now()` do servidor, não do cliente: o relógio
+  // do navegador adiantado marcaria como lidas mensagens que ainda vão chegar.
+  //
+  // Sem auditoria: abrir conversa é o gesto mais comum da tela, e uma linha de
+  // auditoria por abertura afogaria a trilha que existe para investigar quem
+  // mexeu em quê.
+  async marcarComoLida(conversationId: string): Promise<void> {
+    const conv = await this.conv.findById(conversationId)
+    if (!conv) throw new ConversationNotFoundError(conversationId)
+
+    await this.conv.updateLastReadAt(conversationId, new Date().toISOString())
+  }
+
+  // Recua a marca para ANTES da última mensagem do contato, de modo que o
+  // não-lido passe a ser exatamente 1.
+  //
+  // Quando não há penúltima (a conversa tem uma única mensagem do contato, ou
+  // nenhuma), a marca vai para `null` — "nunca lida". É o mesmo resultado
+  // prático e não exige inventar uma data.
+  //
+  // Esta SIM é auditada: é uma decisão deliberada do operador ("isto precisa de
+  // retorno"), e é o tipo de coisa que se quer poder reconstituir quando a
+  // pergunta for "por que ninguém respondeu a essa pessoa".
+  async marcarComoNaoLida(conversationId: string, actorId: string): Promise<void> {
+    const conv = await this.conv.findById(conversationId)
+    if (!conv) throw new ConversationNotFoundError(conversationId)
+
+    const marca = await this.conv.penultimaEntradaEm(conversationId)
+    await this.conv.updateLastReadAt(conversationId, marca)
+
+    void this.audit.insert({
+      organization_id: conv.organization_id,
+      conversation_id: conversationId,
+      event_type:      'conversation.marked_unread',
+      performed_by:    actorId,
+      payload:         { lastReadAt: marca, anterior: conv.last_read_at },
+    })
+  }
+
+  // -------------------------------------------------------------------------
   // listByContactIds
   // Usada pela search API: dado um conjunto de contact IDs, retorna as
   // conversas ativas (open|assigned|waiting) associadas a eles.

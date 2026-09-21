@@ -2,12 +2,14 @@
 
 import React, { useState, useRef, useEffect } from 'react'
 import {
-  Search, MessageSquare, Loader2, Info, Bot, User, Pause, Send, Check, CheckCheck, ShieldAlert, AlertCircle, WifiOff
+  Search, MessageSquare, Loader2, Info, Bot, User, Pause, Send, Check, CheckCheck, ShieldAlert, AlertCircle, WifiOff, MailX
 } from 'lucide-react'
 import { ConversationStatus, MessageDirection } from '@/types/nina'
 import { useCentralInbox, type ModoIa } from '@/hooks/nina/useCentralInbox'
 import { usePainelDetalhamento } from '@/hooks/nina/usePainelDetalhamento'
 import { Avatar } from './Avatar'
+import { SeletorEmoji } from './SeletorEmoji'
+import { ChipAnexo } from './ChipAnexo'
 import { PainelDetalhamento } from './detalhamento/PainelDetalhamento'
 import { ModalAgendarRetorno } from './detalhamento/ModalAgendarRetorno'
 import { ModalDesignarTarefa } from './detalhamento/ModalDesignarTarefa'
@@ -19,7 +21,7 @@ const ChatInterface: React.FC = () => {
     conversations, activeChat, selectedId, select,
     loading, erro, enviar, enviando,
     modoIa, definirModoIa, salvandoModo,
-    detalhe, recarregarDetalhe,
+    detalhe, recarregarDetalhe, marcarComoNaoLida,
   } = useCentralInbox()
 
   // Fontes do painel que não vêm no detalhe da conversa (catálogo de tags,
@@ -33,6 +35,7 @@ const ChatInterface: React.FC = () => {
   const [showProfileInfo, setShowProfileInfo] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const textareaRef    = useRef<HTMLTextAreaElement>(null)
 
   const setSelectedChatId = select
   const selectedChatId    = selectedId
@@ -257,6 +260,41 @@ const ChatInterface: React.FC = () => {
     }
   }
 
+  // Insere o emoji ONDE O CURSOR ESTÁ, substituindo a seleção se houver, e
+  // devolve o cursor para logo depois dele.
+  //
+  // Anexar no fim seria mais simples e estaria errado em todo caso que importa:
+  // quem escreve "bom dia, já confirmei sua sessão" e volta para pôr um emoji
+  // depois do "dia" espera que ele caia ali. O `requestAnimationFrame` existe
+  // porque o textarea é controlado — o valor novo só chega ao DOM no próximo
+  // render, e mexer em selectionRange antes disso reposiciona o cursor sobre o
+  // texto ANTIGO.
+  const inserirEmoji = (emoji: string) => {
+    const el = textareaRef.current
+    const inicio = el?.selectionStart ?? inputText.length
+    const fim    = el?.selectionEnd   ?? inputText.length
+
+    setInputText(inputText.slice(0, inicio) + emoji + inputText.slice(fim))
+
+    requestAnimationFrame(() => {
+      const campo = textareaRef.current
+      if (!campo) return
+      campo.focus()
+      const pos = inicio + emoji.length
+      campo.setSelectionRange(pos, pos)
+    })
+  }
+
+  const handleMarcarNaoLida = async () => {
+    if (!selectedId) return
+    try {
+      await marcarComoNaoLida(selectedId)
+      toast.success('Conversa marcada como não lida.')
+    } catch (err) {
+      toast.error((err as Error).message)
+    }
+  }
+
   // Sessão válida, mas o usuário não tem `central_role` em public.usuarios.
   // Tela própria em vez de lista vazia: vazio ambíguo faz o operador procurar
   // problema onde não há. Não redirecionar para /login — a sessão está boa, e
@@ -336,26 +374,43 @@ const ChatInterface: React.FC = () => {
                   <div className="w-12 h-12 rounded-full p-0.5 bg-gradient-to-tr from-slate-700 to-slate-900">
                     <Avatar url={chat.contactAvatar} nome={chat.contactName} />
                   </div>
-                  {/* O ponto pulsante cyan sinalizava não-lidas. Não existe
-                      registro de leitura por usuário no schema, então ele
-                      pulsaria sempre ou nunca — fica o ponto neutro. */}
-                  <span className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-slate-600 border-2 border-border rounded-full"></span>
+                  {/* O ponto voltou a significar algo: `last_read_at` existe
+                      desde 20260921140000, e não-lido é a comparação com ele.
+                      Antes, sem registro de leitura, ele pulsaria sempre ou
+                      nunca — por isso era neutro. */}
+                  <span
+                    className={`absolute bottom-0 right-0 w-3.5 h-3.5 border-2 border-border rounded-full ${
+                      chat.naoLida ? 'bg-cyan-500 animate-pulse' : 'bg-slate-600'
+                    }`}
+                    title={chat.naoLida ? 'Mensagem não lida' : undefined}
+                  ></span>
                 </div>
 
                 <div className="ml-3 flex-1 min-w-0">
                   <div className="flex justify-between items-baseline mb-1">
-                    <h3 className={`text-sm font-semibold truncate ${selectedChatId === chat.id ? 'text-foreground' : 'text-muted-foreground'}`}>
+                    {/* Não lida pesa mais que selecionada: quem varre a lista
+                        procura o que falta responder, e o negrito é o que o
+                        olho encontra antes de ler qualquer nome. */}
+                    <h3 className={`text-sm truncate ${
+                      chat.naoLida
+                        ? 'font-bold text-foreground'
+                        : selectedChatId === chat.id
+                          ? 'font-semibold text-foreground'
+                          : 'font-semibold text-muted-foreground'
+                    }`}>
                       {chat.contactName}
                     </h3>
                     <span className="text-[10px] text-muted-foreground/70 font-medium">{chat.lastMessageTime}</span>
                   </div>
                   <p className="text-xs text-muted-foreground/70 truncate">{chat.lastMessage}</p>
 
-                  {/* A badge numérica de não-lidas saiu: central.conversations
-                      não tem registro de leitura por usuário, então o número
-                      seria sempre inventado. Um "3" falso é pior que nada — o
-                      operador confia nele e deixa de abrir a conversa que tem
-                      mensagem nova de verdade. */}
+                  {/* Continua SEM badge numérica, e agora por outro motivo: a
+                      lista não carrega mensagens (o hook passa `[]` de
+                      propósito), então o número exato não existe aqui — só
+                      dentro da conversa aberta. O ponto e o negrito respondem
+                      a pergunta que a lista consegue responder ("tem?"), e um
+                      "3" que viesse de outro lugar seria tão inventado quanto o
+                      que foi removido antes. */}
                   <div className="flex items-center mt-2 gap-1.5">
                     {renderStatusBadge(chat.status)}
                   </div>
@@ -403,6 +458,20 @@ const ChatInterface: React.FC = () => {
                   aoTrocar={handleTrocarModo}
                 />
 
+                {/* "Isto ainda precisa de retorno." Recua a marca d'água para
+                    antes da última mensagem do contato — a conversa volta a
+                    acender na lista com UMA não lida, que é o sinal honesto.
+                    Não ressuscita o histórico inteiro de não-lidas. */}
+                <button
+                  type="button"
+                  onClick={handleMarcarNaoLida}
+                  title="Marcar como não lida"
+                  aria-label="Marcar como não lida"
+                  className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <MailX className="w-5 h-5" />
+                </button>
+
                 {/* O X do painel só escondia, e não havia como trazê-lo de
                     volta sem recarregar a página. Com seis blocos de ficha lá
                     dentro, fechar por engano custava caro demais. */}
@@ -443,6 +512,22 @@ const ChatInterface: React.FC = () => {
                                 : 'bg-muted text-foreground rounded-tl-sm border border-border'
                           }`}
                         >
+                          {/* Anexo primeiro, legenda depois — é a ordem do
+                              WhatsApp, e é a ordem em que a pessoa pensou. */}
+                          {msg.anexos.length > 0 && (
+                            <div className={`flex flex-col gap-1.5 ${msg.content ? 'mb-2' : ''}`}>
+                              {msg.anexos.map(a => (
+                                <ChipAnexo
+                                  key={a.id}
+                                  anexo={a}
+                                  // Bolha de saída = gradiente escuro com texto
+                                  // branco. O chip precisa saber em qual dos
+                                  // dois fundos está para não sumir.
+                                  claro={isOutgoing && !msg.isAiDraft}
+                                />
+                              ))}
+                            </div>
+                          )}
                           {msg.content}
                         </div>
                         <div className="flex items-center mt-1.5 gap-1.5 text-[10px] px-1">
@@ -479,9 +564,15 @@ const ChatInterface: React.FC = () => {
             </div>
 
             <div className="p-4 bg-card border-t border-border backdrop-blur-sm z-10">
-              <form onSubmit={handleSendMessage} className="flex items-end gap-3 max-w-4xl mx-auto">
+              <form onSubmit={handleSendMessage} className="flex items-end gap-2 max-w-4xl mx-auto">
+                {/* Fora do campo, e não dentro dele: o painel abre para cima a
+                    partir daqui, e ancorá-lo no textarea o faria saltar de
+                    posição conforme o campo cresce com o texto. */}
+                <SeletorEmoji aoEscolher={inserirEmoji} desabilitado={enviando} />
+
                 <div className="flex-1 bg-background rounded-2xl border border-border focus-within:ring-2 focus-within:ring-cyan-500/30 focus-within:border-cyan-500/50 transition-all shadow-inner">
                   <textarea
+                    ref={textareaRef}
                     value={inputText}
                     onChange={(e) => setInputText(e.target.value)}
                     onKeyDown={(e) => {
