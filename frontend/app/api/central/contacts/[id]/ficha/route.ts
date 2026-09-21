@@ -67,7 +67,7 @@ export async function PATCH(request: NextRequest, ctx: Ctx) {
 
     const corpo = await request.json().catch(() => null)
     if (!corpo || typeof corpo !== 'object') {
-      return badRequest('FICHA_CORPO_INVALIDO', 'Envie um objeto com os campos a alterar.')
+      return badRequest('Envie um objeto com os campos a alterar.')
     }
 
     // Allowlist: só os cinco campos coletáveis entram. Um corpo com
@@ -79,14 +79,14 @@ export async function PATCH(request: NextRequest, ctx: Ctx) {
       if (campo in corpo) {
         const valor = (corpo as Record<string, unknown>)[campo]
         if (valor !== null && typeof valor !== 'string') {
-          return badRequest('FICHA_VALOR_INVALIDO', `O campo ${campo} precisa ser texto ou null.`)
+          return badRequest(`O campo ${campo} precisa ser texto ou null.`, campo)
         }
         patch[campo] = valor
       }
     }
 
     if (Object.keys(patch).length === 0) {
-      return badRequest('FICHA_SEM_CAMPOS', 'Nenhum campo conhecido foi enviado.')
+      return badRequest('Nenhum campo conhecido foi enviado.')
     }
 
     const service = createFichaService(supabase)
@@ -95,8 +95,16 @@ export async function PATCH(request: NextRequest, ctx: Ctx) {
     // Uma data que o atendente digitou errado não pode ser aceita em silêncio: o
     // campo ficaria em branco e ele acharia que salvou. O motivo é o mesmo texto
     // que a Maia receberia, e serve igualmente bem a um humano.
+    //
+    // A ORDEM DOS ARGUMENTOS IMPORTA e já custou uma vez: `badRequest` é
+    // (message, field), não (code, message). Invertida, a tela mostra o código
+    // e engole a frase — o atendente lê "FICHA_VALOR_RECUSADO" e não fica
+    // sabendo que o problema era a data estar incompleta.
     if (recusados.length > 0) {
-      return badRequest('FICHA_VALOR_RECUSADO', recusados.map((r) => r.motivo).join(' '))
+      return badRequest(
+        recusados.map((r) => r.motivo).join(' '),
+        recusados[0].campo,
+      )
     }
 
     // Devolve a ficha inteira remontada, não só o que mudou: o merge pode alterar
