@@ -39,6 +39,29 @@ import {
   internalError,
 } from './response'
 
+// O erro do supabase-js não é um Error — é `{code, message, details, hint}`.
+// Sem este guard nenhum `instanceof` o alcança e ele cai sempre no fallback.
+interface ErroPostgrest {
+  code:     string
+  message:  string
+  details?: string | null
+  hint?:    string | null
+}
+
+function ehErroPostgrest(err: unknown): err is ErroPostgrest {
+  return (
+    typeof err === 'object'
+    && err !== null
+    // `CentralError` também tem `code` e `message`, e os erros de domínio
+    // precisam continuar caindo nos `instanceof` abaixo — excluí-los aqui é o
+    // que impede este guard de sequestrar um deles se alguém um dia usar um
+    // código no formato PGRSTxxx.
+    && !(err instanceof Error)
+    && typeof (err as ErroPostgrest).code === 'string'
+    && typeof (err as ErroPostgrest).message === 'string'
+  )
+}
+
 // Mapeia erros de domínio para respostas HTTP tipadas.
 // Nunca expõe stack traces ao cliente — erros inesperados são logados internamente.
 export function mapCentralError(err: unknown): NextResponse {
@@ -126,6 +149,39 @@ export function mapCentralError(err: unknown): NextResponse {
   if (err instanceof LlmRecusadoError) {
     console.error('[Central API] OpenAI recusou', { code: err.code, message: err.message })
     return badGateway(err.code, err.message)
+  }
+
+  // ------------------------------------------------------------------------
+  // Erros crus do PostgREST
+  //
+  // Não são instâncias de Error: chegam como objetos `{code, message, details,
+  // hint}` vindos do supabase-js. Por isso o teste é estrutural, e por isso
+  // eles nunca casaram com nenhum `instanceof` acima — caíam direto no
+  // fallback.
+  //
+  // PGRST106 — SCHEMA NÃO EXPOSTO. O caso que motivou este bloco (21/09/2026):
+  // `/connect/dashboard` mostrava "Não foi possível carregar os indicadores.
+  // Internal server error" porque o schema `crm` não estava em Settings → API
+  // → Exposed schemas. O banco tinha respondido com precisão — "Invalid schema:
+  // crm" e a lista dos que estão expostos — e nós trocamos isso por uma
+  // resposta genérica.
+  //
+  // É o pior tipo de defeito: a correção é de UM campo num painel, mas a
+  // mensagem manda procurar no lugar errado. Repassar o texto do PostgREST é o
+  // conserto — ele já nomeia o schema que falta E lista os válidos.
+  //
+  // 503 e não 500: a instalação está incompleta, o pedido estava correto.
+  // Repetir não resolve; expor o schema resolve.
+  if (ehErroPostgrest(err) && err.code === 'PGRST106') {
+    console.error('[Central API] schema não exposto no PostgREST', {
+      code:    err.code,
+      message: err.message,
+      hint:    'Supabase → Settings → API → Exposed schemas',
+    })
+    return serviceUnavailable(
+      'SCHEMA_NAO_EXPOSTO',
+      `${err.message}. Exponha o schema em Settings → API → Exposed schemas do Supabase.`,
+    )
   }
 
   if (err instanceof CentralError) {
