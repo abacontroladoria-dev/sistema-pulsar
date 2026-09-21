@@ -28,6 +28,32 @@ function variacaoPercentual(atual: number, anterior: number): number | null {
   return Math.round(((atual - anterior) / anterior) * 100)
 }
 
+// ----------------------------------------------------------------------------
+// O CRM pode estar fora do ar por instalação, não por falha.
+//
+// PGRST106 = o schema `crm` não está em Settings → API → Exposed schemas. É o
+// estado de uma instalação incompleta, e ele NÃO é um erro desta requisição:
+// o pedido estava correto, a resposta é que o módulo comercial ainda não foi
+// ligado neste projeto.
+//
+// Tratá-lo como falha fazia o dashboard inteiro virar uma tarja vermelha
+// dizendo "Internal server error" — e o resto da página do Connect, que não
+// depende de CRM nenhum, ficava com cara de quebrado junto. Um módulo não
+// instalado não pode parecer um sistema com defeito.
+//
+// Por isso a rota responde 200 com `crmIndisponivel: true`: é um QUARTO
+// estado, ao lado de erro / semDados / dados, e a UI o desenha como aviso
+// informativo. Ver o comentário de estados em components/nina/Dashboard.tsx.
+// ----------------------------------------------------------------------------
+function ehSchemaNaoExposto(err: unknown): boolean {
+  return (
+    typeof err === 'object'
+    && err !== null
+    && !(err instanceof Error)
+    && (err as { code?: unknown }).code === 'PGRST106'
+  )
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { user, supabase } = await extractUser()
@@ -88,9 +114,33 @@ export async function GET(request: NextRequest) {
       // é diferente de "falhou ao carregar", e a tela precisa dizer qual dos
       // dois aconteceu.
       semDados: abertos + ganhos + perdidos === 0,
+      crmIndisponivel: false,
       periodo:  { dias: days, de: inicio, ate: new Date(agora).toISOString() },
     })
   } catch (err) {
+    // Módulo não instalado ≠ requisição com defeito. Responde 200 com a mesma
+    // FORMA do corpo de sucesso — todos os campos presentes, valores nulos —
+    // para que a UI não precise de um caminho de leitura separado só para este
+    // caso. Um corpo de formato diferente aqui seria a próxima fonte de
+    // "cannot read property 'valor' of undefined".
+    if (ehSchemaNaoExposto(err)) {
+      console.warn('[CRM metrics] schema crm não exposto; devolvendo indisponível', {
+        hint: 'Supabase → Settings → API → Exposed schemas',
+      })
+      const vazio = { valor: null, variacao: null }
+      return ok({
+        novosLeads:       vazio,
+        negociosAbertos:  vazio,
+        negociosGanhos:   vazio,
+        negociosPerdidos: vazio,
+        taxaConversao:    vazio,
+        valorGanho:       vazio,
+        semDados:         false,
+        crmIndisponivel:  true,
+        periodo: null,
+      })
+    }
+
     return mapComercialError(err)
   }
 }

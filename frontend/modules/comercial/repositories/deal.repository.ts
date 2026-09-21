@@ -45,6 +45,53 @@ const SELECT_COM_CONTATO = `
   )
 `
 
+// ----------------------------------------------------------------------------
+// O erro de contagem chega MUDO, e isto é uma armadilha do supabase-js.
+//
+// Com `head: true` a requisição vira HTTP HEAD, que por definição não tem
+// corpo — e é no corpo que o PostgREST manda `{code, message, hint}`. O
+// resultado é que uma contagem contra schema não exposto rejeita com
+// `{message: ""}`: sem código, sem mensagem, sem pista.
+//
+// Medido em 21/09/2026 contra produção, com o schema `crm` fora de Exposed
+// schemas:
+//
+//   .select('id', { count: 'exact', head: true })  →  {"message":""}
+//   .select('id').limit(1)                         →  {"code":"PGRST106",
+//                                                      "message":"Invalid schema: crm",
+//                                                      "hint":"Only the following
+//                                                       schemas are exposed: ..."}
+//
+// A MESMA falha, no MESMO schema, com duas formas completamente diferentes. É
+// por isso que "Não foi possível carregar os indicadores. Internal server
+// error" não dizia nada: não havia nada para dizer — a informação morre no
+// protocolo, antes de chegar ao nosso código.
+//
+// Este helper devolve o código a quem o perdeu. Sem ele, qualquer tratamento
+// de PGRST106 acima daqui só funcionaria para as consultas COM corpo, e as
+// contagens — que são justamente as do dashboard — continuariam em silêncio.
+// ----------------------------------------------------------------------------
+function erroDeContagem(err: unknown): unknown {
+  // Erro que já sabe se explicar passa intacto.
+  if (typeof err !== 'object' || err === null) return err
+  const e = err as { code?: unknown; message?: unknown }
+  if (e.code) return err
+
+  // Mudo: só HEAD produz isso, e no fluxo deste repositório a única causa
+  // conhecida é o schema não exposto. Assumir PGRST106 aqui é uma inferência,
+  // e por isso o `details` diz que foi inferida — quem depurar precisa saber
+  // que este código não veio do PostgREST.
+  if (!e.message) {
+    return {
+      code: 'PGRST106',
+      message: 'Invalid schema: crm',
+      hint: 'Supabase → Settings → API → Exposed schemas',
+      details: 'inferido: contagem com head:true não recebe corpo de erro',
+    }
+  }
+  return err
+}
+
 export class DealRepository {
   constructor(private readonly supabase: SupabaseClient) {}
 
@@ -189,7 +236,7 @@ export class DealRepository {
       .eq('organization_id', orgId)
       .eq('status', status)
 
-    if (error) throw error
+    if (error) throw erroDeContagem(error)
     return count ?? 0
   }
 
@@ -200,7 +247,7 @@ export class DealRepository {
       .eq('organization_id', orgId)
       .gte('created_at', desdeISO)
 
-    if (error) throw error
+    if (error) throw erroDeContagem(error)
     return count ?? 0
   }
 

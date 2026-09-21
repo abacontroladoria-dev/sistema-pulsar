@@ -39,6 +39,11 @@ const Dashboard: React.FC = () => {
   // ------------------------------------------------------------------------
   const [erro, setErro] = useState<string | null>(null)
   const [semDados, setSemDados] = useState(false)
+  // Quarto estado: o módulo comercial não está ligado neste projeto (o schema
+  // `crm` não está exposto no PostgREST). Não é falha — é instalação
+  // incompleta, e a tarja vermelha de erro fazia a página inteira parecer
+  // quebrada por causa de um módulo que ninguém habilitou.
+  const [crmIndisponivel, setCrmIndisponivel] = useState(false)
 
   useEffect(() => {
     const loadData = async () => {
@@ -55,12 +60,18 @@ const Dashboard: React.FC = () => {
 
         const m = corpo.data
         setSemDados(Boolean(m.semDados))
+        setCrmIndisponivel(Boolean(m.crmIndisponivel))
 
         const comoTexto = (v: number | null) => (v === null ? '—' : String(v))
-        const comoMoeda = (v: number) =>
-          new Intl.NumberFormat('pt-BR', {
-            style: 'currency', currency: 'BRL', maximumFractionDigits: 0,
-          }).format(v)
+        // `null` é caso esperado desde que a rota passou a responder com o CRM
+        // indisponível: formatar null como moeda daria "R$ 0", que é um número
+        // inventado — e o pior tipo de número, porque parece medido.
+        const comoMoeda = (v: number | null) =>
+          v === null
+            ? '—'
+            : new Intl.NumberFormat('pt-BR', {
+                style: 'currency', currency: 'BRL', maximumFractionDigits: 0,
+              }).format(v)
         // Sem base de comparação não há seta — melhor um campo vazio do que
         // uma tendência inventada.
         const comoTendencia = (v: number | null) =>
@@ -165,9 +176,27 @@ const Dashboard: React.FC = () => {
         </div>
       )}
 
+      {/* O módulo comercial não está ligado neste projeto. Não é falha: o
+          pedido estava certo e o banco respondeu. Âmbar e não vermelho porque
+          vermelho manda procurar defeito, e aqui não há nenhum — há uma
+          configuração de uma linha que ninguém fez ainda.
+
+          O texto nomeia o lugar exato da correção. Sem isso, "indicadores
+          indisponíveis" mandaria alguém abrir o código para descobrir que o
+          conserto era um campo num painel. */}
+      {!erro && crmIndisponivel && (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 px-4 py-3 text-sm text-amber-700 dark:text-amber-200/90">
+          <span className="font-semibold">Os indicadores comerciais não estão disponíveis.</span>{' '}
+          O módulo de CRM ainda não foi habilitado neste projeto: falta expor o
+          schema <code className="px-1 rounded bg-amber-500/15 font-mono text-xs">crm</code> em
+          Settings → API → Exposed schemas, no painel do Supabase. O restante da
+          Central funciona normalmente.
+        </div>
+      )}
+
       {/* Carregou bem e a resposta é zero. Dizer POR QUE está zerado evita a
           leitura de que o sistema quebrou — e aponta o que falta acontecer. */}
-      {!erro && semDados && (
+      {!erro && !crmIndisponivel && semDados && (
         <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 px-4 py-3 text-sm text-amber-700 dark:text-amber-200/90">
           <span className="font-semibold">Ainda não há negócios registrados.</span>{' '}
           Os números abaixo são reais e estão zerados porque a operação comercial
