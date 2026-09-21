@@ -76,11 +76,17 @@ interface SalasGridViewProps {
   dias?: readonly { dow: number; label: string }[]
   /** Quando presente, o nome da sala vira link para a view de detalhe. Opcional: sem ele a tabela funciona exatamente como antes. */
   onVerDetalhes?: (id: string) => void
+  /**
+   * Dia(s) selecionados no filtro "Dia" (string de `dow`, ex.: ["2","3"]) —
+   * usado só pra ESMAECER as colunas de fora do recorte (o slot continua
+   * sendo o de verdade, nunca some). Vazio/ausente = nenhuma coluna esmaecida.
+   */
+  diasFiltro?: string[]
 }
 
 export function SalasGridView({
   salas, onEditarSala, onIsolarSala, salaIsoladaId, encontrarAlocacaoDoProfissional, onRecarregar, buscaProfissional = "", salasComExclusividade,
-  salasTodas, exclusividades, profissionaisTodos, terapiasTodas, dias = DIAS_PADRAO, onVerDetalhes,
+  salasTodas, exclusividades, profissionaisTodos, terapiasTodas, dias = DIAS_PADRAO, onVerDetalhes, diasFiltro = [],
 }: SalasGridViewProps) {
   const [modal, setModal] = useState<ModalState | null>(null)
 
@@ -137,7 +143,12 @@ export function SalasGridView({
               Turno
             </th>
             {dias.map(d => (
-              <th key={d.dow} className="sticky top-0 z-20 border-b border-l border-border bg-muted px-2 py-2 text-center text-xs font-bold uppercase text-muted-foreground">
+              <th
+                key={d.dow}
+                className={`sticky top-0 z-20 border-b border-l border-border bg-muted px-2 py-2 text-center text-xs font-bold uppercase text-muted-foreground ${
+                  diasFiltro.length && !diasFiltro.includes(String(d.dow)) ? "opacity-40" : ""
+                }`}
+              >
                 {d.label}
               </th>
             ))}
@@ -231,6 +242,7 @@ export function SalasGridView({
                     onAbrirModal={m => setModal(m)}
                     buscaProfissional={buscaProfissional}
                     bordaTopo={turnoIdx === 0}
+                    foraDoFiltro={diasFiltro.length > 0 && !diasFiltro.includes(String(d.dow))}
                   />
                 ))}
               </tr>
@@ -262,7 +274,7 @@ export function SalasGridView({
 }
 
 function SlotCell({
-  sala, diaLabel, slot, onAbrirModal, buscaProfissional = "", bordaTopo,
+  sala, diaLabel, slot, onAbrirModal, buscaProfissional = "", bordaTopo, foraDoFiltro = false,
 }: {
   sala: Sala
   diaLabel: string
@@ -270,11 +282,18 @@ function SlotCell({
   onAbrirModal: (m: ModalState) => void
   buscaProfissional?: string
   bordaTopo: boolean
+  /** true quando o dia desta coluna está fora do filtro "Dia" selecionado — célula esmaecida (não escondida: o slot mostrado continua sendo o de verdade). */
+  foraDoFiltro?: boolean
 }) {
   const { labels: statusLabels, loading: statusLabelsLoading } = useStatusLabels()
   const bordaCls = bordaTopo ? "border-t" : ""
+  // Mesma largura em TODA célula, tenha slot ou não — sem isto, colunas cujo
+  // conteúdo é só "—" (fora do filtro "Dia" ou sem slot mesmo) encolhem e as
+  // colunas com conteúdo real ficam mais largas, desalinhando o cabeçalho.
+  const larguraCls = "w-[190px] max-w-[190px]"
+  const esmaecidaCls = foraDoFiltro ? "opacity-40" : ""
 
-  if (!slot) return <td className={`border-l border-border px-1 py-2 text-center text-muted-foreground ${bordaCls}`}>—</td>
+  if (!slot) return <td className={`${larguraCls} border-l border-border px-1 py-2 text-center text-muted-foreground ${bordaCls} ${esmaecidaCls}`}>—</td>
 
   if (slot.status === "bloqueado" || slot.status === "inativo") {
     const labelReal = statusLabels[sala.status]
@@ -284,14 +303,14 @@ function SlotCell({
     // instante toda vez que a página carregava, antes de virar vermelho.
     if (!labelReal && statusLabelsLoading) {
       return (
-        <td className={`border-l border-border px-1 py-2 text-center ${bordaCls}`}>
+        <td className={`${larguraCls} border-l border-border px-1 py-2 text-center ${bordaCls} ${esmaecidaCls}`}>
           <span className="inline-block h-4 w-16 animate-pulse rounded-full bg-muted" />
         </td>
       )
     }
     const l = labelReal ?? { label_curto: sala.status, tone: "slate" as const }
     return (
-      <td className={`border-l border-border px-1 py-2 text-center ${bordaCls}`}>
+      <td className={`${larguraCls} border-l border-border px-1 py-2 text-center ${bordaCls} ${esmaecidaCls}`}>
         <StatusPill tone={l.tone} dense>{l.label_curto}</StatusPill>
       </td>
     )
@@ -302,7 +321,7 @@ function SlotCell({
   const slotInconsistente = slot.inconsistente || slot.violaExclusividade
 
   return (
-    <td className={`group w-[190px] max-w-[190px] border-l border-border px-1 py-1.5 align-top ${bordaCls} ${slotInconsistente ? "bg-red-100 ring-2 ring-inset ring-red-500 dark:bg-red-950/40 dark:ring-red-500" : ""}`}>
+    <td className={`group ${larguraCls} border-l border-border px-1 py-1.5 align-top ${bordaCls} ${esmaecidaCls} ${slotInconsistente ? "bg-red-100 ring-2 ring-inset ring-red-500 dark:bg-red-950/40 dark:ring-red-500" : ""}`}>
       <div className="flex flex-col gap-1">
         {slot.inconsistente && (
           <div className="flex items-center gap-1 rounded-md bg-red-600 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-tight text-white shadow-sm dark:bg-red-500">

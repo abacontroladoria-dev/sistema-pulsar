@@ -368,8 +368,8 @@ describe("removerChipDeFiltro", () => {
   it("todo chip gerado é removível (nenhum campo esquecido no switch)", () => {
     const cheio = {
       unidade: ["U"], nucleo: ["N"], andar: ["A"],
-      capacidade: ["duplo" as const], turno: ["Manhã" as const], status: ["operacional"],
-      profissional: "Ana", semSessao: true, comExclusividade: true,
+      capacidade: ["duplo" as const], turno: ["Manhã" as const], dia: ["3"], status: ["operacional"],
+      profissional: "Ana", semSessao: true, comExclusividade: true, soVagasLivres: true,
     }
     const chips = chipsDeFiltro(cheio)
     const zerado = chips.reduce(removerChipDeFiltro, cheio)
@@ -381,6 +381,11 @@ describe("contarFiltrosSecundarios", () => {
   it("conta só o que fica escondido atrás de 'Mais filtros'", () => {
     const f = { ...SALAS_FILTROS_VAZIO, unidade: ["U"], andar: ["A"], turno: ["Manhã" as const], semSessao: true }
     // unidade é primário: não entra na conta.
+    expect(contarFiltrosSecundarios(f)).toBe(3)
+  })
+
+  it("conta dia e soVagasLivres, o par que responde 'salas livres na quarta de tarde'", () => {
+    const f = { ...SALAS_FILTROS_VAZIO, turno: ["Tarde" as const], dia: ["3"], soVagasLivres: true }
     expect(contarFiltrosSecundarios(f)).toBe(3)
   })
 })

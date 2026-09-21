@@ -33,6 +33,7 @@ import { Z_MODAL_EMPILHADO } from "@/components/cronograma/ui/ScheduleModal"
 import { STATUS_SLOT_EXCLUIDO, type Sala, type SlotOcupacaoSala } from "@/lib/cronograma/salasTypes"
 import {
   agruparPorDiasDisponiveis,
+  diasDeSemanaDisponiveis,
   salaTemInconsistencia,
   seguePadraoSemanal,
   SALAS_FILTROS_VAZIO,
@@ -106,6 +107,7 @@ function OcupacaoSalasConteudo() {
   const unidades = useMemo(() => [...new Set(salasComOcupacao.map(s => s.sala.unidade_nome))].sort(), [salasComOcupacao])
   const nucleos = useMemo(() => [...new Set(salasComOcupacao.map(s => s.sala.nucleo).filter((n): n is string => !!n))].sort(), [salasComOcupacao])
   const andares = useMemo(() => [...new Set(salasComOcupacao.map(s => s.sala.andar).filter((n): n is string => !!n))].sort(), [salasComOcupacao])
+  const diasSemana = useMemo(() => diasDeSemanaDisponiveis(salasComOcupacao), [salasComOcupacao])
   const salasComExclusividade = useMemo(() => new Set(exclusividades.map(e => e.sala_id)), [exclusividades])
 
   function irPara(params: { sala?: string | null; view?: string | null }) {
@@ -136,10 +138,29 @@ function OcupacaoSalasConteudo() {
       .map(item => {
         let slots = item.slots
         if (filtros.turno.length) slots = slots.filter((s: SlotOcupacaoSala) => filtros.turno.includes(s.turno))
+        if (filtros.soVagasLivres) slots = slots.filter((s: SlotOcupacaoSala) => s.status === "livre")
         if (filtros.semSessao) slots = slots.filter((s: SlotOcupacaoSala) => s.alocacoes.some(a => a.semCruzamentoCsv))
+        // `dia` NÃO trunca aqui de propósito — ao contrário de turno/vagas/
+        // sem-sessão, ele não remove conteúdo real da grade, só decide (no
+        // filtro abaixo) se a sala aparece. Os dias fora do filtro continuam
+        // com o slot de verdade; SalasGridView é quem os esmaece visualmente
+        // (ver `diasFiltro`) — do contrário toda sala virava uma grade
+        // "furada" com '—' nas colunas de fora, e como cada coluna some ou
+        // fica sem largura de sobra, a tabela inteirava desalinhava (colunas
+        // com conteúdo real ficavam mais largas que as com só '—').
         return { ...item, slots }
       })
-      .filter(item => !filtros.semSessao || item.slots.length > 0)
+      // Some a sala inteira quando um recorte de turno/vaga/sem-sessão a
+      // esvazia, ou quando nenhum slot cai nos dias selecionados — do
+      // contrário ela continuaria na lista com a grade "furada" (célula
+      // indisponível em todo dia/turno fora do recorte), sugerindo que a sala
+      // some do sistema em vez de simplesmente não bater com o filtro.
+      .filter(item => {
+        const filtroDeSlotAtivo = filtros.turno.length > 0 || filtros.dia.length > 0 || filtros.soVagasLivres || filtros.semSessao
+        if (!filtroDeSlotAtivo) return true
+        if (item.slots.length === 0) return false
+        return !filtros.dia.length || item.slots.some((s: SlotOcupacaoSala) => filtros.dia.includes(String(s.dow)))
+      })
   }, [salasComOcupacao, filtros, isolada, somenteInconsistentes, salasComExclusividade])
 
   // Salas com dias diferentes do padrão Seg-Sex (ex.: só quarta e sábado) não
@@ -344,6 +365,7 @@ function OcupacaoSalasConteudo() {
           unidades={unidades}
           nucleos={nucleos}
           andares={andares}
+          diasSemana={diasSemana}
           somenteInconsistentes={somenteInconsistentes}
           onToggleInconsistentes={() => setSomenteInconsistentes(v => !v)}
           isolada={isolada}

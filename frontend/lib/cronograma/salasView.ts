@@ -32,6 +32,8 @@ export interface SalasFiltrosState {
   andar: string[]
   capacidade: SalaCapacidade[]
   turno: ("Manhã" | "Tarde")[]
+  /** Dia(s) da semana, como string do `dow` (ex.: "3" = quarta) — string pra reaproveitar o mesmo MultiSelectFiltro dos demais campos. */
+  dia: string[]
   status: SalaStatus[]
   /** Busca livre por nome de profissional alocado (ignora acentos/maiúsculas) */
   profissional: string
@@ -39,10 +41,12 @@ export interface SalasFiltrosState {
   semSessao: boolean
   /** Só mostra salas com pelo menos uma regra cadastrada em "Exclusividade de salas com terapias" */
   comExclusividade: boolean
+  /** Só mostra slots sem nenhuma alocação (status "livre") — combinado com `dia`/`turno` responde "quais salas estão livres na quarta de tarde". */
+  soVagasLivres: boolean
 }
 
 export const SALAS_FILTROS_VAZIO: SalasFiltrosState = {
-  unidade: [], nucleo: [], andar: [], capacidade: [], turno: [], status: [], profissional: "", semSessao: false, comExclusividade: false,
+  unidade: [], nucleo: [], andar: [], capacidade: [], turno: [], dia: [], status: [], profissional: "", semSessao: false, comExclusividade: false, soVagasLivres: false,
 }
 
 // ─── AGRUPAMENTO POR DIAS ATENDIDOS ───────────────────────────────────────────
@@ -81,6 +85,13 @@ export function diasDaSala(sala: Sala): { dow: number; label: string }[] {
   return [...new Set(dias.map(d => d.dow))]
     .sort((a, b) => a - b)
     .map(dow => ({ dow, label: DOW_PT[dow] ?? String(dow) }))
+}
+
+/** União dos dias atendidos por QUALQUER sala do recorte, como string de `dow` — opções do filtro "Dia" em "Mais filtros" (ver `SalasFiltrosState.dia`). */
+export function diasDeSemanaDisponiveis(itens: { sala: Sala }[]): string[] {
+  const dows = new Set<number>()
+  itens.forEach(item => diasDaSala(item.sala).forEach(d => dows.add(d.dow)))
+  return [...dows].sort((a, b) => a - b).map(String)
 }
 
 // ─── INCONSISTÊNCIA ───────────────────────────────────────────────────────────
@@ -406,6 +417,7 @@ export function chipsDeFiltro(
     { campo: "andar", titulo: "Andar", valores: f.andar },
     { campo: "capacidade", titulo: "Capacidade", valores: f.capacidade, label: v => CAPACIDADE_LABEL_CURTO[v as SalaCapacidade] ?? v },
     { campo: "turno", titulo: "Turno", valores: f.turno },
+    { campo: "dia", titulo: "Dia", valores: f.dia, label: v => DOW_PT[Number(v)] ?? v },
     { campo: "status", titulo: "Status", valores: f.status, label: v => rotulos.status?.(v) ?? v },
   ]
 
@@ -416,6 +428,7 @@ export function chipsDeFiltro(
   if (f.profissional.trim()) chips.push({ campo: "profissional", label: `Profissional: ${f.profissional.trim()}` })
   if (f.semSessao) chips.push({ campo: "semSessao", label: "Alocação sem sessão" })
   if (f.comExclusividade) chips.push({ campo: "comExclusividade", label: "Com exclusividade" })
+  if (f.soVagasLivres) chips.push({ campo: "soVagasLivres", label: "Só vagas livres" })
   if (extras.soInconsistentes) chips.push({ campo: "soInconsistentes", label: "Só inconsistentes" })
   if (extras.isolada) chips.push({ campo: "isolada", label: `Mostrando só ${extras.isolada}` })
 
@@ -433,6 +446,8 @@ export function removerChipDeFiltro(f: SalasFiltrosState, chip: ChipFiltro): Sal
       return { ...f, capacidade: f.capacidade.filter(v => v !== chip.valor) }
     case "turno":
       return { ...f, turno: f.turno.filter(v => v !== chip.valor) }
+    case "dia":
+      return { ...f, dia: f.dia.filter(v => v !== chip.valor) }
     case "status":
       return { ...f, status: f.status.filter(v => v !== chip.valor) }
     case "profissional":
@@ -441,6 +456,8 @@ export function removerChipDeFiltro(f: SalasFiltrosState, chip: ChipFiltro): Sal
       return { ...f, semSessao: false }
     case "comExclusividade":
       return { ...f, comExclusividade: false }
+    case "soVagasLivres":
+      return { ...f, soVagasLivres: false }
     default:
       return f
   }
@@ -448,5 +465,5 @@ export function removerChipDeFiltro(f: SalasFiltrosState, chip: ChipFiltro): Sal
 
 /** Quantos filtros SECUNDÁRIOS (os que ficam atrás de "Mais filtros") estão ativos — sem essa contagem no botão, um filtro escondido fica invisível. */
 export function contarFiltrosSecundarios(f: SalasFiltrosState): number {
-  return f.andar.length + f.capacidade.length + f.turno.length + (f.semSessao ? 1 : 0) + (f.comExclusividade ? 1 : 0)
+  return f.andar.length + f.capacidade.length + f.turno.length + f.dia.length + (f.semSessao ? 1 : 0) + (f.comExclusividade ? 1 : 0) + (f.soVagasLivres ? 1 : 0)
 }
