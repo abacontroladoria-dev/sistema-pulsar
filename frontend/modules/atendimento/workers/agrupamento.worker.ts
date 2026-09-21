@@ -14,6 +14,7 @@ import { FerramentasAgente } from '../agente/ferramentas'
 import { openAiProvider } from '../llm/openai.provider'
 import { lerAgentSettings } from '../agente/agent-settings'
 import { resolverModoEfetivo } from '../agente/modo-efetivo'
+import { decidirEntrega } from '../agente/entrega'
 
 // ============================================================================
 // Worker de agrupamento — o miolo do pipeline
@@ -281,6 +282,10 @@ async function processarContato(
     createAppointmentSystemService(),
     new AppointmentRepository(supabase),
     { orgId, contactId: contato.id, conversationId: conversation.id },
+    // Para `escalar_para_humano`. É o MESMO service que o `case 'escalar'` usa
+    // lá embaixo: pedido do responsável e falha técnica escrevem pelo mesmo
+    // caminho, com `origem` diferente.
+    conversationService,
   )
 
   // 7. O turno.
@@ -313,6 +318,33 @@ async function processarContato(
     },
   )
 
+  // A ferramenta `escalar_para_humano` pode ter mudado quem atende no meio do
+  // turno. Isso é lido ANTES do switch porque atravessa os três desfechos: a
+  // conversa já está em 'off' e, se o turno não tiver produzido texto, este é o
+  // último momento em que alguém fala com o responsável. Ver entrega.ts.
+  const escalada = ferramentas.escaladaPedida()
+  const entrega  = decidirEntrega(
+    { tipo: resultado.tipo, texto: resultado.tipo === 'responder' ? resultado.texto : undefined },
+    escalada !== null,
+    aiMode,
+  )
+
+  if (entrega.acao !== 'nada' && entrega.fallback) {
+    // Só o caminho do FALLBACK é tratado aqui. O texto normal do modelo continua
+    // saindo pelo `case 'responder'` abaixo, que é onde sempre esteve — duplicar
+    // aquela entrega aqui daria duas mensagens ao responsável.
+    if (entrega.acao === 'rascunho') {
+      await gravarRascunho(supabase, orgId, conversation.id, entrega.texto)
+    } else {
+      await enfileirarEnvio(supabase, orgId, conversation.id, contato.id, entrega.texto)
+    }
+    console.warn('[worker agrupamento] escalada sem despedida do modelo; texto de segurança enviado', {
+      conversationId: conversation.id,
+      motivoEscalada: escalada?.motivoEscalada,
+      desfechoDoTurno: resultado.tipo,
+    })
+  }
+
   switch (resultado.tipo) {
     case 'responder':
       if (aiMode === 'assisted') {
@@ -341,7 +373,17 @@ async function processarContato(
       // Escalar SEMPRE produz efeito visível — é a regra do orquestrador, e é
       // aqui que ela se cumpre. Sem isto, o turno morreria em silêncio e o
       // responsável ficaria esperando uma resposta que ninguém sabe que deve.
-      await escalarParaHumano(supabase, conversation.id, resultado.motivo, resultado.detalhe)
+      //
+      // `origem: 'falha_tecnica'` separa isto da escalada por pedido: as duas
+      // deixam a conversa no mesmo estado, mas uma é a Maia quebrando e a outra é
+      // a Maia fazendo a coisa certa. Sem o campo, medir quanto o atendimento
+      // automático não dá conta exigiria adivinhar pelo motivo.
+      //
+      // Idempotente: se a ferramenta já escalou neste mesmo turno (escalou e
+      // depois truncou, por exemplo), o service não reescreve nem duplica evento.
+      await conversationService.escalarParaAtendimentoHumano(
+        conversation.id, resultado.motivo, 'falha_tecnica',
+      )
       return { tipo: 'escalado', detalhe: `${resultado.motivo}: ${resultado.detalhe}` }
   }
 }
@@ -470,34 +512,13 @@ async function enfileirarEnvio(
   if (error) throw error
 }
 
-// Marca a conversa para atendimento humano e deixa o motivo registrado. Sem
-// isto, "escalar" seria só uma palavra no log.
-//
-// O `ai_mode = 'off'` aqui só passou a ter efeito em 20260915220000: até então o
-// worker lia apenas o agent_settings da organização, então o turno seguinte
-// voltava a responder por cima do humano que tinha acabado de ser chamado.
-// Agora a conversa vence o padrão, e 'off' segura de verdade até alguém religar
-// pela chave Maia / Atendente no inbox.
-async function escalarParaHumano(
-  supabase: SupabaseClient,
-  conversationId: string,
-  motivo: string,
-  detalhe: string,
-): Promise<void> {
-  const { error } = await supabase
-    .schema('central')
-    .from('conversations')
-    .update({ ai_mode: 'off', priority: 'high' })
-    .eq('id', conversationId)
-
-  if (error) {
-    console.error('[worker agrupamento] falha ao escalar conversa', { conversationId, error })
-  }
-
-  console.warn('[worker agrupamento] conversa escalada para humano', {
-    conversationId, motivo, detalhe,
-  })
-}
+// `escalarParaHumano` vivia aqui como UPDATE cru em central.conversations.
+// Virou ConversationService.escalarParaAtendimentoHumano quando a ferramenta
+// `escalar_para_humano` passou a precisar da mesma escrita: duas cópias das
+// mesmas duas colunas divergiriam, e a daqui já tinha divergido do que o próprio
+// sistema documentava — não gerava o evento `conversation.ai_mode_changed` que
+// events.types.ts descreve desde sempre ("performed_by ausente = foi a própria
+// IA escalando"). Agora o evento sai, pelos dois caminhos.
 
 async function concluir(
   supabase: SupabaseClient,

@@ -89,6 +89,40 @@ export class MissingContactPhoneError extends CentralError {
 }
 
 // ----------------------------------------------------------------------------
+// Tarefas
+// ----------------------------------------------------------------------------
+
+// Vale também para tarefa de OUTRA organização: o service converte o caso
+// cross-org neste erro em vez de 403, porque um "403 existe, mas não é sua" já
+// confirma a existência de uma tarefa de outra clínica. Mesma escolha de
+// ContactService.
+export class TaskNotFoundError extends CentralError {
+  constructor(id: string) {
+    super(`Tarefa ${id} não encontrada`, 'TASK_NOT_FOUND', { id })
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Tags
+// ----------------------------------------------------------------------------
+
+// Chave que não está no catálogo ativo da organização (central.tag_definitions).
+//
+// 422, e não 400: o pedido é bem-formado — é um array de strings, como deve
+// ser. O que ele não é, é aplicável, e repetir o mesmo corpo nunca vai passar.
+// A mensagem nomeia as chaves recusadas porque é isso que permite descobrir se
+// a tag foi desativada ou se o cliente está mandando lixo.
+export class TagDesconhecidaError extends CentralError {
+  constructor(chaves: string[]) {
+    super(
+      `Tag fora do catálogo da organização: ${chaves.join(', ')}`,
+      'TAG_DESCONHECIDA',
+      { chaves },
+    )
+  }
+}
+
+// ----------------------------------------------------------------------------
 // Agendamento
 // ----------------------------------------------------------------------------
 

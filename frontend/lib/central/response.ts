@@ -11,10 +11,20 @@ export function ok<T>(
     hasMore: boolean
     nextCursor?: string
     offset?: number
-  }
+  },
+  // Campos soltos no corpo, ao lado de `data` e `pagination`. Existe para o
+  // contexto que a resposta precisa carregar mas não é nem linha nem paginação
+  // — hoje só o `modoPadrao` de /conversations, que o cliente precisa para
+  // resolver a herança do ai_mode e não tem como saber sozinho.
+  //
+  // Fora de `pagination` de propósito: aquele objeto é compartilhado por todas
+  // as rotas da Central, e enfiar nele um conceito de uma rota só o faria
+  // prometer a todas um campo que quase nenhuma preenche.
+  extra?: Record<string, unknown>
 ): NextResponse {
   const body: Record<string, unknown> = { data }
   if (pagination) body.pagination = pagination
+  if (extra) Object.assign(body, extra)
   return NextResponse.json(body, { status: 200 })
 }
 

@@ -324,22 +324,38 @@ console.log('\n7. nenhum caminho termina em silêncio')
 // ----------------------------------------------------------------------------
 console.log('\n8. interruptor de agendamento')
 
+// O nome de cada função que chegou ao provider.
+const nomesEnviados = (req: { ferramentas?: unknown } | undefined): string[] =>
+  ((req?.ferramentas ?? []) as { function: { name: string } }[]).map(f => f.function.name)
+
 {
   const { provider, requisicoes } = providerDe([resposta({ conteudo: 'oi' })])
   await executarTurno(ENTRADA, deps({ provider, agendamentoHabilitado: true }))
-  checar(
-    Array.isArray(requisicoes[0]?.ferramentas) && requisicoes[0]!.ferramentas!.length === 6,
-    'habilitado: as 6 ferramentas vão ao modelo',
-    requisicoes[0]?.ferramentas?.length,
-  )
+  const nomes = nomesEnviados(requisicoes[0])
+  checar(nomes.length === 7, 'habilitado: as 6 de agenda + escalar_para_humano', nomes.length)
+  checar(nomes.includes('agendar_sessao'), 'habilitado: a agenda está lá', nomes)
+  checar(nomes.includes('escalar_para_humano'), 'habilitado: e chamar gente também', nomes)
 }
 
 {
   const { provider, requisicoes } = providerDe([resposta({ conteudo: 'oi' })])
   await executarTurno(ENTRADA, deps({ provider, agendamentoHabilitado: false }))
-  checar(requisicoes[0]?.ferramentas === undefined,
-    'desligado: ferramentas undefined — o modelo NEM SABE que poderia agendar (botão de pânico)',
-    requisicoes[0]?.ferramentas)
+  const nomes = nomesEnviados(requisicoes[0])
+
+  // O BOTÃO DE PÂNICO CONTINUA SENDO O PONTO. Antes isto afirmava
+  // `ferramentas === undefined`; agora a lista nunca é vazia, então o que precisa
+  // ser provado é mais específico e não mais frouxo: NENHUMA ferramenta de agenda
+  // chega ao modelo. Se a asserção virasse só "tem uma ferramenta", uma de agenda
+  // vazando para este ramo passaria despercebida.
+  checar(
+    nomes.every(n => !/agendar|reagendar|cancelar|horarios|especialidades|agendamentos/.test(n)),
+    'desligado: NENHUMA ferramenta de agenda vai ao modelo (botão de pânico)',
+    nomes,
+  )
+  // E a de chamar gente sobrevive ao interruptor: é justamente com o agendamento
+  // desligado que a Maia mais precisa passar a conversa adiante.
+  checar(nomes.length === 1 && nomes[0] === 'escalar_para_humano',
+    'desligado: sobra só escalar_para_humano', nomes)
 }
 
 // ----------------------------------------------------------------------------

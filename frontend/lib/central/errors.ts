@@ -16,6 +16,8 @@ import {
   SlotInPastError,
   TtsNotConfiguredError,
   TtsProviderError,
+  TagDesconhecidaError,
+  TaskNotFoundError,
 } from '@/modules/atendimento/types/errors.types'
 import { JanelaAtendimentoFechadaError } from '@/modules/atendimento/providers/meta-waba.provider'
 import {
@@ -37,6 +39,7 @@ export function mapCentralError(err: unknown): NextResponse {
   if (err instanceof ContactNotFoundError)        return notFound(err.code, err.message)
   if (err instanceof ChannelNotFoundError)        return notFound(err.code, err.message)
   if (err instanceof AppointmentNotFoundError)    return notFound(err.code, err.message)
+  if (err instanceof TaskNotFoundError)           return notFound(err.code, err.message)
   if (err instanceof ConversationAlreadyClosedError) return conflict(err.code, err.message)
   // 409: a vaga existia e foi tomada — retentar com outro horário resolve.
   if (err instanceof SlotAlreadyBookedError)      return conflict(err.code, err.message)
@@ -45,6 +48,9 @@ export function mapCentralError(err: unknown): NextResponse {
   if (err instanceof SlotNotInGradeError)         return unprocessable(err.code, err.message)
   if (err instanceof SlotInPastError)             return unprocessable(err.code, err.message)
   if (err instanceof MissingContactPhoneError)    return unprocessable(err.code, err.message)
+  // 422: o array é bem-formado, mas a chave não existe no catálogo da org.
+  // Repetir o mesmo corpo nunca passa — a correção é escolher outra tag.
+  if (err instanceof TagDesconhecidaError)        return unprocessable(err.code, err.message)
   // 422: a janela de 24h da Meta fechou. Regra da plataforma, não falha nossa —
   // repetir o mesmo texto nunca passa; só template aprovado passa.
   //

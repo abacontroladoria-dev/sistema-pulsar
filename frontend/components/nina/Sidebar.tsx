@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState } from 'react'
-import { MessageSquare, Users, LayoutDashboard, Kanban, Calendar, Settings as SettingsIcon, LogOut, ArrowLeft, ChevronLeft } from 'lucide-react'
+import { MessageSquare, Users, LayoutDashboard, Kanban, Calendar, Settings as SettingsIcon, LogOut, ArrowLeft, ChevronLeft, Inbox as InboxIcon } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import { useAuth } from '@/hooks/nina/useAuth'
 import { useUsuarioAtual } from '@/hooks/useUsuarioAtual'
@@ -11,6 +11,7 @@ import { toast } from 'sonner'
 const menuItems = [
   { id: 'crm',       label: 'Dashboard',     icon: LayoutDashboard },
   { id: 'inbox',     label: 'Inbox',         icon: MessageSquare },
+  { id: 'atendimentos', label: 'Atendimentos', icon: InboxIcon },
   { id: 'contacts',  label: 'Contatos',      icon: Users },
   { id: 'pipeline',  label: 'Pipeline',      icon: Kanban },
   { id: 'analytics', label: 'Agendamentos',  icon: Calendar },

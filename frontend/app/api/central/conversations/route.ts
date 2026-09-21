@@ -9,6 +9,7 @@ import {
 import {
   createConversationService,
 } from '@/modules/atendimento/services'
+import { lerAgentSettingsDaOrg } from '@/modules/atendimento/agente/agent-settings'
 
 // GET /api/central/conversations
 // Lista conversas com filtros opcionais. Paginação por cursor em last_message_at.
@@ -20,6 +21,21 @@ export async function GET(request: NextRequest) {
     if (!parsed.ok) return badRequest(parsed.errors.join('; '))
 
     const { limit, cursor, inboxId, status, assignedUserId, contactId } = parsed.data
+
+    // O padrão da clínica vai junto da lista porque a badge "quem atende" depende
+    // dele: `conversations.ai_mode` é NULL na maioria das linhas e significa
+    // "vale o padrão" (ver 20260915220000). Sem este campo o cliente comparava a
+    // coluna crua com 'autonomous' e marcava como humana toda conversa que a
+    // Maia atende por herança — divergindo da triagem, que resolve certo.
+    //
+    // Falha fechada em 'off', igual à rota de caixas e ao worker: sem settings
+    // legível, ninguém é declarado "sendo atendido pela Maia".
+    //
+    // Mesma limitação conhecida da rota de caixas: usa o padrão da ORGANIZAÇÃO.
+    // Uma inbox com ai_mode próprio não é respeitada aqui. Hoje não existe
+    // nenhuma; quando existir, o recorte passa a ser por inbox nas duas rotas.
+    const settings   = await lerAgentSettingsDaOrg(supabase, user.orgId).catch(() => null)
+    const modoPadrao = settings?.ai_mode ?? 'off'
 
     const service = createConversationService(supabase)
     const result  = await service.list({
@@ -44,7 +60,7 @@ export async function GET(request: NextRequest) {
       limit,
       hasMore:    result.data.length === limit,
       nextCursor: nextCursor ?? undefined,
-    })
+    }, { modoPadrao })
   } catch (err) {
     return mapCentralError(err)
   }

@@ -3,6 +3,7 @@ import type {
   Message,
   Contact,
 } from '@/modules/atendimento/types/central.types'
+import { resolverModoEfetivo } from '@/modules/atendimento/agente/modo-efetivo'
 import {
   MessageDirection,
   MessageType,
@@ -71,11 +72,24 @@ export type NinaConversation = Omit<UIConversation, 'messages' | 'clientMemory'>
 // para a demo ter roxo na tela afirmaria que a IA está atendendo quando ela
 // está desligada.
 //
+// E sai do ai_mode EFETIVO, nunca da coluna crua. `conversations.ai_mode` é NULL
+// na maioria das linhas — significa "ninguém decidiu nesta conversa, vale o
+// padrão da clínica" (ver 20260915220000) — então comparar a coluna com
+// 'autonomous' marcava como "humano" justamente as conversas que a Maia atende
+// por herança. Era o que acontecia: a mesma conversa aparecia na coluna Maia da
+// triagem (que resolve a herança no servidor) e com a badge de humano no inbox.
+//
+// `modoPadrao` é o ai_mode da clínica já resolvido, que só o servidor conhece.
+// Ele é OBRIGATÓRIO de propósito: com um default aqui, um chamador que
+// esquecesse de passá-lo voltaria a errar em silêncio, que é exatamente o modo
+// como este bug passou despercebido.
+//
 // PERDA CONHECIDA: open e assigned viram ambos 'human'. A badge não distingue
 // "ninguém assumiu" de "alguém assumiu" — que é a distinção mais importante
 // numa central de verdade. Fica como dívida; resolver exige uma badge nova.
-export function mapStatus(c: Conversation): ConversationStatus {
-  if (c.ai_mode === 'autonomous') return 'nina'
+export function mapStatus(c: Conversation, modoPadrao: string): ConversationStatus {
+  const { modo } = resolverModoEfetivo(c.ai_mode, modoPadrao)
+  if (modo === 'autonomous') return 'nina'
   if (c.status === 'open' || c.status === 'assigned') return 'human'
   return 'paused'
 }
@@ -138,6 +152,8 @@ export function toUIConversation(
   // Já em ordem cronológica ASC. Quem chama é responsável por reverter o DESC
   // que vem do banco — a inversão acontece uma vez, na borda do hook.
   mensagens: Message[],
+  // O ai_mode da clínica, para resolver a herança da badge. Ver mapStatus.
+  modoPadrao: string,
 ): NinaConversation {
   const uiMensagens = mensagens.map(toUIMessage)
   const ultima      = uiMensagens.at(-1)
@@ -157,12 +173,16 @@ export function toUIConversation(
     // Nullable no banco. A UI decide entre <img> e iniciais — por isso string
     // vazia em vez de um caminho de imagem que pode não existir.
     contactAvatar: contato?.avatar_url ?? '',
-    status:        mapStatus(c),
+    status:        mapStatus(c, modoPadrao),
     // Não existe no schema: não há registro de leitura por usuário. Zero, e a
     // UI não desenha a badge. Um número inventado faria o operador confiar e
     // deixar de abrir a conversa que tem mensagem nova de verdade.
     unreadCount:  0,
-    // central.conversations não tem tags.
+    // Vazio de propósito, e não por ausência de dado: as colunas `tags`
+    // existem (em conversations E em contacts, TEXT[] desde a 20260701010000),
+    // mas as tags do produto vivem no CONTATO e quem as mostra é o painel de
+    // detalhamento, que lê o `central` cru. A lista de conversas não as desenha
+    // em lugar nenhum — preenchê-las aqui seria carregar dado para ninguém.
     tags:         [],
     messages:     uiMensagens,
     lastMessage:  ultima?.content || 'Sem mensagens',

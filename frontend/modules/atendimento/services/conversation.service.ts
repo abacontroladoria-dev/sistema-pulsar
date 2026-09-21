@@ -118,22 +118,53 @@ export class ConversationService {
     return this.conv.list(filters)
   }
 
+  // Contagem sem trazer linhas. Os cards da triagem chamam uma vez por caixa.
+  async contar(filters: ListConversationsFilters): Promise<number> {
+    return this.conv.contar(filters)
+  }
+
   // -------------------------------------------------------------------------
   // assign
   // Atribui conversa a um operador. Muda status para 'assigned'.
   // Requer: conversa ativa (não resolvida/arquivada).
   // -------------------------------------------------------------------------
-  async assign(conversationId: string, toUserId: string, actorId: string): Promise<void> {
+  // `toUserId: null` devolve a conversa à fila — é o "Não atribuído" do painel
+  // de detalhamento. O status volta para 'open' junto: 'assigned' sem ninguém
+  // atribuído é um estado contraditório, e a triagem passaria a mostrar como
+  // "em atendimento" uma conversa que não tem quem a atenda. É a mesma dupla de
+  // writes que `setAiMode` faz ao religar a Maia.
+  async assign(conversationId: string, toUserId: string | null, actorId: string): Promise<void> {
     const conv            = await this.requireActive(conversationId)
     const previousAssignee= conv.assigned_user_id
+    const status          = toUserId === null ? 'open' : 'assigned'
 
     await this.conv.updateAssignee(conversationId, toUserId)
-    await this.conv.updateStatus(conversationId, 'assigned')
+    await this.conv.updateStatus(conversationId, status)
 
     const updated: Conversation = {
       ...conv,
       assigned_user_id: toUserId,
-      status:           'assigned',
+      status,
+    }
+
+    // Atribuir e devolver à fila são eventos distintos: quem escuta reage de
+    // formas opostas a cada um, e um `assigned` com destinatário nulo obrigaria
+    // todo ouvinte a testar isso por conta própria.
+    if (toUserId === null) {
+      void this.audit.insert({
+        organization_id: conv.organization_id,
+        conversation_id: conversationId,
+        event_type:      'conversation.unassigned',
+        performed_by:    actorId,
+        payload:         { previousAssignee },
+      })
+
+      this.events.emit('conversation.unassigned', {
+        conversation: updated,
+        previousAssignee,
+        actorId,
+      })
+      return
     }
 
     void this.audit.insert({
@@ -153,6 +184,72 @@ export class ConversationService {
   }
 
   // -------------------------------------------------------------------------
+  // assumirAoResponder
+  //
+  // Quem responde, assume. Chamado pelo MessageService depois de a mensagem sair
+  // de fato — responder é o ato de assumir o atendimento, e exigir um clique a
+  // mais para declarar o óbvio faria a fila mentir toda vez que alguém
+  // esquecesse.
+  //
+  // Antes disto, `assigned_user_id` nunca era escrito por nada no sistema: a
+  // caixa "Humano" da triagem era inalcançável e conversas atendidas por gente
+  // ficavam indistinguíveis das largadas, empilhadas em "Ninguém" — que é a fila
+  // de alarme. O banco sabia quem tinha respondido (`messages.sent_by_user_id`)
+  // e não registrava essa pessoa como responsável.
+  //
+  // Os três writes andam juntos de propósito:
+  //   assigned_user_id  quem atende agora
+  //   status            'assigned' — a conversa saiu da fila de entrada
+  //   ai_mode 'off'     a Maia sai desta conversa. Sem isto os dois respondem o
+  //                     mesmo paciente, cada um sem saber do outro.
+  //
+  // Devolve `true` se assumiu. Não lança: quem chama já mandou a mensagem para o
+  // WhatsApp, e falhar aqui não pode desfazer o que o paciente já recebeu.
+  // -------------------------------------------------------------------------
+  async assumirAoResponder(conversa: Conversation, userId: string): Promise<boolean> {
+    // Não rouba conversa de quem já a tem. Se outra pessoa assumiu, responder
+    // não troca o dono — transferir é ação explícita (ver `transfer`).
+    if (conversa.assigned_user_id !== null) return false
+
+    try {
+      await this.conv.updateAssignee(conversa.id, userId)
+      await this.conv.updateStatus(conversa.id, 'assigned')
+
+      // Só escreve se ainda não estiver desligada, para não sobrescrever à toa.
+      if (conversa.ai_mode !== 'off') {
+        await this.conv.updateAiMode(conversa.id, 'off')
+      }
+    } catch (erro) {
+      // A mensagem já saiu. Registrar e seguir é melhor que estourar um envio
+      // bem-sucedido; o pior caso é a conversa seguir em "Ninguém", visível na
+      // triagem, e não uma resposta entregue que a interface reporta como falha.
+      console.error('[ConversationService] Falha ao assumir a conversa ao responder', {
+        conversationId: conversa.id,
+        userId,
+        erro: erro instanceof Error ? erro.message : String(erro),
+      })
+      return false
+    }
+
+    void this.audit.insert({
+      organization_id: conversa.organization_id,
+      conversation_id: conversa.id,
+      event_type:      'conversation.assigned',
+      performed_by:    userId,
+      payload:         { toUserId: userId, previousAssignee: null, motivo: 'respondeu' },
+    })
+
+    this.events.emit('conversation.assigned', {
+      conversation:     { ...conversa, assigned_user_id: userId, status: 'assigned', ai_mode: 'off' },
+      toUserId:         userId,
+      previousAssignee: null,
+      actorId:          userId,
+    })
+
+    return true
+  }
+
+  // -------------------------------------------------------------------------
   // setAiMode
   // A chave Maia / Atendente do inbox. Decide POR CONVERSA quem responde, sem
   // tocar no ai_mode da organização — a recepcionista assume UMA conversa, não
@@ -168,20 +265,127 @@ export class ConversationService {
   //
   // A auditoria é o ponto todo deste método existir — sem ela, "a Maia parou de
   // responder esse contato" fica sem dono nem horário.
+  //
+  // `actorId` aceita null desde que a própria IA passou a escalar por decisão
+  // (não só por falha): events.types.ts já documentava que "performed_by ausente
+  // = foi a própria IA escalando", mas a assinatura exigia string e era o único
+  // ponto que não tinha acompanhado a convenção. Null em vez de um uuid sintético
+  // de "usuário IA": um usuário falso apareceria em todo join de operadores e em
+  // toda lista de quem mexeu na conversa.
   // -------------------------------------------------------------------------
-  async setAiMode(conversationId: string, aiMode: AIMode | null, actorId: string): Promise<void> {
+  async setAiMode(conversationId: string, aiMode: AIMode | null, actorId: string | null): Promise<void> {
     const conv      = await this.getById(conversationId)
     const anterior  = conv.ai_mode
 
     await this.conv.updateAiMode(conversationId, aiMode)
 
+    // Religar a Maia SOLTA a conversa: quem devolve o atendimento à IA está
+    // dizendo "não sou mais eu que conduzo". Sem isto ela ficaria em "Humano"
+    // com a Maia respondendo — o pior dos dois mundos, porque a fila mostraria
+    // um responsável que não está mais lá.
+    //
+    // O status volta para 'open' junto: 'assigned' sem `assigned_user_id` é um
+    // estado contraditório. A triagem não se importa (STATUS_ATIVOS tem os dois,
+    // ver caixas.ts), mas o dado ficaria mentindo para qualquer outro leitor.
+    //
+    // Só ao virar 'autonomous'. Passar para 'off' ou null é o humano continuando
+    // no comando — mexer no responsável ali tiraria a conversa de quem a atende.
+    const soltou = aiMode === 'autonomous' && conv.assigned_user_id !== null
+    if (soltou) {
+      await this.conv.updateAssignee(conversationId, null)
+      await this.conv.updateStatus(conversationId, 'open')
+    }
+
     void this.audit.insert({
       organization_id: conv.organization_id,
       conversation_id: conversationId,
       event_type:      'conversation.ai_mode_changed',
-      performed_by:    actorId,
-      payload:         { de: anterior, para: aiMode },
+      // `?? undefined` e não `?? null`: o campo é opcional no AuditEntry e o
+      // repositório é quem normaliza para null na coluna. Passar null direto
+      // não tipa.
+      performed_by:    actorId ?? undefined,
+      payload:         {
+        de: anterior, para: aiMode,
+        // Quem era o responsável antes de a conversa voltar para a Maia. Sem
+        // isto, a trilha perde o fim do atendimento humano.
+        ...(soltou ? { responsavelLiberado: conv.assigned_user_id } : {}),
+      },
     })
+  }
+
+  // -------------------------------------------------------------------------
+  // escalarParaAtendimentoHumano
+  //
+  // "Esta conversa passa a ser de gente." É a operação inteira, com nome: a Maia
+  // sai (`ai_mode = 'off'`), a conversa sobe na fila (`priority = 'high'`) e o
+  // motivo fica na trilha.
+  //
+  // POR QUE UM MÉTODO, E NÃO DOIS UPDATES NO CHAMADOR
+  //
+  // Esta escrita já existia como UPDATE cru dentro do worker (`escalarParaHumano`),
+  // e por viver lá ela não gerava evento nenhum — a convenção de
+  // events.types.ts:34 ("performed_by ausente = foi a própria IA escalando") estava
+  // documentada e nunca tinha sido ligada. Com a ferramenta `escalar_para_humano`
+  // haveria um SEGUNDO lugar reimplementando as mesmas duas colunas. Um nome só,
+  // um caminho só.
+  //
+  // `origem` separa as duas razões de escalar, que se parecem no banco e não se
+  // parecem em nada na vida: 'ferramenta_agente' é a Maia fazendo a coisa certa a
+  // pedido do responsável; 'falha_tecnica' é a Maia quebrando (loop, timeout,
+  // filtro). Sem esse campo, medir "quantas vezes o atendimento automático não deu
+  // conta" exigiria adivinhar pelo motivo.
+  //
+  // O QUE ESTE MÉTODO NÃO FAZ, DE PROPÓSITO
+  //
+  //   • Não toca em `assigned_user_id`. A caixa "Ninguém" da triagem é exatamente
+  //     `ai_mode 'off'` + assignee NULL (ver caixas.ts): atribuir aqui esconderia a
+  //     conversa da fila que existe para ela. E se JÁ houver um responsável, ele
+  //     está atendendo — sobrescrever seria tirar a conversa de quem está nela.
+  //   • Não rebaixa `priority`. Só escreve 'high' quando o que está lá é menor.
+  //   • Não mexe em `status`. Escalar não resolve nem arquiva.
+  //
+  // IDEMPOTENTE: conversa já em 'off' não é reescrita e não gera segundo evento.
+  // O retorno diz qual dos dois casos ocorreu, porque quem chama precisa saber se
+  // a escalada é NOVA (a ferramenta usa isso para não repetir o aviso ao
+  // responsável).
+  // -------------------------------------------------------------------------
+  async escalarParaAtendimentoHumano(
+    conversationId: string,
+    motivoEscalada: string,
+    origem: 'ferramenta_agente' | 'falha_tecnica',
+  ): Promise<{ jaEstavaEscalada: boolean }> {
+    const conv = await this.getById(conversationId)
+
+    // 'off' é a marca de "a Maia foi tirada desta conversa". Já estando lá, não há
+    // o que escalar — reescrever só produziria um evento de 'off' para 'off' na
+    // timeline de quem for investigar depois.
+    const jaEstavaEscalada = conv.ai_mode === 'off'
+
+    if (!jaEstavaEscalada) {
+      await this.conv.updateAiMode(conversationId, 'off')
+    }
+
+    // 'urgent' é o único valor acima de 'high' (20260701000500). Nada no sistema
+    // o grava hoje, mas escrever 'high' por cima dele seria rebaixar uma conversa
+    // que alguém marcou como mais grave — e um rebaixamento silencioso é o tipo de
+    // perda que ninguém liga a esta linha depois.
+    if (conv.priority !== 'high' && conv.priority !== 'urgent') {
+      await this.conv.updatePriority(conversationId, 'high')
+    }
+
+    // Só o que muda de fato vira evento.
+    if (!jaEstavaEscalada) {
+      void this.audit.insert({
+        organization_id: conv.organization_id,
+        conversation_id: conversationId,
+        // performed_by ausente: quem escalou foi a IA, não um operador. É a
+        // convenção que events.types.ts:34 descreve.
+        event_type:      'conversation.ai_mode_changed',
+        payload:         { de: conv.ai_mode, para: 'off', motivoEscalada, origem },
+      })
+    }
+
+    return { jaEstavaEscalada }
   }
 
   // -------------------------------------------------------------------------

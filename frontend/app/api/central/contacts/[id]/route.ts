@@ -50,6 +50,11 @@ export async function PATCH(request: NextRequest, ctx: Ctx) {
       displayEmail: parsed.data.displayEmail,
       contactType:  parsed.data.contactType,
       status:       parsed.data.status,
+      // Espalhados condicionalmente porque `null` significa "limpar" nestes
+      // dois campos: passá-los sempre transformaria uma edição só de nome num
+      // apagamento silencioso da origem e das tags.
+      ...('source' in parsed.data ? { source: parsed.data.source } : {}),
+      ...('tags'   in parsed.data ? { tags:   parsed.data.tags   } : {}),
     }, user.id)
 
     return ok(contact)

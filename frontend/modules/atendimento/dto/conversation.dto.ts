@@ -96,7 +96,10 @@ export function parseCreateConversationBody(body: unknown): ParseResult<CreateCo
 // ----------------------------------------------------------------------------
 
 export type PatchConversationBody =
-  | { action: 'assign';   toUserId: string }
+  // `toUserId: null` devolve a conversa à fila (o "Não atribuído" do painel).
+  // Só em `assign`: transferir PARA NINGUÉM não é transferência, é devolução, e
+  // as duas ações têm trilhas de auditoria diferentes.
+  | { action: 'assign';   toUserId: string | null }
   | { action: 'transfer'; toUserId: string; reason?: string }
   | { action: 'resolve' }
   | { action: 'archive' }
@@ -114,9 +117,20 @@ export function parsePatchConversationBody(body: unknown): ParseResult<PatchConv
     return { ok: false, errors: [`action deve ser um de: ${VALID_ACTIONS.join(', ')}`] }
   }
 
-  if (action === 'assign' || action === 'transfer') {
+  if (action === 'assign') {
+    // `null` explícito é legítimo (devolver à fila); AUSENTE não é. Sem essa
+    // distinção, um corpo malformado desatribuiria a conversa em silêncio.
+    if (!('toUserId' in b)) {
+      return { ok: false, errors: ['toUserId é obrigatório para assign (use null para devolver à fila)'] }
+    }
+    if (b.toUserId !== null && !isUUID(b.toUserId)) {
+      return { ok: false, errors: ['toUserId deve ser um UUID ou null'] }
+    }
+  }
+
+  if (action === 'transfer') {
     if (!isUUID(b.toUserId)) {
-      return { ok: false, errors: ['toUserId é obrigatório (UUID) para assign e transfer'] }
+      return { ok: false, errors: ['toUserId é obrigatório (UUID) para transfer'] }
     }
   }
 
@@ -135,7 +149,7 @@ export function parsePatchConversationBody(body: unknown): ParseResult<PatchConv
   }
 
   if (action === 'assign') {
-    return { ok: true, data: { action, toUserId: b.toUserId as string } }
+    return { ok: true, data: { action, toUserId: b.toUserId as string | null } }
   }
   if (action === 'transfer') {
     return {

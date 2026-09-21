@@ -31,7 +31,19 @@ export type ConversationEventType =
   // Chave Maia / Atendente: quem passou esta conversa da IA para gente (ou de
   // volta), e quando. payload: { de, para } com os ai_mode, onde null significa
   // "seguindo o padrão da inbox/org". performed_by ausente = foi a própria IA
-  // escalando (escalarParaHumano), não um operador.
+  // escalando, não um operador.
+  //
+  // Quando quem escala é a IA, o payload traz também { motivoEscalada, origem }:
+  //   origem 'ferramenta_agente' — a Maia chamou gente porque o responsável pediu
+  //                                (ou se irritou, ou pediu algo fora do alcance)
+  //   origem 'falha_tecnica'     — a Maia quebrou (loop, timeout, filtro)
+  // As duas deixam a conversa idêntica no banco e não têm nada a ver uma com a
+  // outra; sem o campo, "quanto o atendimento automático não dá conta" viraria
+  // adivinhação. Ver ConversationService.escalarParaAtendimentoHumano.
+  //
+  // NOTA HISTÓRICA: até 21/09/2026 a escalada da IA não emitia este evento — o
+  // worker fazia UPDATE cru e a convenção do `performed_by` ausente, descrita
+  // aqui desde o começo, nunca tinha sido cumprida por ninguém.
   | 'conversation.ai_mode_changed'
   // Mensagens
   | 'message.received'
@@ -51,6 +63,13 @@ export type ConversationEventType =
   | 'appointment.rescheduled'
   | 'appointment.cancelled'
   | 'appointment.deleted'
+  // Tarefas de atendimento (central.tasks). `task.status_changed` carrega
+  // { de, para } porque concluir, cancelar e reabrir são a mesma escrita com
+  // significados diferentes — sem o estado anterior, a trilha não distingue
+  // "resolvi" de "desisti".
+  | 'task.created'
+  | 'task.updated'
+  | 'task.status_changed'
   // Configuração do agente. Payload lista quais campos mudaram e sinaliza
   // troca de credencial — nunca o valor da credencial.
   | 'agent_settings.updated'
@@ -97,6 +116,17 @@ export type CAEventMap = {
   'conversation.assigned': {
     conversation:     Conversation
     toUserId:         string
+    previousAssignee: string | null
+    actorId:          string
+  }
+
+  // A conversa voltou para a fila: ninguém é responsável por ela. Evento
+  // próprio, e não um `assigned` com toUserId null, porque as duas coisas pedem
+  // reações opostas — atribuir tira da fila de triagem, desatribuir devolve.
+  // O nome já estava na lista de CentralEventType desde o início; faltava o
+  // payload, e por isso nada podia emiti-lo.
+  'conversation.unassigned': {
+    conversation:     Conversation
     previousAssignee: string | null
     actorId:          string
   }
