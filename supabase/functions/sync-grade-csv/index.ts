@@ -95,6 +95,15 @@
 // Vale a pena porque sem esse carimbo não há como distinguir "a TiTa confirmou
 // esta linha hoje" de "a TiTa parou de reportá-la" — e essa distinção é o que
 // revela linha ativa órfã (44 delas em julho/2026).
+//
+// Até 2026-09-21 "nos dois modos" acima era falso: só `sincronizarExecucao`
+// chamava `marcarVistas`; `sincronizarGrade` nunca renovava o carimbo de linha
+// idêntica. Um dia futuro cuja grade não mudava ficava com `visto_em` parado na
+// data em que entrou, e o aviso "Grade desatualizada" da Ocupação de Paciente
+// (medirFrescorGrade, frontend/lib/grade/fonte.ts) acendia mesmo com o sync
+// rodando certinho — falso-positivo medido em 15/09, 16/09 e de novo em 21/09
+// (6 dias). `sincronizarGrade` agora carrega `visto_em` no select de ativas e
+// revalida do mesmo jeito.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2"
@@ -551,7 +560,7 @@ async function comRetentativa<T>(rotulo: string, fn: () => Promise<T>, tentativa
 // PostgREST exige aspas no select para identificador com espaço ("Id Terapia").
 const qcol = (nome: string) => (nome.includes(" ") ? `"${nome}"` : nome)
 
-const CAMPOS_SELECT = ["id", ...CAMPOS_CONTEUDO.map(qcol), "tita_agendamento_id"].join(", ")
+const CAMPOS_SELECT = ["id", ...CAMPOS_CONTEUDO.map(qcol), "tita_agendamento_id", "visto_em"].join(", ")
 const CAMPOS_SELECT_EXECUCAO = [
   "id", "tita_agendamento_id", "visto_em",
   // Agregados por agendamento, não campos do Registro — ver a contagem em
@@ -808,15 +817,20 @@ async function sincronizarGrade(
   const naJanela    = recebidos.filter(r => r.data && r.data >= dataInicio && r.data <= dataFim)
   const descartados = recebidos.length - naJanela.length
 
-  const existentes = await carregarAtivas<Linha & { id: string }>(sb, dataInicio, dataFim, CAMPOS_SELECT)
+  type LinhaGrade = Linha & { id: string; visto_em: string | null }
+  const existentes = await carregarAtivas<LinhaGrade>(sb, dataInicio, dataFim, CAMPOS_SELECT)
 
-  const porChaveExistente = new Map<string, Linha & { id: string }>()
+  const porChaveExistente = new Map<string, LinhaGrade>()
   for (const e of existentes) porChaveExistente.set(chave(e), e)
 
   const aInserir: Record<string, unknown>[] = []
   const idsAlterados: string[] = []
+  const idsRevalidar: string[] = []
   const vistos = new Set<string>()
   const agora  = new Date().toISOString()
+  // Mesmo piso de DIAS_REVALIDACAO que sincronizarExecucao usa — ver o carimbo
+  // abaixo e a nota de marcarVistas().
+  const limiteRevalidacao = diasAntes(hoje, DIAS_REVALIDACAO)
 
   for (const r of naJanela) {
     const k = chave(r)
@@ -832,8 +846,16 @@ async function sincronizarGrade(
     if (mudou(atual, r)) {
       idsAlterados.push(atual.id)
       aInserir.push({ ...r, ativo: true, origem: "tita_csv", visto_em: agora })
+      continue
     }
-    // idêntica → nenhuma escrita
+    // idêntica → nenhuma escrita de conteúdo, mas a TiTa confirmou que a linha
+    // ainda existe. Sem isto, um dia futuro cuja grade nunca muda mantém
+    // `visto_em` congelado na data em que entrou, mesmo com o sync rodando
+    // certinho todo dia — foi o falso-positivo do aviso "Grade desatualizada"
+    // medido em 15/09 e 16/09 (ver a segunda ressalva de 20260914120000).
+    if (!atual.visto_em || atual.visto_em.slice(0, 10) < limiteRevalidacao) {
+      idsRevalidar.push(atual.id)
+    }
   }
 
   // O que estava ativo na janela e não veio mais da TiTa foi removido lá.
@@ -895,6 +917,9 @@ async function sincronizarGrade(
   if (idsAlterados.length) await inativar(sb, idsAlterados, "alterado")
   if (idsExcluidos.length) await inativar(sb, idsExcluidos, "excluido")
   if (aInserir.length)     await inserir(sb, aInserir)
+  // Por último e sem retentativa crítica: é só carimbo, e a linha já está
+  // gravada de qualquer forma.
+  if (idsRevalidar.length) await marcarVistas(sb, idsRevalidar, agora)
 
   return {
     modo: "grade" as const,
@@ -911,6 +936,10 @@ async function sincronizarGrade(
     // de conserto — não a inativação.
     protegidasDoDia:            protegidas,
     naoInativadasPorSuspeita:   respostaMagra ? candidatas.length : 0,
+    // Linha idêntica cujo `visto_em` renovou. É o que mantém o aviso "Grade
+    // desatualizada" honesto num período estável — ver a nota acima de
+    // `limiteRevalidacao`.
+    revalidadas: idsRevalidar.length,
   }
 }
 
