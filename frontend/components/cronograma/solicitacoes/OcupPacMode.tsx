@@ -1756,6 +1756,7 @@ const TodasSugestoesModal = forwardRef<TodasSugestoesModalHandle, TodasSugestoes
                     <Link
                       href={`/cadastros/pacientes/${info.idPacientePulsar}?aba=altas&suspensao=${info.idSuspensao}`}
                       target="_blank"
+                      rel="noopener noreferrer"
                       title={`Ver a suspensão de ${esp} na ficha do paciente`}
                       style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: "22px", height: "22px", borderRadius: "6px", background: "var(--card)", border: "1px solid #fcd34d", color: "#92400e", flexShrink: 0, textDecoration: "none", fontWeight: 900, fontSize: "13px" }}
                     >
@@ -3124,6 +3125,7 @@ export function OcupPacMode({
                       <Link
                         href={`/acompanhamento/laudos?busca=${encodeURIComponent(String(laudoDoPaciente.idFavorecido ?? ""))}`}
                         target="_blank"
+                        rel="noopener noreferrer"
                         style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "10px", fontWeight: 700, color: B.navy, textDecoration: "none", borderTop: "1px solid var(--border)", paddingTop: "8px" }}
                       >
                         Acompanhar Laudo ↗
