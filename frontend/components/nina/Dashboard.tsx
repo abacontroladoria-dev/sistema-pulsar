@@ -5,9 +5,7 @@ import { Activity, DollarSign, MessageSquare, Users, Loader2, TrendingUp, Trendi
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { StatMetric } from '@/types/nina'
 import { api } from '@/services/nina/api'
-import { OnboardingBanner } from './OnboardingBanner'
 import { SystemHealthCard } from './SystemHealthCard'
-import { useOnboarding } from '@/contexts/OnboardingContext'
 
 type PeriodFilter = 'today' | '7days' | '30days'
 
@@ -28,7 +26,6 @@ const Dashboard: React.FC = () => {
   const [chartData, setChartData] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [period, setPeriod] = useState<PeriodFilter>('today')
-  const { setShowOnboarding } = useOnboarding()
 
   // ------------------------------------------------------------------------
   // Distingue três estados que a versão anterior confundia num só:
@@ -152,8 +149,11 @@ const Dashboard: React.FC = () => {
 
   return (
     <div className="p-6 space-y-8 overflow-y-auto h-full bg-background text-foreground custom-scrollbar">
-      <OnboardingBanner onOpenWizard={() => setShowOnboarding(true)} />
-
+      {/* O OnboardingBanner ("Complete a configuração do sistema") saiu daqui em
+          2026-09-21: a configuração do sistema não é feita por este wizard, então
+          o card cobrava um passo que não existe e nunca ficaria 100%. O componente
+          e o hook continuam no repo, sem uso — se um dia o wizard voltar a ser o
+          caminho real, é só remontar esta linha. */}
       <SystemHealthCard />
 
       {/* Falha de carregamento: os números abaixo estão desatualizados ou
