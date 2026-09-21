@@ -41,7 +41,7 @@ const Chip: React.FC<{
       color:           cor ?? undefined,
     }}
   >
-    <span className={cor ? '' : 'text-slate-300'}>{rotulo}</span>
+    <span className={cor ? '' : 'text-muted-foreground'}>{rotulo}</span>
     {aoRemover && (
       <button
         type="button"
@@ -129,13 +129,13 @@ export const BlocoTags: React.FC<{
       )}
 
       {aberto && aoSalvar && (
-        <div className="mt-1 p-3 rounded-xl bg-slate-950/70 border border-slate-800 space-y-3 max-h-64 overflow-y-auto custom-scrollbar">
+        <div className="mt-1 p-3 rounded-xl bg-background border border-border space-y-3 max-h-64 overflow-y-auto custom-scrollbar">
           {[...porCategoria.entries()].map(([categoria, itens]) => {
             const disponiveis = itens.filter(t => !atuais.includes(t.key))
             if (disponiveis.length === 0) return null
             return (
               <div key={categoria} className="space-y-1.5">
-                <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
+                <p className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider">
                   {categoria}
                 </p>
                 <div className="flex flex-wrap gap-1.5">

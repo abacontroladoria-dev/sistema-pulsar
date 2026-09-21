@@ -15,7 +15,7 @@ export const OnboardingBanner: React.FC<OnboardingBannerProps> = ({ onOpenWizard
   if (loading || isComplete) return null
 
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-cyan-500/20 bg-gradient-to-r from-cyan-500/10 via-slate-900/50 to-violet-500/10 p-6 mb-8">
+    <div className="relative overflow-hidden rounded-2xl border border-cyan-500/20 bg-gradient-to-r from-cyan-500/10 via-card to-violet-500/10 p-6 mb-8">
       <div className="absolute -top-20 -right-20 w-40 h-40 bg-cyan-500/20 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute -bottom-20 -left-20 w-40 h-40 bg-violet-500/20 rounded-full blur-3xl pointer-events-none" />
 
@@ -27,17 +27,17 @@ export const OnboardingBanner: React.FC<OnboardingBannerProps> = ({ onOpenWizard
                 <Rocket className="w-5 h-5 text-cyan-400" />
               </div>
               <div>
-                <h3 className="text-lg font-semibold text-white">Complete a configuração do sistema</h3>
-                <p className="text-sm text-slate-400">Configure sua empresa para começar a usar o sistema</p>
+                <h3 className="text-lg font-semibold text-foreground">Complete a configuração do sistema</h3>
+                <p className="text-sm text-muted-foreground">Configure sua empresa para começar a usar o sistema</p>
               </div>
             </div>
 
             <div className="mb-4">
-              <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
+              <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
                 <span>Progresso</span>
                 <span className="text-cyan-400 font-medium">{completionPercentage}% concluído</span>
               </div>
-              <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
+              <div className="h-2 bg-muted rounded-full overflow-hidden">
                 <div
                   className="h-full bg-gradient-to-r from-cyan-500 to-violet-500 rounded-full transition-all duration-500"
                   style={{ width: `${completionPercentage}%` }}
@@ -54,7 +54,7 @@ export const OnboardingBanner: React.FC<OnboardingBannerProps> = ({ onOpenWizard
                       ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                       : step.isRequired
                       ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                      : 'bg-slate-800/50 text-slate-500 border border-slate-700/50'
+                      : 'bg-muted text-muted-foreground/70 border border-border'
                   }`}
                 >
                   {step.isComplete ? (

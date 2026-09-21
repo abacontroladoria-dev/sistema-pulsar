@@ -27,6 +27,10 @@ interface PipelineSettingsModalProps {
 }
 
 const STAGE_COLORS = [
+  // `value` é PERSISTIDO (a coluna de cor da etapa no banco), não é estilo de
+  // tela: trocar por token quebraria o casamento com as linhas já gravadas.
+  // Estas dez são uma escala de cor escolhida pelo usuário, e slate-500 é a
+  // opção "Cinza" dela — legível nos dois temas, como as outras nove.
   { value: 'border-slate-500', label: 'Cinza', preview: 'bg-slate-500' },
   { value: 'border-cyan-500', label: 'Ciano', preview: 'bg-cyan-500' },
   { value: 'border-violet-500', label: 'Violeta', preview: 'bg-violet-500' },
@@ -48,7 +52,7 @@ export function PipelineSettingsModal({ open, onClose, onSave }: PipelineSetting
   const [editIsAiManaged, setEditIsAiManaged] = useState(false);
   const [editTriggerCriteria, setEditTriggerCriteria] = useState('');
   const [newStageTitle, setNewStageTitle] = useState('');
-  const [newStageColor, setNewStageColor] = useState('border-slate-500');
+  const [newStageColor, setNewStageColor] = useState('border-input');
   const [newStageIsAiManaged, setNewStageIsAiManaged] = useState(false);
   const [newStageTriggerCriteria, setNewStageTriggerCriteria] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<{ stageId: string; stageName: string } | null>(null);
@@ -165,7 +169,7 @@ export function PipelineSettingsModal({ open, onClose, onSave }: PipelineSetting
 
       toast.success('Etapa criada');
       setNewStageTitle('');
-      setNewStageColor('border-slate-500');
+      setNewStageColor('border-input');
       setNewStageIsAiManaged(false);
       setNewStageTriggerCriteria('');
       loadStages();

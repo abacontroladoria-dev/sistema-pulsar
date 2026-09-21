@@ -26,11 +26,11 @@ const ROTULO_STATUS: Record<AppointmentStatus, string> = {
 }
 
 const COR_STATUS: Record<AppointmentStatus, string> = {
-  scheduled: 'text-cyan-300',
-  confirmed: 'text-emerald-300',
-  cancelled: 'text-slate-500',
-  completed: 'text-slate-400',
-  no_show:   'text-rose-300',
+  scheduled: 'text-cyan-700 dark:text-cyan-200',
+  confirmed: 'text-emerald-700 dark:text-emerald-200',
+  cancelled: 'text-muted-foreground/70',
+  completed: 'text-muted-foreground',
+  no_show:   'text-rose-700 dark:text-rose-200',
 }
 
 // `date` é 'YYYY-MM-DD' e `time` é 'HH:MM:SS' — ambos sem fuso, vindos de
@@ -52,7 +52,7 @@ export const BlocoAgendamento: React.FC<{
 }> = ({ agendamentos, carregando, aoAgendar }) => (
   <Bloco titulo="Agendamento" icone={<CalendarClock className="w-3.5 h-3.5" />}>
     {carregando ? (
-      <p className="flex items-center gap-2 text-xs text-slate-500">
+      <p className="flex items-center gap-2 text-xs text-muted-foreground/70">
         <Loader2 className="w-3.5 h-3.5 animate-spin" /> Carregando
       </p>
     ) : (
@@ -72,11 +72,11 @@ export const BlocoAgendamento: React.FC<{
             {agendamentos.map(a => (
               <li
                 key={a.id}
-                className="px-3 py-2 rounded-xl bg-slate-800/50 border border-slate-700/50"
+                className="px-3 py-2 rounded-xl bg-muted border border-border"
               >
                 <div className="flex items-baseline justify-between gap-2">
-                  <span className="text-sm text-slate-200 truncate">{a.title}</span>
-                  <span className="text-[11px] text-slate-400 shrink-0 tabular-nums">
+                  <span className="text-sm text-foreground truncate">{a.title}</span>
+                  <span className="text-[11px] text-muted-foreground shrink-0 tabular-nums">
                     {formatarData(a.date, a.time)}
                   </span>
                 </div>

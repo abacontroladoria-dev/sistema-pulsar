@@ -114,16 +114,16 @@ export const SystemHealthCard: React.FC = () => {
       case 'error':
         return 'from-red-500/20 to-red-500/5 border-red-500/30'
       default:
-        return 'from-slate-500/20 to-slate-500/5 border-slate-500/30'
+        return 'from-slate-500/20 to-slate-500/5 border-input'
     }
   }
 
   if (loading) {
     return (
-      <div className={`rounded-2xl border bg-gradient-to-br from-slate-800/50 to-slate-900/50 border-slate-700/50 p-6`}>
+      <div className={`rounded-2xl border bg-gradient-to-br from-muted to-card border-border p-6`}>
         <div className="flex items-center justify-center gap-3">
           <Loader2 className="w-5 h-5 animate-spin text-cyan-400" />
-          <span className="text-sm text-slate-400">Verificando sistema...</span>
+          <span className="text-sm text-muted-foreground">Verificando sistema...</span>
         </div>
       </div>
     )
@@ -143,8 +143,8 @@ export const SystemHealthCard: React.FC = () => {
         <div className="flex items-center gap-3">
           {getStatusIcon(healthData.overallStatus)}
           <div>
-            <h3 className="text-sm font-semibold text-white">Status do Sistema</h3>
-            <p className="text-xs text-slate-400">{healthData.message}</p>
+            <h3 className="text-sm font-semibold text-foreground">Status do Sistema</h3>
+            <p className="text-xs text-muted-foreground">{healthData.message}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -154,14 +154,14 @@ export const SystemHealthCard: React.FC = () => {
           <button
             onClick={fetchHealth}
             disabled={loading}
-            className="p-2 rounded-lg hover:bg-slate-700/50 transition-colors text-slate-400 hover:text-white"
+            className="p-2 rounded-lg hover:bg-accent transition-colors text-muted-foreground hover:text-foreground"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
         </div>
       </div>
 
-      <div className="h-2 bg-slate-800 rounded-full overflow-hidden mb-4">
+      <div className="h-2 bg-muted rounded-full overflow-hidden mb-4">
         <motion.div
           initial={{ width: 0 }}
           animate={{ width: `${healthData.summary.percentage}%` }}
@@ -178,7 +178,7 @@ export const SystemHealthCard: React.FC = () => {
 
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center justify-between py-2 text-sm text-slate-400 hover:text-white transition-colors"
+        className="w-full flex items-center justify-between py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
       >
         <span>{expanded ? 'Ocultar detalhes' : 'Ver detalhes'}</span>
         {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}

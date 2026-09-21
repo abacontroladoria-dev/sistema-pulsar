@@ -41,7 +41,7 @@ export const BlocoTarefas: React.FC<{
   return (
     <Bloco titulo="Tarefas" icone={<CheckSquare className="w-3.5 h-3.5" />}>
       {carregando ? (
-        <p className="flex items-center gap-2 text-xs text-slate-500">
+        <p className="flex items-center gap-2 text-xs text-muted-foreground/70">
           <Loader2 className="w-3.5 h-3.5 animate-spin" /> Carregando
         </p>
       ) : (
@@ -61,7 +61,7 @@ export const BlocoTarefas: React.FC<{
                 return (
                   <li
                     key={t.id}
-                    className="flex items-start gap-2 px-3 py-2 rounded-xl bg-slate-800/50 border border-slate-700/50"
+                    className="flex items-start gap-2 px-3 py-2 rounded-xl bg-muted border border-border"
                   >
                     <button
                       type="button"
@@ -69,17 +69,17 @@ export const BlocoTarefas: React.FC<{
                       onClick={() => aoConcluir?.(t.id)}
                       title="Marcar como concluída"
                       aria-label={`Concluir: ${t.title}`}
-                      className="mt-0.5 shrink-0 text-slate-500 hover:text-emerald-400 transition-colors disabled:hover:text-slate-500 group"
+                      className="mt-0.5 shrink-0 text-muted-foreground/70 hover:text-emerald-400 transition-colors disabled:hover:text-muted-foreground/70 group"
                     >
                       <Circle className="w-4 h-4 group-hover:hidden" />
                       <CheckCircle2 className="w-4 h-4 hidden group-hover:block" />
                     </button>
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm text-slate-200 break-words">{t.title}</p>
+                      <p className="text-sm text-foreground break-words">{t.title}</p>
                       {prazo && (
                         <span
                           className={`text-[10px] font-medium tabular-nums ${
-                            prazo.vencido ? 'text-rose-300' : 'text-slate-400'
+                            prazo.vencido ? 'text-rose-700 dark:text-rose-200' : 'text-muted-foreground'
                           }`}
                         >
                           {prazo.vencido ? 'Venceu ' : 'Até '}{prazo.texto}

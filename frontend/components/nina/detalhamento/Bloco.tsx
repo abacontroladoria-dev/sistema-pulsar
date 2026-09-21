@@ -21,7 +21,7 @@ export const Bloco: React.FC<{
 }> = ({ titulo, icone, acao, children }) => (
   <section className="space-y-3">
     <div className="flex items-center justify-between gap-2 min-h-[24px]">
-      <h4 className="flex items-center gap-2 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+      <h4 className="flex items-center gap-2 text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wider">
         {icone}
         {titulo}
       </h4>
@@ -34,7 +34,7 @@ export const Bloco: React.FC<{
 // O estado vazio de um bloco. Itálico e apagado para não competir com conteúdo
 // real: num painel de seis blocos, metade vazia é o normal, não um defeito.
 export const Vazio: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <p className="text-xs text-slate-500 italic">{children}</p>
+  <p className="text-xs text-muted-foreground/70 italic">{children}</p>
 )
 
 // Botão de ação do cabeçalho (o "+" e o lápis). Alvo de 28px, que é o mínimo
@@ -51,7 +51,7 @@ export const BotaoAcao: React.FC<{
     disabled={disabled}
     title={titulo}
     aria-label={titulo}
-    className="w-7 h-7 shrink-0 rounded-lg flex items-center justify-center text-slate-400 hover:text-cyan-400 hover:bg-slate-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-slate-400 disabled:hover:bg-transparent"
+    className="w-7 h-7 shrink-0 rounded-lg flex items-center justify-center text-muted-foreground hover:text-cyan-400 hover:bg-muted transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-muted-foreground disabled:hover:bg-transparent"
   >
     {children}
   </button>
@@ -69,7 +69,7 @@ export const BotaoAdicionar: React.FC<{
     type="button"
     onClick={onClick}
     disabled={disabled}
-    className="w-full py-2.5 px-3 rounded-xl border border-dashed border-slate-700 text-xs font-medium text-slate-400 hover:text-cyan-300 hover:border-cyan-600/60 hover:bg-slate-800/40 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+    className="w-full py-2.5 px-3 rounded-xl border border-dashed border-border text-xs font-medium text-muted-foreground hover:text-cyan-700 dark:text-cyan-200 hover:border-cyan-600/60 hover:bg-muted transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
   >
     {children}
   </button>

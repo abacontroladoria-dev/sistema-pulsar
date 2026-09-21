@@ -15,12 +15,12 @@ export const Avatar: React.FC<{ url: string; nome: string }> = ({ url, nome }) =
       <img
         src={url}
         alt={nome}
-        className="w-full h-full rounded-full object-cover border border-slate-800"
+        className="w-full h-full rounded-full object-cover border border-border"
       />
     )
   }
   return (
-    <div className="w-full h-full rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400 text-xs font-semibold">
+    <div className="w-full h-full rounded-full bg-muted border border-border flex items-center justify-center text-muted-foreground text-xs font-semibold">
       {iniciais(nome)}
     </div>
   )

@@ -70,14 +70,14 @@ export const TagSelector: React.FC<TagSelectorProps> = ({
   if (isCreating) {
     return (
       <div className="p-4 space-y-3">
-        <h4 className="text-sm font-semibold text-slate-200 mb-3">Criar Nova Tag</h4>
+        <h4 className="text-sm font-semibold text-foreground mb-3">Criar Nova Tag</h4>
 
         <div className="space-y-2">
           <Input
             placeholder="Nome da tag"
             value={newTag.label}
             onChange={(e) => setNewTag({ ...newTag, label: e.target.value })}
-            className="bg-slate-800 border-slate-600 text-slate-200 placeholder:text-slate-500"
+            className="bg-muted border-input text-foreground placeholder:text-muted-foreground/70"
           />
 
           <div className="flex gap-2">
@@ -91,7 +91,7 @@ export const TagSelector: React.FC<TagSelectorProps> = ({
             <select
               value={newTag.category}
               onChange={(e) => setNewTag({ ...newTag, category: e.target.value })}
-              className="flex-1 h-9 px-3 rounded-md bg-slate-800 border border-slate-600 text-sm text-slate-200"
+              className="flex-1 h-9 px-3 rounded-md bg-muted border border-input text-sm text-foreground"
             >
               <option value="custom">Personalizado</option>
               <option value="status">Status</option>
@@ -133,7 +133,7 @@ export const TagSelector: React.FC<TagSelectorProps> = ({
             placeholder="Buscar tags..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9 h-9 bg-slate-800 border-slate-600 text-slate-200 placeholder:text-slate-500"
+            className="pl-9 h-9 bg-muted border-input text-foreground placeholder:text-muted-foreground/70"
           />
         </div>
       </div>
@@ -142,7 +142,7 @@ export const TagSelector: React.FC<TagSelectorProps> = ({
       <div className="flex-1 overflow-y-auto p-2">
         {Object.entries(tagsByCategory).map(([category, tags]) => (
           <div key={category} className="mb-3">
-            <h5 className="text-xs font-bold text-slate-400 uppercase tracking-wider px-2 py-1.5">
+            <h5 className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-2 py-1.5">
               {categoryLabels[category] || category}
             </h5>
             <div className="space-y-0.5">
@@ -159,7 +159,7 @@ export const TagSelector: React.FC<TagSelectorProps> = ({
                         className="w-3 h-3 rounded-full"
                         style={{ backgroundColor: tag.color }}
                       />
-                      <span className="text-sm text-slate-200">{tag.label}</span>
+                      <span className="text-sm text-foreground">{tag.label}</span>
                     </div>
                     {isSelected && (
                       <Check className="w-4 h-4 text-primary" />
@@ -176,7 +176,7 @@ export const TagSelector: React.FC<TagSelectorProps> = ({
       <div className="p-2 border-t border-border">
         <button
           onClick={() => setIsCreating(true)}
-          className="w-full flex items-center gap-2 px-3 py-2 rounded-md hover:bg-slate-800 transition-colors text-sm text-slate-400 hover:text-slate-200"
+          className="w-full flex items-center gap-2 px-3 py-2 rounded-md hover:bg-muted transition-colors text-sm text-muted-foreground hover:text-foreground"
         >
           <Plus className="w-4 h-4" />
           <span>Criar nova tag</span>

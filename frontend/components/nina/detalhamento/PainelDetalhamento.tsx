@@ -55,14 +55,14 @@ export const PainelDetalhamento: React.FC<{
   const nome    = contato?.name?.trim() || 'Contato sem nome'
 
   return (
-    <div className="w-80 border-l border-slate-800 bg-slate-900/95 flex-shrink-0 flex flex-col overflow-hidden">
-      <div className="h-16 flex items-center justify-between px-6 border-b border-slate-800 flex-shrink-0">
-        <span className="font-semibold text-white tracking-wide text-sm uppercase">Detalhamento</span>
+    <div className="w-80 border-l border-border bg-card flex-shrink-0 flex flex-col overflow-hidden">
+      <div className="h-16 flex items-center justify-between px-6 border-b border-border flex-shrink-0">
+        <span className="font-semibold text-foreground tracking-wide text-sm uppercase">Detalhamento</span>
         <button
           onClick={aoFechar}
           title="Fechar o detalhamento"
           aria-label="Fechar o detalhamento"
-          className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
+          className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
         >
           <X className="w-5 h-5" />
         </button>
@@ -73,33 +73,33 @@ export const PainelDetalhamento: React.FC<{
           seria falsa. */}
       {!detalhe ? (
         <div className="flex-1 flex items-center justify-center">
-          <Loader2 className="w-5 h-5 animate-spin text-slate-600" />
+          <Loader2 className="w-5 h-5 animate-spin text-muted-foreground/70" />
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-7">
           <header className="flex flex-col items-center text-center">
             <div className="w-20 h-20 rounded-full p-1 bg-gradient-to-tr from-cyan-500 to-teal-600 shadow-xl mb-3">
-              <div className="w-full h-full rounded-full overflow-hidden border-2 border-slate-900">
+              <div className="w-full h-full rounded-full overflow-hidden border-2 border-border">
                 <Avatar url={contato?.avatar_url ?? ''} nome={nome} />
               </div>
             </div>
-            <h3 className="text-base font-bold text-white leading-tight">{nome}</h3>
+            <h3 className="text-base font-bold text-foreground leading-tight">{nome}</h3>
             {/* contact_type do banco: quem de fato está escrevendo
                 (responsável, paciente, primeiro contato). */}
-            <p className="text-xs text-slate-400 mt-0.5">
+            <p className="text-xs text-muted-foreground mt-0.5">
               {rotuloTipoContato(contato)}
             </p>
 
             <div className="mt-3 space-y-1 text-xs">
               {contato?.display_phone && (
-                <p className="flex items-center justify-center gap-1.5 text-slate-300">
-                  <Phone className="w-3 h-3 text-slate-500 shrink-0" />
+                <p className="flex items-center justify-center gap-1.5 text-muted-foreground">
+                  <Phone className="w-3 h-3 text-muted-foreground/70 shrink-0" />
                   {contato.display_phone}
                 </p>
               )}
               {contato?.display_email && (
-                <p className="flex items-center justify-center gap-1.5 text-slate-300 break-all">
-                  <Mail className="w-3 h-3 text-slate-500 shrink-0" />
+                <p className="flex items-center justify-center gap-1.5 text-muted-foreground break-all">
+                  <Mail className="w-3 h-3 text-muted-foreground/70 shrink-0" />
                   {contato.display_email}
                 </p>
               )}

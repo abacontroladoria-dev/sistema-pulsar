@@ -48,7 +48,7 @@ export const BlocoResponsavel: React.FC<{
             value={responsavelId ?? ''}
             disabled={salvando}
             onChange={(e) => aoTrocar(e.target.value === '' ? null : e.target.value)}
-            className="w-full appearance-none px-3 py-2.5 pr-9 rounded-xl bg-slate-950 border border-slate-700 text-sm text-slate-200 outline-none focus:border-cyan-500/60 focus:ring-2 focus:ring-cyan-500/20 disabled:opacity-60 disabled:cursor-wait"
+            className="w-full appearance-none px-3 py-2.5 pr-9 rounded-xl bg-background border border-border text-sm text-foreground outline-none focus:border-cyan-500/60 focus:ring-2 focus:ring-cyan-500/20 disabled:opacity-60 disabled:cursor-wait"
           >
             <option value="">Não atribuído</option>
             {/* Responsável fora da lista ainda precisa aparecer selecionado,
@@ -61,18 +61,18 @@ export const BlocoResponsavel: React.FC<{
               <option key={u.id} value={u.id}>{u.nome}</option>
             ))}
           </select>
-          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500">
+          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground/70">
             {salvando ? <Loader2 className="w-4 h-4 animate-spin" /> : <span className="text-xs">▾</span>}
           </span>
         </div>
       ) : (
-        <p className={`text-sm ${rotuloAtual ? 'text-slate-200' : 'text-slate-500 italic'}`}>
+        <p className={`text-sm ${rotuloAtual ? 'text-foreground' : 'text-muted-foreground/70 italic'}`}>
           {rotuloAtual ?? 'Não atribuído'}
         </p>
       )}
 
       {maiaAtendendo && !responsavelId && (
-        <p className="flex items-start gap-1.5 text-[11px] text-violet-300/80">
+        <p className="flex items-start gap-1.5 text-[11px] text-violet-700 dark:text-violet-200/80">
           <Bot className="w-3 h-3 mt-0.5 shrink-0" />
           A Maia está atendendo. Responder pelo chat assume a conversa.
         </p>

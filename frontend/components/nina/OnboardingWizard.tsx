@@ -22,15 +22,15 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ isOpen, onCl
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 backdrop-blur-sm">
-      <div className="bg-slate-900 rounded-2xl border border-slate-700 shadow-2xl max-w-2xl w-full mx-4">
-        <div className="flex items-center justify-between p-6 border-b border-slate-700">
+      <div className="bg-card rounded-2xl border border-border shadow-2xl max-w-2xl w-full mx-4">
+        <div className="flex items-center justify-between p-6 border-b border-border">
           <div>
-            <h2 className="text-2xl font-bold text-white">Configurar Sistema</h2>
-            <p className="text-sm text-slate-400 mt-1">Etapa {currentStep + 1} de {steps.length}</p>
+            <h2 className="text-2xl font-bold text-foreground">Configurar Sistema</h2>
+            <p className="text-sm text-muted-foreground mt-1">Etapa {currentStep + 1} de {steps.length}</p>
           </div>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors"
+            className="p-2 hover:bg-muted rounded-lg text-muted-foreground hover:text-foreground transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -38,22 +38,22 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ isOpen, onCl
 
         <div className="p-8">
           <div className="mb-8">
-            <h3 className="text-xl font-semibold text-white mb-2">{steps[currentStep].title}</h3>
-            <p className="text-slate-400">{steps[currentStep].description}</p>
+            <h3 className="text-xl font-semibold text-foreground mb-2">{steps[currentStep].title}</h3>
+            <p className="text-muted-foreground">{steps[currentStep].description}</p>
           </div>
 
-          <div className="p-6 bg-slate-800/50 rounded-lg border border-slate-700 min-h-[200px] flex items-center justify-center">
-            <p className="text-slate-400">Formulário da etapa {currentStep + 1} virá aqui</p>
+          <div className="p-6 bg-muted rounded-lg border border-border min-h-[200px] flex items-center justify-center">
+            <p className="text-muted-foreground">Formulário da etapa {currentStep + 1} virá aqui</p>
           </div>
         </div>
 
-        <div className="flex items-center justify-between p-6 border-t border-slate-700">
+        <div className="flex items-center justify-between p-6 border-t border-border">
           <div className="flex gap-2">
             {steps.map((_, index) => (
               <div
                 key={index}
                 className={`h-2 rounded-full transition-all ${
-                  index <= currentStep ? 'bg-cyan-500 w-8' : 'bg-slate-700 w-2'
+                  index <= currentStep ? 'bg-cyan-500 w-8' : 'bg-accent w-2'
                 }`}
               />
             ))}

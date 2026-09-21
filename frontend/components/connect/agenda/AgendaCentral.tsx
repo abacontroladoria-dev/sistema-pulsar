@@ -122,38 +122,38 @@ export default function AgendaCentral() {
   }
 
   return (
-    <div className="p-6 h-full flex flex-col bg-slate-950 text-slate-50">
+    <div className="p-6 h-full flex flex-col bg-background text-foreground">
       {/* Cabeçalho */}
       <div className="flex flex-col xl:flex-row items-start xl:items-center justify-between mb-5 gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+          <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
             <CalendarIcon className="w-7 h-7 text-cyan-500" />
             Agendamentos
           </h2>
-          <p className="text-slate-400 text-sm mt-1">
+          <p className="text-muted-foreground text-sm mt-1">
             O que o atendimento — humano e virtual — marcou na grade da clínica.
           </p>
         </div>
 
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full xl:w-auto">
-          <div className="flex bg-slate-900 p-1 rounded-lg border border-slate-800">
+          <div className="flex bg-card p-1 rounded-lg border border-border">
             <BotaoVisao ativa={visao === 'mes'}    onClick={() => setVisao('mes')}    icone={<LayoutGrid className="w-3.5 h-3.5" />} rotulo="Mês" />
             <BotaoVisao ativa={visao === 'semana'} onClick={() => setVisao('semana')} icone={<Columns className="w-3.5 h-3.5" />}    rotulo="Semana" />
             <BotaoVisao ativa={visao === 'dia'}    onClick={() => setVisao('dia')}    icone={<List className="w-3.5 h-3.5" />}       rotulo="Dia" />
           </div>
 
-          <div className="flex items-center bg-slate-900 border border-slate-800 rounded-lg p-1">
-            <button onClick={() => navegar(-1)} className="p-2 hover:bg-slate-800 rounded-md text-slate-400 hover:text-white transition-colors" aria-label="Anterior">
+          <div className="flex items-center bg-card border border-border rounded-lg p-1">
+            <button onClick={() => navegar(-1)} className="p-2 hover:bg-muted rounded-md text-muted-foreground hover:text-foreground transition-colors" aria-label="Anterior">
               <ChevronLeft className="w-5 h-5" />
             </button>
             <button
               onClick={() => setReferencia(new Date())}
-              className="flex flex-col items-center justify-center w-48 px-2 hover:bg-slate-800/50 rounded-md py-1 transition-colors"
+              className="flex flex-col items-center justify-center w-48 px-2 hover:bg-muted rounded-md py-1 transition-colors"
               title="Ir para hoje"
             >
-              <span className="text-sm font-bold text-slate-200 capitalize">{rotuloPeriodo(referencia, visao)}</span>
+              <span className="text-sm font-bold text-foreground capitalize">{rotuloPeriodo(referencia, visao)}</span>
             </button>
-            <button onClick={() => navegar(1)} className="p-2 hover:bg-slate-800 rounded-md text-slate-400 hover:text-white transition-colors" aria-label="Próximo">
+            <button onClick={() => navegar(1)} className="p-2 hover:bg-muted rounded-md text-muted-foreground hover:text-foreground transition-colors" aria-label="Próximo">
               <ChevronRight className="w-5 h-5" />
             </button>
           </div>
@@ -171,10 +171,10 @@ export default function AgendaCentral() {
       </div>
 
       {/* Área do calendário */}
-      <div className="flex-1 bg-slate-900/50 border border-slate-800 rounded-xl overflow-hidden shadow-2xl flex flex-col min-h-0">
+      <div className="flex-1 bg-card border border-border rounded-xl overflow-hidden shadow-2xl flex flex-col min-h-0">
         {erro ? (
           <div className="flex-1 flex flex-col items-center justify-center gap-3 p-6 text-center">
-            <p className="text-sm text-rose-300 max-w-md">{erro}</p>
+            <p className="text-sm text-rose-700 dark:text-rose-200 max-w-md">{erro}</p>
             <Button variant="outline" onClick={() => void buscar()}>Tentar de novo</Button>
           </div>
         ) : carregando && agendamentos.length === 0 ? (
@@ -208,7 +208,7 @@ export default function AgendaCentral() {
       </div>
 
       {/* Rodapé com contagem — dá noção de volume sem abrir nada */}
-      <div className="mt-3 flex items-center gap-4 text-xs text-slate-500">
+      <div className="mt-3 flex items-center gap-4 text-xs text-muted-foreground/70">
         <span className="tabular-nums">
           {agendamentos.length} {agendamentos.length === 1 ? 'agendamento' : 'agendamentos'} na janela
         </span>
@@ -261,9 +261,9 @@ function VisaoMes({ referencia, porDia, hojeISO, onClicarDia, onClicarAgendament
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      <div className="grid grid-cols-7 border-b border-slate-800 bg-slate-900 shrink-0">
+      <div className="grid grid-cols-7 border-b border-border bg-card shrink-0">
         {DIAS_CURTOS.map(d => (
-          <div key={d} className="py-2.5 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">
+          <div key={d} className="py-2.5 text-center text-xs font-semibold text-muted-foreground/70 uppercase tracking-wider">
             {d}
           </div>
         ))}
@@ -271,7 +271,7 @@ function VisaoMes({ referencia, porDia, hojeISO, onClicarDia, onClicarAgendament
 
       <div className="grid grid-cols-7 flex-1 auto-rows-fr overflow-y-auto">
         {Array.from({ length: primeiroDia }).map((_, i) => (
-          <div key={`v-${i}`} className="border-b border-r border-slate-800/50 bg-slate-950/30 min-h-[96px]" />
+          <div key={`v-${i}`} className="border-b border-r border-border bg-background min-h-[96px]" />
         ))}
 
         {Array.from({ length: diasNoMes }).map((_, i) => {
@@ -284,10 +284,10 @@ function VisaoMes({ referencia, porDia, hojeISO, onClicarDia, onClicarAgendament
             <div
               key={iso}
               onClick={() => onClicarDia(iso)}
-              className={`border-b border-r border-slate-800/50 p-2 min-h-[96px] cursor-pointer transition-colors hover:bg-slate-800/30 group ${ehHoje ? 'bg-cyan-950/10' : ''}`}
+              className={`border-b border-r border-border p-2 min-h-[96px] cursor-pointer transition-colors hover:bg-muted group ${ehHoje ? 'bg-cyan-950/10' : ''}`}
             >
               <span className={`text-xs font-medium w-6 h-6 flex items-center justify-center rounded-full mb-1.5 tabular-nums ${
-                ehHoje ? 'bg-cyan-500 text-white shadow-lg shadow-cyan-500/30' : 'text-slate-400 group-hover:text-white'
+                ehHoje ? 'bg-cyan-500 text-white shadow-lg shadow-cyan-500/30' : 'text-muted-foreground group-hover:text-foreground'
               }`}>
                 {dia}
               </span>
@@ -304,7 +304,7 @@ function VisaoMes({ referencia, porDia, hojeISO, onClicarDia, onClicarAgendament
                   </button>
                 ))}
                 {doDia.length > 3 && (
-                  <span className="block text-[10px] text-slate-500 pl-1.5">
+                  <span className="block text-[10px] text-muted-foreground/70 pl-1.5">
                     +{doDia.length - 3} mais
                   </span>
                 )}
@@ -314,7 +314,7 @@ function VisaoMes({ referencia, porDia, hojeISO, onClicarDia, onClicarAgendament
         })}
 
         {Array.from({ length: Math.max(0, celulasVazias) }).map((_, i) => (
-          <div key={`r-${i}`} className="border-b border-r border-slate-800/50 bg-slate-950/30" />
+          <div key={`r-${i}`} className="border-b border-r border-border bg-background" />
         ))}
       </div>
     </div>
@@ -331,18 +331,18 @@ function VisaoSemana({ referencia, porDia, hojeISO, onClicarDia, onClicarAgendam
   const horas = Array.from({ length: HORA_FIM - HORA_INICIO + 1 }).map((_, i) => i + HORA_INICIO)
 
   return (
-    <div className="flex-1 overflow-auto bg-slate-900/30">
-      <div className="grid grid-cols-8 border-b border-slate-800 sticky top-0 bg-slate-900 z-10">
-        <div className="p-3 text-[10px] font-medium text-slate-500 border-r border-slate-800">GMT-3</div>
+    <div className="flex-1 overflow-auto bg-card">
+      <div className="grid grid-cols-8 border-b border-border sticky top-0 bg-card z-10">
+        <div className="p-3 text-[10px] font-medium text-muted-foreground/70 border-r border-border">GMT-3</div>
         {dias.map(d => {
           const iso = dataParaISO(d)
           const ehHoje = iso === hojeISO
           return (
-            <div key={iso} className={`p-2 text-center border-r border-slate-800/50 ${ehHoje ? 'bg-cyan-950/20' : ''}`}>
-              <div className={`text-[10px] uppercase font-semibold ${ehHoje ? 'text-cyan-400' : 'text-slate-500'}`}>
+            <div key={iso} className={`p-2 text-center border-r border-border ${ehHoje ? 'bg-cyan-950/20' : ''}`}>
+              <div className={`text-[10px] uppercase font-semibold ${ehHoje ? 'text-cyan-400' : 'text-muted-foreground/70'}`}>
                 {DIAS_CURTOS[d.getDay()]}
               </div>
-              <div className={`text-lg font-bold tabular-nums ${ehHoje ? 'text-cyan-500' : 'text-slate-300'}`}>
+              <div className={`text-lg font-bold tabular-nums ${ehHoje ? 'text-cyan-500' : 'text-muted-foreground'}`}>
                 {d.getDate()}
               </div>
             </div>
@@ -352,7 +352,7 @@ function VisaoSemana({ referencia, porDia, hojeISO, onClicarDia, onClicarAgendam
 
       {horas.map(hora => (
         <div key={hora} className="grid grid-cols-8 min-h-[64px]">
-          <div className="border-r border-b border-slate-800/50 p-2 text-[10px] text-slate-500 text-right tabular-nums">
+          <div className="border-r border-b border-border p-2 text-[10px] text-muted-foreground/70 text-right tabular-nums">
             {String(hora).padStart(2, '0')}:00
           </div>
           {dias.map(d => {
@@ -362,7 +362,7 @@ function VisaoSemana({ referencia, porDia, hojeISO, onClicarDia, onClicarAgendam
               <div
                 key={`${iso}-${hora}`}
                 onClick={() => onClicarDia(iso)}
-                className="border-r border-b border-slate-800/50 p-1 transition-colors hover:bg-slate-800/20 cursor-pointer space-y-1"
+                className="border-r border-b border-border p-1 transition-colors hover:bg-muted cursor-pointer space-y-1"
               >
                 {naHora.map(a => (
                   <button
@@ -392,12 +392,12 @@ function VisaoDia({ referencia, porDia, onClicarDia, onClicarAgendamento }: Visa
   const horas = Array.from({ length: HORA_FIM - HORA_INICIO + 1 }).map((_, i) => i + HORA_INICIO)
 
   return (
-    <div className="flex-1 overflow-auto bg-slate-900/30">
-      <div className="p-4 border-b border-slate-800 bg-slate-900 sticky top-0 z-10 flex items-center justify-between gap-3">
-        <h3 className="text-lg font-bold text-white capitalize">
+    <div className="flex-1 overflow-auto bg-card">
+      <div className="p-4 border-b border-border bg-card sticky top-0 z-10 flex items-center justify-between gap-3">
+        <h3 className="text-lg font-bold text-foreground capitalize">
           {referencia.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
         </h3>
-        <span className="text-xs text-slate-500 tabular-nums">
+        <span className="text-xs text-muted-foreground/70 tabular-nums">
           {doDia.length} {doDia.length === 1 ? 'agendamento' : 'agendamentos'}
         </span>
       </div>
@@ -406,8 +406,8 @@ function VisaoDia({ referencia, porDia, onClicarDia, onClicarAgendamento }: Visa
         {horas.map(hora => {
           const naHora = doDia.filter(a => a.time && parseInt(a.time.slice(0, 2), 10) === hora)
           return (
-            <div key={hora} className="flex border-b border-slate-800/50 min-h-[72px] group hover:bg-slate-900/40 transition-colors">
-              <div className="w-16 py-3 pr-4 text-right text-xs font-medium text-slate-500 border-r border-slate-800/50 tabular-nums shrink-0">
+            <div key={hora} className="flex border-b border-border min-h-[72px] group hover:bg-card transition-colors">
+              <div className="w-16 py-3 pr-4 text-right text-xs font-medium text-muted-foreground/70 border-r border-border tabular-nums shrink-0">
                 {String(hora).padStart(2, '0')}:00
               </div>
               <div className="flex-1 p-2 space-y-2 cursor-pointer" onClick={() => onClicarDia(iso)}>
@@ -454,7 +454,7 @@ function BotaoVisao({ ativa, onClick, icone, rotulo }: {
     <button
       onClick={onClick}
       className={`px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-2 transition-all ${
-        ativa ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'
+        ativa ? 'bg-muted text-foreground shadow-sm' : 'text-muted-foreground/70 hover:text-muted-foreground'
       }`}
     >
       {icone} {rotulo}

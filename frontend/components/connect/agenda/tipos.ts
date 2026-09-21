@@ -31,13 +31,19 @@ export const TIPOS_ORDENADOS: AppointmentType[] = [
 ]
 
 // Classes para o "chip" do evento dentro do calendário.
+//
+// A tinta é declarada nos DOIS temas de propósito. O fundo é `/10` — quase
+// transparente —, então quem dá contraste é o texto: o `-200` que funciona sobre
+// o escuro fica ilegível sobre o branco (roda 1.2:1). O par é `-700` no claro,
+// `-200` no escuro, mantendo a mesma família de cor dos dois lados, que é o que
+// faz o chip continuar dizendo "triagem" pela cor e não só pelo rótulo.
 export const TIPO_CHIP: Record<AppointmentType, string> = {
-  triagem:  'bg-amber-500/10   text-amber-200   border-amber-500/25   hover:bg-amber-500/20',
-  retorno:  'bg-cyan-500/10    text-cyan-200    border-cyan-500/25    hover:bg-cyan-500/20',
-  reuniao:  'bg-sky-500/10     text-sky-200     border-sky-500/25     hover:bg-sky-500/20',
-  followup: 'bg-slate-500/10   text-slate-200   border-slate-500/25   hover:bg-slate-500/20',
-  demo:     'bg-emerald-500/10 text-emerald-200 border-emerald-500/25 hover:bg-emerald-500/20',
-  other:    'bg-slate-700/40   text-slate-300   border-slate-600/40   hover:bg-slate-700/60',
+  triagem:  'bg-amber-500/10   text-amber-700   dark:text-amber-200   border-amber-500/25   hover:bg-amber-500/20',
+  retorno:  'bg-cyan-500/10    text-cyan-700    dark:text-cyan-200    border-cyan-500/25    hover:bg-cyan-500/20',
+  reuniao:  'bg-sky-500/10     text-sky-700     dark:text-sky-200     border-sky-500/25     hover:bg-sky-500/20',
+  followup: 'bg-slate-500/10   text-slate-700   dark:text-slate-200   border-slate-500/25   hover:bg-slate-500/20',
+  demo:     'bg-emerald-500/10 text-emerald-700 dark:text-emerald-200 border-emerald-500/25 hover:bg-emerald-500/20',
+  other:    'bg-slate-500/10   text-slate-700   dark:text-slate-200   border-slate-500/25   hover:bg-slate-500/20',
 }
 
 export const STATUS_LABEL: Record<string, string> = {

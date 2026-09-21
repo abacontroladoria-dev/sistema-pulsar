@@ -76,11 +76,11 @@ const Settings: React.FC<{ setShowOnboarding?: (show: boolean) => void }> = ({ s
   const isSaving = salvando;
 
   return (
-    <div className="p-8 w-full h-full overflow-y-auto bg-slate-950 text-slate-50 custom-scrollbar">
+    <div className="p-8 w-full h-full overflow-y-auto bg-background text-foreground custom-scrollbar">
       <div className="mb-10 flex items-center justify-between">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight text-white">Configurações</h2>
-          <p className="text-sm text-slate-400 mt-1">
+          <h2 className="text-3xl font-bold tracking-tight text-foreground">Configurações</h2>
+          <p className="text-sm text-muted-foreground mt-1">
             Central de controle da sua instância {companyName}.
             {!podeEditar && (
               <span className="ml-2 text-amber-400">(Somente leitura)</span>
@@ -93,7 +93,7 @@ const Settings: React.FC<{ setShowOnboarding?: (show: boolean) => void }> = ({ s
               variant="ghost"
               size="sm"
               onClick={handleReopenOnboarding}
-              className="text-slate-400 hover:text-white gap-2"
+              className="text-muted-foreground hover:text-foreground gap-2"
             >
               <RotateCcw className="w-4 h-4" />
               Refazer Onboarding

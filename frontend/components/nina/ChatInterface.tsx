@@ -263,12 +263,12 @@ const ChatInterface: React.FC = () => {
   // redirecionar criaria laço com o gate do layout do /connect.
   if (erro?.tipo === 'sem_acesso') {
     return (
-      <div className="flex h-full bg-slate-950 items-center justify-center p-8">
+      <div className="flex h-full bg-background items-center justify-center p-8">
         <div className="flex flex-col items-center gap-4 text-center max-w-md">
           <ShieldAlert className="h-10 w-10 text-amber-500" />
-          <h2 className="text-lg font-bold text-white">Sem acesso à Central</h2>
-          <p className="text-sm text-slate-400">{erro.mensagem}</p>
-          <p className="text-xs text-slate-500">
+          <h2 className="text-lg font-bold text-foreground">Sem acesso à Central</h2>
+          <p className="text-sm text-muted-foreground">{erro.mensagem}</p>
+          <p className="text-xs text-muted-foreground/70">
             Um administrador precisa liberar seu usuário para a Central de Atendimento.
           </p>
         </div>
@@ -278,28 +278,28 @@ const ChatInterface: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="flex h-full bg-slate-950 items-center justify-center">
+      <div className="flex h-full bg-background items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="h-8 w-8 animate-spin text-cyan-500" />
-          <p className="text-sm text-slate-500">Sincronizando conversas...</p>
+          <p className="text-sm text-muted-foreground/70">Sincronizando conversas...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="flex h-full bg-slate-950 overflow-hidden">
-      <div className="w-80 lg:w-96 border-r border-slate-800 flex flex-col bg-slate-900/50 backdrop-blur-md z-20 flex-shrink-0">
-        <div className="p-4 border-b border-slate-800/50">
-          <h2 className="text-lg font-bold text-white mb-4 px-1">Chats Ativos</h2>
+    <div className="flex h-full bg-background overflow-hidden">
+      <div className="w-80 lg:w-96 border-r border-border flex flex-col bg-card backdrop-blur-md z-20 flex-shrink-0">
+        <div className="p-4 border-b border-border">
+          <h2 className="text-lg font-bold text-foreground mb-4 px-1">Chats Ativos</h2>
           <div className="relative group">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 group-focus-within:text-cyan-400 transition-colors" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/70 group-focus-within:text-cyan-400 transition-colors" />
             <input
               type="text"
               placeholder="Buscar conversa..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-2.5 bg-slate-950/50 border border-slate-800 rounded-xl text-sm focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 outline-none text-slate-200 placeholder:text-slate-600 transition-all"
+              className="w-full pl-9 pr-4 py-2.5 bg-background border border-border rounded-xl text-sm focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 outline-none text-foreground placeholder:text-muted-foreground/70 transition-all"
             />
           </div>
         </div>
@@ -316,7 +316,7 @@ const ChatInterface: React.FC = () => {
 
         <div className="flex-1 overflow-y-auto custom-scrollbar">
           {filteredConversations.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-slate-500 p-8 text-center">
+            <div className="flex flex-col items-center justify-center h-full text-muted-foreground/70 p-8 text-center">
               <MessageSquare className="w-12 h-12 mb-4 opacity-50" />
               <p className="text-sm">Nenhuma conversa encontrada</p>
               <p className="text-xs mt-1 opacity-70">As conversas aparecerão aqui quando receberem mensagens</p>
@@ -326,9 +326,9 @@ const ChatInterface: React.FC = () => {
               <div
                 key={chat.id}
                 onClick={() => setSelectedChatId(chat.id)}
-                className={`flex items-center p-4 cursor-pointer transition-all duration-200 border-b border-slate-800/30 hover:bg-slate-800/50 ${
+                className={`flex items-center p-4 cursor-pointer transition-all duration-200 border-b border-border hover:bg-muted ${
                   selectedChatId === chat.id
-                    ? 'bg-slate-800/80 border-l-2 border-l-cyan-500'
+                    ? 'bg-muted border-l-2 border-l-cyan-500'
                     : 'border-l-2 border-l-transparent'
                 }`}
               >
@@ -339,17 +339,17 @@ const ChatInterface: React.FC = () => {
                   {/* O ponto pulsante cyan sinalizava não-lidas. Não existe
                       registro de leitura por usuário no schema, então ele
                       pulsaria sempre ou nunca — fica o ponto neutro. */}
-                  <span className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-slate-600 border-2 border-slate-900 rounded-full"></span>
+                  <span className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-slate-600 border-2 border-border rounded-full"></span>
                 </div>
 
                 <div className="ml-3 flex-1 min-w-0">
                   <div className="flex justify-between items-baseline mb-1">
-                    <h3 className={`text-sm font-semibold truncate ${selectedChatId === chat.id ? 'text-white' : 'text-slate-300'}`}>
+                    <h3 className={`text-sm font-semibold truncate ${selectedChatId === chat.id ? 'text-foreground' : 'text-muted-foreground'}`}>
                       {chat.contactName}
                     </h3>
-                    <span className="text-[10px] text-slate-500 font-medium">{chat.lastMessageTime}</span>
+                    <span className="text-[10px] text-muted-foreground/70 font-medium">{chat.lastMessageTime}</span>
                   </div>
-                  <p className="text-xs text-slate-500 truncate">{chat.lastMessage}</p>
+                  <p className="text-xs text-muted-foreground/70 truncate">{chat.lastMessage}</p>
 
                   {/* A badge numérica de não-lidas saiu: central.conversations
                       não tem registro de leitura por usuário, então o número
@@ -369,16 +369,16 @@ const ChatInterface: React.FC = () => {
       {activeChat ? (
         <div className="flex-1 flex overflow-hidden bg-[#0B0E14]">
           <div className="flex-1 flex flex-col min-w-0 relative">
-            <div className="h-16 px-6 flex items-center justify-between bg-slate-900/80 backdrop-blur-md border-b border-slate-800 z-10 shrink-0">
-              <div className="flex items-center cursor-pointer hover:bg-slate-800/50 p-1.5 -ml-1.5 rounded-lg transition-colors pr-3">
+            <div className="h-16 px-6 flex items-center justify-between bg-card backdrop-blur-md border-b border-border z-10 shrink-0">
+              <div className="flex items-center cursor-pointer hover:bg-muted p-1.5 -ml-1.5 rounded-lg transition-colors pr-3">
                 <div className="relative">
-                  <div className="w-9 h-9 rounded-full ring-2 ring-slate-800 overflow-hidden">
+                  <div className="w-9 h-9 rounded-full ring-2 ring-border overflow-hidden">
                     <Avatar url={activeChat.contactAvatar} nome={activeChat.contactName} />
                   </div>
-                  <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 border-2 border-slate-900 rounded-full"></span>
+                  <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 border-2 border-border rounded-full"></span>
                 </div>
                 <div className="ml-3">
-                  <h2 className="text-sm font-bold text-slate-100 flex items-center gap-2">
+                  <h2 className="text-sm font-bold text-foreground flex items-center gap-2">
                     {activeChat.contactName}
                     {/* A badge sai de `ai_mode` cru e não enxerga a herança
                         (o adapter não conhece o agent_settings). A chave ao
@@ -407,7 +407,7 @@ const ChatInterface: React.FC = () => {
                     onClick={() => setShowProfileInfo(true)}
                     title="Abrir o detalhamento"
                     aria-label="Abrir o detalhamento"
-                    className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
+                    className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
                   >
                     <Info className="w-5 h-5" />
                   </button>
@@ -417,7 +417,7 @@ const ChatInterface: React.FC = () => {
 
             <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar relative z-0">
               {activeChat.messages.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full text-slate-500">
+                <div className="flex flex-col items-center justify-center h-full text-muted-foreground/70">
                   <MessageSquare className="w-16 h-16 mb-4 opacity-30" />
                   <p className="text-sm">Nenhuma mensagem ainda</p>
                 </div>
@@ -432,10 +432,10 @@ const ChatInterface: React.FC = () => {
                             // Rascunho da IA: silhueta diferente, não só cor.
                             // Precisa ser óbvio que esta mensagem NÃO saiu.
                             msg.isAiDraft
-                              ? 'bg-violet-500/10 text-violet-100 border border-dashed border-violet-500/40 rounded-tr-sm'
+                              ? 'bg-violet-500/10 text-violet-700 dark:text-violet-200 border border-dashed border-violet-500/40 rounded-tr-sm'
                               : isOutgoing
                                 ? 'bg-gradient-to-br from-cyan-600 to-teal-700 text-white rounded-tr-sm'
-                                : 'bg-slate-800 text-slate-200 rounded-tl-sm border border-slate-700/50'
+                                : 'bg-muted text-foreground rounded-tl-sm border border-border'
                           }`}
                         >
                           {msg.content}
@@ -446,23 +446,23 @@ const ChatInterface: React.FC = () => {
                               Sugestão da Maia — não enviada
                             </span>
                           )}
-                          <span className="text-slate-500 opacity-60">{msg.timestamp}</span>
+                          <span className="text-muted-foreground/70 opacity-60">{msg.timestamp}</span>
                           {/* Tique só quando a mensagem realmente saiu.
                               Rascunho e falha não recebem: antes, o `else` final
                               desenhava um Check para QUALQUER status, então
                               'pending' e 'failed' apareciam como enviadas. */}
                           {isOutgoing && !msg.isAiDraft && (
                             msg.failed              ? <AlertCircle className="w-3.5 h-3.5 text-rose-500" /> :
-                            msg.emTransito          ? <Loader2 className="w-3 h-3 text-slate-500 animate-spin" /> :
+                            msg.emTransito          ? <Loader2 className="w-3 h-3 text-muted-foreground/70 animate-spin" /> :
                             msg.status === 'read'   ? <CheckCheck  className="w-3.5 h-3.5 text-cyan-500" /> :
-                            msg.status === 'delivered' ? <CheckCheck className="w-3.5 h-3.5 text-slate-500" /> :
-                            <Check className="w-3.5 h-3.5 text-slate-500" />
+                            msg.status === 'delivered' ? <CheckCheck className="w-3.5 h-3.5 text-muted-foreground/70" /> :
+                            <Check className="w-3.5 h-3.5 text-muted-foreground/70" />
                           )}
                           {msg.failed && (
                             <span className="text-rose-400">Não entregue</span>
                           )}
                           {msg.emTransito && (
-                            <span className="text-slate-500">Não confirmada</span>
+                            <span className="text-muted-foreground/70">Não confirmada</span>
                           )}
                         </div>
                       </div>
@@ -473,9 +473,9 @@ const ChatInterface: React.FC = () => {
               <div ref={messagesEndRef} />
             </div>
 
-            <div className="p-4 bg-slate-900/90 border-t border-slate-800 backdrop-blur-sm z-10">
+            <div className="p-4 bg-card border-t border-border backdrop-blur-sm z-10">
               <form onSubmit={handleSendMessage} className="flex items-end gap-3 max-w-4xl mx-auto">
-                <div className="flex-1 bg-slate-950 rounded-2xl border border-slate-800 focus-within:ring-2 focus-within:ring-cyan-500/30 focus-within:border-cyan-500/50 transition-all shadow-inner">
+                <div className="flex-1 bg-background rounded-2xl border border-border focus-within:ring-2 focus-within:ring-cyan-500/30 focus-within:border-cyan-500/50 transition-all shadow-inner">
                   <textarea
                     value={inputText}
                     onChange={(e) => setInputText(e.target.value)}
@@ -486,7 +486,7 @@ const ChatInterface: React.FC = () => {
                       }
                     }}
                     placeholder="Digite sua mensagem..."
-                    className="w-full bg-transparent border-none p-3.5 max-h-32 min-h-[48px] text-sm text-slate-200 focus:ring-0 resize-none outline-none placeholder:text-slate-600"
+                    className="w-full bg-transparent border-none p-3.5 max-h-32 min-h-[48px] text-sm text-foreground focus:ring-0 resize-none outline-none placeholder:text-muted-foreground/70"
                     rows={1}
                   />
                 </div>
@@ -555,12 +555,12 @@ const ChatInterface: React.FC = () => {
       ) : (
         <div className="flex-1 flex flex-col items-center justify-center bg-[#0B0E14] relative overflow-hidden">
           <div className="relative z-10 flex flex-col items-center p-8 text-center max-w-md">
-            <div className="w-24 h-24 bg-slate-900 rounded-full flex items-center justify-center mb-6 shadow-2xl border border-slate-800 relative group">
+            <div className="w-24 h-24 bg-card rounded-full flex items-center justify-center mb-6 shadow-2xl border border-border relative group">
               <div className="absolute inset-0 bg-cyan-500/20 rounded-full blur-xl group-hover:bg-cyan-500/30 transition-all duration-1000"></div>
               <MessageSquare className="w-10 h-10 text-cyan-500" />
             </div>
-            <h2 className="text-2xl font-bold text-white mb-2">Workspace</h2>
-            <p className="text-slate-400 text-sm leading-relaxed">
+            <h2 className="text-2xl font-bold text-foreground mb-2">Workspace</h2>
+            <p className="text-muted-foreground text-sm leading-relaxed">
               {conversations.length === 0
                 ? 'Aguardando novas conversas. Configure o webhook do WhatsApp para começar a receber mensagens.'
                 : 'Selecione uma conversa ao lado para iniciar o atendimento inteligente.'}
@@ -610,7 +610,7 @@ const ChaveAtendimento: React.FC<{
   return (
     <div className="flex items-center gap-2 shrink-0">
       {modo.origem === 'padrao' && (
-        <span className="text-[10px] text-slate-500 hidden sm:inline">
+        <span className="text-[10px] text-muted-foreground/70 hidden sm:inline">
           padrão da clínica
         </span>
       )}
@@ -620,7 +620,7 @@ const ChaveAtendimento: React.FC<{
       <div
         role="group"
         aria-label="Quem atende esta conversa"
-        className={`flex items-center gap-0.5 p-0.5 rounded-lg bg-slate-800/60 border border-slate-700/60 ${
+        className={`flex items-center gap-0.5 p-0.5 rounded-lg bg-muted border border-border ${
           salvando ? 'opacity-60' : ''
         }`}
       >
@@ -632,8 +632,8 @@ const ChaveAtendimento: React.FC<{
           title="A Maia responde esta conversa automaticamente."
           className={`${base} ${
             ativa
-              ? 'bg-violet-500/25 text-violet-200'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'
+              ? 'bg-violet-500/25 text-violet-700 dark:text-violet-200'
+              : 'text-muted-foreground hover:text-foreground hover:bg-accent'
           }`}
         >
           {salvando && !ativa
@@ -650,8 +650,8 @@ const ChaveAtendimento: React.FC<{
           title="A Maia para. O atendimento passa a ser humano."
           className={`${base} ${
             !ativa
-              ? 'bg-emerald-500/25 text-emerald-200'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'
+              ? 'bg-emerald-500/25 text-emerald-700 dark:text-emerald-200'
+              : 'text-muted-foreground hover:text-foreground hover:bg-accent'
           }`}
         >
           {salvando && ativa

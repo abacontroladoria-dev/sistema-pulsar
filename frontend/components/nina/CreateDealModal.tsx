@@ -296,12 +296,12 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-slate-900 border-slate-700 text-slate-50">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-card border-border text-foreground">
         <DialogHeader>
-          <DialogTitle className="text-2xl font-bold text-white">
+          <DialogTitle className="text-2xl font-bold text-foreground">
             Criar Novo Deal
           </DialogTitle>
-          <DialogDescription className="text-slate-400">
+          <DialogDescription className="text-muted-foreground">
             Preencha as informações para criar uma nova oportunidade no pipeline.
           </DialogDescription>
         </DialogHeader>
@@ -311,17 +311,17 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
             {/* Tabs para escolher entre contato existente ou novo */}
             <Tabs value={contactMode} onValueChange={handleTabChange} className="w-full">
-              <TabsList className="grid w-full grid-cols-2 bg-slate-800 p-1">
+              <TabsList className="grid w-full grid-cols-2 bg-muted p-1">
                 <TabsTrigger
                   value="existing"
-                  className="data-[state=active]:bg-cyan-600 data-[state=active]:text-white text-slate-300 flex items-center gap-2"
+                  className="data-[state=active]:bg-cyan-600 data-[state=active]:text-white text-muted-foreground flex items-center gap-2"
                 >
                   <User className="w-4 h-4" />
                   Contato Existente
                 </TabsTrigger>
                 <TabsTrigger
                   value="new"
-                  className="data-[state=active]:bg-cyan-600 data-[state=active]:text-white text-slate-300 flex items-center gap-2"
+                  className="data-[state=active]:bg-cyan-600 data-[state=active]:text-white text-muted-foreground flex items-center gap-2"
                 >
                   <UserPlus className="w-4 h-4" />
                   Novo Contato
@@ -334,31 +334,31 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({
                   name="contact_id"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-slate-200">Contato *</FormLabel>
+                      <FormLabel className="text-foreground">Contato *</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value || ''}>
                         <FormControl>
-                          <SelectTrigger className="bg-slate-800 border-slate-600 text-slate-200 focus:ring-cyan-500 focus:border-cyan-500">
+                          <SelectTrigger className="bg-muted border-input text-foreground focus:ring-cyan-500 focus:border-cyan-500">
                             <SelectValue placeholder="Selecione um contato" />
                           </SelectTrigger>
                         </FormControl>
-                        <SelectContent className="bg-slate-800 border-slate-600">
+                        <SelectContent className="bg-muted border-input">
                           {contacts.map((contact) => (
                             <SelectItem
                               key={contact.id}
                               value={contact.id}
-                              className="text-slate-200 focus:bg-cyan-600 focus:text-white"
+                              className="text-foreground focus:bg-cyan-600 focus:text-white"
                             >
                               <div className="flex items-center gap-2">
                                 <span>{contact.name || contact.phone || 'Sem nome'}</span>
                                 {contact.phone && contact.name && (
-                                  <span className="text-slate-400 text-xs">({contact.phone})</span>
+                                  <span className="text-muted-foreground text-xs">({contact.phone})</span>
                                 )}
                               </div>
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
-                      <FormDescription className="text-slate-500">
+                      <FormDescription className="text-muted-foreground/70">
                         Cliente ou lead associado a esta oportunidade
                       </FormDescription>
                       <FormMessage className="text-red-400" />
@@ -374,14 +374,14 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({
                     name="new_contact_name"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-slate-200 flex items-center gap-2">
+                        <FormLabel className="text-foreground flex items-center gap-2">
                           <User className="w-4 h-4 text-cyan-400" />
                           Nome *
                         </FormLabel>
                         <FormControl>
                           <Input
                             placeholder="Nome do contato"
-                            className="bg-slate-800 border-slate-600 text-slate-200 placeholder:text-slate-500 focus:ring-cyan-500 focus:border-cyan-500"
+                            className="bg-muted border-input text-foreground placeholder:text-muted-foreground/70 focus:ring-cyan-500 focus:border-cyan-500"
                             {...field}
                           />
                         </FormControl>
@@ -395,18 +395,18 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({
                     name="new_contact_phone"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-slate-200 flex items-center gap-2">
+                        <FormLabel className="text-foreground flex items-center gap-2">
                           <Phone className="w-4 h-4 text-cyan-400" />
                           Telefone *
                         </FormLabel>
                         <FormControl>
                           <Input
                             placeholder="+55 11 99999-9999"
-                            className="bg-slate-800 border-slate-600 text-slate-200 placeholder:text-slate-500 focus:ring-cyan-500 focus:border-cyan-500"
+                            className="bg-muted border-input text-foreground placeholder:text-muted-foreground/70 focus:ring-cyan-500 focus:border-cyan-500"
                             {...field}
                           />
                         </FormControl>
-                        <FormDescription className="text-slate-500">
+                        <FormDescription className="text-muted-foreground/70">
                           Formato WhatsApp com código do país
                         </FormDescription>
                         <FormMessage className="text-red-400" />
@@ -420,7 +420,7 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({
                   name="new_contact_email"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-slate-200 flex items-center gap-2">
+                      <FormLabel className="text-foreground flex items-center gap-2">
                         <Mail className="w-4 h-4 text-cyan-400" />
                         Email (opcional)
                       </FormLabel>
@@ -428,7 +428,7 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({
                         <Input
                           type="email"
                           placeholder="email@exemplo.com"
-                          className="bg-slate-800 border-slate-600 text-slate-200 placeholder:text-slate-500 focus:ring-cyan-500 focus:border-cyan-500"
+                          className="bg-muted border-input text-foreground placeholder:text-muted-foreground/70 focus:ring-cyan-500 focus:border-cyan-500"
                           {...field}
                         />
                       </FormControl>
@@ -440,8 +440,8 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({
             </Tabs>
 
             {/* Campos do Deal */}
-            <div className="border-t border-slate-700 pt-6 space-y-4">
-              <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+            <div className="border-t border-border pt-6 space-y-4">
+              <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
                 <Building className="w-5 h-5 text-cyan-400" />
                 Informações do Deal
               </h3>
@@ -452,11 +452,11 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({
                   name="title"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-slate-200">Título *</FormLabel>
+                      <FormLabel className="text-foreground">Título *</FormLabel>
                       <FormControl>
                         <Input
                           placeholder="Ex: Venda Premium..."
-                          className="bg-slate-800 border-slate-600 text-slate-200 placeholder:text-slate-500 focus:ring-cyan-500 focus:border-cyan-500"
+                          className="bg-muted border-input text-foreground placeholder:text-muted-foreground/70 focus:ring-cyan-500 focus:border-cyan-500"
                           {...field}
                         />
                       </FormControl>
@@ -470,11 +470,11 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({
                   name="company"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-slate-200">Empresa</FormLabel>
+                      <FormLabel className="text-foreground">Empresa</FormLabel>
                       <FormControl>
                         <Input
                           placeholder="Nome da empresa"
-                          className="bg-slate-800 border-slate-600 text-slate-200 placeholder:text-slate-500 focus:ring-cyan-500 focus:border-cyan-500"
+                          className="bg-muted border-input text-foreground placeholder:text-muted-foreground/70 focus:ring-cyan-500 focus:border-cyan-500"
                           {...field}
                         />
                       </FormControl>
@@ -490,13 +490,13 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({
                   name="value"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-slate-200">Valor (R$)</FormLabel>
+                      <FormLabel className="text-foreground">Valor (R$)</FormLabel>
                       <FormControl>
                         <Input
                           type="number"
                           step="0.01"
                           placeholder="0.00"
-                          className="bg-slate-800 border-slate-600 text-slate-200 placeholder:text-slate-500 focus:ring-cyan-500 focus:border-cyan-500"
+                          className="bg-muted border-input text-foreground placeholder:text-muted-foreground/70 focus:ring-cyan-500 focus:border-cyan-500"
                           {...field}
                         />
                       </FormControl>
@@ -510,17 +510,17 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({
                   name="priority"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-slate-200">Prioridade</FormLabel>
+                      <FormLabel className="text-foreground">Prioridade</FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
-                          <SelectTrigger className="bg-slate-800 border-slate-600 text-slate-200 focus:ring-cyan-500 focus:border-cyan-500">
+                          <SelectTrigger className="bg-muted border-input text-foreground focus:ring-cyan-500 focus:border-cyan-500">
                             <SelectValue />
                           </SelectTrigger>
                         </FormControl>
-                        <SelectContent className="bg-slate-800 border-slate-600">
-                          <SelectItem value="low" className="text-slate-200 focus:bg-cyan-600 focus:text-white">Baixa</SelectItem>
-                          <SelectItem value="medium" className="text-slate-200 focus:bg-cyan-600 focus:text-white">Média</SelectItem>
-                          <SelectItem value="high" className="text-slate-200 focus:bg-cyan-600 focus:text-white">Alta</SelectItem>
+                        <SelectContent className="bg-muted border-input">
+                          <SelectItem value="low" className="text-foreground focus:bg-cyan-600 focus:text-white">Baixa</SelectItem>
+                          <SelectItem value="medium" className="text-foreground focus:bg-cyan-600 focus:text-white">Média</SelectItem>
+                          <SelectItem value="high" className="text-foreground focus:bg-cyan-600 focus:text-white">Alta</SelectItem>
                         </SelectContent>
                       </Select>
                       <FormMessage className="text-red-400" />
@@ -535,15 +535,15 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({
                   name="due_date"
                   render={({ field }) => (
                     <FormItem className="flex flex-col">
-                      <FormLabel className="text-slate-200">Data Prevista</FormLabel>
+                      <FormLabel className="text-foreground">Data Prevista</FormLabel>
                       <Popover>
                         <PopoverTrigger asChild>
                           <FormControl>
                             <Button
                               variant="outline"
                               className={cn(
-                                'w-full pl-3 text-left font-normal bg-slate-800 border-slate-600 hover:bg-slate-700 focus:ring-cyan-500',
-                                !field.value && 'text-slate-500'
+                                'w-full pl-3 text-left font-normal bg-muted border-input hover:bg-accent focus:ring-cyan-500',
+                                !field.value && 'text-muted-foreground/70'
                               )}
                             >
                               {field.value ? (
@@ -555,7 +555,7 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({
                             </Button>
                           </FormControl>
                         </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0 bg-slate-800 border-slate-600" align="start">
+                        <PopoverContent className="w-auto p-0 bg-muted border-input" align="start">
                           <Calendar
                             mode="single"
                             selected={field.value}
@@ -566,7 +566,7 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({
                           />
                         </PopoverContent>
                       </Popover>
-                      <FormDescription className="text-slate-500">
+                      <FormDescription className="text-muted-foreground/70">
                         Previsão de fechamento
                       </FormDescription>
                       <FormMessage className="text-red-400" />
@@ -579,19 +579,19 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({
                   name="owner_id"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-slate-200">Responsável</FormLabel>
+                      <FormLabel className="text-foreground">Responsável</FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
-                          <SelectTrigger className="bg-slate-800 border-slate-600 text-slate-200 focus:ring-cyan-500 focus:border-cyan-500">
+                          <SelectTrigger className="bg-muted border-input text-foreground focus:ring-cyan-500 focus:border-cyan-500">
                             <SelectValue placeholder="Selecione" />
                           </SelectTrigger>
                         </FormControl>
-                        <SelectContent className="bg-slate-800 border-slate-600">
+                        <SelectContent className="bg-muted border-input">
                           {teamMembers.map((member) => (
                             <SelectItem
                               key={member.id}
                               value={member.id}
-                              className="text-slate-200 focus:bg-cyan-600 focus:text-white"
+                              className="text-foreground focus:bg-cyan-600 focus:text-white"
                             >
                               {member.name}
                             </SelectItem>
@@ -609,15 +609,15 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({
                 name="tags"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-slate-200">Tags</FormLabel>
+                    <FormLabel className="text-foreground">Tags</FormLabel>
                     <FormControl>
                       <Input
                         placeholder="Ex: premium, urgente (separadas por vírgula)"
-                        className="bg-slate-800 border-slate-600 text-slate-200 placeholder:text-slate-500 focus:ring-cyan-500 focus:border-cyan-500"
+                        className="bg-muted border-input text-foreground placeholder:text-muted-foreground/70 focus:ring-cyan-500 focus:border-cyan-500"
                         {...field}
                       />
                     </FormControl>
-                    <FormDescription className="text-slate-500">
+                    <FormDescription className="text-muted-foreground/70">
                       Separe múltiplas tags com vírgula
                     </FormDescription>
                     <FormMessage className="text-red-400" />
@@ -632,7 +632,7 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({
                 variant="secondary"
                 onClick={() => onOpenChange(false)}
                 disabled={isSubmitting}
-                className="bg-slate-700 hover:bg-slate-600 text-slate-200 border-slate-600"
+                className="bg-accent hover:bg-slate-600 text-foreground border-input"
               >
                 Cancelar
               </Button>

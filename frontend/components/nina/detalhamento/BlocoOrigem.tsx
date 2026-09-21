@@ -79,7 +79,7 @@ export const BlocoOrigem: React.FC<{
             }}
             placeholder="Ex.: indicação, Instagram, fachada"
             maxLength={120}
-            className="flex-1 min-w-0 px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-sm text-slate-200 placeholder:text-slate-600 outline-none focus:border-cyan-500/60 focus:ring-2 focus:ring-cyan-500/20"
+            className="flex-1 min-w-0 px-3 py-2 rounded-xl bg-background border border-border text-sm text-foreground placeholder:text-muted-foreground/70 outline-none focus:border-cyan-500/60 focus:ring-2 focus:ring-cyan-500/20"
           />
           <BotaoAcao titulo="Salvar" onClick={salvar} disabled={salvando}>
             {salvando
@@ -91,7 +91,7 @@ export const BlocoOrigem: React.FC<{
           </BotaoAcao>
         </div>
       ) : origem ? (
-        <p className="text-sm text-slate-200">{origem}</p>
+        <p className="text-sm text-foreground">{origem}</p>
       ) : (
         <Vazio>Não identificada{aoSalvar ? ' — informe se souber' : ''}</Vazio>
       )}

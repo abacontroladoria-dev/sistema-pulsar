@@ -138,20 +138,20 @@ const Dashboard: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full bg-slate-950">
+      <div className="flex items-center justify-center h-full bg-background">
         <div className="flex flex-col items-center gap-4">
           <div className="relative">
             <div className="absolute inset-0 bg-cyan-500/20 blur-xl rounded-full"></div>
             <Loader2 className="h-10 w-10 animate-spin text-cyan-400 relative z-10" />
           </div>
-          <p className="text-sm text-slate-400 font-medium animate-pulse">Carregando insights...</p>
+          <p className="text-sm text-muted-foreground font-medium animate-pulse">Carregando insights...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="p-6 space-y-8 overflow-y-auto h-full bg-slate-950 text-slate-50 custom-scrollbar">
+    <div className="p-6 space-y-8 overflow-y-auto h-full bg-background text-foreground custom-scrollbar">
       <OnboardingBanner onOpenWizard={() => setShowOnboarding(true)} />
 
       <SystemHealthCard />
@@ -159,7 +159,7 @@ const Dashboard: React.FC = () => {
       {/* Falha de carregamento: os números abaixo estão desatualizados ou
           ausentes, e quem lê precisa saber disso antes de decidir. */}
       {erro && (
-        <div className="rounded-xl border border-red-500/30 bg-red-950/30 px-4 py-3 text-sm text-red-300">
+        <div className="rounded-xl border border-red-500/30 bg-red-950/30 px-4 py-3 text-sm text-red-700 dark:text-red-200">
           <span className="font-semibold">Não foi possível carregar os indicadores.</span>{' '}
           {erro}
         </div>
@@ -168,7 +168,7 @@ const Dashboard: React.FC = () => {
       {/* Carregou bem e a resposta é zero. Dizer POR QUE está zerado evita a
           leitura de que o sistema quebrou — e aponta o que falta acontecer. */}
       {!erro && semDados && (
-        <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 px-4 py-3 text-sm text-amber-200/90">
+        <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 px-4 py-3 text-sm text-amber-700 dark:text-amber-200/90">
           <span className="font-semibold">Ainda não há negócios registrados.</span>{' '}
           Os números abaixo são reais e estão zerados porque a operação comercial
           ainda não usa o funil do Pulsar. Assim que os primeiros leads entrarem
@@ -178,20 +178,20 @@ const Dashboard: React.FC = () => {
 
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight text-white">Dashboard</h2>
-          <p className="text-slate-400 mt-1">
+          <h2 className="text-3xl font-bold tracking-tight text-foreground">Dashboard</h2>
+          <p className="text-muted-foreground mt-1">
             Visão geral da performance da sua IA {period === 'today' ? 'hoje' : `nos últimos ${periodLabels[period].toLowerCase()}`}.
           </p>
         </div>
-        <div className="flex items-center gap-2 bg-slate-900 p-1 rounded-lg border border-slate-800">
+        <div className="flex items-center gap-2 bg-card p-1 rounded-lg border border-border">
           {(['today', '7days', '30days'] as PeriodFilter[]).map((p) => (
             <button
               key={p}
               onClick={() => setPeriod(p)}
               className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
                 period === p
-                  ? 'bg-slate-800 text-white shadow-sm'
-                  : 'text-slate-500 hover:text-slate-300'
+                  ? 'bg-muted text-foreground shadow-sm'
+                  : 'text-muted-foreground/70 hover:text-muted-foreground'
               }`}
             >
               {periodLabels[p]}
@@ -204,17 +204,17 @@ const Dashboard: React.FC = () => {
         {metrics.map((stat, index) => (
           <div
             key={index}
-            className={`relative overflow-hidden rounded-2xl border bg-slate-900/50 backdrop-blur-sm p-6 shadow-xl transition-all duration-300 hover:translate-y-[-2px] hover:bg-slate-900 group ${getGradient(stat.label)}`}
+            className={`relative overflow-hidden rounded-2xl border bg-card backdrop-blur-sm p-6 shadow-xl transition-all duration-300 hover:translate-y-[-2px] hover:bg-card group ${getGradient(stat.label)}`}
             style={{ animationDelay: `${index * 100}ms` }}
           >
             <div className="flex flex-row items-center justify-between space-y-0 pb-4">
-              <div className="text-sm font-medium text-slate-400">{getMetricLabel(stat.label)}</div>
-              <div className="p-2 rounded-lg bg-slate-800/50 border border-slate-700/50 group-hover:border-slate-600 transition-colors">
+              <div className="text-sm font-medium text-muted-foreground">{getMetricLabel(stat.label)}</div>
+              <div className="p-2 rounded-lg bg-muted border border-border group-hover:border-input transition-colors">
                 {getIcon(stat.label)}
               </div>
             </div>
             <div className="flex items-end justify-between">
-              <div className="text-3xl font-bold text-white tracking-tight">{stat.value}</div>
+              <div className="text-3xl font-bold text-foreground tracking-tight">{stat.value}</div>
               {/* Sem trend não há badge: um selo verde vazio sugeriria alta
                   onde não existe período anterior para comparar. */}
               {stat.trend ? (
@@ -230,15 +230,15 @@ const Dashboard: React.FC = () => {
       </div>
 
       <div className="grid gap-6 md:grid-cols-7">
-        <div className="col-span-4 rounded-2xl border border-slate-800 bg-slate-900/50 backdrop-blur-sm p-6 shadow-lg">
+        <div className="col-span-4 rounded-2xl border border-border bg-card backdrop-blur-sm p-6 shadow-lg">
           <div className="mb-6 flex items-center justify-between">
             <div>
-              <h3 className="text-lg font-semibold text-white">Volume de Atendimentos</h3>
-              <p className="text-sm text-slate-400">
+              <h3 className="text-lg font-semibold text-foreground">Volume de Atendimentos</h3>
+              <p className="text-sm text-muted-foreground">
                 Interações da IA {period === 'today' ? 'hoje' : `nos últimos ${periodDays[period]} dias`}
               </p>
             </div>
-            <button className="text-cyan-400 hover:text-cyan-300 transition-colors p-2 hover:bg-cyan-950/30 rounded-lg">
+            <button className="text-cyan-400 hover:text-cyan-700 dark:text-cyan-200 transition-colors p-2 hover:bg-cyan-950/30 rounded-lg">
               <ArrowUpRight className="w-5 h-5" />
             </button>
           </div>
@@ -248,11 +248,11 @@ const Dashboard: React.FC = () => {
                  achatado em zero pareceria queda real — o vazio explicado é
                  mais honesto e diz o que falta acontecer. */
               <div className="h-full flex flex-col items-center justify-center text-center px-6">
-                <Activity className="w-8 h-8 text-slate-700 mb-3" />
-                <p className="text-sm text-slate-400 font-medium">
+                <Activity className="w-8 h-8 text-muted-foreground/70 mb-3" />
+                <p className="text-sm text-muted-foreground font-medium">
                   Ainda não há histórico para desenhar
                 </p>
-                <p className="text-xs text-slate-500 mt-1 max-w-xs">
+                <p className="text-xs text-muted-foreground/70 mt-1 max-w-xs">
                   O gráfico aparece quando houver negócios movimentados no período.
                 </p>
               </div>
@@ -299,25 +299,25 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
 
-        <div className="col-span-3 rounded-2xl border border-slate-800 bg-slate-900/50 backdrop-blur-sm p-6 shadow-lg flex flex-col">
+        <div className="col-span-3 rounded-2xl border border-border bg-card backdrop-blur-sm p-6 shadow-lg flex flex-col">
           <div className="mb-6">
-            <h3 className="text-lg font-semibold text-white">Conversões</h3>
-            <p className="text-sm text-slate-400">Reuniões, vendas e ações concluídas</p>
+            <h3 className="text-lg font-semibold text-foreground">Conversões</h3>
+            <p className="text-sm text-muted-foreground">Reuniões, vendas e ações concluídas</p>
           </div>
 
           <div className="flex-1 flex flex-col justify-center space-y-5">
             {chartData.length === 0 && (
-              <p className="text-sm text-slate-500 text-center">
+              <p className="text-sm text-muted-foreground/70 text-center">
                 Nenhuma conversão registrada no período.
               </p>
             )}
             {chartData.slice(0, 5).map((day, i) => (
               <div key={i} className="group">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium text-slate-300">{day.name}</span>
-                  <span className="text-sm font-bold text-white group-hover:text-cyan-400 transition-colors">{day.sales} conv.</span>
+                  <span className="text-sm font-medium text-muted-foreground">{day.name}</span>
+                  <span className="text-sm font-bold text-foreground group-hover:text-cyan-400 transition-colors">{day.sales} conv.</span>
                 </div>
-                <div className="h-2.5 bg-slate-800 rounded-full overflow-hidden">
+                <div className="h-2.5 bg-muted rounded-full overflow-hidden">
                   <div
                     className="h-full bg-gradient-to-r from-cyan-600 to-teal-500 rounded-full shadow-[0_0_10px_rgba(6,182,212,0.3)] transition-all duration-1000 ease-out group-hover:shadow-[0_0_15px_rgba(6,182,212,0.6)]"
                     style={{ width: `${Math.min((day.sales / Math.max(...chartData.map(d => d.sales), 1)) * 100, 100)}%` }}
@@ -327,9 +327,9 @@ const Dashboard: React.FC = () => {
             ))}
           </div>
 
-          <div className="mt-6 pt-4 border-t border-slate-800">
+          <div className="mt-6 pt-4 border-t border-border">
             <div className="flex items-center justify-between text-sm">
-              <span className="text-slate-500">Total no período</span>
+              <span className="text-muted-foreground/70">Total no período</span>
               <span className="text-emerald-400 font-bold">
                 {chartData.reduce((sum, d) => sum + d.sales, 0)} conversões
               </span>

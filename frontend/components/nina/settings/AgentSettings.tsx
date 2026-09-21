@@ -163,10 +163,10 @@ const AgentSettings = forwardRef<AgentSettingsRef>((_props, ref) => {
         <div className="flex items-start gap-3">
           <Info className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
           <div>
-            <h3 className="font-semibold text-white mb-1">
+            <h3 className="font-semibold text-foreground mb-1">
               Configuração do agente indisponível
             </h3>
-            <p className="text-sm text-rose-200">{erro}</p>
+            <p className="text-sm text-rose-700 dark:text-rose-200">{erro}</p>
           </div>
         </div>
       </div>
@@ -181,12 +181,12 @@ const AgentSettings = forwardRef<AgentSettingsRef>((_props, ref) => {
         {/* ---------------------------------------------------------------- */}
         {/* Autonomia — a decisão de negócio, não a marca do modelo.        */}
         {/* ---------------------------------------------------------------- */}
-        <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-6">
+        <div className="rounded-xl border border-border bg-card p-6">
           <div className="flex items-center gap-3 mb-1">
             <Bot className="w-5 h-5 text-cyan-400" />
-            <h3 className="font-semibold text-white">Autonomia do agente</h3>
+            <h3 className="font-semibold text-foreground">Autonomia do agente</h3>
           </div>
-          <p className="text-xs text-slate-500 mb-4">
+          <p className="text-xs text-muted-foreground/70 mb-4">
             Quanto o agente pode fazer sozinho. O modelo de linguagem é definido
             no servidor, por variável de ambiente, e não é configurável aqui.
           </p>
@@ -203,8 +203,8 @@ const AgentSettings = forwardRef<AgentSettingsRef>((_props, ref) => {
                   onClick={() => setRascunho({ ...rascunho, aiMode: id })}
                   className={`flex flex-col items-center gap-1 p-3 rounded-lg border transition-all ${
                     ativo
-                      ? 'bg-cyan-500/15 border-cyan-500 text-cyan-200'
-                      : 'bg-slate-950/50 border-slate-800 text-slate-400 hover:bg-slate-800'
+                      ? 'bg-cyan-500/15 border-cyan-500 text-cyan-700 dark:text-cyan-200'
+                      : 'bg-background border-border text-muted-foreground hover:bg-muted'
                   }`}
                 >
                   <Icone className="w-5 h-5" />
@@ -215,10 +215,10 @@ const AgentSettings = forwardRef<AgentSettingsRef>((_props, ref) => {
             })}
           </div>
 
-          <p className="text-xs text-slate-400 mt-3">{EXPLICACAO[rascunho.aiMode]}</p>
+          <p className="text-xs text-muted-foreground mt-3">{EXPLICACAO[rascunho.aiMode]}</p>
 
           {emAutonomo && (
-            <div className="mt-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300">
+            <div className="mt-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-700 dark:text-amber-200">
               <p className="flex items-start gap-2">
                 <Info className="w-4 h-4 shrink-0 mt-0.5" />
                 <span>
@@ -235,16 +235,16 @@ const AgentSettings = forwardRef<AgentSettingsRef>((_props, ref) => {
         {/* ---------------------------------------------------------------- */}
         {/* Ferramentas que gravam agenda — interruptor separado.            */}
         {/* ---------------------------------------------------------------- */}
-        <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-6">
+        <div className="rounded-xl border border-border bg-card p-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <CalendarCheck className="w-5 h-5 text-indigo-400" />
               <div>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <span className="font-semibold text-white cursor-help flex items-center gap-1.5">
+                    <span className="font-semibold text-foreground cursor-help flex items-center gap-1.5">
                       Agendamento pela IA
-                      <Info className="w-3 h-3 text-slate-500" />
+                      <Info className="w-3 h-3 text-muted-foreground/70" />
                     </span>
                   </TooltipTrigger>
                   <TooltipContent>
@@ -255,7 +255,7 @@ const AgentSettings = forwardRef<AgentSettingsRef>((_props, ref) => {
                     </p>
                   </TooltipContent>
                 </Tooltip>
-                <p className="text-xs text-slate-500 mt-0.5">
+                <p className="text-xs text-muted-foreground/70 mt-0.5">
                   Consultar horários funciona nos dois casos.
                 </p>
               </div>
@@ -267,7 +267,7 @@ const AgentSettings = forwardRef<AgentSettingsRef>((_props, ref) => {
                 onChange={e => setRascunho({ ...rascunho, agendamentoPorIa: e.target.checked })}
                 className="sr-only peer"
               />
-              <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-cyan-500/50 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:inset-s-0.5 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-cyan-500" />
+              <div className="w-9 h-5 bg-accent peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-cyan-500/50 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:inset-s-0.5 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-cyan-500" />
             </label>
           </div>
         </div>
@@ -275,12 +275,12 @@ const AgentSettings = forwardRef<AgentSettingsRef>((_props, ref) => {
         {/* ---------------------------------------------------------------- */}
         {/* System prompt                                                    */}
         {/* ---------------------------------------------------------------- */}
-        <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-6">
+        <div className="rounded-xl border border-border bg-card p-6">
           <div className="flex items-center gap-3 mb-1">
             <Bot className="w-5 h-5 text-violet-400" />
-            <h3 className="font-semibold text-white">Prompt do sistema</h3>
+            <h3 className="font-semibold text-foreground">Prompt do sistema</h3>
           </div>
-          <p className="text-xs text-slate-500 mb-3">
+          <p className="text-xs text-muted-foreground/70 mb-3">
             As instruções fixas que o agente recebe antes de cada conversa.
           </p>
 
@@ -289,9 +289,9 @@ const AgentSettings = forwardRef<AgentSettingsRef>((_props, ref) => {
             onChange={e => setRascunho({ ...rascunho, systemPrompt: e.target.value })}
             placeholder="Descreva como a atendente deve se comportar: tom, o que pode prometer, quando encaminhar para a recepção…"
             rows={12}
-            className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-violet-500/50 resize-y font-mono custom-scrollbar"
+            className="w-full rounded-lg border border-border bg-background px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground/70 focus:outline-none focus:ring-2 focus:ring-violet-500/50 resize-y font-mono custom-scrollbar"
           />
-          <p className="text-xs text-slate-500 mt-2">
+          <p className="text-xs text-muted-foreground/70 mt-2">
             Dados do contato, data e hora, e horário de funcionamento são
             injetados pelo servidor a cada conversa — não precisam ser escritos
             aqui, e o que for escrito aqui não substitui o que o servidor manda.

@@ -8,11 +8,11 @@ export const buttonVariants = cva(
     variants: {
       variant: {
         primary: 'bg-gradient-to-r from-cyan-600 to-teal-600 text-white hover:from-cyan-500 hover:to-teal-500 shadow-[0_0_15px_rgba(6,182,212,0.3)] hover:shadow-[0_0_20px_rgba(6,182,212,0.5)] border border-transparent',
-        secondary: 'bg-slate-800 text-slate-100 hover:bg-slate-700 border border-slate-700',
-        outline: 'border border-slate-700 bg-transparent text-slate-300 hover:bg-slate-800 hover:text-white hover:border-slate-600',
-        ghost: 'text-slate-400 hover:bg-slate-800/50 hover:text-cyan-400',
+        secondary: 'bg-muted text-foreground hover:bg-accent border border-border',
+        outline: 'border border-border bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground hover:border-input',
+        ghost: 'text-muted-foreground hover:bg-muted hover:text-cyan-400',
         danger: 'bg-red-500/10 text-red-500 hover:bg-red-500/20 border border-red-500/20',
-        default: 'bg-slate-800 text-slate-100 hover:bg-slate-700 border border-slate-700',
+        default: 'bg-muted text-foreground hover:bg-accent border border-border',
       },
       size: {
         sm: 'h-8 px-3 text-xs',

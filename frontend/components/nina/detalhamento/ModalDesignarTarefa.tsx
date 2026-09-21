@@ -64,24 +64,24 @@ export const ModalDesignarTarefa: React.FC<{
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-background backdrop-blur-sm p-4"
       onClick={aoFechar}
     >
       <form
         onSubmit={confirmar}
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl overflow-hidden"
+        className="w-full max-w-md rounded-2xl bg-card border border-border shadow-2xl overflow-hidden"
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <div>
-            <h3 className="text-sm font-bold text-white">Designar tarefa</h3>
-            <p className="text-xs text-slate-400 mt-0.5">{nomeContato}</p>
+            <h3 className="text-sm font-bold text-foreground">Designar tarefa</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">{nomeContato}</p>
           </div>
           <button
             type="button"
             onClick={aoFechar}
             aria-label="Fechar"
-            className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
+            className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
@@ -89,25 +89,25 @@ export const ModalDesignarTarefa: React.FC<{
 
         <div className="p-5 space-y-4">
           <label className="block space-y-1.5">
-            <span className="text-xs font-medium text-slate-400">O que precisa ser feito</span>
+            <span className="text-xs font-medium text-muted-foreground">O que precisa ser feito</span>
             <input
               autoFocus
               value={titulo}
               onChange={(e) => setTitulo(e.target.value)}
               placeholder="Ex.: confirmar documentação com a responsável"
               maxLength={255}
-              className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-sm text-slate-200 placeholder:text-slate-600 outline-none focus:border-cyan-500/60 focus:ring-2 focus:ring-cyan-500/20"
+              className="w-full px-3 py-2 rounded-xl bg-background border border-border text-sm text-foreground placeholder:text-muted-foreground/70 outline-none focus:border-cyan-500/60 focus:ring-2 focus:ring-cyan-500/20"
             />
           </label>
 
           <label className="block space-y-1.5">
-            <span className="text-xs font-medium text-slate-400">
-              Responsável <span className="text-slate-600">(opcional)</span>
+            <span className="text-xs font-medium text-muted-foreground">
+              Responsável <span className="text-muted-foreground/70">(opcional)</span>
             </span>
             <select
               value={responsavel}
               onChange={(e) => setResponsavel(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-sm text-slate-200 outline-none focus:border-cyan-500/60 focus:ring-2 focus:ring-cyan-500/20"
+              className="w-full px-3 py-2 rounded-xl bg-background border border-border text-sm text-foreground outline-none focus:border-cyan-500/60 focus:ring-2 focus:ring-cyan-500/20"
             >
               <option value="">Qualquer um</option>
               {usuarios.map(u => (
@@ -118,56 +118,56 @@ export const ModalDesignarTarefa: React.FC<{
 
           <div className="grid grid-cols-2 gap-3">
             <label className="block space-y-1.5">
-              <span className="text-xs font-medium text-slate-400">
-                Prazo <span className="text-slate-600">(opcional)</span>
+              <span className="text-xs font-medium text-muted-foreground">
+                Prazo <span className="text-muted-foreground/70">(opcional)</span>
               </span>
               <input
                 type="date"
                 value={data}
                 min={hojeLocal()}
                 onChange={(e) => setData(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-sm text-slate-200 outline-none focus:border-cyan-500/60 focus:ring-2 focus:ring-cyan-500/20"
+                className="w-full px-3 py-2 rounded-xl bg-background border border-border text-sm text-foreground outline-none focus:border-cyan-500/60 focus:ring-2 focus:ring-cyan-500/20"
               />
             </label>
             <label className="block space-y-1.5">
-              <span className="text-xs font-medium text-slate-400">
-                Hora <span className="text-slate-600">(opcional)</span>
+              <span className="text-xs font-medium text-muted-foreground">
+                Hora <span className="text-muted-foreground/70">(opcional)</span>
               </span>
               <input
                 type="time"
                 value={hora}
                 disabled={data === ''}
                 onChange={(e) => setHora(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-sm text-slate-200 outline-none focus:border-cyan-500/60 focus:ring-2 focus:ring-cyan-500/20 disabled:opacity-40"
+                className="w-full px-3 py-2 rounded-xl bg-background border border-border text-sm text-foreground outline-none focus:border-cyan-500/60 focus:ring-2 focus:ring-cyan-500/20 disabled:opacity-40"
               />
             </label>
           </div>
 
           <label className="block space-y-1.5">
-            <span className="text-xs font-medium text-slate-400">
-              Detalhes <span className="text-slate-600">(opcional)</span>
+            <span className="text-xs font-medium text-muted-foreground">
+              Detalhes <span className="text-muted-foreground/70">(opcional)</span>
             </span>
             <textarea
               value={descricao}
               onChange={(e) => setDescricao(e.target.value)}
               rows={2}
-              className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-sm text-slate-200 outline-none focus:border-cyan-500/60 focus:ring-2 focus:ring-cyan-500/20 resize-none"
+              className="w-full px-3 py-2 rounded-xl bg-background border border-border text-sm text-foreground outline-none focus:border-cyan-500/60 focus:ring-2 focus:ring-cyan-500/20 resize-none"
             />
           </label>
         </div>
 
-        <div className="flex justify-end gap-2 px-5 py-4 border-t border-slate-800 bg-slate-900/60">
+        <div className="flex justify-end gap-2 px-5 py-4 border-t border-border bg-card">
           <button
             type="button"
             onClick={aoFechar}
-            className="px-4 py-2 rounded-xl text-sm text-slate-300 hover:bg-slate-800 transition-colors"
+            className="px-4 py-2 rounded-xl text-sm text-muted-foreground hover:bg-muted transition-colors"
           >
             Cancelar
           </button>
           <button
             type="submit"
             disabled={!podeSalvar}
-            className="px-4 py-2 rounded-xl text-sm font-medium bg-cyan-600 text-white hover:bg-cyan-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-2"
+            className="px-4 py-2 rounded-xl text-sm font-medium bg-cyan-600 text-foreground hover:bg-cyan-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-2"
           >
             {salvando && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
             Criar tarefa

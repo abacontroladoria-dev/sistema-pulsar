@@ -267,7 +267,7 @@ const ApiSettings = forwardRef<ApiSettingsRef>((props, ref) => {
 
   if (semPermissao) {
     return (
-      <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-6 text-sm text-amber-300">
+      <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-6 text-sm text-amber-700 dark:text-amber-200">
         Apenas administradores da Central de Atendimento podem ver as credenciais do agente.
       </div>
     );
@@ -276,8 +276,8 @@ const ApiSettings = forwardRef<ApiSettingsRef>((props, ref) => {
   if (erroConfig || !config || !rascunho) {
     return (
       <div className="rounded-xl border border-rose-500/20 bg-rose-500/5 p-6">
-        <p className="text-sm text-rose-300">{erroConfig ?? 'Configuração indisponível'}</p>
-        <Button variant="ghost" size="sm" onClick={carregar} className="mt-3 text-slate-300">
+        <p className="text-sm text-rose-700 dark:text-rose-200">{erroConfig ?? 'Configuração indisponível'}</p>
+        <Button variant="ghost" size="sm" onClick={carregar} className="mt-3 text-muted-foreground">
           Tentar novamente
         </Button>
       </div>
@@ -297,11 +297,11 @@ const ApiSettings = forwardRef<ApiSettingsRef>((props, ref) => {
       {/* ---------------------------------------------------------------- */}
       {/* ElevenLabs                                                        */}
       {/* ---------------------------------------------------------------- */}
-      <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-6">
+      <div className="rounded-xl border border-border bg-card p-6">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <Mic className="w-5 h-5 text-violet-400" />
-            <h3 className="font-semibold text-white">ElevenLabs — voz da atendente</h3>
+            <h3 className="font-semibold text-foreground">ElevenLabs — voz da atendente</h3>
           </div>
           <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium ${
             erroVozes                ? 'bg-rose-500/10 text-rose-400'
@@ -318,10 +318,10 @@ const ApiSettings = forwardRef<ApiSettingsRef>((props, ref) => {
         {/* API Key */}
         <div className="space-y-3">
           <div>
-            <label className="text-xs font-medium text-slate-400 mb-1.5 block">
+            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
               API Key
               {config.chaveConfigurada && (
-                <span className="ml-2 font-mono text-slate-500">
+                <span className="ml-2 font-mono text-muted-foreground/70">
                   gravada: {config.chaveMascarada}
                 </span>
               )}
@@ -336,12 +336,12 @@ const ApiSettings = forwardRef<ApiSettingsRef>((props, ref) => {
                     ? 'Cole uma chave nova apenas se for substituir'
                     : 'sk_...'}
                   autoComplete="off"
-                  className="h-9 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 pr-10 text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                  className="h-9 w-full rounded-lg border border-border bg-background px-3 pr-10 text-sm text-foreground placeholder:text-muted-foreground/70 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
                 />
                 <button
                   type="button"
                   onClick={() => setMostrarChave(!mostrarChave)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground/70 hover:text-muted-foreground"
                 >
                   {mostrarChave ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -356,7 +356,7 @@ const ApiSettings = forwardRef<ApiSettingsRef>((props, ref) => {
                   : <><KeyRound className="w-4 h-4" /> Gravar e verificar</>}
               </Button>
             </div>
-            <p className="text-xs text-slate-500 mt-1.5">
+            <p className="text-xs text-muted-foreground/70 mt-1.5">
               A chave fica no servidor. Esta tela nunca a recebe de volta — só os quatro últimos caracteres.
             </p>
           </div>
@@ -367,7 +367,7 @@ const ApiSettings = forwardRef<ApiSettingsRef>((props, ref) => {
               <div className="flex items-start gap-2">
                 <AlertTriangle className="w-4 h-4 text-rose-400 mt-0.5 shrink-0" />
                 <div className="text-xs">
-                  <p className="text-rose-300 font-medium">
+                  <p className="text-rose-700 dark:text-rose-200 font-medium">
                     {erroVozes.chaveRejeitada
                       ? 'A ElevenLabs recusou esta chave'
                       : erroVozes.cotaEsgotada
@@ -379,7 +379,7 @@ const ApiSettings = forwardRef<ApiSettingsRef>((props, ref) => {
                   </p>
                   {/* Mensagem original do provider: é ela que distingue chave
                       inválida de cota estourada. */}
-                  <p className="text-slate-400 mt-1">{erroVozes.message}</p>
+                  <p className="text-muted-foreground mt-1">{erroVozes.message}</p>
                   <a
                     href="https://elevenlabs.io/app/settings/api-keys"
                     target="_blank"
@@ -394,17 +394,17 @@ const ApiSettings = forwardRef<ApiSettingsRef>((props, ref) => {
           )}
 
           {conta && (
-            <div className="rounded-lg border border-slate-800 bg-slate-950/50 p-3 text-xs">
-              <div className="flex items-center justify-between text-slate-400">
-                <span>Plano <span className="text-slate-200 font-medium">{conta.tier ?? '—'}</span></span>
+            <div className="rounded-lg border border-border bg-background p-3 text-xs">
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span>Plano <span className="text-foreground font-medium">{conta.tier ?? '—'}</span></span>
                 {restantes !== null && (
-                  <span className={restantes < 1000 ? 'text-amber-400' : 'text-slate-400'}>
+                  <span className={restantes < 1000 ? 'text-amber-400' : 'text-muted-foreground'}>
                     {restantes.toLocaleString('pt-BR')} caracteres restantes
                   </span>
                 )}
               </div>
               {conta.caracteresLimite ? (
-                <div className="mt-2 h-1.5 w-full rounded-full bg-slate-800 overflow-hidden">
+                <div className="mt-2 h-1.5 w-full rounded-full bg-muted overflow-hidden">
                   <div
                     className="h-full rounded-full bg-violet-500"
                     style={{ width: `${Math.min(100, ((conta.caracteresUsados ?? 0) / conta.caracteresLimite) * 100)}%` }}
@@ -418,14 +418,14 @@ const ApiSettings = forwardRef<ApiSettingsRef>((props, ref) => {
         {/* Voz e modelo */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-5">
           <div>
-            <label className="text-xs font-medium text-slate-400 mb-1.5 block">
-              Voz {vozes && <span className="text-slate-600">({vozes.length} na sua conta)</span>}
+            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+              Voz {vozes && <span className="text-muted-foreground/70">({vozes.length} na sua conta)</span>}
             </label>
             <select
               value={rascunho.vozId ?? ''}
               onChange={e => setRascunho({ ...rascunho, vozId: e.target.value || null })}
               disabled={!vozes}
-              className="h-9 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-violet-500/50 disabled:opacity-50"
+              className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-violet-500/50 disabled:opacity-50"
             >
               <option value="">
                 {vozes ? 'Selecione uma voz' : 'Grave uma chave para listar as vozes'}
@@ -460,11 +460,11 @@ const ApiSettings = forwardRef<ApiSettingsRef>((props, ref) => {
           </div>
 
           <div>
-            <label className="text-xs font-medium text-slate-400 mb-1.5 block">Modelo</label>
+            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Modelo</label>
             <select
               value={rascunho.modeloVoz}
               onChange={e => setRascunho({ ...rascunho, modeloVoz: e.target.value })}
-              className="h-9 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+              className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-violet-500/50"
             >
               {MODELOS.map(m => (
                 <option key={m.id} value={m.id}>{m.nome} — {m.nota}</option>
@@ -484,9 +484,9 @@ const ApiSettings = forwardRef<ApiSettingsRef>((props, ref) => {
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-1">
                 <Volume2 className="w-4 h-4 text-violet-400" />
-                <span className="text-sm font-medium text-white">Responder em áudio</span>
+                <span className="text-sm font-medium text-foreground">Responder em áudio</span>
               </div>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-muted-foreground">
                 Quando ativado, a atendente responde por áudio em vez de texto.
               </p>
             </div>
@@ -498,7 +498,7 @@ const ApiSettings = forwardRef<ApiSettingsRef>((props, ref) => {
                 disabled={!config.chaveConfigurada || !rascunho.vozId}
                 className="sr-only peer"
               />
-              <div className={`w-11 h-6 bg-slate-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-violet-500 ${
+              <div className={`w-11 h-6 bg-accent rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-violet-500 ${
                 !config.chaveConfigurada || !rascunho.vozId ? 'opacity-50 cursor-not-allowed' : ''
               }`} />
             </label>
@@ -510,7 +510,7 @@ const ApiSettings = forwardRef<ApiSettingsRef>((props, ref) => {
           )}
           {/* O envio de áudio depende do canal de WhatsApp, que ainda não existe. */}
           {rascunho.ttsAtivo && (
-            <p className="text-xs text-slate-400 mt-2">
+            <p className="text-xs text-muted-foreground mt-2">
               O áudio só chega ao paciente quando o canal de WhatsApp estiver conectado.
             </p>
           )}
@@ -518,11 +518,11 @@ const ApiSettings = forwardRef<ApiSettingsRef>((props, ref) => {
 
         {/* Parâmetros avançados */}
         <Collapsible.Root open={avancadoAberto} onOpenChange={setAvancadoAberto} className="mt-4">
-          <Collapsible.Trigger className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-300 transition-colors">
+          <Collapsible.Trigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-muted-foreground transition-colors">
             <ChevronDown className={`w-4 h-4 transition-transform ${avancadoAberto ? 'rotate-180' : ''}`} />
             Ajuste fino da voz
           </Collapsible.Trigger>
-          <Collapsible.Content className="mt-3 p-4 bg-slate-950/50 rounded-lg border border-slate-800 space-y-4">
+          <Collapsible.Content className="mt-3 p-4 bg-background rounded-lg border border-border space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Slider
                 rotulo="Stability" dica="Baixo = mais expressivo, alto = mais monótono"
@@ -554,31 +554,31 @@ const ApiSettings = forwardRef<ApiSettingsRef>((props, ref) => {
                   onChange={e => setRascunho({ ...rascunho, speakerBoost: e.target.checked })}
                   className="sr-only peer"
                 />
-                <span className="w-9 h-5 bg-slate-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-violet-500" />
+                <span className="w-9 h-5 bg-accent rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-violet-500" />
               </span>
-              <span className="text-sm text-slate-300">Speaker Boost</span>
-              <span className="text-xs text-slate-500">aproxima o timbre original, com mais latência</span>
+              <span className="text-sm text-muted-foreground">Speaker Boost</span>
+              <span className="text-xs text-muted-foreground/70">aproxima o timbre original, com mais latência</span>
             </label>
           </Collapsible.Content>
         </Collapsible.Root>
 
         {/* Teste de áudio */}
         <Collapsible.Root open={testeAberto} onOpenChange={setTesteAberto} className="mt-4">
-          <Collapsible.Trigger className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-300 transition-colors">
+          <Collapsible.Trigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-muted-foreground transition-colors">
             <ChevronDown className={`w-4 h-4 transition-transform ${testeAberto ? 'rotate-180' : ''}`} />
             <Volume2 className="w-4 h-4" />
             Ouvir antes de usar
           </Collapsible.Trigger>
-          <Collapsible.Content className="mt-3 p-4 bg-slate-950/50 rounded-lg border border-slate-800 space-y-4">
+          <Collapsible.Content className="mt-3 p-4 bg-background rounded-lg border border-border space-y-4">
             <div>
               <textarea
                 value={textoTeste}
                 onChange={e => setTextoTeste(e.target.value)}
                 rows={3}
                 maxLength={1000}
-                className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-violet-500/50 resize-none"
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/70 focus:outline-none focus:ring-2 focus:ring-violet-500/50 resize-none"
               />
-              <p className="text-xs text-slate-500 mt-1">
+              <p className="text-xs text-muted-foreground/70 mt-1">
                 {textoTeste.length}/1000 caracteres — cobrados da cota da conta
               </p>
             </div>
@@ -598,7 +598,7 @@ const ApiSettings = forwardRef<ApiSettingsRef>((props, ref) => {
                 <a
                   href={audioUrl}
                   download="teste-voz.mp3"
-                  className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200"
+                  className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
                 >
                   <Download className="w-4 h-4" /> Baixar
                 </a>
@@ -610,7 +610,7 @@ const ApiSettings = forwardRef<ApiSettingsRef>((props, ref) => {
             {(!config.chaveConfigurada || !rascunho.vozId) ? (
               <p className="text-xs text-amber-400">Grave a chave e escolha uma voz para testar.</p>
             ) : (
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-muted-foreground/70">
                 O teste usa a configuração salva. Ajustou os controles? Salve antes de gerar.
               </p>
             )}
@@ -619,7 +619,7 @@ const ApiSettings = forwardRef<ApiSettingsRef>((props, ref) => {
               <div className="space-y-2">
                 <audio src={audioUrl} controls autoPlay className="w-full h-10" />
                 {stats && (
-                  <p className="text-xs text-slate-500 flex items-center gap-1.5">
+                  <p className="text-xs text-muted-foreground/70 flex items-center gap-1.5">
                     <Check className="w-3 h-3 text-emerald-400" />
                     {(stats.geracaoMs / 1000).toFixed(1)}s para gerar • {stats.tamanhoKb} KB • {stats.caracteres} caracteres cobrados
                   </p>
@@ -640,11 +640,11 @@ const ApiSettings = forwardRef<ApiSettingsRef>((props, ref) => {
       {/* campo é concluir que falta implementar e ir criar uma coluna no     */}
       {/* banco, que é exatamente o que a decisão evitou.                     */}
       {/* ---------------------------------------------------------------- */}
-      <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-6">
+      <div className="rounded-xl border border-border bg-card p-6">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <Brain className="w-5 h-5 text-cyan-400" />
-            <h3 className="font-semibold text-white">OpenAI — o raciocínio da atendente</h3>
+            <h3 className="font-semibold text-foreground">OpenAI — o raciocínio da atendente</h3>
           </div>
           <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium ${
             erroStatusIa            ? 'bg-rose-500/10 text-rose-400'
@@ -665,9 +665,9 @@ const ApiSettings = forwardRef<ApiSettingsRef>((props, ref) => {
             reconhecimento. O que a tela mostra é o modelo, que é a decisão de
             custo e comportamento. */}
         {statusIa?.configurada && statusIa.modelo && (
-          <div className="rounded-lg border border-slate-800 bg-slate-950/50 p-3 flex items-center justify-between">
-            <span className="text-xs text-slate-400">Modelo ativo</span>
-            <span className="text-xs font-mono text-emerald-300">{statusIa.modelo}</span>
+          <div className="rounded-lg border border-border bg-background p-3 flex items-center justify-between">
+            <span className="text-xs text-muted-foreground">Modelo ativo</span>
+            <span className="text-xs font-mono text-emerald-700 dark:text-emerald-200">{statusIa.modelo}</span>
           </div>
         )}
 
@@ -675,15 +675,15 @@ const ApiSettings = forwardRef<ApiSettingsRef>((props, ref) => {
           <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
             <div className="flex items-start gap-2">
               <AlertTriangle className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
-              <p className="text-xs text-amber-300">{statusIa.motivo}</p>
+              <p className="text-xs text-amber-700 dark:text-amber-200">{statusIa.motivo}</p>
             </div>
           </div>
         )}
 
         {erroStatusIa && (
           <div className="rounded-lg border border-rose-500/20 bg-rose-500/5 p-3">
-            <p className="text-xs text-rose-300">{erroStatusIa}</p>
-            <Button variant="ghost" size="sm" onClick={carregarStatusIa} className="mt-2 text-slate-300">
+            <p className="text-xs text-rose-700 dark:text-rose-200">{erroStatusIa}</p>
+            <Button variant="ghost" size="sm" onClick={carregarStatusIa} className="mt-2 text-muted-foreground">
               Tentar novamente
             </Button>
           </div>
@@ -693,26 +693,26 @@ const ApiSettings = forwardRef<ApiSettingsRef>((props, ref) => {
           {/* Instrução, não justificativa. A versão anterior explicava ARG e
               Dockerfile — verdadeiro, mas quem lê está diante de duas caixas de
               seleção no Coolify e precisa saber qual marcar. */}
-          <p className="text-sm text-slate-400">
+          <p className="text-sm text-muted-foreground">
             A chave não se cadastra aqui: ela é variável de ambiente do servidor,
             definida no Coolify.
           </p>
-          <p className="text-sm text-slate-400">
+          <p className="text-sm text-muted-foreground">
             Ao criar as variáveis, marque{' '}
-            <span className="text-slate-200">Available at Runtime</span> e deixe{' '}
-            <span className="text-slate-200">Buildtime</span> desmarcado — em
+            <span className="text-foreground">Available at Runtime</span> e deixe{' '}
+            <span className="text-foreground">Buildtime</span> desmarcado — em
             buildtime a chave fica gravada na imagem e aparece no log de build.
             Variável nova só chega ao ar no próximo deploy.
           </p>
 
-          <div className="rounded-lg border border-slate-800 bg-slate-950/50 divide-y divide-slate-800">
+          <div className="rounded-lg border border-border bg-background divide-y divide-border">
             <div className="flex items-center justify-between gap-4 px-3 py-2">
-              <code className="text-xs font-mono text-cyan-300">OPENAI_API_KEY</code>
-              <span className="text-xs text-slate-500 text-right">a chave da conta</span>
+              <code className="text-xs font-mono text-cyan-700 dark:text-cyan-200">OPENAI_API_KEY</code>
+              <span className="text-xs text-muted-foreground/70 text-right">a chave da conta</span>
             </div>
             <div className="flex items-center justify-between gap-4 px-3 py-2">
-              <code className="text-xs font-mono text-cyan-300">OPENAI_MODEL</code>
-              <span className="text-xs text-slate-500 text-right">
+              <code className="text-xs font-mono text-cyan-700 dark:text-cyan-200">OPENAI_MODEL</code>
+              <span className="text-xs text-muted-foreground/70 text-right">
                 {statusIa?.modelosPermitidos.length
                   ? statusIa.modelosPermitidos.join(' ou ')
                   : 'obrigatória, sem valor padrão'}
@@ -723,7 +723,7 @@ const ApiSettings = forwardRef<ApiSettingsRef>((props, ref) => {
           {/* A allowlist fechada é decisão de custo. Dizer isso na tela evita a
               tentativa de "só trocar a variável" para um modelo mais novo e a
               conclusão de que o sistema está com bug quando ele recusa. */}
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-muted-foreground/70">
             As duas são obrigatórias e não têm valor padrão. Se uma faltar, ou se o
             modelo não estiver na lista, a chamada falha com erro explícito — o
             sistema não escolhe outro modelo por conta própria. Incluir um modelo
@@ -732,7 +732,7 @@ const ApiSettings = forwardRef<ApiSettingsRef>((props, ref) => {
 
           {/* Honestidade sobre o efeito: configurar as variáveis hoje não muda
               nada visível, e sem esta frase o admin conclui que configurou errado. */}
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-muted-foreground/70">
             Configurar as variáveis não liga a atendente. Quem as usa é o
             orquestrador, que vem junto com o canal de WhatsApp.
           </p>
@@ -749,22 +749,22 @@ const ApiSettings = forwardRef<ApiSettingsRef>((props, ref) => {
       {/* decisão muda o formato das credenciais. Campo que não grava é     */}
       {/* pior que campo ausente: parece configurado.                       */}
       {/* ---------------------------------------------------------------- */}
-      <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-6">
+      <div className="rounded-xl border border-border bg-card p-6">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-3">
-            <MessageSquare className="w-5 h-5 text-slate-500" />
-            <h3 className="font-semibold text-white">WhatsApp</h3>
+            <MessageSquare className="w-5 h-5 text-muted-foreground/70" />
+            <h3 className="font-semibold text-foreground">WhatsApp</h3>
           </div>
-          <div className="flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium bg-slate-500/10 text-slate-400">
+          <div className="flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium bg-slate-500/10 text-muted-foreground">
             <span className="h-2 w-2 rounded-full bg-slate-500" />
             Não conectado
           </div>
         </div>
-        <p className="text-sm text-slate-400">
+        <p className="text-sm text-muted-foreground">
           O canal de WhatsApp ainda não está implementado. A atendente virtual já consulta a
           grade e agenda sessões — falta o canal por onde ela conversa.
         </p>
-        <p className="text-xs text-slate-500 mt-2">
+        <p className="text-xs text-muted-foreground/70 mt-2">
           Falta um número dedicado com App Business aprovado na Meta. As credenciais mudam
           conforme o provider, então os campos entram junto com a integração — e a chave da
           OpenAI, que o orquestrador consome, é a do bloco acima.
@@ -786,16 +786,16 @@ function Slider({
   return (
     <div>
       <div className="flex justify-between items-center mb-1">
-        <label className="text-xs text-slate-400">{rotulo}</label>
-        <span className="text-xs font-mono tabular-nums text-slate-300">{valor.toFixed(2)}</span>
+        <label className="text-xs text-muted-foreground">{rotulo}</label>
+        <span className="text-xs font-mono tabular-nums text-muted-foreground">{valor.toFixed(2)}</span>
       </div>
       <input
         type="range"
         min={min} max={max} step={passo} value={valor}
         onChange={e => onChange(parseFloat(e.target.value))}
-        className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-violet-500"
+        className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-violet-500"
       />
-      <p className="text-[11px] text-slate-600 mt-1">{dica}</p>
+      <p className="text-[11px] text-muted-foreground/70 mt-1">{dica}</p>
     </div>
   );
 }
