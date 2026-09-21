@@ -22,6 +22,10 @@ import { useCronogramaData } from "@/contexts/CronogramaDataContext"
 import { reativarRecusaPaciente } from "@/lib/cronograma/reativarRecusaPaciente"
 import { registrarRecusa, registrarReativacao } from "@/services/cronogramaRecusasAuditoria.service"
 import type { SuspensaoLinkInfo } from "@/lib/cronograma/suspensaoTemporaria"
+import { isoParaBr, hojeBrasiliaISO } from "@/lib/laudos/acompanhamento"
+import { PREDICADO_RECORTE, RECORTE_LABEL, SITUACAO_LAUDO_LABEL, type RecorteLaudo } from "@/lib/laudos/filtros"
+import type { ItemAcompanhamentoLaudo } from "@/types/laudosAcompanhamento"
+import { useTemPermissao } from "@/hooks/useTemPermissao"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -99,6 +103,25 @@ const ESTRATEGIA_META: Record<Estrategia, {
 const STATUS_META: Record<Status, { label: string; bg: string; c: string }> = {
   acompanhamento: { label: "Em Acompanhamento", bg: B.blueLt,  c: B.blue    },
   inviavel:       { label: "Inviável",           bg: "var(--muted)", c: "var(--muted-foreground)" },
+}
+
+// Cores dos badges da Área "Status do Laudo" — mesma paleta de estadoDoLaudo()
+// em components/acompanhamento/laudos/CardLaudo.tsx (emerald/rose/muted), para
+// "vigente"/"vencido" ler igual nas duas telas.
+const SITUACAO_LAUDO_COR: Record<string, { bg: string; border: string; fg: string }> = {
+  vigente:      { bg: "#ecfdf5", border: "#a7f3d0", fg: "#047857" },
+  vencido:      { bg: "#fff1f2", border: "#fecdd3", fg: "#be123c" },
+  sem_validade: { bg: "var(--muted)", border: "var(--border)", fg: "var(--muted-foreground)" },
+}
+
+// Cores da categoria de urgência (RecorteLaudo) — vermelho para quem já venceu,
+// âmbar para "vence em breve" (ainda dá tempo de agir), verde para quem já foi
+// avisado e segue vigente.
+const CATEGORIA_LAUDO_COR: Partial<Record<RecorteLaudo, { bg: string; border: string; fg: string }>> = {
+  avisados_vencidos:  { bg: "#fff1f2", border: "#fecdd3", fg: "#be123c" },
+  vencidos_sem_aviso: { bg: "#fff1f2", border: "#fecdd3", fg: "#be123c" },
+  proximo_vencimento: { bg: "#fffbeb", border: "#fde68a", fg: "#b45309" },
+  avisados_vigentes:  { bg: "#ecfdf5", border: "#a7f3d0", fg: "#047857" },
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -1748,13 +1771,25 @@ const TodasSugestoesModal = forwardRef<TodasSugestoesModalHandle, TodasSugestoes
               </div>
             )}
             {hasMultiProf && (
-              <div style={{ marginTop: "12px", background: "#fee2e2", border: "1px solid #fca5a5", borderRadius: "8px", padding: "8px 10px", fontSize: "10px", color: "#dc2626", fontWeight: 700, flexShrink: 0 }}>
-                <div>⚠ 3 ou mais profissionais na mesma terapia (ideal: até 2).</div>
-                {multiProfTerapias.map(x => (
-                  <div key={x.tP} style={{ marginTop: "5px", fontWeight: 400 }}>
-                    <span style={{ fontWeight: 700 }}>{x.tP}</span>: {x.profs.map(p => fmtName(p)).join(" · ")}
-                  </div>
-                ))}
+              <div style={{ marginTop: "12px", background: "#fee2e2", border: "1px solid #fca5a5", borderRadius: "8px", padding: "10px", flexShrink: 0, display: "flex", flexDirection: "column", gap: "8px" }}>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: "5px", fontSize: "10px", color: "#dc2626", fontWeight: 700, lineHeight: 1.4 }}>
+                  <span aria-hidden="true">⚠</span>
+                  <span>3 ou mais profissionais na mesma terapia (ideal: até 2)</span>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                  {multiProfTerapias.map(x => (
+                    <div key={x.tP} style={{ background: "rgba(255,255,255,0.55)", border: "1px solid #fca5a5", borderRadius: "6px", padding: "6px 8px" }}>
+                      <div style={{ fontSize: "10px", fontWeight: 800, color: "#991b1b", marginBottom: "4px" }}>{x.tP}</div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+                        {x.profs.map(p => (
+                          <span key={p} style={{ fontSize: "9.5px", fontWeight: 600, color: "#7f1d1d", background: "var(--card)", border: "1px solid #fecaca", borderRadius: "4px", padding: "1px 5px", whiteSpace: "nowrap" }}>
+                            {fmtName(p)}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
         </div>
@@ -2521,6 +2556,66 @@ export function OcupPacMode({
     return m
   }, [lRows, agend, agendMergeMap])
 
+  // Status do Laudo (Área "Laudo" da workbench bar): mesma lista já calculada
+  // por acompanhamento/laudos, buscada uma vez aqui — nenhuma tabela nova, nenhuma
+  // rota nova. Um paciente nunca tem mais de um laudo em aberto (confirmado com o
+  // usuário), então o casamento por "ID Favorecido" devolve no máximo um item.
+  const [laudosAcomp, setLaudosAcomp] = useState<ItemAcompanhamentoLaudo[]>([])
+  useEffect(() => {
+    let ativo = true
+    fetch("/api/acompanhamento-laudos")
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (ativo && data?.ok) setLaudosAcomp(data.itens) })
+      .catch(() => {})
+    return () => { ativo = false }
+  }, [])
+
+  // "Id Favorecido" no CSV da grade (pacIdMap, base de agend) fica em branco pra
+  // muitos pacientes — a fonte confiável do ID é sempre lRows (laudo do Órbita),
+  // mesma leitura já usada em pacStatusMap/gapMap/handleExport. Resolve o nome
+  // canônico linha a linha (idFav → agendIdMap, senão nome normalizado) e guarda
+  // o ID daquela mesma linha contra esse nome.
+  const pacIdFavorecidoMap = useMemo(() => {
+    const normNameMap: Record<string, string> = {}
+    for (const p of todosPacs) normNameMap[normalizeName(p)] = p
+    const m: Record<string, string> = {}
+    for (const l of lRows) {
+      const idFav = String(l["ID Favorecido"] ?? l["Id Favorecido"] ?? "").trim().replace(/\.0$/, "")
+      if (!idFav) continue
+      const rawPac = String(l["Paciente"] || "").trim()
+      const p = agendIdMap.get(idFav) ?? normNameMap[normalizeName(rawPac)] ?? agendMergeMap.get(rawPac) ?? rawPac
+      if (p && !m[p]) m[p] = idFav
+    }
+    return m
+  }, [lRows, agendIdMap, todosPacs, agendMergeMap])
+
+  const laudoDoPaciente = useMemo(() => {
+    if (!pac) return null
+    const idStr = pacIdFavorecidoMap[pac] ?? pacIdMap[pac]
+    const idNum = idStr ? Number(idStr) : NaN
+    if (!Number.isNaN(idNum)) {
+      const porId = laudosAcomp.find(i => i.idFavorecido === idNum)
+      if (porId) return porId
+    }
+    // Fallback por nome normalizado — cobre o paciente sem "Id Favorecido" em
+    // nenhuma das duas fontes.
+    const alvo = normalizeName(pac)
+    return laudosAcomp.find(i => normalizeName(i.pacienteNomeCadastro ?? i.nome) === alvo) ?? null
+  }, [pac, pacIdFavorecidoMap, pacIdMap, laudosAcomp])
+
+  const categoriaDoLaudo = useMemo<RecorteLaudo | null>(() => {
+    if (!laudoDoPaciente) return null
+    const hojeISO = hojeBrasiliaISO()
+    const ordem: RecorteLaudo[] = ["avisados_vencidos", "vencidos_sem_aviso", "proximo_vencimento", "avisados_vigentes"]
+    return ordem.find(r => PREDICADO_RECORTE[r](laudoDoPaciente, hojeISO)) ?? null
+  }, [laudoDoPaciente])
+
+  const [laudoDetalheAberto, setLaudoDetalheAberto] = useState(false)
+  // O botão "Abrir em Acompanhamento de Laudos" só aparece pra quem tem a
+  // permissão da própria tela de destino — sem isso, o clique levaria a
+  // "Sem permissão", pior do que não mostrar o botão.
+  const { tem: temAcessoLaudos } = useTemPermissao("acompanhamento_laudos")
+
   const [convFilter, setConvFilter]       = useState<Set<string>>(new Set())
   const [statusFilter, setStatusFilter]   = useState<Set<string>>(new Set())
   const [situacaoOpen, setSituacaoOpen]   = useState(false)
@@ -2716,11 +2811,26 @@ export function OcupPacMode({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { setSituacaoOpen(false); setConvOpen(false); setDropOpen(false); setPrefOpen(false) }
+      if (e.key === "Escape") { setSituacaoOpen(false); setConvOpen(false); setDropOpen(false); setPrefOpen(false); setLaudoDetalheAberto(false) }
     }
     document.addEventListener("keydown", onKey)
     return () => document.removeEventListener("keydown", onKey)
   }, [])
+
+  // Painel de "Detalhes do laudo" — mesmo padrão do prefRef acima: fecha ao
+  // clicar fora, e é um popover absoluto (não empurra o conteúdo) porque essa
+  // área fica na workbench bar, cuja altura é compartilhada com as outras
+  // colunas — expandir/recolher inline mudava a altura da barra inteira.
+  const laudoDetalheRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!laudoDetalheAberto) return
+    const fechar = (e: MouseEvent) => {
+      if (laudoDetalheRef.current?.contains(e.target as Node)) return
+      setLaudoDetalheAberto(false)
+    }
+    document.addEventListener("mousedown", fechar)
+    return () => document.removeEventListener("mousedown", fechar)
+  }, [laudoDetalheAberto])
 
   function selectPac(p: string) { setPac(p); setInputVal(p); setDropOpen(false); setHighlightedIdx(-1) }
 
@@ -2729,7 +2839,7 @@ export function OcupPacMode({
       <style>{`
         .ocup-workbench-bar {
           display: grid;
-          grid-template-columns: 35fr 12fr 38fr 15fr;
+          grid-template-columns: 28fr 12fr 16fr 26fr 12fr;
           background: var(--card);
           border: 1px solid var(--border);
           border-radius: 16px 0 0 16px;
@@ -2972,6 +3082,60 @@ export function OcupPacMode({
           </div>
         </div>
 
+        {/* Área — Status do Laudo (do paciente selecionado) */}
+        <div style={{ padding: "14px 18px", borderRight: "1px solid var(--border)", display: "flex", flexDirection: "column", justifyContent: "flex-start", gap: "8px" }}>
+          <div style={{ fontSize: "11px", fontWeight: 700, color: "var(--muted-foreground)", letterSpacing: "0.02em" }}>Status do Laudo</div>
+          {!pac ? (
+            <div style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>Selecione um paciente</div>
+          ) : !laudoDoPaciente ? (
+            <div style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>Sem laudo encontrado</div>
+          ) : (
+            <>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                <span style={{ padding: "3px 8px", borderRadius: "999px", fontSize: "10px", fontWeight: 800, whiteSpace: "nowrap", border: `1px solid ${SITUACAO_LAUDO_COR[laudoDoPaciente.situacao].border}`, background: SITUACAO_LAUDO_COR[laudoDoPaciente.situacao].bg, color: SITUACAO_LAUDO_COR[laudoDoPaciente.situacao].fg }}>
+                  {SITUACAO_LAUDO_LABEL[laudoDoPaciente.situacao]}
+                </span>
+                {categoriaDoLaudo && (
+                  <span style={{ padding: "3px 8px", borderRadius: "999px", fontSize: "10px", fontWeight: 800, whiteSpace: "nowrap", border: `1px solid ${CATEGORIA_LAUDO_COR[categoriaDoLaudo]!.border}`, background: CATEGORIA_LAUDO_COR[categoriaDoLaudo]!.bg, color: CATEGORIA_LAUDO_COR[categoriaDoLaudo]!.fg }}>
+                    {RECORTE_LABEL[categoriaDoLaudo]}
+                  </span>
+                )}
+              </div>
+              <div ref={laudoDetalheRef} style={{ position: "relative" }}>
+                <button
+                  type="button"
+                  onClick={() => setLaudoDetalheAberto(v => !v)}
+                  aria-expanded={laudoDetalheAberto}
+                  style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: 0, border: "none", background: "none", cursor: "pointer", fontFamily: "inherit", fontSize: "10px", fontWeight: 700, color: "var(--muted-foreground)" }}
+                >
+                  <span style={{ fontSize: "13px", lineHeight: 1 }}>{laudoDetalheAberto ? "▾" : "▸"}</span> Detalhes do laudo
+                </button>
+                {laudoDetalheAberto && (
+                  <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 200, background: "var(--card)", border: "1px solid var(--border)", borderRadius: "10px", boxShadow: "0 8px 24px rgba(0,0,0,.1)", padding: "10px 12px", display: "flex", flexDirection: "column", gap: "8px", whiteSpace: "nowrap" }}>
+                    <dl style={{ margin: 0, display: "grid", gridTemplateColumns: "auto 1fr", columnGap: "10px", rowGap: "4px", fontSize: "11px" }}>
+                      <dt style={{ color: "var(--muted-foreground)" }}>Data laudo</dt>
+                      <dd style={{ fontWeight: 600, margin: 0 }}>{isoParaBr(laudoDoPaciente.dataLaudo)}</dd>
+                      <dt style={{ color: "var(--muted-foreground)" }}>Validade</dt>
+                      <dd style={{ fontWeight: 600, margin: 0 }}>{isoParaBr(laudoDoPaciente.validade)}</dd>
+                      <dt style={{ color: "var(--muted-foreground)" }}>Autorizado em</dt>
+                      <dd style={{ fontWeight: 600, margin: 0 }}>{isoParaBr(laudoDoPaciente.autorizadoEm)}</dd>
+                    </dl>
+                    {temAcessoLaudos && (
+                      <Link
+                        href={`/acompanhamento/laudos?busca=${encodeURIComponent(String(laudoDoPaciente.idFavorecido ?? ""))}`}
+                        target="_blank"
+                        style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "10px", fontWeight: 700, color: B.navy, textDecoration: "none", borderTop: "1px solid var(--border)", paddingTop: "8px" }}
+                      >
+                        Acompanhar Laudo ↗
+                      </Link>
+                    )}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+
         {/* Área 5 — Exportação */}
         {(() => {
           const SITUACAO_LABEL: Record<string, string> = {
@@ -3073,16 +3237,14 @@ export function OcupPacMode({
             XLSX.writeFile(wb, "relatorio_pacientes.xlsx")
           }
           return (
-            <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", alignItems: "flex-end", textAlign: "right", gap: "8px" }}>
-              <div style={{ fontSize: "10px", fontWeight: 700, color: "var(--muted-foreground)", letterSpacing: "0.06em", textTransform: "uppercase" }}>Relatório de Pacientes</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: "1px" }}>
-                <div style={{ fontSize: "28px", fontWeight: 800, color: B.navy, lineHeight: 1, letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums" }}>{todosPacs.length}</div>
-                <div style={{ fontSize: "10px", color: "var(--muted-foreground)", fontWeight: 500 }}>Pacientes analisados</div>
+            <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", alignItems: "flex-end", justifyContent: "center", textAlign: "right", gap: "8px" }}>
+              <div style={{ fontSize: "16px", fontWeight: 800, color: B.navy, lineHeight: 1, letterSpacing: "-0.01em", fontVariantNumeric: "tabular-nums" }}>
+                {todosPacs.length} Pacientes
               </div>
               <button
                 onClick={handleExport}
                 style={{ padding: "4px 10px", borderRadius: "7px", border: "1px solid #d1fae5", background: "#ecfdf5", color: "#065f46", fontSize: "10px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: "4px" }}>
-                ↓ Exportar XLSX
+                ↓ XLSX - Laudo Vs. Oferta
               </button>
             </div>
           )
