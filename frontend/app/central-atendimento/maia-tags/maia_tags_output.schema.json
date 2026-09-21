@@ -1,0 +1,489 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "maia_tags_output.schema.json",
+  "title": "Saída de classificação da Maia",
+  "description": "Objeto que a Maia devolve por turno. O backend valida contra este schema e contra o catálogo antes de gravar. Enums já excluem tags humano-only e o grupo jurídico.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "tags",
+    "campos",
+    "escalar_humano"
+  ],
+  "properties": {
+    "tags": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "origem": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "meta_ads",
+            "google_ads",
+            "google",
+            "site",
+            "linktree",
+            "indicacao_medica",
+            "indicacao_escola",
+            "indicacao_amigo_familiar",
+            "contato_direto",
+            null
+          ],
+          "description": "1. ORIGEM — exatamente uma ou null. Card: single."
+        },
+        "tipo_de_contato": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "lead",
+            "paciente_ativo",
+            "nao_paciente_curso",
+            "nao_paciente_trabalhe_conosco",
+            "nao_paciente_parceria",
+            "nao_paciente_advogado",
+            "nao_paciente_real_saude",
+            null
+          ],
+          "description": "2. TIPO DE CONTATO — exatamente uma ou null. Card: single."
+        },
+        "servico_de_interesse": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "avaliacao_inicial",
+              "av_neuropsicologica_infantil",
+              "av_neuropsicologica_adulto",
+              "consulta_medica",
+              "terapia_aba",
+              "fonoaudiologia",
+              "psicologia",
+              "terapia_ocupacional",
+              "psicopedagogia",
+              "psicomotricidade",
+              "musicoterapia",
+              "arteterapia",
+              "equoterapia",
+              "fisioterapia_infantil",
+              "fisioterapia_aquatica",
+              "terapia_alimentar",
+              "consulta_nutricionista",
+              "tecnico_terapeutico_particular_at",
+              "nda",
+              "programa_de_cuidado",
+              "reabilitacao_cognitiva",
+              "psicoeducacao"
+            ]
+          },
+          "uniqueItems": true,
+          "description": "3. SERVIÇO DE INTERESSE (pode ter mais de uma) — pode mais de uma. Card: multi."
+        },
+        "rota": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "rota_a_avaliacao_inicial",
+            "rota_b_av_neuropsicologica",
+            "rota_c_especialidades_terapeuticas",
+            "rota_d_liminar_assistida",
+            "rota_e_tratamento_aba",
+            null
+          ],
+          "description": "4. ROTA — exatamente uma ou null. Card: single."
+        },
+        "pagamento": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "particular",
+            "reembolso",
+            "convenio_credenciado",
+            "convenio_nao_credenciado",
+            "gratuidade_acao_social",
+            null
+          ],
+          "description": "5. PAGAMENTO — exatamente uma ou null. Card: single."
+        },
+        "convenio": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "assim",
+              "leve_saude",
+              "fusex",
+              "seguros_unimed",
+              "amil",
+              "bradesco",
+              "sulamerica",
+              "unimed_ferj",
+              "unimed_rio",
+              "unimed_nacional",
+              "unimed_nova_iguacu",
+              "porto_seguro",
+              "appai",
+              "memorial",
+              "notredame_intermedica",
+              "hapvida",
+              "klini",
+              "cassi",
+              "caberj",
+              "saude_caixa",
+              "postal_saude",
+              "petrobras",
+              "golden_cross",
+              "mediservice",
+              "care_plus",
+              "omint",
+              "prevent_senior",
+              "geap",
+              "ampla_gama",
+              "assist",
+              "unimed_cnu",
+              "unimed_bauru",
+              "unimed_costa_do_sol",
+              "unimed_bh",
+              "unimed_na07_especial",
+              "unimed_omega",
+              "unimed_delta",
+              "unimed_intercambio",
+              "unimed_londrina",
+              "unimed_personal",
+              "unimed_maceio",
+              "unimed_beta_ii",
+              "unimed_volta_redonda",
+              "oplan",
+              "samoc",
+              "porto_saude",
+              "health_med",
+              "itau",
+              "nova_saude",
+              "camim",
+              "blue",
+              "metlife",
+              "real_grandeza",
+              "cemeru",
+              "odontoprev"
+            ]
+          },
+          "uniqueItems": true,
+          "description": "6. CONVÊNIO (nome da operadora) — pode mais de uma. Card: multi."
+        },
+        "etapa_convenio": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "aguardando_documentos",
+            "docs_enviados_a_autorizacao",
+            null
+          ],
+          "description": "7. ETAPA CONVÊNIO (só Rota E) — exatamente uma ou null. Card: single."
+        },
+        "laudo": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "com_laudo",
+              "sem_laudo",
+              "laudo_sem_carga_horaria",
+              "laudo_vencido",
+              "com_encaminhamento",
+              "sem_encaminhamento"
+            ]
+          },
+          "uniqueItems": true,
+          "description": "9. LAUDO — pode mais de uma. Card: multi."
+        },
+        "diagnostico_informado": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "tea",
+              "tdah",
+              "tea_tdah",
+              "suspeita_de_tea",
+              "outro_em_investigacao"
+            ]
+          },
+          "uniqueItems": true,
+          "description": "10. DIAGNÓSTICO INFORMADO (o que a família disse, não conclusão clínica) — pode mais de uma. Card: multi."
+        },
+        "idade": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "bebe",
+            "crianca",
+            "adolescente",
+            "adulto",
+            null
+          ],
+          "description": "11. IDADE (faixa; a idade exata vem da data de nascimento no campo personalizado) — exatamente uma ou null. Card: single."
+        },
+        "unidade": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "unidade_realengo",
+            "unidade_fazendinha",
+            "unidade_padre_miguel",
+            null
+          ],
+          "description": "12. UNIDADE — exatamente uma ou null. Card: single."
+        },
+        "urgencia": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "quer_comecar_logo",
+            "precisa_entender_melhor",
+            "ainda_pesquisando",
+            null
+          ],
+          "description": "13. URGÊNCIA — exatamente uma ou null. Card: single."
+        }
+      }
+    },
+    "campos": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "NÃO são tags (regras 5 e 8). campanha é do sistema — a Maia deixa null.",
+      "properties": {
+        "campanha": {
+          "type": "null",
+          "description": "Sempre null vindo da Maia; o sistema preenche pela regra 5."
+        },
+        "objecao": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Frase curta da objeção, se houver."
+        },
+        "data_nascimento": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "ISO YYYY-MM-DD; o sistema calcula a faixa de IDADE."
+        }
+      }
+    },
+    "escalar_humano": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "necessario"
+      ],
+      "properties": {
+        "necessario": {
+          "type": "boolean"
+        },
+        "motivo": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "prioridade": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "prioridade_alta",
+            "pronto_pra_fechar",
+            "liminar_urgente",
+            null
+          ]
+        },
+        "tags_sugeridas": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "acordo_adm_com_plano",
+              "adolescente",
+              "adulto",
+              "aguardando_contato_da_operadora",
+              "aguardando_documentos",
+              "ainda_pesquisando",
+              "amil",
+              "ampla_gama",
+              "appai",
+              "arteterapia",
+              "assim",
+              "assist",
+              "av_neuropsicologica_adulto",
+              "av_neuropsicologica_infantil",
+              "avaliacao_inicial",
+              "bebe",
+              "blue",
+              "bradesco",
+              "caberj",
+              "camim",
+              "care_plus",
+              "cassi",
+              "cemeru",
+              "com_encaminhamento",
+              "com_laudo",
+              "consulta_medica",
+              "consulta_nutricionista",
+              "contato_direto",
+              "convenio_credenciado",
+              "convenio_nao_credenciado",
+              "crianca",
+              "decisao_judicial_recebida",
+              "docs_enviados_a_autorizacao",
+              "elegibilidade_confirmada",
+              "entrevista_familiar_agendada",
+              "equoterapia",
+              "evento_parceria",
+              "fisioterapia_aquatica",
+              "fisioterapia_infantil",
+              "fonoaudiologia",
+              "fusex",
+              "geap",
+              "golden_cross",
+              "google",
+              "google_ads",
+              "gratuidade_acao_social",
+              "hapvida",
+              "health_med",
+              "indicacao_advogado",
+              "indicacao_amigo_familiar",
+              "indicacao_escola",
+              "indicacao_medica",
+              "indicacao_operadora",
+              "itau",
+              "klini",
+              "laudo_sem_carga_horaria",
+              "laudo_vencido",
+              "lead",
+              "leve_saude",
+              "ligacao_recebida",
+              "liminar_concedida",
+              "linktree",
+              "mediservice",
+              "memorial",
+              "meta_ads",
+              "metlife",
+              "musicoterapia",
+              "nao_elegivel",
+              "nao_paciente_advogado",
+              "nao_paciente_curso",
+              "nao_paciente_operadora",
+              "nao_paciente_parceria",
+              "nao_paciente_real_saude",
+              "nao_paciente_trabalhe_conosco",
+              "nda",
+              "nip",
+              "notredame_intermedica",
+              "nova_saude",
+              "odontoprev",
+              "omint",
+              "oplan",
+              "outro_em_investigacao",
+              "paciente_ativo",
+              "paciente_inativo",
+              "particular",
+              "penhora",
+              "petrobras",
+              "porto_saude",
+              "porto_seguro",
+              "postal_saude",
+              "pre_liminar",
+              "precisa_entender_melhor",
+              "presencial",
+              "prevent_senior",
+              "processo_judicial",
+              "programa_de_cuidado",
+              "psicoeducacao",
+              "psicologia",
+              "psicomotricidade",
+              "psicopedagogia",
+              "quer_comecar_logo",
+              "reabilitacao_cognitiva",
+              "real_grandeza",
+              "reembolso",
+              "rota_a_avaliacao_inicial",
+              "rota_b_av_neuropsicologica",
+              "rota_c_especialidades_terapeuticas",
+              "rota_d_liminar_assistida",
+              "rota_e_tratamento_aba",
+              "samoc",
+              "saude_caixa",
+              "seguros_unimed",
+              "sem_encaminhamento",
+              "sem_laudo",
+              "site",
+              "sulamerica",
+              "suspeita_de_tea",
+              "tdah",
+              "tea",
+              "tea_tdah",
+              "tecnico_terapeutico_particular_at",
+              "terapia_aba",
+              "terapia_alimentar",
+              "terapia_ocupacional",
+              "unidade_fazendinha",
+              "unidade_padre_miguel",
+              "unidade_realengo",
+              "unimed_bauru",
+              "unimed_beta_ii",
+              "unimed_bh",
+              "unimed_cnu",
+              "unimed_costa_do_sol",
+              "unimed_delta",
+              "unimed_ferj",
+              "unimed_intercambio",
+              "unimed_londrina",
+              "unimed_maceio",
+              "unimed_na07_especial",
+              "unimed_nacional",
+              "unimed_nova_iguacu",
+              "unimed_omega",
+              "unimed_personal",
+              "unimed_rio",
+              "unimed_volta_redonda"
+            ]
+          },
+          "description": "Tags humano-only ou jurídicas que o humano deve confirmar."
+        }
+      }
+    },
+    "mudou_neste_turno": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Chaves de tags/campos que mudaram neste turno, para o backend regravar."
+    },
+    "confianca_baixa": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Chaves preenchidas por dedução fraca."
+    }
+  }
+}

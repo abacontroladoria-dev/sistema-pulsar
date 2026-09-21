@@ -1,0 +1,237 @@
+{
+  "versao": "1.0",
+  "origem": "frases-de-campanha.csv (regra 5)",
+  "como_funciona": "O SISTEMA compara a 1a mensagem com frase_exata das entradas pronta_para_match=true. Se casar: aplica origem_tag + grava campanha no campo Campanha. Se não casar, a MAIA usa o fallback abaixo.",
+  "preferir_identificador": "Se houver referral/ctwa_clid (Meta) ou UTM (Google), usar o identificador no lugar da frase.",
+  "frases_cadastradas": [
+    {
+      "origem_tag": "meta_ads",
+      "origem_label": "Meta Ads",
+      "frase_exata": "Gostaria de agendar pelo plano ASSIM SAÚDE.",
+      "campanha": "Plano de Saúde | ASSIM",
+      "plataforma": "IG/FB",
+      "formato": "Anúncio",
+      "situacao": "Ativa",
+      "pronta_para_match": true
+    },
+    {
+      "origem_tag": "meta_ads",
+      "origem_label": "Meta Ads",
+      "frase_exata": "Gostaria de agendar pelo plano LEVE SAÚDE.",
+      "campanha": "Plano de Saúde | Leve",
+      "plataforma": "IG/FB",
+      "formato": "Anúncio",
+      "situacao": "Ativa",
+      "pronta_para_match": true
+    },
+    {
+      "origem_tag": "meta_ads",
+      "origem_label": "Meta Ads",
+      "frase_exata": "Gostaria de agendar pelo plano UNIMED.",
+      "campanha": "Plano de Saúde | Seguros Unimed",
+      "plataforma": "IG/FB",
+      "formato": "Anúncio",
+      "situacao": "Ativa",
+      "pronta_para_match": true
+    },
+    {
+      "origem_tag": "meta_ads",
+      "origem_label": "Meta Ads",
+      "frase_exata": "Gostaria de agendar pelo plano FUSEX.",
+      "campanha": "Plano de Saúde | FUSEX",
+      "plataforma": "IG/FB",
+      "formato": "Anúncio",
+      "situacao": "Ativa",
+      "pronta_para_match": true
+    },
+    {
+      "origem_tag": "meta_ads",
+      "origem_label": "Meta Ads",
+      "frase_exata": "Olá! Vim do site e quero saber mais sobre a Terapia Aba.",
+      "campanha": "Site | Terapia ABA",
+      "plataforma": "IG/FB",
+      "formato": "Site",
+      "situacao": "Ativa",
+      "pronta_para_match": true
+    },
+    {
+      "origem_tag": "site",
+      "origem_label": "Site",
+      "frase_exata": "Olá! Vim do site e quero saber mais sobre a Terapia Aba.",
+      "campanha": "Site | Terapia ABA",
+      "plataforma": "Site",
+      "formato": "Botão",
+      "situacao": "Ativa (se vier pelo botão do site, ORIGEM = Site; confirmar qual a fonte da frase)",
+      "pronta_para_match": true
+    },
+    {
+      "origem_tag": "linktree",
+      "origem_label": "Linktree",
+      "frase_exata": "Olá, vim pelo Linktree e desejo falar com um Atendente!",
+      "campanha": "Linktree",
+      "plataforma": "Linktree",
+      "formato": "Botão",
+      "situacao": "Ativa",
+      "pronta_para_match": true
+    },
+    {
+      "origem_tag": "meta_ads",
+      "origem_label": "Meta Ads",
+      "frase_exata": null,
+      "campanha": "Av. Neuropsicológica | Imagem",
+      "plataforma": "IG/FB",
+      "formato": "Anúncio",
+      "situacao": "Preencher frase exata",
+      "pronta_para_match": false
+    },
+    {
+      "origem_tag": "meta_ads",
+      "origem_label": "Meta Ads",
+      "frase_exata": null,
+      "campanha": "Av. Neuropsicológica | Vídeo",
+      "plataforma": "IG/FB",
+      "formato": "Anúncio",
+      "situacao": "Preencher frase exata",
+      "pronta_para_match": false
+    },
+    {
+      "origem_tag": "meta_ads",
+      "origem_label": "Meta Ads",
+      "frase_exata": null,
+      "campanha": "Terapia ABA",
+      "plataforma": "IG/FB",
+      "formato": "Anúncio",
+      "situacao": "Preencher frase exata",
+      "pronta_para_match": false
+    },
+    {
+      "origem_tag": "meta_ads",
+      "origem_label": "Meta Ads",
+      "frase_exata": null,
+      "campanha": "Fonoaudiologia",
+      "plataforma": "IG/FB",
+      "formato": "Anúncio",
+      "situacao": "Preencher frase exata",
+      "pronta_para_match": false
+    },
+    {
+      "origem_tag": "meta_ads",
+      "origem_label": "Meta Ads",
+      "frase_exata": null,
+      "campanha": "Psicologia Infantil",
+      "plataforma": "IG/FB",
+      "formato": "Anúncio",
+      "situacao": "Preencher frase exata",
+      "pronta_para_match": false
+    },
+    {
+      "origem_tag": "meta_ads",
+      "origem_label": "Meta Ads",
+      "frase_exata": null,
+      "campanha": "Especialidades Terapêuticas",
+      "plataforma": "IG/FB",
+      "formato": "Anúncio",
+      "situacao": "Preencher frase exata",
+      "pronta_para_match": false
+    },
+    {
+      "origem_tag": "meta_ads",
+      "origem_label": "Meta Ads",
+      "frase_exata": null,
+      "campanha": "Médico da Saúde Mental",
+      "plataforma": "IG/FB",
+      "formato": "Anúncio",
+      "situacao": "Preencher frase exata",
+      "pronta_para_match": false
+    },
+    {
+      "origem_tag": "meta_ads",
+      "origem_label": "Meta Ads",
+      "frase_exata": null,
+      "campanha": "Transtorno",
+      "plataforma": "IG/FB",
+      "formato": "Anúncio",
+      "situacao": "Preencher frase exata",
+      "pronta_para_match": false
+    },
+    {
+      "origem_tag": "meta_ads",
+      "origem_label": "Meta Ads",
+      "frase_exata": null,
+      "campanha": "Av. Neuropsicológica | Leve",
+      "plataforma": "IG/FB",
+      "formato": "Impulsionado",
+      "situacao": "Preencher frase exata",
+      "pronta_para_match": false
+    },
+    {
+      "origem_tag": "google_ads",
+      "origem_label": "Google Ads",
+      "frase_exata": null,
+      "campanha": "Terapia ABA",
+      "plataforma": "Google",
+      "formato": "Anúncio",
+      "situacao": "Preencher frase exata",
+      "pronta_para_match": false
+    },
+    {
+      "origem_tag": "google_ads",
+      "origem_label": "Google Ads",
+      "frase_exata": null,
+      "campanha": "Fonoaudiologia",
+      "plataforma": "Google",
+      "formato": "Anúncio",
+      "situacao": "Preencher frase exata",
+      "pronta_para_match": false
+    },
+    {
+      "origem_tag": "google_ads",
+      "origem_label": "Google Ads",
+      "frase_exata": null,
+      "campanha": "Psicologia Infantil",
+      "plataforma": "Google",
+      "formato": "Anúncio",
+      "situacao": "Preencher frase exata",
+      "pronta_para_match": false
+    },
+    {
+      "origem_tag": "google_ads",
+      "origem_label": "Google Ads",
+      "frase_exata": null,
+      "campanha": "Av. Neuropsicológica",
+      "plataforma": "Google",
+      "formato": "Anúncio",
+      "situacao": "Preencher frase exata",
+      "pronta_para_match": false
+    },
+    {
+      "origem_tag": "google_ads",
+      "origem_label": "Google Ads",
+      "frase_exata": null,
+      "campanha": "Médico da Saúde Mental (landing page)",
+      "plataforma": "Google",
+      "formato": "Landing page",
+      "situacao": "A landing page do médico manda para o WhatsApp; confirmar a frase",
+      "pronta_para_match": false
+    }
+  ],
+  "fallback_maia_regra5": {
+    "quando": "Texto reconhecido como pré-preenchido mas SEM frase cadastrada.",
+    "gatilhos_prefixo": [
+      "Gostaria de",
+      "Vim do",
+      "Vim pelo",
+      "Olá! Vim",
+      "Quero saber sobre",
+      "Tenho interesse em"
+    ],
+    "gatilho_extra": "ou repete nome de serviço/plano sem cumprimento",
+    "origem_default": "meta_ads",
+    "origem_por_palavra": {
+      "site": "site",
+      "linktree": "linktree"
+    },
+    "acao": "Aplica ORIGEM (default meta_ads; site/linktree se a palavra aparecer), extrai PLANO->convenio e SERVIÇO->servico_de_interesse do texto, e deixa campo Campanha VAZIO.",
+    "observacao_relatorio": "Vira \"Meta Ads sem campanha\" no relatório semanal; marketing cadastra a frase retroativo."
+  }
+}

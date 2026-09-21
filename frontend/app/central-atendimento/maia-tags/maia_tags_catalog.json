@@ -1,0 +1,1711 @@
+{
+  "versao": "1.1",
+  "origem": "aba1.csv + regras.csv (taxonomia Maia / Universo ABA)",
+  "total_tags": 144,
+  "grupos_exclusivos": [
+    "origem",
+    "tipo_de_contato",
+    "rota",
+    "pagamento",
+    "etapa_convenio",
+    "idade",
+    "urgencia",
+    "unidade"
+  ],
+  "grupos_multiplos": [
+    "servico_de_interesse",
+    "convenio",
+    "laudo",
+    "diagnostico_informado"
+  ],
+  "grupos": {
+    "origem": {
+      "nome": "1. ORIGEM",
+      "cardinalidade": "single",
+      "obrigatorio": false,
+      "cardinalidade_fonte": "explícita (regra 2)",
+      "tags": [
+        {
+          "id": "meta_ads",
+          "label": "Meta Ads",
+          "quando_usar": "Lead chegou por anúncio pago no Instagram ou Facebook (qualquer campanha). É a tag-mãe; a campanha vai na tag de CAMPANHA",
+          "quem_aplica_texto": "Automático (frase da campanha) ou Maia",
+          "regra": "Aplicada pelo sistema quando a primeira mensagem casa com uma frase da aba \"Frases de campanha\"; a Maia aplica quando reconhece texto pré-preenchido sem frase cadastrada (regra 5)",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": true,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "google_ads",
+          "label": "Google Ads",
+          "quando_usar": "Lead chegou por anúncio pago no Google",
+          "quem_aplica_texto": "Automático ou Maia",
+          "regra": "Aplicada pelo sistema quando a primeira mensagem casa com uma frase da aba \"Frases de campanha\"; a Maia aplica quando reconhece texto pré-preenchido sem frase cadastrada (regra 5)",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": true,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "google",
+          "label": "Google",
+          "quando_usar": "Busca orgânica, Google Meu Negócio, sem anúncio",
+          "quem_aplica_texto": "Maia/humano",
+          "regra": "",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": true
+        },
+        {
+          "id": "site",
+          "label": "Site",
+          "quando_usar": "Botão do site (frase \"Vim do site\")",
+          "quem_aplica_texto": "Automático",
+          "regra": "Aplicada pelo sistema pela frase cadastrada na aba \"Frases de campanha\"",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": true,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "linktree",
+          "label": "Linktree",
+          "quando_usar": "Frase \"Vim pelo Linktree\"",
+          "quem_aplica_texto": "Automático",
+          "regra": "Aplicada pelo sistema pela frase cadastrada na aba \"Frases de campanha\"",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": true,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "indicacao_medica",
+          "label": "Indicação médica",
+          "quando_usar": "Médico, pediatra, neuro indicou",
+          "quem_aplica_texto": "Maia (pergunta \"como conheceu\")",
+          "regra": "",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "indicacao_escola",
+          "label": "Indicação escola",
+          "quando_usar": "Escola indicou, inclusive escola parceira",
+          "quem_aplica_texto": "Maia/humano",
+          "regra": "Substitui \"Escola Parceira\" como origem",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": true
+        },
+        {
+          "id": "indicacao_amigo_familiar",
+          "label": "Indicação amigo/familiar",
+          "quando_usar": "Outra família, amigo, paciente",
+          "quem_aplica_texto": "Maia/humano",
+          "regra": "",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": true
+        },
+        {
+          "id": "indicacao_advogado",
+          "label": "Indicação advogado",
+          "quando_usar": "Advogado ou escritório trouxe o caso",
+          "quem_aplica_texto": "Humano",
+          "regra": "",
+          "maia_pode_aplicar": false,
+          "automatico_sistema": false,
+          "requer_humano": true,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "indicacao_operadora",
+          "label": "Indicação operadora",
+          "quando_usar": "O plano de saúde direcionou a família (Leve, Unimed acordo etc.)",
+          "quem_aplica_texto": "Humano",
+          "regra": "",
+          "maia_pode_aplicar": false,
+          "automatico_sistema": false,
+          "requer_humano": true,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "ligacao_recebida",
+          "label": "Ligação recebida",
+          "quando_usar": "Lead ligou para a clínica; conversa criada pela equipe",
+          "quem_aplica_texto": "Humano",
+          "regra": "Processo de 23/08/26",
+          "maia_pode_aplicar": false,
+          "automatico_sistema": false,
+          "requer_humano": true,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "presencial",
+          "label": "Presencial",
+          "quando_usar": "Chegou no balcão, visita guiada",
+          "quem_aplica_texto": "Humano",
+          "regra": "",
+          "maia_pode_aplicar": false,
+          "automatico_sistema": false,
+          "requer_humano": true,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "evento_parceria",
+          "label": "Evento/parceria",
+          "quando_usar": "Feira, palestra, panfletagem, transporte escolar",
+          "quem_aplica_texto": "Humano",
+          "regra": "",
+          "maia_pode_aplicar": false,
+          "automatico_sistema": false,
+          "requer_humano": true,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "contato_direto",
+          "label": "Contato Direto",
+          "quando_usar": "Mandou mensagem sem dizer de onde veio e não soube informar",
+          "quem_aplica_texto": "Maia (default fraco)",
+          "regra": "Só quando nenhuma outra couber",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        }
+      ]
+    },
+    "tipo_de_contato": {
+      "nome": "2. TIPO DE CONTATO",
+      "cardinalidade": "single",
+      "obrigatorio": true,
+      "cardinalidade_fonte": "explícita (regra 2 + \"exatamente uma\")",
+      "tags": [
+        {
+          "id": "lead",
+          "label": "Lead",
+          "quando_usar": "Família buscando atendimento infantil/adolescente na Universo ABA",
+          "quem_aplica_texto": "Maia",
+          "regra": "Obrigatória: exatamente uma",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "paciente_ativo",
+          "label": "Paciente ativo",
+          "quando_usar": "Já está em tratamento; assunto operacional (cronograma, falta, autorização)",
+          "quem_aplica_texto": "Maia/humano",
+          "regra": "Sai do funil comercial",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": true
+        },
+        {
+          "id": "paciente_inativo",
+          "label": "Paciente inativo",
+          "quando_usar": "Já foi paciente e saiu",
+          "quem_aplica_texto": "Humano",
+          "regra": "",
+          "maia_pode_aplicar": false,
+          "automatico_sistema": false,
+          "requer_humano": true,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "nao_paciente_curso",
+          "label": "Não-paciente | Curso",
+          "quando_usar": "Instituto, workshop, certificado",
+          "quem_aplica_texto": "Maia",
+          "regra": "",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "nao_paciente_trabalhe_conosco",
+          "label": "Não-paciente | Trabalhe conosco",
+          "quando_usar": "Vaga, currículo, estágio",
+          "quem_aplica_texto": "Maia",
+          "regra": "",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "nao_paciente_parceria",
+          "label": "Não-paciente | Parceria",
+          "quando_usar": "Fornecedor, escola, transporte, imprensa, empreendedor",
+          "quem_aplica_texto": "Maia/humano",
+          "regra": "",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": true
+        },
+        {
+          "id": "nao_paciente_operadora",
+          "label": "Não-paciente | Operadora",
+          "quando_usar": "Convênio entrando em contato",
+          "quem_aplica_texto": "Humano",
+          "regra": "",
+          "maia_pode_aplicar": false,
+          "automatico_sistema": false,
+          "requer_humano": true,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "nao_paciente_advogado",
+          "label": "Não-paciente | Advogado",
+          "quando_usar": "Escritório pedindo orçamento/declaração",
+          "quem_aplica_texto": "Maia/humano",
+          "regra": "",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": true
+        },
+        {
+          "id": "nao_paciente_real_saude",
+          "label": "Não-paciente | Real Saúde",
+          "quando_usar": "Adulto, odonto, pilates, RPG, hidro, estética",
+          "quem_aplica_texto": "Maia (link wa.me)",
+          "regra": "Substitui \"Transferido Novo Contato Real Saúde\", \"Paciente Odonto\", \"Paciente Fisio/RPG/Pilates\", \"Paciente Hidroginástica\" no número da Universo ABA",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        }
+      ]
+    },
+    "servico_de_interesse": {
+      "nome": "3. SERVIÇO DE INTERESSE (pode ter mais de uma)",
+      "cardinalidade": "multi",
+      "obrigatorio": true,
+      "cardinalidade_fonte": "explícita (regra 1: mínimo 1)",
+      "tags": [
+        {
+          "id": "avaliacao_inicial",
+          "label": "Avaliação Inicial",
+          "quando_usar": "Porta de entrada sem laudo (Rota A)",
+          "quem_aplica_texto": "Maia/humano",
+          "regra": "Registrar todos que apareceram; a rota diz qual foi recomendado",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": true
+        },
+        {
+          "id": "av_neuropsicologica_infantil",
+          "label": "Av. Neuropsicológica Infantil",
+          "quando_usar": "Serviço que a família pediu ou que foi recomendado",
+          "quem_aplica_texto": "Maia/humano",
+          "regra": "Registrar todos que apareceram; a rota diz qual foi recomendado",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": true
+        },
+        {
+          "id": "av_neuropsicologica_adulto",
+          "label": "Av. Neuropsicológica Adulto",
+          "quando_usar": "Serviço que a família pediu ou que foi recomendado",
+          "quem_aplica_texto": "Maia/humano",
+          "regra": "Registrar todos que apareceram; a rota diz qual foi recomendado",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": true
+        },
+        {
+          "id": "consulta_medica",
+          "label": "Consulta médica",
+          "quando_usar": "Dr. João Luiz. Substitui \"Psiquiatra\", \"Neurologista\", \"Interesse Médico de Saúde Mental\"",
+          "quem_aplica_texto": "Maia/humano",
+          "regra": "Registrar todos que apareceram; a rota diz qual foi recomendado",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": true
+        },
+        {
+          "id": "terapia_aba",
+          "label": "Terapia ABA",
+          "quando_usar": "Serviço que a família pediu ou que foi recomendado",
+          "quem_aplica_texto": "Maia/humano",
+          "regra": "Registrar todos que apareceram; a rota diz qual foi recomendado",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": true
+        },
+        {
+          "id": "fonoaudiologia",
+          "label": "Fonoaudiologia",
+          "quando_usar": "Serviço que a família pediu ou que foi recomendado",
+          "quem_aplica_texto": "Maia/humano",
+          "regra": "Registrar todos que apareceram; a rota diz qual foi recomendado",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": true
+        },
+        {
+          "id": "psicologia",
+          "label": "Psicologia",
+          "quando_usar": "Serviço que a família pediu ou que foi recomendado",
+          "quem_aplica_texto": "Maia/humano",
+          "regra": "Registrar todos que apareceram; a rota diz qual foi recomendado",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": true
+        },
+        {
+          "id": "terapia_ocupacional",
+          "label": "Terapia Ocupacional",
+          "quando_usar": "Serviço que a família pediu ou que foi recomendado",
+          "quem_aplica_texto": "Maia/humano",
+          "regra": "Registrar todos que apareceram; a rota diz qual foi recomendado",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": true
+        },
+        {
+          "id": "psicopedagogia",
+          "label": "Psicopedagogia",
+          "quando_usar": "Serviço que a família pediu ou que foi recomendado",
+          "quem_aplica_texto": "Maia/humano",
+          "regra": "Registrar todos que apareceram; a rota diz qual foi recomendado",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": true
+        },
+        {
+          "id": "psicomotricidade",
+          "label": "Psicomotricidade",
+          "quando_usar": "Serviço que a família pediu ou que foi recomendado",
+          "quem_aplica_texto": "Maia/humano",
+          "regra": "Registrar todos que apareceram; a rota diz qual foi recomendado",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": true
+        },
+        {
+          "id": "musicoterapia",
+          "label": "Musicoterapia",
+          "quando_usar": "Serviço que a família pediu ou que foi recomendado",
+          "quem_aplica_texto": "Maia/humano",
+          "regra": "Registrar todos que apareceram; a rota diz qual foi recomendado",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": true
+        },
+        {
+          "id": "arteterapia",
+          "label": "Arteterapia",
+          "quando_usar": "Serviço que a família pediu ou que foi recomendado",
+          "quem_aplica_texto": "Maia/humano",
+          "regra": "Registrar todos que apareceram; a rota diz qual foi recomendado",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": true
+        },
+        {
+          "id": "equoterapia",
+          "label": "Equoterapia",
+          "quando_usar": "Serviço que a família pediu ou que foi recomendado",
+          "quem_aplica_texto": "Maia/humano",
+          "regra": "Registrar todos que apareceram; a rota diz qual foi recomendado",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": true
+        },
+        {
+          "id": "fisioterapia_infantil",
+          "label": "Fisioterapia infantil",
+          "quando_usar": "Serviço que a família pediu ou que foi recomendado",
+          "quem_aplica_texto": "Maia/humano",
+          "regra": "Registrar todos que apareceram; a rota diz qual foi recomendado",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": true
+        },
+        {
+          "id": "fisioterapia_aquatica",
+          "label": "Fisioterapia aquática",
+          "quando_usar": "Serviço que a família pediu ou que foi recomendado",
+          "quem_aplica_texto": "Maia/humano",
+          "regra": "Registrar todos que apareceram; a rota diz qual foi recomendado",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": true
+        },
+        {
+          "id": "terapia_alimentar",
+          "label": "Terapia alimentar",
+          "quando_usar": "Cozinha terapêutica (nutricionista)",
+          "quem_aplica_texto": "Maia/humano",
+          "regra": "Registrar todos que apareceram; a rota diz qual foi recomendado",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": true
+        },
+        {
+          "id": "consulta_nutricionista",
+          "label": "Consulta nutricionista",
+          "quando_usar": "Avulsa, orientação/plano alimentar. Substitui \"Nutrição\"",
+          "quem_aplica_texto": "Maia/humano",
+          "regra": "Registrar todos que apareceram; a rota diz qual foi recomendado",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": true
+        },
+        {
+          "id": "tecnico_terapeutico_particular_at",
+          "label": "Técnico Terapêutico Particular (AT)",
+          "quando_usar": "Substitui \"Serviço de AT Particular\", \"AT da Clínica\"",
+          "quem_aplica_texto": "Maia/humano",
+          "regra": "Registrar todos que apareceram; a rota diz qual foi recomendado",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": true
+        },
+        {
+          "id": "nda",
+          "label": "NDA",
+          "quando_usar": "Núcleo de Desenvolvimento e Autonomia, 12 a 17 anos",
+          "quem_aplica_texto": "Maia/humano",
+          "regra": "Registrar todos que apareceram; a rota diz qual foi recomendado",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": true
+        },
+        {
+          "id": "programa_de_cuidado",
+          "label": "Programa de Cuidado",
+          "quando_usar": "PCE/PCA/PCI",
+          "quem_aplica_texto": "Maia/humano",
+          "regra": "Registrar todos que apareceram; a rota diz qual foi recomendado",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": true
+        },
+        {
+          "id": "reabilitacao_cognitiva",
+          "label": "Reabilitação cognitiva",
+          "quando_usar": "Serviço que a família pediu ou que foi recomendado",
+          "quem_aplica_texto": "Maia/humano",
+          "regra": "Registrar todos que apareceram; a rota diz qual foi recomendado",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": true
+        },
+        {
+          "id": "psicoeducacao",
+          "label": "Psicoeducação",
+          "quando_usar": "Serviço que a família pediu ou que foi recomendado",
+          "quem_aplica_texto": "Maia/humano",
+          "regra": "Registrar todos que apareceram; a rota diz qual foi recomendado",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": true
+        }
+      ]
+    },
+    "rota": {
+      "nome": "4. ROTA",
+      "cardinalidade": "single",
+      "obrigatorio": false,
+      "cardinalidade_fonte": "explícita (regra 2)",
+      "tags": [
+        {
+          "id": "rota_a_avaliacao_inicial",
+          "label": "Rota A - Avaliação Inicial",
+          "quando_usar": "Avaliação Inicial",
+          "quem_aplica_texto": "Maia",
+          "regra": "Uma por conversa. Código interno, nunca dito à família",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "rota_b_av_neuropsicologica",
+          "label": "Rota B - Av. Neuropsicológica",
+          "quando_usar": "Av. Neuropsicológica",
+          "quem_aplica_texto": "Maia",
+          "regra": "Uma por conversa. Código interno, nunca dito à família",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "rota_c_especialidades_terapeuticas",
+          "label": "Rota C - Especialidades Terapêuticas",
+          "quando_usar": "Terapia particular / reembolso / plano não credenciado com poucas especialidades",
+          "quem_aplica_texto": "Maia",
+          "regra": "Uma por conversa. Código interno, nunca dito à família",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "rota_d_liminar_assistida",
+          "label": "Rota D - Liminar Assistida",
+          "quando_usar": "Plano não credenciado, pediu cobertura (\"esse apoio\")",
+          "quem_aplica_texto": "Maia",
+          "regra": "Uma por conversa. Código interno, nunca dito à família",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "rota_e_tratamento_aba",
+          "label": "Rota E - Tratamento ABA",
+          "quando_usar": "Convênio credenciado ou decisão judicial concedida",
+          "quem_aplica_texto": "Maia",
+          "regra": "Uma por conversa. Código interno, nunca dito à família",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        }
+      ]
+    },
+    "pagamento": {
+      "nome": "5. PAGAMENTO",
+      "cardinalidade": "single",
+      "obrigatorio": true,
+      "cardinalidade_fonte": "explícita (regra 1 + 2)",
+      "tags": [
+        {
+          "id": "particular",
+          "label": "Particular",
+          "quando_usar": "Vai pagar do bolso",
+          "quem_aplica_texto": "Maia",
+          "regra": "Obrigatória quando for lead: Particular, Reembolso ou o nome do plano",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "reembolso",
+          "label": "Reembolso",
+          "quando_usar": "Particular com nota fiscal para pedir reembolso ao plano",
+          "quem_aplica_texto": "Maia",
+          "regra": "Sempre junto com o nome do plano",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "convenio_credenciado",
+          "label": "Convênio Credenciado",
+          "quando_usar": "Tem plano da lista (ASSIM, Leve, FUSEX, Seguros Unimed). Sempre junto com a tag do plano",
+          "quem_aplica_texto": "Maia",
+          "regra": "Marcar também ETAPA CONVÊNIO",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "convenio_nao_credenciado",
+          "label": "Convênio Não Credenciado",
+          "quando_usar": "Tem plano fora da lista. Sempre junto com a tag do plano",
+          "quem_aplica_texto": "Maia",
+          "regra": "Vai para Rota C (reembolso) ou D (pedir cobertura)",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "gratuidade_acao_social",
+          "label": "Gratuidade/Ação Social",
+          "quando_usar": "Atendimento sem custo por ação social",
+          "quem_aplica_texto": "Maia",
+          "regra": "Aplicada pelo humano",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        }
+      ]
+    },
+    "convenio": {
+      "nome": "6. CONVÊNIO (nome da operadora)",
+      "cardinalidade": "multi",
+      "obrigatorio": false,
+      "cardinalidade_fonte": "explícita (regra 2: pode mais de uma)",
+      "tags": [
+        {
+          "id": "assim",
+          "label": "ASSIM",
+          "quando_usar": "Credenciado (Realengo)",
+          "quem_aplica_texto": "Maia",
+          "regra": "Credenciado: marcar também ETAPA CONVÊNIO",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "leve_saude",
+          "label": "Leve Saúde",
+          "quando_usar": "Credenciado (Realengo)",
+          "quem_aplica_texto": "Maia",
+          "regra": "",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "fusex",
+          "label": "FUSEX",
+          "quando_usar": "Credenciado (Realengo e Padre Miguel)",
+          "quem_aplica_texto": "Maia",
+          "regra": "",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "seguros_unimed",
+          "label": "Seguros Unimed",
+          "quando_usar": "Credenciado (Realengo e Padre Miguel)",
+          "quem_aplica_texto": "Maia",
+          "regra": "Não confundir com as outras Unimeds",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "amil",
+          "label": "Amil",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "bradesco",
+          "label": "Bradesco",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "sulamerica",
+          "label": "SulAmérica",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "unimed_ferj",
+          "label": "Unimed FERJ",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "unimed_rio",
+          "label": "Unimed Rio",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "unimed_nacional",
+          "label": "Unimed Nacional",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "unimed_nova_iguacu",
+          "label": "Unimed Nova Iguaçu",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "porto_seguro",
+          "label": "Porto Seguro",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "appai",
+          "label": "APPAI",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "memorial",
+          "label": "Memorial",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "notredame_intermedica",
+          "label": "Notredame / Intermédica",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "hapvida",
+          "label": "Hapvida",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "klini",
+          "label": "Klini",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "cassi",
+          "label": "CASSI",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "caberj",
+          "label": "CABERJ",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "saude_caixa",
+          "label": "Saúde Caixa",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "postal_saude",
+          "label": "Postal Saúde",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "petrobras",
+          "label": "Petrobras",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "golden_cross",
+          "label": "Golden Cross",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "mediservice",
+          "label": "Mediservice",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "care_plus",
+          "label": "Care Plus",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "omint",
+          "label": "Omint",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "prevent_senior",
+          "label": "Prevent Senior",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "geap",
+          "label": "GEAP",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "ampla_gama",
+          "label": "Ampla Gama",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome (decisão Carol 21/09)",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "assist",
+          "label": "Assist",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome (decisão Carol 21/09)",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "unimed_cnu",
+          "label": "Unimed CNU",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome (decisão Carol 21/09)",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "unimed_bauru",
+          "label": "Unimed Bauru",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome (decisão Carol 21/09)",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "unimed_costa_do_sol",
+          "label": "Unimed Costa do Sol",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome (decisão Carol 21/09)",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "unimed_bh",
+          "label": "Unimed BH",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome (decisão Carol 21/09)",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "unimed_na07_especial",
+          "label": "Unimed NA07 Especial",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome (decisão Carol 21/09)",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "unimed_omega",
+          "label": "Unimed Ômega",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome (decisão Carol 21/09)",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "unimed_delta",
+          "label": "Unimed Delta",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome (decisão Carol 21/09)",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "unimed_intercambio",
+          "label": "Unimed Intercâmbio",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome (decisão Carol 21/09)",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "unimed_londrina",
+          "label": "Unimed Londrina",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome (decisão Carol 21/09)",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "unimed_personal",
+          "label": "Unimed Personal",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome (decisão Carol 21/09)",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "unimed_maceio",
+          "label": "Unimed Maceió",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome (decisão Carol 21/09)",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "unimed_beta_ii",
+          "label": "Unimed Beta II",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome (decisão Carol 21/09)",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "unimed_volta_redonda",
+          "label": "Unimed Volta Redonda",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome (decisão Carol 21/09)",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "oplan",
+          "label": "Oplan",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome (decisão Carol 21/09)",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "samoc",
+          "label": "Samoc",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome (decisão Carol 21/09)",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "porto_saude",
+          "label": "Porto Saúde",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome (decisão Carol 21/09)",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "health_med",
+          "label": "Health Med",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome (decisão Carol 21/09)",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "itau",
+          "label": "Itaú",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome (decisão Carol 21/09)",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "nova_saude",
+          "label": "Nova Saúde",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome (decisão Carol 21/09)",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "camim",
+          "label": "CAMIM",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome (decisão Carol 21/09)",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "blue",
+          "label": "Blue",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome (decisão Carol 21/09)",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "metlife",
+          "label": "MetLife",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome (decisão Carol 21/09)",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "real_grandeza",
+          "label": "Real Grandeza",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome (decisão Carol 21/09)",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "cemeru",
+          "label": "CEMERU",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome (decisão Carol 21/09)",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "odontoprev",
+          "label": "OdontoPrev",
+          "quando_usar": "Não credenciado",
+          "quem_aplica_texto": "Maia",
+          "regra": "Tagueamento real: cada operadora com o próprio nome (decisão Carol 21/09)",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        }
+      ]
+    },
+    "etapa_convenio": {
+      "nome": "7. ETAPA CONVÊNIO (só Rota E)",
+      "cardinalidade": "single",
+      "obrigatorio": false,
+      "cardinalidade_fonte": "explícita (regra 2: uma por vez)",
+      "tags": [
+        {
+          "id": "aguardando_documentos",
+          "label": "Aguardando documentos",
+          "quando_usar": "Maia pediu laudo/carteirinha/turno e ainda falta algo",
+          "quem_aplica_texto": "Maia (2 primeiras) / humano (demais)",
+          "regra": "Uma por vez; trocar conforme avança",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": true
+        },
+        {
+          "id": "docs_enviados_a_autorizacao",
+          "label": "Docs enviados à autorização",
+          "quando_usar": "Maia coletou tudo e passou para humano (relógio de 48h começa aqui)",
+          "quem_aplica_texto": "Maia (2 primeiras) / humano (demais)",
+          "regra": "Uma por vez; trocar conforme avança",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": true
+        },
+        {
+          "id": "elegibilidade_confirmada",
+          "label": "Elegibilidade confirmada",
+          "quando_usar": "Equipe conferiu: plano aceito, especialidade coberta",
+          "quem_aplica_texto": "Maia (2 primeiras) / humano (demais)",
+          "regra": "Uma por vez; trocar conforme avança",
+          "maia_pode_aplicar": false,
+          "automatico_sistema": false,
+          "requer_humano": true,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "nao_elegivel",
+          "label": "Não elegível",
+          "quando_usar": "Plano/diagnóstico fora da regra; família orientada para alternativa",
+          "quem_aplica_texto": "Maia (2 primeiras) / humano (demais)",
+          "regra": "Uma por vez; trocar conforme avança",
+          "maia_pode_aplicar": false,
+          "automatico_sistema": false,
+          "requer_humano": true,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "entrevista_familiar_agendada",
+          "label": "Entrevista familiar agendada",
+          "quando_usar": "Substitui \"Entrevista Familiar - Convênio\"",
+          "quem_aplica_texto": "Maia (2 primeiras) / humano (demais)",
+          "regra": "Uma por vez; trocar conforme avança",
+          "maia_pode_aplicar": false,
+          "automatico_sistema": false,
+          "requer_humano": true,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "aguardando_contato_da_operadora",
+          "label": "Aguardando contato da operadora",
+          "quando_usar": "Decisão judicial ou acordo em que a operadora precisa acionar a clínica",
+          "quem_aplica_texto": "Maia (2 primeiras) / humano (demais)",
+          "regra": "Uma por vez; trocar conforme avança",
+          "maia_pode_aplicar": false,
+          "automatico_sistema": false,
+          "requer_humano": true,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "decisao_judicial_recebida",
+          "label": "Decisão judicial recebida",
+          "quando_usar": "Família mandou a decisão",
+          "quem_aplica_texto": "Maia (2 primeiras) / humano (demais)",
+          "regra": "Uma por vez; trocar conforme avança",
+          "maia_pode_aplicar": false,
+          "automatico_sistema": false,
+          "requer_humano": true,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "acordo_adm_com_plano",
+          "label": "Acordo ADM com plano",
+          "quando_usar": "Operadora autorizou por acordo administrativo",
+          "quem_aplica_texto": "Maia (2 primeiras) / humano (demais)",
+          "regra": "Uma por vez; trocar conforme avança",
+          "maia_pode_aplicar": false,
+          "automatico_sistema": false,
+          "requer_humano": true,
+          "compartilhado_humano": false
+        }
+      ]
+    },
+    "juridico": {
+      "nome": "8. JURÍDICO (só Rota D, uso interno)",
+      "cardinalidade": "single",
+      "obrigatorio": false,
+      "cardinalidade_fonte": "uso interno; regra 9 = só humano",
+      "tags": [
+        {
+          "id": "pre_liminar",
+          "label": "Pré-liminar",
+          "quando_usar": "Família em orientação documental/administrativa. Substitui \"Liminar Assistida\" e \"Sem Liminar\"",
+          "quem_aplica_texto": "Humano",
+          "regra": "Nunca aparece para a família",
+          "maia_pode_aplicar": false,
+          "automatico_sistema": false,
+          "requer_humano": true,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "nip",
+          "label": "NIP",
+          "quando_usar": "Reclamação aberta na ANS",
+          "quem_aplica_texto": "Humano",
+          "regra": "Nunca aparece para a família",
+          "maia_pode_aplicar": false,
+          "automatico_sistema": false,
+          "requer_humano": true,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "processo_judicial",
+          "label": "Processo judicial",
+          "quando_usar": "Ação ajuizada",
+          "quem_aplica_texto": "Humano",
+          "regra": "Nunca aparece para a família",
+          "maia_pode_aplicar": false,
+          "automatico_sistema": false,
+          "requer_humano": true,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "liminar_concedida",
+          "label": "Liminar concedida",
+          "quando_usar": "Decisão favorável; migra para Rota E",
+          "quem_aplica_texto": "Humano",
+          "regra": "Nunca aparece para a família",
+          "maia_pode_aplicar": false,
+          "automatico_sistema": false,
+          "requer_humano": true,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "penhora",
+          "label": "Penhora",
+          "quando_usar": "Situação específica de execução",
+          "quem_aplica_texto": "Humano",
+          "regra": "Nunca aparece para a família",
+          "maia_pode_aplicar": false,
+          "automatico_sistema": false,
+          "requer_humano": true,
+          "compartilhado_humano": false
+        }
+      ]
+    },
+    "laudo": {
+      "nome": "9. LAUDO",
+      "cardinalidade": "multi",
+      "obrigatorio": false,
+      "cardinalidade_fonte": "explícita (regra 2: pode mais de uma)",
+      "tags": [
+        {
+          "id": "com_laudo",
+          "label": "Com laudo",
+          "quando_usar": "Laudo médico com diagnóstico",
+          "quem_aplica_texto": "Maia",
+          "regra": "Substitui \"Laudado\", \"Laudo TEA/DI - Indicação ABA\"",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "sem_laudo",
+          "label": "Sem laudo",
+          "quando_usar": "",
+          "quem_aplica_texto": "Maia",
+          "regra": "Substitui \"Laudado\", \"Laudo TEA/DI - Indicação ABA\"",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "laudo_sem_carga_horaria",
+          "label": "Laudo sem carga horária",
+          "quando_usar": "Laudo sem quantidade de sessões; operadora não autoriza",
+          "quem_aplica_texto": "Maia",
+          "regra": "Substitui \"Laudado\", \"Laudo TEA/DI - Indicação ABA\"",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "laudo_vencido",
+          "label": "Laudo vencido",
+          "quando_usar": "Mais de 6 meses",
+          "quem_aplica_texto": "Maia",
+          "regra": "Substitui \"Laudado\", \"Laudo TEA/DI - Indicação ABA\"",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "com_encaminhamento",
+          "label": "Com encaminhamento",
+          "quando_usar": "Só encaminhamento, sem laudo",
+          "quem_aplica_texto": "Maia",
+          "regra": "Substitui \"Laudado\", \"Laudo TEA/DI - Indicação ABA\"",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "sem_encaminhamento",
+          "label": "Sem encaminhamento",
+          "quando_usar": "",
+          "quem_aplica_texto": "Maia",
+          "regra": "Substitui \"Laudado\", \"Laudo TEA/DI - Indicação ABA\"",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        }
+      ]
+    },
+    "diagnostico_informado": {
+      "nome": "10. DIAGNÓSTICO INFORMADO (o que a família disse, não conclusão clínica)",
+      "cardinalidade": "multi",
+      "obrigatorio": false,
+      "cardinalidade_fonte": "explícita (regra 2: pode mais de uma)",
+      "tags": [
+        {
+          "id": "tea",
+          "label": "TEA",
+          "quando_usar": "Diagnóstico ou hipótese que a própria família declarou",
+          "quem_aplica_texto": "Maia",
+          "regra": "Decide elegibilidade de convênio (TEA/ABA). Nunca inferir; só o que a família disse",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "tdah",
+          "label": "TDAH",
+          "quando_usar": "Diagnóstico ou hipótese que a própria família declarou",
+          "quem_aplica_texto": "Maia",
+          "regra": "Decide elegibilidade de convênio (TEA/ABA). Nunca inferir; só o que a família disse",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "tea_tdah",
+          "label": "TEA + TDAH",
+          "quando_usar": "Diagnóstico ou hipótese que a própria família declarou",
+          "quem_aplica_texto": "Maia",
+          "regra": "Decide elegibilidade de convênio (TEA/ABA). Nunca inferir; só o que a família disse",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "suspeita_de_tea",
+          "label": "Suspeita de TEA",
+          "quando_usar": "Diagnóstico ou hipótese que a própria família declarou",
+          "quem_aplica_texto": "Maia",
+          "regra": "Decide elegibilidade de convênio (TEA/ABA). Nunca inferir; só o que a família disse",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "outro_em_investigacao",
+          "label": "Outro / em investigação",
+          "quando_usar": "Diagnóstico ou hipótese que a própria família declarou",
+          "quem_aplica_texto": "Maia",
+          "regra": "Decide elegibilidade de convênio (TEA/ABA). Nunca inferir; só o que a família disse",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        }
+      ]
+    },
+    "idade": {
+      "nome": "11. IDADE (faixa; a idade exata vem da data de nascimento no campo personalizado)",
+      "cardinalidade": "single",
+      "obrigatorio": false,
+      "cardinalidade_fonte": "explícita (regra 2)",
+      "tags": [
+        {
+          "id": "bebe",
+          "label": "Bebê",
+          "quando_usar": "0 a 2 anos",
+          "quem_aplica_texto": "Maia",
+          "regra": "Abaixo de 2 não é atendido: registra e acolhe",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "crianca",
+          "label": "Criança",
+          "quando_usar": "3 a 11 anos",
+          "quem_aplica_texto": "Maia",
+          "regra": "",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "adolescente",
+          "label": "Adolescente",
+          "quando_usar": "12 a 17 anos",
+          "quem_aplica_texto": "Maia",
+          "regra": "Avaliação Inicial obrigatória; NDA nesta faixa",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "adulto",
+          "label": "Adulto",
+          "quando_usar": "18+ (só Av. Neuro e consulta médica)",
+          "quem_aplica_texto": "Maia",
+          "regra": "",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        }
+      ]
+    },
+    "unidade": {
+      "nome": "12. UNIDADE",
+      "cardinalidade": "single",
+      "obrigatorio": false,
+      "cardinalidade_fonte": "explícita (regra 2)",
+      "tags": [
+        {
+          "id": "unidade_realengo",
+          "label": "Unidade Realengo",
+          "quando_usar": "Unidade de preferência ou onde foi agendado",
+          "quem_aplica_texto": "Maia",
+          "regra": "",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "unidade_fazendinha",
+          "label": "Unidade Fazendinha",
+          "quando_usar": "Unidade de preferência ou onde foi agendado",
+          "quem_aplica_texto": "Maia",
+          "regra": "",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "unidade_padre_miguel",
+          "label": "Unidade Padre Miguel",
+          "quando_usar": "Unidade de preferência ou onde foi agendado",
+          "quem_aplica_texto": "Maia",
+          "regra": "",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        }
+      ]
+    },
+    "urgencia": {
+      "nome": "13. URGÊNCIA",
+      "cardinalidade": "single",
+      "obrigatorio": false,
+      "cardinalidade_fonte": "explícita (regra 2)",
+      "tags": [
+        {
+          "id": "quer_comecar_logo",
+          "label": "Quer começar logo",
+          "quando_usar": "Já sabe o que precisa",
+          "quem_aplica_texto": "Maia",
+          "regra": "Ver a tabela de decisão na aba Regras (regra 12): a Maia não pergunta, deduz do que a família disse; se ao final não souber, faz uma pergunta única",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "precisa_entender_melhor",
+          "label": "Precisa entender melhor",
+          "quando_usar": "Quer clareza antes de decidir",
+          "quem_aplica_texto": "Maia",
+          "regra": "Ver a tabela de decisão na aba Regras (regra 12): a Maia não pergunta, deduz do que a família disse; se ao final não souber, faz uma pergunta única",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        },
+        {
+          "id": "ainda_pesquisando",
+          "label": "Ainda pesquisando",
+          "quando_usar": "Comparando",
+          "quem_aplica_texto": "Maia",
+          "regra": "Ver a tabela de decisão na aba Regras (regra 12): a Maia não pergunta, deduz do que a família disse; se ao final não souber, faz uma pergunta única",
+          "maia_pode_aplicar": true,
+          "automatico_sistema": false,
+          "requer_humano": false,
+          "compartilhado_humano": false
+        }
+      ]
+    }
+  }
+}
