@@ -18,6 +18,7 @@ const CAMPOS_IGNORADOS = new Set([
   "id_alta",
   "id_individualidade",
   "id_suspensao",
+  "id_alta_clinica",
   // Quem criou já aparece no cabeçalho de cada linha da trilha (usuario_nome);
   // repetir como campo do snapshot da suspensão seria redundante.
   "criado_por_usuario_id",
@@ -158,6 +159,10 @@ const LABEL_POR_ENTIDADE: Record<EntidadeAuditada, Record<string, string>> = {
     prazo_fim: "Prazo para fim da suspensão",
     arquivo_suspensao_path: "Anexo da suspensão",
     observacoes: "Observações",
+  },
+  alta_clinica: {
+    data_alta_clinica: "Data da alta clínica",
+    arquivo_alta_clinica_path: "Anexo da alta clínica",
   },
   // Os `snap_*` são o retrato do laudo no momento do save, e entram na trilha de
   // propósito: seis meses depois, "avisado em 14/08" só significa algo ao lado

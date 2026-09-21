@@ -156,3 +156,31 @@ export type PacienteSuspensaoTemporariaForm = Omit<
   | "criado_por_usuario_nome"
   | "criado_em"
 >
+
+// ─── ALTA CLÍNICA ────────────────────────────────────────────────────────────
+
+/**
+ * 1:N (histórico), mas representa um ESTADO geral do paciente — encerramento
+ * de todas as terapias —, não um evento por especialidade como PacienteAlta.
+ * "Vigente" = linha mais recente com ativo=true.
+ */
+export type PacienteAltaClinica = {
+  id_alta_clinica: number
+  id_paciente_pulsar: number
+  data_alta_clinica: string
+  /** Opcional. Mesmo bucket privado de alta/suspensão, prefixo altas-clinicas/. */
+  arquivo_alta_clinica_path: string | null
+  /**
+   * false = "excluída" (revertida) pela tela. Nunca sai do banco — o DELETE
+   * é revogado na RLS (20260921200100).
+   */
+  ativo: boolean
+  criado_por_usuario_id: string | null
+  criado_por_usuario_nome: string | null
+  criado_em: string
+}
+
+export type PacienteAltaClinicaForm = Pick<
+  PacienteAltaClinica,
+  "data_alta_clinica" | "arquivo_alta_clinica_path"
+>

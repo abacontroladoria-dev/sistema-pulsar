@@ -9,6 +9,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { ChevronDown, Filter, Search, SlidersHorizontal } from "lucide-react"
 import { normTxt } from "@/lib/cronograma/constants"
+import { DOW_PT } from "@/lib/cronograma/ocupacaoConst"
 import { CAPACIDADE_LABEL_CURTO } from "@/lib/cronograma/salasTypes"
 import { useStatusLabels } from "@/hooks/useStatusLabels"
 import { contarFiltrosSecundarios, SALAS_FILTROS_VAZIO, type SalasFiltrosState } from "@/lib/cronograma/salasView"
@@ -28,9 +29,18 @@ interface MultiSelectFiltroProps {
   onChange: (v: string[]) => void
   /** Rótulo legível por opção (ex.: "unico" -> "Único") — opcional, usa o valor cru quando ausente. */
   labelFor?: (opcao: string) => string
+  /**
+   * true quando o gatilho deve ocupar a largura inteira do container, em vez
+   * de encolher pro tamanho do rótulo — usado dentro do painel vertical do
+   * "Mais filtros" (ver MaisFiltros), pra Andar/Capacidade/Turno/Dia terem
+   * todos o mesmo contorno, do mesmo jeito que os toggles logo abaixo. Nos
+   * filtros primários da barra (Unidade/Núcleo/Status), que ficam lado a lado
+   * numa linha, o padrão (auto) continua sendo o certo.
+   */
+  full?: boolean
 }
 
-function MultiSelectFiltro({ label, values, options, onChange, labelFor }: MultiSelectFiltroProps) {
+function MultiSelectFiltro({ label, values, options, onChange, labelFor, full = false }: MultiSelectFiltroProps) {
   const [aberto, setAberto] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const painelRef = useRef<HTMLDivElement>(null)
@@ -57,8 +67,17 @@ function MultiSelectFiltro({ label, values, options, onChange, labelFor }: Multi
       const alvo = e.target as Node
       // O painel vive num portal: não é descendente de `ref` no DOM, por isso
       // precisa do próprio contains — senão marcar um checkbox seria lido
-      // como "clique fora" e fecharia o painel na hora.
-      if (ref.current?.contains(alvo) || painelRef.current?.contains(alvo)) return
+      // como "clique fora" e fecharia o painel na hora. E quando este filtro
+      // abre DENTRO do painel do "Mais filtros" (outro portal), o clique aqui
+      // também não é descendente do painel PAI — por isso o atributo
+      // `data-salas-filtro-painel` (ver MaisFiltros): qualquer clique dentro
+      // de QUALQUER painel de filtro da barra conta como "dentro", pra um
+      // painel aninhado nunca fechar o pai que o contém.
+      if (
+        ref.current?.contains(alvo)
+        || painelRef.current?.contains(alvo)
+        || (alvo instanceof Element && alvo.closest("[data-salas-filtro-painel]"))
+      ) return
       setAberto(false)
     }
     // Mesmo handler de Escape que o MaisFiltros já usava — antes só o popover
@@ -106,7 +125,7 @@ function MultiSelectFiltro({ label, values, options, onChange, labelFor }: Multi
         // tela, que ouvia só "Unidade".
         aria-label={`${label}: ${resumo}`}
         title={resumo}
-        className="flex h-9 items-center gap-1.5 whitespace-nowrap rounded-lg border border-border bg-card px-2.5 text-sm text-foreground transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className={`flex h-9 items-center gap-1.5 whitespace-nowrap rounded-lg border border-border bg-card px-2.5 text-sm text-foreground transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${full ? "w-full" : ""}`}
       >
         <Filter
           size={15}
@@ -122,6 +141,7 @@ function MultiSelectFiltro({ label, values, options, onChange, labelFor }: Multi
       {aberto && pos && createPortal(
         <div
           ref={painelRef}
+          data-salas-filtro-painel
           style={{ position: "fixed", top: pos.top, left: pos.left }}
           className="z-[100] max-h-64 min-w-50 overflow-auto rounded-lg border border-border bg-card p-1.5 shadow-lg"
         >
@@ -150,6 +170,8 @@ interface SalasFiltrosProps {
   unidades: string[]
   nucleos: string[]
   andares: string[]
+  /** Dias da semana atendidos por alguma sala do recorte, como string de `dow` (ver `diasDeSemanaDisponiveis`). */
+  diasSemana: string[]
 }
 
 const CAPACIDADE_OPCOES: SalaCapacidade[] = ["unico", "duplo", "multiplo"]
@@ -164,9 +186,10 @@ const TURNO_OPCOES = ["Manhã", "Tarde"] as const
  * vista e o usuário conclui que a sala desapareceu do sistema. A tira de chips
  * (FiltrosChips) é a segunda rede de proteção.
  */
-function MaisFiltros({ value, andares, onSet }: {
+function MaisFiltros({ value, andares, diasSemana, onSet }: {
   value: SalasFiltrosState
   andares: string[]
+  diasSemana: string[]
   onSet: <K extends keyof SalasFiltrosState>(key: K, v: SalasFiltrosState[K]) => void
 }) {
   const [aberto, setAberto] = useState(false)
@@ -197,7 +220,16 @@ function MaisFiltros({ value, andares, onSet }: {
     if (!aberto) return
     function aoClicarFora(e: MouseEvent) {
       const alvo = e.target as Node
-      if (ref.current?.contains(alvo) || painelRef.current?.contains(alvo)) return
+      // Mesma ressalva do MultiSelectFiltro acima: um clique dentro de um dos
+      // filtros ANINHADOS aqui dentro (Andar/Capacidade/Turno/Dia, cada um no
+      // próprio portal) não é descendente de `painelRef` — sem o atributo
+      // compartilhado, esse clique fecharia o "Mais filtros" por baixo do
+      // dropdown que acabou de abrir.
+      if (
+        ref.current?.contains(alvo)
+        || painelRef.current?.contains(alvo)
+        || (alvo instanceof Element && alvo.closest("[data-salas-filtro-painel]"))
+      ) return
       setAberto(false)
     }
     function aoTeclar(e: KeyboardEvent) {
@@ -233,30 +265,60 @@ function MaisFiltros({ value, andares, onSet }: {
         )}
       </button>
       {aberto && pos && createPortal(
+        // Sem `data-salas-filtro-painel` aqui de propósito: se este painel
+        // carregasse o marcador, os filtros ANINHADOS (Andar/Turno/Dia) o
+        // enxergariam como "clique dentro" e nenhum deles fecharia mais ao
+        // trocar de um pro outro — só o dropdown de CADA filtro (o que tem o
+        // marcador) deve blindar contra o fechamento deste painel pai.
         <div
           ref={painelRef}
           style={{ position: "fixed", top: pos.top, left: pos.left, width: LARGURA_PAINEL }}
           className="z-[100] flex flex-col gap-3 rounded-xl border border-border bg-card p-3 shadow-lg"
         >
-          <MultiSelectFiltro label="Andar" values={value.andar} options={andares} onChange={v => onSet("andar", v)} />
+          <MultiSelectFiltro label="Andar" values={value.andar} options={andares} onChange={v => onSet("andar", v)} full />
           <MultiSelectFiltro
             label="Capacidade"
             values={value.capacidade}
             options={CAPACIDADE_OPCOES}
             onChange={v => onSet("capacidade", v as SalaCapacidade[])}
             labelFor={o => CAPACIDADE_LABEL_CURTO[o as SalaCapacidade]}
+            full
           />
           <MultiSelectFiltro
             label="Turno"
             values={value.turno}
             options={[...TURNO_OPCOES]}
             onChange={v => onSet("turno", v as ("Manhã" | "Tarde")[])}
+            full
           />
+          <MultiSelectFiltro
+            label="Dia"
+            values={value.dia}
+            options={diasSemana}
+            onChange={v => onSet("dia", v)}
+            labelFor={o => DOW_PT[Number(o)] ?? o}
+            full
+          />
+          <button
+            type="button"
+            onClick={() => onSet("soVagasLivres", !value.soVagasLivres)}
+            aria-pressed={value.soVagasLivres}
+            // Ex.: "Dia: Quarta" + "Turno: Tarde" + este toggle responde "quais
+            // salas estão livres na quarta de tarde" — combina com os demais
+            // filtros (unidade, núcleo etc.) igual a qualquer outro.
+            className={`flex h-9 w-full items-center justify-center whitespace-nowrap rounded-lg border px-2.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+              value.soVagasLivres
+                ? "border-emerald-400 bg-emerald-100 text-emerald-800 dark:border-emerald-500 dark:bg-emerald-950/40 dark:text-emerald-300"
+                : "border-border bg-card text-muted-foreground hover:bg-muted/50"
+            }`}
+          >
+            Só vagas livres
+          </button>
           <button
             type="button"
             onClick={() => onSet("semSessao", !value.semSessao)}
             aria-pressed={value.semSessao}
-            className={`flex h-9 items-center justify-center whitespace-nowrap rounded-lg border px-2.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+            className={`flex h-9 w-full items-center justify-center whitespace-nowrap rounded-lg border px-2.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
               value.semSessao
                 ? "border-amber-400 bg-amber-100 text-amber-800 dark:border-amber-500 dark:bg-amber-950/40 dark:text-amber-300"
                 : "border-border bg-card text-muted-foreground hover:bg-muted/50"
@@ -268,7 +330,7 @@ function MaisFiltros({ value, andares, onSet }: {
             type="button"
             onClick={() => onSet("comExclusividade", !value.comExclusividade)}
             aria-pressed={value.comExclusividade}
-            className={`flex h-9 items-center justify-center whitespace-nowrap rounded-lg border px-2.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+            className={`flex h-9 w-full items-center justify-center whitespace-nowrap rounded-lg border px-2.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
               value.comExclusividade
                 ? "border-blue-400 bg-blue-100 text-blue-800 dark:border-blue-500 dark:bg-blue-950/40 dark:text-blue-300"
                 : "border-border bg-card text-muted-foreground hover:bg-muted/50"
@@ -283,7 +345,7 @@ function MaisFiltros({ value, andares, onSet }: {
   )
 }
 
-export function SalasFiltros({ value, onChange, unidades, nucleos, andares }: SalasFiltrosProps) {
+export function SalasFiltros({ value, onChange, unidades, nucleos, andares, diasSemana }: SalasFiltrosProps) {
   const { labels: statusLabels } = useStatusLabels()
   const statusOpcoes = Object.keys(statusLabels)
 
@@ -316,7 +378,7 @@ export function SalasFiltros({ value, onChange, unidades, nucleos, andares }: Sa
         onChange={v => set("status", v as SalaStatus[])}
         labelFor={o => statusLabels[o]?.label_curto ?? o}
       />
-      <MaisFiltros value={value} andares={andares} onSet={set} />
+      <MaisFiltros value={value} andares={andares} diasSemana={diasSemana} onSet={set} />
     </div>
   )
 }
