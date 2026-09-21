@@ -17,6 +17,7 @@ import { AgentCredentialsRepository } from '../repositories/agent-credentials.re
 import { TagDefinitionRepository }    from '../repositories/tag-definition.repository'
 import { CentralUserRepository }      from '../repositories/central-user.repository'
 import { TaskRepository }             from '../repositories/task.repository'
+import { SentimentoRepository }       from '../repositories/sentimento.repository'
 
 import { ConversationService }  from './conversation.service'
 import { MessageService }       from './message.service'
@@ -26,8 +27,10 @@ import { AgentSettingsService } from './agent-settings.service'
 import { TagDefinitionService } from './tag-definition.service'
 import { CentralUserService }   from './central-user.service'
 import { TaskService }          from './task.service'
+import { SentimentoService }    from './sentimento.service'
 
 import { MetaWabaProvider } from '../providers/meta-waba.provider'
+import { openAiProvider }   from '../llm/openai.provider'
 
 // ============================================================================
 // ProviderFactory
@@ -252,6 +255,37 @@ export function createTaskService(userClient: SupabaseClient): TaskService {
   )
 }
 
+// createSentimentoService(userClient):
+//   Leitura de sentimento do contato, para o painel de detalhamento. RLS do
+//   usuário aplicada na tabela — as policies de
+//   central.contact_sentiment_readings restringem por organização e papel, e o
+//   que elas guardam é um julgamento sobre o estado emocional de uma pessoa
+//   identificada.
+//
+//   O provider da OpenAI é o MESMO do turno da Maia. Não há segunda chave nem
+//   segundo modelo: `llm/modelo.ts` resolve tudo do ambiente, com allowlist, e
+//   introduzir um caminho paralelo aqui daria dois lugares para a IA quebrar e
+//   dois lugares para configurar.
+//
+// createSentimentoSystemService():
+//   Para o worker do tique, que não tem sessão. Service role em tudo — a
+//   restrição de organização passa a ser do caller, que sempre informa orgId.
+export function createSentimentoService(userClient: SupabaseClient): SentimentoService {
+  return new SentimentoService(
+    new SentimentoRepository(userClient),
+    openAiProvider,
+    new AuditRepository(supabaseService),   // sempre service role
+  )
+}
+
+export function createSentimentoSystemService(): SentimentoService {
+  return new SentimentoService(
+    new SentimentoRepository(supabaseService),
+    openAiProvider,
+    new AuditRepository(supabaseService),
+  )
+}
+
 // Exportar para permitir que Sprint 2 registre providers no bootstrap
 export { providerFactory }
 
@@ -264,3 +298,4 @@ export { AgentSettingsService } from './agent-settings.service'
 export { TagDefinitionService } from './tag-definition.service'
 export { CentralUserService }   from './central-user.service'
 export { TaskService }          from './task.service'
+export { SentimentoService }    from './sentimento.service'

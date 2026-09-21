@@ -21,6 +21,14 @@ import {
 } from '@/modules/atendimento/types/errors.types'
 import { JanelaAtendimentoFechadaError } from '@/modules/atendimento/providers/meta-waba.provider'
 import {
+  LlmConfiguracaoError,
+  LlmRateLimitError,
+  LlmTimeoutError,
+  LlmBudgetExceededError,
+  LlmRecusadoError,
+  LlmProviderError,
+} from '@/modules/atendimento/llm/erros'
+import {
   unauthorized,
   forbidden,
   notFound,
@@ -88,6 +96,37 @@ export function mapCentralError(err: unknown): NextResponse {
   }
   if (err instanceof ProviderNotImplementedError) return serviceUnavailable(err.code, err.message)
   if (err instanceof UnauthorizedError)           return forbidden(err.message)
+
+  // ------------------------------------------------------------------------
+  // Camada de LLM
+  //
+  // Sem estas linhas tudo aqui cai no fallback e vira "Internal server error".
+  // Para o worker isso não mudava nada — ele ramifica nas classes, não no HTTP.
+  // Para uma rota chamada por gente, muda tudo: falta de crédito, chave errada e
+  // instabilidade da OpenAI são três problemas com três donos diferentes, e um
+  // 500 genérico manda todos os três para o mesmo lugar (ninguém).
+  //
+  // A ordem importa: LlmConfiguracaoError e LlmBudgetExceededError são os dois
+  // que NUNCA se resolvem sozinhos, e por isso não podem sair como "tente de
+  // novo" — alguém precisa mexer no ambiente ou pôr crédito na conta.
+  // ------------------------------------------------------------------------
+
+  // 503: falha de instalação. Não é erro do pedido, e repetir não adianta.
+  if (err instanceof LlmConfiguracaoError)  return serviceUnavailable(err.code, err.message)
+  // 503 também, mas por saldo: esperar nunca resolve — só crédito resolve.
+  if (err instanceof LlmBudgetExceededError) return serviceUnavailable(err.code, err.message)
+  // 503: throttling. Aqui esperar É a correção, e a UI pode oferecer "tentar
+  // de novo" sem mentir.
+  if (err instanceof LlmRateLimitError)     return serviceUnavailable(err.code, err.message)
+  // 502: a OpenAI demorou ou quebrou. Transitório.
+  if (err instanceof LlmTimeoutError)       return badGateway(err.code, err.message)
+  if (err instanceof LlmProviderError)      return badGateway(err.code, err.message)
+  // 502: a OpenAI recusou o pedido (credencial, modelo inexistente, schema
+  // inválido). A mensagem repassada é a dela — é a única que distingue os três.
+  if (err instanceof LlmRecusadoError) {
+    console.error('[Central API] OpenAI recusou', { code: err.code, message: err.message })
+    return badGateway(err.code, err.message)
+  }
 
   if (err instanceof CentralError) {
     console.error('[Central API] CentralError não mapeado', {
