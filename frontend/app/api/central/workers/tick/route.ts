@@ -4,6 +4,7 @@ import { segredoConfere } from '@/lib/central/webhook-signature'
 import { supabaseService } from '@/lib/supabase/service'
 import { processarAgrupamento } from '@/modules/atendimento/workers/agrupamento.worker'
 import { processarEnvios } from '@/modules/atendimento/workers/envio.worker'
+import { processarSentimento } from '@/modules/atendimento/workers/sentimento.worker'
 
 // ============================================================================
 // Tique dos workers — chamado pelo pg_cron a cada ~10 segundos
@@ -62,11 +63,23 @@ export async function POST(req: NextRequest) {
   const agrupamento = await tentar('agrupamento', () => processarAgrupamento(supabaseService, orgId))
   const envio = await tentar('envio', () => processarEnvios(supabaseService, orgId))
 
+  // Por último, e nunca antes: a leitura de sentimento é para quem ATENDE, não
+  // para quem espera resposta. Se o tique estourar o tempo, é esta que deve
+  // ficar para o próximo — ela recalcula a mesma pergunta sobre o mesmo
+  // material daqui a 10 segundos, enquanto uma resposta não entregue é uma
+  // pessoa esperando no WhatsApp.
+  //
+  // O `tentar` importa mais aqui do que nos outros dois: sem ele, uma conta da
+  // OpenAI sem crédito pararia a ENTREGA DE MENSAGENS por causa de um painel
+  // informativo. O worker tem orçamento próprio e nunca lança.
+  const sentimento = await tentar('sentimento', () => processarSentimento(supabaseService, orgId))
+
   return NextResponse.json({
     ok: true,
     duracaoMs: Date.now() - inicio,
     agrupamento,
     envio,
+    sentimento,
   })
 }
 

@@ -87,6 +87,22 @@ export type ConversationEventType =
   // indistinguível de "passou a unidade certa e o banco devolveu vazio"
   // (defeito de dados) — consertos em lugares completamente diferentes.
   | 'ai.tool_call'
+  // Uma leitura de sentimento do contato foi paga e gravada
+  // (central.contact_sentiment_readings). performed_by = null quando veio do
+  // worker; preenchido quando alguém clicou "Reanalisar" no painel.
+  //
+  // Payload: { contactId, sentiment, confidence, gatilho, mensagens, modelo }.
+  // Nunca o texto analisado nem a justificativa — a trilha diz que a leitura
+  // aconteceu e quanto custou, e a leitura em si mora na própria tabela.
+  //
+  // `gatilho` é o que responde a primeira pergunta de quem investiga custo:
+  // 'auto' em massa significa que o limiar de reanálise está baixo demais,
+  // enquanto 'manual' em massa significa que a leitura automática está
+  // chegando tarde e os atendentes estão forçando na mão.
+  //
+  // conversation_id ausente de propósito: a leitura é do CONTATO e atravessa
+  // as conversas dele, que é o motivo de a tabela existir.
+  | 'ai.sentiment_read'
   // Infra
   | 'webhook.received'
   | 'webhook.failed'

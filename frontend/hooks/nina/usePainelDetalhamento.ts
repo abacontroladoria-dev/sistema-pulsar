@@ -5,6 +5,7 @@ import type {
   Appointment,
   Task,
   TagDefinition,
+  LeituraSentimento,
 } from '@/modules/atendimento/types/central.types'
 import type { UsuarioAtribuivel } from '@/components/nina/detalhamento/BlocoResponsavel'
 
@@ -48,6 +49,18 @@ export interface UsePainelDetalhamento {
   carregandoListas: boolean
   // Chamado pelo painel depois de criar agendamento ou tarefa.
   recarregarListas: () => Promise<void>
+
+  // Leitura de sentimento — estado próprio, separado das listas acima.
+  //
+  // Separado porque o ciclo é outro: as listas carregam juntas e falham juntas
+  // sem consequência, enquanto a leitura tem uma ação que CUSTA (uma chamada ao
+  // modelo) e cujo erro precisa chegar à tela. Enfiá-la no mesmo
+  // `carregandoListas` faria o botão de reanalisar piscar o bloco de tarefas.
+  sentimento:            LeituraSentimento | null
+  carregandoSentimento:  boolean
+  analisandoSentimento:  boolean
+  erroSentimento:        string | null
+  reanalisarSentimento:  () => Promise<void>
 }
 
 export function usePainelDetalhamento(contactId: string | null): UsePainelDetalhamento {
@@ -56,6 +69,11 @@ export function usePainelDetalhamento(contactId: string | null): UsePainelDetalh
   const [agendamentos, setAgendamentos] = useState<Appointment[]>([])
   const [tarefas, setTarefas]           = useState<Task[]>([])
   const [carregandoListas, setCarregando] = useState(false)
+
+  const [sentimento, setSentimento]     = useState<LeituraSentimento | null>(null)
+  const [carregandoSentimento, setCarregandoSentimento] = useState(false)
+  const [analisandoSentimento, setAnalisando]           = useState(false)
+  const [erroSentimento, setErroSentimento]             = useState<string | null>(null)
 
   // ------------------------------------------------------------------------
   // Catálogos — uma vez, no mount
@@ -123,5 +141,84 @@ export function usePainelDetalhamento(contactId: string | null): UsePainelDetalh
     await carregarListas(controller.signal)
   }, [carregarListas])
 
-  return { catalogoTags, usuarios, agendamentos, tarefas, carregandoListas, recarregarListas }
+  // ------------------------------------------------------------------------
+  // Leitura de sentimento
+  //
+  // GET na troca de contato, e só. Nunca no polling: o resultado muda quando o
+  // worker analisa (a cada vários minutos, no melhor caso), não a cada 5
+  // segundos — e o corpo é maior que o das outras listas.
+  //
+  // A BARRA FINAL NO POST NÃO É ENFEITE. `next.config.ts` tem
+  // `trailingSlash: true`, então `POST /…/sentimento` responde 308 e o handler
+  // NUNCA roda. Medido nesta rota: sem barra = 308, com barra = chega. O GET
+  // não sofre disso porque o navegador segue o redirect sem perder nada, mas o
+  // POST fica igual em qualquer caso — e escrever as duas do mesmo jeito evita
+  // que alguém "limpe" a barra depois.
+
+  const carregarSentimento = useCallback(async (signal: AbortSignal) => {
+    if (!contactId) {
+      setSentimento(null)
+      return
+    }
+    try {
+      const leitura = await buscar<LeituraSentimento>(
+        `/api/central/contacts/${contactId}/sentimento/`, signal,
+      )
+      setSentimento(leitura)
+    } catch (e) {
+      if ((e as Error).name === 'AbortError') return
+      // Some com a leitura velha: ela é de OUTRA pessoa se a troca de contato
+      // foi o que disparou esta carga. Mostrar o sentimento do contato anterior
+      // na ficha do atual é pior que não mostrar nada.
+      setSentimento(null)
+    }
+  }, [contactId])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    let vivo = true
+    setCarregandoSentimento(true)
+    // O erro é da tentativa de ANALISAR, não da de ler. Trocar de conversa
+    // limpa o aviso — ele não fala mais sobre quem está na tela.
+    setErroSentimento(null)
+    carregarSentimento(controller.signal).finally(() => {
+      if (vivo) setCarregandoSentimento(false)
+    })
+    return () => { vivo = false; controller.abort() }
+  }, [carregarSentimento])
+
+  const reanalisarSentimento = useCallback(async () => {
+    if (!contactId || analisandoSentimento) return
+
+    setAnalisando(true)
+    setErroSentimento(null)
+    try {
+      const res  = await fetch(`/api/central/contacts/${contactId}/sentimento/`, { method: 'POST' })
+      const json = await res.json().catch(() => null)
+
+      if (!res.ok) {
+        // A mensagem do servidor é a única que distingue "conversa curta
+        // demais" de "acabou o crédito da OpenAI" — duas coisas que o atendente
+        // resolve de formas opostas. Um "não foi possível analisar" genérico
+        // mandaria as duas para o mesmo lugar.
+        setErroSentimento(json?.error?.message ?? `A análise respondeu ${res.status}.`)
+        return
+      }
+
+      // Recarrega em vez de encaixar a linha nova no estado: a tendência
+      // depende da leitura ANTERIOR, e o POST devolve só a atual. Montar o par
+      // aqui duplicaria a regra que o service já aplica.
+      const controller = new AbortController()
+      await carregarSentimento(controller.signal)
+    } catch (e) {
+      setErroSentimento((e as Error).message || 'Falha de rede ao analisar.')
+    } finally {
+      setAnalisando(false)
+    }
+  }, [contactId, analisandoSentimento, carregarSentimento])
+
+  return {
+    catalogoTags, usuarios, agendamentos, tarefas, carregandoListas, recarregarListas,
+    sentimento, carregandoSentimento, analisandoSentimento, erroSentimento, reanalisarSentimento,
+  }
 }

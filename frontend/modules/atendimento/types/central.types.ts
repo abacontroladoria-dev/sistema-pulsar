@@ -417,6 +417,53 @@ export interface Task {
   updated_at:       string
 }
 
+// ----------------------------------------------------------------------------
+// central.contact_sentiment_readings — a leitura de sentimento do contato.
+//
+// Tabela APPEND-ONLY (migration 20260921100000): a linha nasce e nunca é
+// atualizada. Por isso não há `updated_at` aqui — ele descreveria uma escrita
+// que não pode acontecer.
+// ----------------------------------------------------------------------------
+
+export type SentimentLabel = 'positivo' | 'neutro' | 'negativo'
+
+// 'auto'   — worker tick, a cada N mensagens novas do contato
+// 'manual' — botão "Reanalisar" do painel
+export type SentimentTrigger = 'auto' | 'manual'
+
+export interface ContactSentimentReading {
+  id:                string
+  organization_id:   string
+  contact_id:        string
+  sentiment:         SentimentLabel
+  // 0 a 1. Vai para a tela: "negativo a 41%" pede outra reação do atendente que
+  // "negativo a 95%", e esconder isso transformaria um palpite em veredito.
+  confidence:        number
+  headline:          string
+  reasoning:         string
+  // 1 a 3 itens, garantido por ck_csr_recomendacoes. O que fazer na PRÓXIMA
+  // resposta — o bloco existe para apoiar decisão, não para descrever o passado.
+  recommendations:   string[]
+  messages_analyzed: number
+  window_start:      string
+  window_end:        string
+  // `sent_at` da mensagem mais recente que entrou nesta leitura. É a marca
+  // d'água do gatilho automático — ver o comentário da coluna na migration.
+  last_message_at:   string | null
+  model:             string
+  triggered_by:      SentimentTrigger
+  created_at:        string
+}
+
+// O que a rota devolve ao painel. `anterior` é o que permite desenhar tendência;
+// vem null na primeira leitura de um contato, e o bloco simplesmente não mostra
+// movimento nesse caso — inventar "estável" a partir de uma amostra só seria uma
+// afirmação que ninguém verificou.
+export interface LeituraSentimento {
+  atual:    ContactSentimentReading | null
+  anterior: ContactSentimentReading | null
+}
+
 // Retorno de central.listar_vagas_disponiveis.
 // Não é uma tabela: é a grade do TiTa menos o que já prometemos.
 export interface VagaDisponivel {

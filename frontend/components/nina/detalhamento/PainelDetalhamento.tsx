@@ -3,9 +3,15 @@
 import React from 'react'
 import { X, Loader2, Phone, Mail } from 'lucide-react'
 import type { DetalheConversa } from '@/hooks/nina/useCentralInbox'
-import type { Appointment, Task, TagDefinition } from '@/modules/atendimento/types/central.types'
+import type {
+  Appointment,
+  Task,
+  TagDefinition,
+  LeituraSentimento,
+} from '@/modules/atendimento/types/central.types'
 import { rotuloTipoContato } from '../adapters/centralToNina'
 import { Avatar } from '../Avatar'
+import { BlocoSentimento }   from './BlocoSentimento'
 import { BlocoCanal }        from './BlocoCanal'
 import { BlocoOrigem }       from './BlocoOrigem'
 import { BlocoResponsavel, type UsuarioAtribuivel } from './BlocoResponsavel'
@@ -32,6 +38,10 @@ export interface DadosPainel {
   agendamentos: Appointment[]
   tarefas:      Task[]
   carregandoListas: boolean
+  sentimento:           LeituraSentimento | null
+  carregandoSentimento: boolean
+  analisandoSentimento: boolean
+  erroSentimento:       string | null
 }
 
 export interface AcoesPainel {
@@ -42,6 +52,7 @@ export interface AcoesPainel {
   agendarRetorno?: () => void
   designarTarefa?: () => void
   concluirTarefa?: (id: string) => Promise<void>
+  reanalisarSentimento?: () => void
 }
 
 export const PainelDetalhamento: React.FC<{
@@ -105,6 +116,18 @@ export const PainelDetalhamento: React.FC<{
               )}
             </div>
           </header>
+
+          {/* Antes de tudo: é o que se lê ANTES de escrever uma resposta, e
+              não mais um campo da ficha. Canal, origem e tags descrevem o
+              cadastro; isto descreve o estado da pessoa agora. */}
+          <BlocoSentimento
+            leitura={dados.sentimento}
+            carregando={dados.carregandoSentimento}
+            analisando={dados.analisandoSentimento}
+            erro={dados.erroSentimento}
+            // Sem contato não há quem analisar — a rota é por contactId.
+            aoReanalisar={contato ? acoes.reanalisarSentimento : undefined}
+          />
 
           <BlocoCanal canal={detalhe.channel} inbox={detalhe.inbox} />
 

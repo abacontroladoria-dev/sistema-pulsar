@@ -523,6 +523,10 @@ const ChatInterface: React.FC = () => {
                 agendamentos:     painel.agendamentos,
                 tarefas:          painel.tarefas,
                 carregandoListas: painel.carregandoListas,
+                sentimento:           painel.sentimento,
+                carregandoSentimento: painel.carregandoSentimento,
+                analisandoSentimento: painel.analisandoSentimento,
+                erroSentimento:       painel.erroSentimento,
               }}
               acoes={{
                 salvarOrigem:        handleSalvarOrigem,
@@ -532,6 +536,9 @@ const ChatInterface: React.FC = () => {
                 agendarRetorno:      () => setAgendando(true),
                 designarTarefa:      () => setDesignando(true),
                 concluirTarefa:      handleConcluirTarefa,
+                // `void`: o bloco não espera a promessa — o estado de
+                // "analisando" já vive no hook e é ele que desenha o spinner.
+                reanalisarSentimento: () => { void painel.reanalisarSentimento() },
               }}
               aoFechar={() => setShowProfileInfo(false)}
             />
