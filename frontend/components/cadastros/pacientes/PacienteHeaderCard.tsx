@@ -37,6 +37,7 @@ export function PacienteHeaderCard({
   onFotoAlterada,
   onVerHistorico,
   onAlterarSituacao,
+  temAltaClinica,
 }: {
   paciente: Paciente
   editando: boolean
@@ -48,6 +49,8 @@ export function PacienteHeaderCard({
   onFotoAlterada: (path: string | null) => void
   onVerHistorico: () => void
   onAlterarSituacao: () => void
+  /** Há alta clínica vigente (encerrou todas as terapias) — independe de ativo/inativo. */
+  temAltaClinica: boolean
 }) {
   return (
     <div className="rounded-lg border border-border bg-card px-4 py-4">
@@ -88,6 +91,11 @@ export function PacienteHeaderCard({
             {!paciente.falecido && paciente.ativo && (
               <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
                 Ativo
+              </span>
+            )}
+            {temAltaClinica && (
+              <span className="rounded-full bg-rose-500/10 px-2 py-0.5 text-xs font-medium text-rose-600 dark:text-rose-400">
+                Alta clínica
               </span>
             )}
             {paciente.ficticio && (

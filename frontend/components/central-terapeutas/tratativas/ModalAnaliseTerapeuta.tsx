@@ -41,9 +41,9 @@ function iniciaisDe(nome: string): string {
 }
 
 // ─── Leitura de uma linha da tabela ──────────────────────────────────────────
-// Situação e Evolução são dois eixos DIFERENTES e é isso que a tabela precisa
+// Paciente e Evolução são dois eixos DIFERENTES e é isso que a tabela precisa
 // mostrar: "Pendente retroativa" é uma sessão que aconteceu (presença Sim) e
-// está sem evolução — Situação "Realizado", Evolução "Pendente". Colapsar os
+// está sem evolução — Paciente "Presente", Evolução "Pendente". Colapsar os
 // dois numa coluna só é o que fazia a leitura antiga precisar de legenda.
 
 function origemDaSessao(s: SessaoTratativa): { texto: string; tone: Tone } {
@@ -56,12 +56,12 @@ function situacaoDaSessao(s: SessaoTratativa): { texto: string; tone: Tone } {
   const cls = s.classificacao ?? ""
   if (cls === "Feriado/Ponto Fac.") return { texto: "Feriado/Ponto Fac.", tone: "gray" }
   // Também lido do status, e não só da classificação: em "Cancelado evoluído" a
-  // sessão foi cancelada e ainda assim tem evolução — dizer "Realizado" ali
+  // sessão foi cancelada e ainda assim tem evolução — dizer "Presente" ali
   // esconderia exatamente a contradição que faz a linha ser inconsistente.
   if (cls === "Cancelado" || isCancelado(s.statusFinal) || isCancelado(s.statusCsv)) {
     return { texto: "Cancelado", tone: "red" }
   }
-  if (isSim(s.presencaOrbita)) return { texto: "Realizado", tone: "green" }
+  if (isSim(s.presencaOrbita)) return { texto: "Presente", tone: "green" }
   return { texto: "Sem presença", tone: "amber" }
 }
 
@@ -574,7 +574,7 @@ export function ModalAnaliseTerapeuta({ p, periodo, onClose }: Props) {
                           <th scope="col" className="px-3 py-2.5 text-left font-semibold">Paciente</th>
                           <th scope="col" className="px-3 py-2.5 text-left font-semibold">Especialidade</th>
                           <th scope="col" className="px-3 py-2.5 text-left font-semibold">Origem</th>
-                          <th scope="col" className="px-3 py-2.5 text-left font-semibold">Situação</th>
+                          <th scope="col" className="px-3 py-2.5 text-left font-semibold">Paciente</th>
                           <th scope="col" className="px-3 py-2.5 text-left font-semibold">Evolução</th>
                           <th scope="col" className="w-10 px-2 py-2.5">
                             <span className="sr-only">Detalhes</span>
