@@ -72,6 +72,24 @@ const nextConfig: NextConfig = {
   },
   turbopack: { root: __dirname },
 
+  // Abrir o dev server para a rede local (celular conferindo layout, a TV, outra
+  // máquina). O Next bloqueia por padrão o acesso de origem cruzada aos recursos
+  // internos de dev — `/_next/webpack-hmr` à frente — e o bloqueio é CALADO no
+  // navegador: aparece só como aviso no terminal, enquanto na tela o efeito é a
+  // página não hidratar (form recarregando com `?` na URL, botão nenhum
+  // respondendo). Ver reference_hsts_trava_acesso_por_ip_dev: o HSTS produz
+  // exatamente o mesmo sintoma, e os dois precisam ser resolvidos juntos.
+  //
+  // Só em dev, e só faixas privadas — em produção esta chave nem é lida.
+  //
+  // Wildcard por SEGMENTO, não CIDR: o Next casa com `matchWildcardDomain`
+  // (server/app-render/csrf-protection.js), que parte o host nos pontos e aceita
+  // `*`/`**`. Uma entrada como '192.168.0.0/16' seria comparada literalmente e
+  // nunca casaria — o bloqueio continuaria de pé, com a mesma cara de tela morta.
+  ...(isDev
+    ? { allowedDevOrigins: ['192.168.*.*', '10.*.*.*', '172.16.*.*', '172.20.*.*'] }
+    : {}),
+
   // O hook webpack() que existia aqui foi removido: ele servia a um esquema de
   // importar arquivos de nina-api-oficial/ (projeto Vite irmão, do CRM Nina) que
   // nunca chegou a existir. Definia nove globais — __NINA_SUPABASE_URL__ e
