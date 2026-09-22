@@ -1,13 +1,13 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import { Ban, ExternalLink, KeySquare, Link2, ShieldAlert, X } from 'lucide-react'
+import { Ban, ExternalLink, KeySquare, Link2, ShieldAlert, Undo2, X } from 'lucide-react'
 import { autorizacaoCancelada, autorizacaoLiberada } from '@/hooks/useAnaliseReincidencia'
 import { completarMotivoGlosa, lerMotivoGlosa } from '@/lib/glosa'
 import { rotuloOrigemGuia, rotuloSolicitadoPor } from '@/lib/guiaOrigem'
 import SituacaoBadge from '../SituacaoBadge'
 import type { NotaManual, TokenConferencia } from '@/services/auditoria-assim.service'
-import type { CartaoGrade, ReclassificacaoSituacao } from '../types'
+import type { CartaoGrade, ReclassificacaoSituacao, VinculoAutorizacao } from '../types'
 import { dataHoraCurta, dataHoraDeTimestamptz, formatarDiaComNome } from './datas'
 import { sessaoDoBloco } from './vinculo'
 import { rotuloForma } from '../formaValidacao'
@@ -76,6 +76,7 @@ export default function DetalheCartao({
   podeVincular,
   podeReclassificar,
   onVincular,
+  onDesvincular,
   onReclassificar,
   onFechar,
 }: {
@@ -107,6 +108,15 @@ export default function DetalheCartao({
   /** `admin`/`autorizacao`. Mais estreito que `podeVincular` — ver a RPC. */
   podeReclassificar: boolean
   onVincular: (guia: string) => void
+  /**
+   * Desfazer a triagem — mesma permissão de vincular, e não uma terceira.
+   *
+   * `desvincular_autorizacao` exige exatamente os mesmos três papéis que
+   * `vincular_autorizacao` (admin, autorizacao, recepcao), então `podeVincular`
+   * é a resposta certa para os dois botões. Um `podeDesvincular` separado seria
+   * uma quarta lista para manter em sincronia com a RPC, sem nada a decidir.
+   */
+  onDesvincular: (vinculo: VinculoAutorizacao) => void
   onReclassificar: (cartao: CartaoGrade) => void
   onFechar: () => void
 }) {
@@ -451,6 +461,42 @@ export default function DetalheCartao({
               </p>
             </div>
           )}
+
+          {/* DESFAZER, dentro da seção e não no rodapé (2026-09-22).
+
+              A RPC `desvincular_autorizacao` existia desde 2026-08-21 e nunca
+              teve porta de entrada: o service a exportava, o hook a devolvia, e
+              nenhum componente a chamava. O efeito era uma triagem só de ida —
+              quem errasse o desfecho não tinha como corrigir pela tela, e a
+              única saída era UPDATE no banco. Apareceu quando o tipo
+              `substituicao` nasceu (22/09) e os vínculos feitos como
+              `falta_terapeuta` precisaram ser refeitos.
+
+              Mora AQUI, coberto pelos campos que descrevem o vínculo, porque é
+              deles que se decide desfazer: a pergunta é "esta triagem está
+              certa?", e ela se responde lendo quem decidiu, quando e por quê. O
+              rodapé é dos gestos que a gaveta OFERECE (vincular, reclassificar);
+              este é o desfazer de algo que já está escrito logo acima.
+
+              Discreto de propósito — `text-[11px]`, sem preenchimento de cor. É
+              destrutivo (a guia volta à fila e a cobertura deixa de valer), e o
+              caminho normal de quem abre esta gaveta é só ler. */}
+          <div className="flex justify-end pt-1.5">
+            <button
+              type="button"
+              onClick={() => onDesvincular(vinculo)}
+              disabled={!podeVincular}
+              title={
+                podeVincular
+                  ? 'Desfazer esta triagem — a guia volta para a fila de autorizações sem vínculo'
+                  : 'Seu perfil não permite desfazer vínculos'
+              }
+              className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium text-slate-500 transition hover:bg-rose-50 hover:text-rose-700 focus-visible:ring-2 focus-visible:ring-rose-400 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-slate-500"
+            >
+              <Undo2 size={12} aria-hidden />
+              Desfazer triagem
+            </button>
+          </div>
         </Secao>
       )}
 

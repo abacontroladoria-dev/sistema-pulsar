@@ -6,6 +6,7 @@ import { useAnaliseReincidencia } from '@/hooks/useAnaliseReincidencia'
 import { useGlosaCodigos } from '@/hooks/useGlosaCodigos'
 import { JANELA_PADRAO, useReconciliacaoAssim } from '@/hooks/useReconciliacaoAssim'
 import ModalConfirmarVinculo from '../ModalConfirmarVinculo'
+import ModalDesfazerTriagem from '../ModalDesfazerTriagem'
 import ModalReclassificarSituacao from '../ModalReclassificarSituacao'
 import ListaPendencias from '../reconciliacao/ListaPendencias'
 import PainelAvulsas from '../reconciliacao/PainelAvulsas'
@@ -18,6 +19,7 @@ import {
 } from '@/services/reconciliacao-assim.service'
 import type {
   AlvoAnalise, CandidataVinculo, CartaoGrade, GuiaOrfa, SituacaoReclassificavel,
+  VinculoAutorizacao,
 } from '../types'
 
 /** Os papéis que a RPC aceita para escrever. `diretoria` vê, mas não vincula. */
@@ -113,6 +115,18 @@ export default function ReconciliacaoTab({ alvo, onAlvoConsumido }: Props) {
    */
   const [cartaoEmReclassificacao, setCartaoEmReclassificacao] = useState<CartaoGrade | null>(null)
   const [salvandoReclassificacao, setSalvandoReclassificacao] = useState(false)
+
+  /**
+   * A triagem que está sendo desfeita. Nula = o modal está fechado.
+   *
+   * Não entra em `Etapa` pelo mesmo motivo de `cartaoEmReclassificacao`: as
+   * etapas são estágios de UM fluxo (escolher a sessão, depois confirmar), e
+   * desfazer não é estágio de nada — abre e fecha sobre a grade, que continua
+   * atrás. Ele nasce DENTRO da gaveta, que por sua vez está sobre a grade;
+   * transformá-lo em etapa fecharia as duas para ele aparecer.
+   */
+  const [triagemEmDesfazer, setTriagemEmDesfazer] = useState<VinculoAutorizacao | null>(null)
+  const [salvandoDesfazer, setSalvandoDesfazer] = useState(false)
 
 
   // Haver paciente escolhido JÁ é "a semana está aberta" — não há um segundo
@@ -346,6 +360,7 @@ export default function ReconciliacaoTab({ alvo, onAlvoConsumido }: Props) {
         podeReclassificar={podeReclassificar}
         codigosGlosa={codigosGlosa}
         onVincularGuia={vincularGuia}
+        onDesvincularGuia={setTriagemEmDesfazer}
         onReclassificar={setCartaoEmReclassificacao}
         vinculo={modoVinculo}
       />
@@ -362,6 +377,31 @@ export default function ReconciliacaoTab({ alvo, onAlvoConsumido }: Props) {
         onReclassificar={confirmarReclassificacao}
         onAdiantar={confirmarAdiantamento}
         onDesfazer={confirmarDesfazer}
+      />
+
+      {/* Desfazer a triagem. Nasce na gaveta (que está sobre a grade) e sobe
+          até aqui porque é daqui que sai a recarga: os dois lados envelhecem
+          juntos, como no vínculo. */}
+      <ModalDesfazerTriagem
+        open={triagemEmDesfazer !== null}
+        onClose={() => setTriagemEmDesfazer(null)}
+        vinculo={triagemEmDesfazer}
+        salvando={salvandoDesfazer}
+        onConfirmar={async (motivo) => {
+          if (!triagemEmDesfazer) return
+          setSalvandoDesfazer(true)
+          try {
+            await fila.desvincularAutorizacao(triagemEmDesfazer.id, motivo || null)
+            // Mesma recarga do vínculo, e pela mesma razão: sem ela a grade
+            // continuaria desenhando a triagem recém-desfeita, e a guia não
+            // voltaria à fila de órfãs em tela — o oposto do que o clique
+            // acabou de afirmar.
+            recarregarSemana()
+            setTriagemEmDesfazer(null)
+          } finally {
+            setSalvandoDesfazer(false)
+          }
+        }}
       />
 
       {/* O aceite continua sendo modal, e só ele. A escolha virou modo da grade

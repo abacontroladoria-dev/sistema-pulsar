@@ -7,7 +7,7 @@ import {
 } from 'lucide-react'
 import { diasUteisDe, segundaDe, type useAnaliseReincidencia } from '@/hooks/useAnaliseReincidencia'
 import { useModalDialog } from '@/hooks/useModalDialog'
-import type { CandidataVinculo, CartaoGrade, GuiaOrfa } from '../types'
+import type { CandidataVinculo, CartaoGrade, GuiaOrfa, VinculoAutorizacao } from '../types'
 import DetalheCartao from './DetalheCartao'
 import GradeSemana from './GradeSemana'
 import { PENDENCIAS } from './pendencias'
@@ -293,6 +293,8 @@ type Props = {
   podeReclassificar: boolean
   codigosGlosa: Map<string, string>
   onVincularGuia: (guia: string) => void
+  /** Desfazer a triagem de um cartão. Mesma permissão de vincular. */
+  onDesvincularGuia: (vinculoDaTriagem: VinculoAutorizacao) => void
   onReclassificar: (cartao: CartaoGrade) => void
   /** Ligado = a grade está escolhendo a sessão desta guia. Ver `ModoVinculo`. */
   vinculo: ModoVinculo | null
@@ -337,7 +339,7 @@ type Props = {
  */
 export default function ModalSemanaPaciente({
   open, onClose, analise, podeVincular, podeReclassificar, codigosGlosa,
-  onVincularGuia, onReclassificar, vinculo,
+  onVincularGuia, onDesvincularGuia, onReclassificar, vinculo,
 }: Props) {
   /** O cartão aberto na gaveta lateral. Nulo = só a grade. */
   const [detalhe, setDetalhe] = useState<CartaoGrade | null>(null)
@@ -658,6 +660,7 @@ export default function ModalSemanaPaciente({
                 podeVincular={podeVincular}
                 podeReclassificar={podeReclassificar}
                 onVincular={onVincularGuia}
+                onDesvincular={onDesvincularGuia}
                 onReclassificar={onReclassificar}
                 onFechar={() => setDetalhe(null)}
               />
