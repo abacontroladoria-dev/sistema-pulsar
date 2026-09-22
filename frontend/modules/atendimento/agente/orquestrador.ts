@@ -15,6 +15,7 @@ import type {
   LlmMensagem,
   LlmUso,
   LlmChamadaFerramenta,
+  LlmFerramenta,
 } from '../llm/tipos'
 
 // ============================================================================
@@ -76,6 +77,18 @@ export interface DepsTurno {
   // inverso (default verdadeiro) faria a clínica perguntar nome e plano a um
   // paciente antigo, que é o defeito visível para quem está do outro lado.
   coletaDeCadastro?: boolean
+  // A ferramenta `registrar_tags` (agente/tags.ts), montada pelo worker a
+  // partir do catálogo da organização (TagDefinitionRepository.porGrupo) —
+  // é por isso que ela não mora em FERRAMENTAS_SEMPRE junto com
+  // escalar_para_humano: o enum de cada grupo depende de dado, não é
+  // estático. Sempre oferecida quando presente, como o resto de
+  // FERRAMENTAS_SEMPRE — a classificação não depende do interruptor de
+  // agendamento nem de haver coleta de cadastro pendente.
+  //
+  // Opcional: testes do laço (orquestrador.test.mts e vizinhos) não montam
+  // catálogo nenhum, e sem isto todos precisariam passar uma ferramenta vazia
+  // só para compilar. Ausente = turno sem a ferramenta, igual a hoje.
+  ferramentaTags?: LlmFerramenta
   // Rastro opcional das chamadas de ferramenta.
   //
   // Existe porque "a IA ofereceu horário da unidade errada" era
@@ -235,10 +248,11 @@ export async function executarTurno(
   // Nunca mais é `undefined` — antes disso o provider omitia a chave `tools` e o
   // modelo nem sabia que poderia agendar. Agora sempre há ao menos uma ferramenta,
   // e a de agenda continua invisível quando desligada, que é o que importa.
+  const extras = deps.ferramentaTags ? [deps.ferramentaTags] : []
   const ferramentas = (
     deps.agendamentoHabilitado
-      ? [...DEFINICOES_FERRAMENTAS, ...FERRAMENTAS_SEMPRE]
-      : [...FERRAMENTAS_SEMPRE]
+      ? [...DEFINICOES_FERRAMENTAS, ...FERRAMENTAS_SEMPRE, ...extras]
+      : [...FERRAMENTAS_SEMPRE, ...extras]
   ).filter((f) => (
     // A coleta de cadastro é a única de FERRAMENTAS_SEMPRE que NÃO vale sempre:
     // ela só existe para quem ainda não é paciente da clínica. Quem já tem

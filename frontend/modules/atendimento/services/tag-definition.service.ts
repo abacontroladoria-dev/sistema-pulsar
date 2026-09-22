@@ -4,7 +4,7 @@
 // Aqui ele só impediria os testes em tsx de importarem a classe.
 import type { TagDefinitionRepository } from '../repositories/tag-definition.repository'
 import type { TagDefinition } from '../types/central.types'
-import { TagDesconhecidaError } from '../types/errors.types'
+import { TagDesconhecidaError, TagNaoAplicavelPelaMaiaError } from '../types/errors.types'
 
 // ============================================================================
 // TagDefinitionService
@@ -38,6 +38,31 @@ export class TagDefinitionService {
     const desconhecidas = limpas.filter(c => !validas.has(c))
 
     if (desconhecidas.length > 0) throw new TagDesconhecidaError(desconhecidas)
+
+    return limpas
+  }
+
+  // Segunda camada de defesa da ferramenta `registrar_tags` (Regra 3 do
+  // maia_tagging_BUILD.md): mesmo que o enum da ferramenta já devesse ter
+  // impedido isso (agente/tags.ts monta os enums só com maia_pode_aplicar =
+  // true), esta chamada revalida direto no catálogo antes de gravar — cobre
+  // o caso raro de o catálogo mudar entre a montagem do enum e a resposta do
+  // modelo, e é a fronteira que qualquer novo caller da Maia também atravessa,
+  // sem precisar repetir o filtro.
+  //
+  // Reusa validarChaves para a validação de existência/ativo; aqui só
+  // acrescenta o filtro de "quem aplica".
+  async validarAplicacaoPelaMaia(orgId: string, chaves: string[]): Promise<string[]> {
+    const limpas = await this.validarChaves(orgId, chaves)
+    if (limpas.length === 0) return []
+
+    const catalogo = await this.repo.listarAtivas(orgId)
+    const naoAplicaveis = limpas.filter((chave) => {
+      const def = catalogo.find((t) => t.key === chave)
+      return !def?.maia_pode_aplicar
+    })
+
+    if (naoAplicaveis.length > 0) throw new TagNaoAplicavelPelaMaiaError(naoAplicaveis)
 
     return limpas
   }

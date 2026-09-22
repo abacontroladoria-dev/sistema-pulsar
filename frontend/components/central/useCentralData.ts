@@ -5,6 +5,7 @@ import type {
   Conversation,
   Message,
   Contact,
+  TagDefinition,
 } from '@/modules/atendimento/types/central.types'
 
 // ============================================================================
@@ -104,6 +105,34 @@ export function useConversas() {
   }, [])
 
   return { conversas, carregando, erro }
+}
+
+// ----------------------------------------------------------------------------
+// Catálogo de tags — carrega uma vez, não faz polling.
+//
+// Ao contrário de conversas/mensagens, o catálogo (central.tag_definitions)
+// não muda a cada 5s: alguém precisaria editar o cadastro de tags pela mão,
+// algo raro. Fica fixo pela vida do componente que o monta.
+
+export function useTagCatalogo() {
+  const [catalogo, setCatalogo] = useState<TagDefinition[]>([])
+  const [carregando, setCarregando] = useState(true)
+
+  useEffect(() => {
+    let vivo = true
+    const controller = new AbortController()
+
+    buscar<TagDefinition[]>('/api/central/tag-definitions', controller.signal)
+      .then((dados) => { if (vivo) setCatalogo(dados) })
+      // Degrada para leitura sem rótulo/cor — a tela mostra a chave crua em
+      // vez de travar o painel inteiro por causa do catálogo.
+      .catch(() => {})
+      .finally(() => { if (vivo) setCarregando(false) })
+
+    return () => { vivo = false; controller.abort() }
+  }, [])
+
+  return { catalogo, carregando }
 }
 
 // ----------------------------------------------------------------------------
