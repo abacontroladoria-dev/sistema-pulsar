@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { CalendarDays, Download, FileSpreadsheet, Loader2, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { listarCentralTerapeuticaPeriodo } from '@/services/central-terapeutas-relatorio.service'
-import { exportarRelatorioCentralTerapeutas } from '@/lib/central-terapeutas/exportRelatorio'
+import { montarRelatorio } from '@/lib/central-terapeutas/exportRelatorio'
 
 type Props = {
   aberto: boolean
@@ -21,6 +21,7 @@ export default function RelatorioModal({ aberto, dataPadrao, onClose }: Props) {
   const [dataFim, setDataFim] = useState(dataPadrao)
   const [gerando, setGerando] = useState(false)
   const [carregadas, setCarregadas] = useState(0)
+  const [aviso, setAviso] = useState<string | null>(null)
 
   // Reabrir o modal parte da data que está na tela agora, não da anterior.
   useEffect(() => {
@@ -28,6 +29,7 @@ export default function RelatorioModal({ aberto, dataPadrao, onClose }: Props) {
       setDataInicio(dataPadrao)
       setDataFim(dataPadrao)
       setCarregadas(0)
+      setAviso(null)
     }
   }, [aberto, dataPadrao])
 
@@ -49,6 +51,7 @@ export default function RelatorioModal({ aberto, dataPadrao, onClose }: Props) {
 
     setGerando(true)
     setCarregadas(0)
+    setAviso(null)
     try {
       const itens = await listarCentralTerapeuticaPeriodo(
         dataInicio,
@@ -56,19 +59,28 @@ export default function RelatorioModal({ aberto, dataPadrao, onClose }: Props) {
         setCarregadas
       )
 
-      const { linhas, arquivo } = exportarRelatorioCentralTerapeutas(
+      // Baixar uma planilha só com cabeçalhos é a pior resposta possível: o
+      // toast some, o arquivo fica, e quem recebeu conclui que o relatório
+      // está quebrado. Quando não há o que exportar, não geramos arquivo —
+      // o modal segue aberto dizendo o porquê, com o período ainda na tela
+      // para o usuário corrigir.
+      const { linhas, arquivo, baixar } = montarRelatorio(
         itens,
         dataInicio,
         dataFim
       )
 
       if (linhas === 0) {
-        toast('Nenhum atendimento no período — planilha gerada vazia.', {
-          icon: '📄',
-        })
-      } else {
-        toast.success(`${linhas} atendimentos exportados em ${arquivo}`)
+        setAviso(
+          itens.length === 0
+            ? 'Nenhum atendimento nesse período. Confira as datas — fim de semana e feriado não têm agenda.'
+            : 'O período só tem linhas que o relatório não exporta (horário bloqueado, administrativo ou conta de teste).'
+        )
+        return
       }
+
+      baixar()
+      toast.success(`${linhas} atendimentos exportados em ${arquivo}`)
       onClose()
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Falha ao gerar o relatório'
@@ -119,7 +131,10 @@ export default function RelatorioModal({ aberto, dataPadrao, onClose }: Props) {
                 <input
                   type="date"
                   value={dataInicio}
-                  onChange={(e) => setDataInicio(e.target.value)}
+                  onChange={(e) => {
+                    setDataInicio(e.target.value)
+                    setAviso(null)
+                  }}
                   disabled={gerando}
                   className={inputClass}
                 />
@@ -136,7 +151,10 @@ export default function RelatorioModal({ aberto, dataPadrao, onClose }: Props) {
                   type="date"
                   value={dataFim}
                   min={dataInicio || undefined}
-                  onChange={(e) => setDataFim(e.target.value)}
+                  onChange={(e) => {
+                    setDataFim(e.target.value)
+                    setAviso(null)
+                  }}
                   disabled={gerando}
                   className={inputClass}
                 />
@@ -156,6 +174,12 @@ export default function RelatorioModal({ aberto, dataPadrao, onClose }: Props) {
             status, substituição e quem cobriu) e{' '}
             <strong>Resumo por terapeuta</strong>.
           </div>
+
+          {aviso && (
+            <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800 leading-relaxed">
+              {aviso}
+            </div>
+          )}
 
           {gerando && carregadas > 0 && (
             <p className="text-xs text-slate-400">

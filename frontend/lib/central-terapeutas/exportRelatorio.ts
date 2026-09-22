@@ -200,13 +200,19 @@ function larguras(linhas: Record<string, unknown>[]) {
   })
 }
 
-export type ResultadoExport = { linhas: number; arquivo: string }
+export type ResultadoExport = {
+  linhas: number
+  arquivo: string
+  /** Só dispara o download. Chamar apenas quando linhas > 0. */
+  baixar: () => void
+}
 
 /**
- * Monta e dispara o download do .xlsx. Retorna quantas linhas foram escritas
- * para a UI conseguir avisar quando o período veio vazio.
+ * Monta o .xlsx e devolve o gatilho do download separado, para a UI decidir se
+ * baixa: uma planilha só com cabeçalhos faz o usuário concluir que o relatório
+ * está quebrado, então quando `linhas` é 0 o certo é avisar e não baixar nada.
  */
-export function exportarRelatorioCentralTerapeutas(
+export function montarRelatorio(
   itens: AtendimentoTerapeutico[],
   dataInicio: string,
   dataFim: string
@@ -228,7 +234,9 @@ export function exportarRelatorioCentralTerapeutas(
     dataInicio === dataFim ? dataInicio : `${dataInicio}_a_${dataFim}`
   const arquivo = `Central_Terapeutas_${sufixo}.xlsx`
 
-  XLSX.writeFile(wb, arquivo)
-
-  return { linhas: atendimentos.length, arquivo }
+  return {
+    linhas: atendimentos.length,
+    arquivo,
+    baixar: () => XLSX.writeFile(wb, arquivo),
+  }
 }
