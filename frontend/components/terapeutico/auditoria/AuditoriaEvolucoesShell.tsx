@@ -1,62 +1,78 @@
 'use client'
 
-import React, { useState, useEffect, useTransition } from 'react'
-import { 
-  Sparkles, 
-  Search, 
-  Filter, 
-  Calendar, 
-  RefreshCw, 
-  CheckCircle2, 
-  AlertTriangle, 
-  XCircle, 
-  Users, 
-  MessageSquare,
-  FileSearch,
-  Layers,
-  ArrowUpDown
+import React, { useState, useEffect } from 'react'
+import {
+  Sparkles,
+  Search,
+  RefreshCw,
+  AlertTriangle,
+  Users,
+  FileSearch
 } from 'lucide-react'
-import { 
-  buscarEvolucoesComAuditoria, 
-  calcularResumoProfissionais, 
-  atualizarStatusCobranca 
+import { useToneColor } from '@/hooks/useToneColor'
+import { TONE_CHIP } from '@/components/ui/tones'
+import {
+  buscarEvolucoesComAuditoria,
+  calcularResumoProfissionais
 } from '@/services/auditoriaEvolucoes.service'
-import type { 
-  EvolucaoPendenteAuditoria, 
-  ResumoProfissionalAuditoria, 
-  StatusRiscoEvolucao, 
-  StatusCobrancaEvolucao 
+import type {
+  EvolucaoPendenteAuditoria,
+  ResumoProfissionalAuditoria,
+  StatusRiscoEvolucao,
+  StatusCobrancaEvolucao
 } from '@/types/auditoriaEvolucoes'
 import { ProfissionaisCobrancaTab } from './ProfissionaisCobrancaTab'
 import { EvolucoesFeedTab } from './EvolucoesFeedTab'
 import { EvolucaoSidePanel } from './EvolucaoSidePanel'
 import { ModalCobrancaWhatsApp } from './ModalCobrancaWhatsApp'
+import {
+  tomDaConformidade,
+  tomSeHouver,
+  CAMPO,
+  BOTAO_PRIMARIO,
+  BOTAO_SECUNDARIO,
+  FOCO
+} from './vocabulario'
+
+/** Marco em que a auditoria de evoluções entrou em operação. */
+const PISO_PERIODO = '2026-09-01'
+
+const hojeISO = () => new Date().toISOString().split('T')[0]
+
+const ontemISO = () => {
+  const d = new Date()
+  d.setDate(d.getDate() - 1)
+  return d.toISOString().split('T')[0]
+}
 
 export function AuditoriaEvolucoesShell() {
+  const toneColor = useToneColor()
   const [abaAtiva, setAbaAtiva] = useState<'profissionais' | 'feed'>('profissionais')
-  
-  // Filtros (Padrão: A partir de setembro de 2026)
-  const [dataInicio, setDataInicio] = useState('2026-09-01')
+
+  // Filtros — o período começa no marco da feature e vai até hoje.
+  const [dataInicio, setDataInicio] = useState(PISO_PERIODO)
   const [dataFim, setDataFim] = useState('')
   const [busca, setBusca] = useState('')
   const [statusRisco, setStatusRisco] = useState<StatusRiscoEvolucao | 'todos'>('todos')
   const [statusCobranca, setStatusCobranca] = useState<StatusCobrancaEvolucao | 'todos'>('todos')
-  
-  // Estado dos Dados
+
   const [evolucoes, setEvolucoes] = useState<EvolucaoPendenteAuditoria[]>([])
-  const [loading, setLoading] = useState(true)
+  // `carregouUmaVez` separa a primeira carga (skeleton) da recarga (a lista fica
+  // onde está e só aparece "Atualizando…"). Ver §3.9 do padrão: esconder o que a
+  // pessoa está lendo é pior que esperar.
+  const [carregando, setCarregando] = useState(true)
+  const [carregouUmaVez, setCarregouUmaVez] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
 
-  // Estado de Execução em Lote de IA
   const [auditandoLote, setAuditandoLote] = useState(false)
   const [progressoLote, setProgressoLote] = useState<{ atual: number; total: number } | null>(null)
+  const [avisoLote, setAvisoLote] = useState<string | null>(null)
 
-  // Modais e Side Panel
   const [itemSelecionado, setItemSelecionado] = useState<EvolucaoPendenteAuditoria | null>(null)
   const [profSelecionadoCobranca, setProfSelecionadoCobranca] = useState<ResumoProfissionalAuditoria | null>(null)
 
   const carregarDados = async () => {
-    setLoading(true)
+    setCarregando(true)
     setErro(null)
     try {
       const { data, error } = await buscarEvolucoesComAuditoria({
@@ -71,10 +87,11 @@ export function AuditoriaEvolucoesShell() {
       } else {
         setEvolucoes(data)
       }
-    } catch (e: any) {
-      setErro(e.message || 'Erro ao carregar dados')
+    } catch (e: unknown) {
+      setErro(e instanceof Error ? e.message : 'Erro ao carregar dados')
     } finally {
-      setLoading(false)
+      setCarregando(false)
+      setCarregouUmaVez(true)
     }
   }
 
@@ -82,7 +99,6 @@ export function AuditoriaEvolucoesShell() {
     carregarDados()
   }, [dataInicio, dataFim, statusRisco, statusCobranca])
 
-  // Resumo por profissional
   const resumosProfissionais = React.useMemo(() => {
     return calcularResumoProfissionais(evolucoes)
   }, [evolucoes])
@@ -90,22 +106,26 @@ export function AuditoriaEvolucoesShell() {
   // KPIs
   const totalEvolucoes = evolucoes.length
   const totalAuditadas = evolucoes.filter(e => e.auditoria !== null).length
+  const totalPendentesIA = totalEvolucoes - totalAuditadas
   const totalSemRisco = evolucoes.filter(e => e.auditoria?.status_risco === 'sem_risco').length
   const totalRiscoEspecifico = evolucoes.filter(e => e.auditoria?.status_risco === 'risco_especifico').length
   const totalRiscoRelevante = evolucoes.filter(e => e.auditoria?.status_risco === 'risco_relevante').length
   const totalPendentesCobranca = evolucoes.filter(
     e => e.auditoria && e.auditoria.status_risco !== 'sem_risco' && e.auditoria.status_cobranca === 'pendente'
   ).length
-  const taxaConformidadeGeral = totalAuditadas > 0 ? Math.round((totalSemRisco / totalAuditadas) * 100) : 0
+  // Sem denominador não há percentual — "—", nunca 0% (§4 do padrão).
+  const taxaConformidadeGeral = totalAuditadas > 0
+    ? Math.round((totalSemRisco / totalAuditadas) * 100)
+    : null
 
-  // Disparar Auditoria em Lote via IA
   const handleAuditarLote = async () => {
     const pendentes = evolucoes.filter(e => !e.auditoria)
     if (pendentes.length === 0) {
-      alert('Todas as evoluções do período selecionado já foram auditadas!')
+      setAvisoLote('Todas as evoluções deste período já foram auditadas.')
       return
     }
 
+    setAvisoLote(null)
     setAuditandoLote(true)
     setProgressoLote({ atual: 0, total: pendentes.length })
 
@@ -143,7 +163,6 @@ export function AuditoriaEvolucoesShell() {
     await carregarDados()
   }
 
-  // Reauditar item individual
   const handleReauditarItem = async (gradeId: string) => {
     const res = await fetch('/api/terapeutico/auditoria-evolucoes', {
       method: 'POST',
@@ -158,7 +177,6 @@ export function AuditoriaEvolucoesShell() {
     const json = await res.json()
     if (json.success) {
       await carregarDados()
-      // Atualizar o item selecionado no sidepanel
       const atualizado = evolucoes.find(e => e.grade_id === gradeId)
       if (atualizado) {
         setItemSelecionado(atualizado)
@@ -166,20 +184,15 @@ export function AuditoriaEvolucoesShell() {
     }
   }
 
-  // Atualizar status de cobrança
   const handleAtualizarStatusCobranca = async (
-    auditoriaId: string, 
-    novoStatus: StatusCobrancaEvolucao, 
+    auditoriaId: string,
+    novoStatus: StatusCobrancaEvolucao,
     observacao?: string
   ) => {
     const res = await fetch('/api/terapeutico/auditoria-evolucoes/cobranca', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        auditoriaId,
-        novoStatus,
-        observacao
-      })
+      body: JSON.stringify({ auditoriaId, novoStatus, observacao })
     })
 
     const json = await res.json()
@@ -188,16 +201,11 @@ export function AuditoriaEvolucoesShell() {
     }
   }
 
-  // Confirmação de cobrança em lote para o profissional no WhatsApp
   const handleConfirmarCobrancaWhatsApp = async (auditoriaIds: string[], observacao: string) => {
     const res = await fetch('/api/terapeutico/auditoria-evolucoes/cobranca', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        auditoriaIds,
-        novoStatus: 'cobrado',
-        observacao
-      })
+      body: JSON.stringify({ auditoriaIds, novoStatus: 'cobrado', observacao })
     })
 
     const json = await res.json()
@@ -206,11 +214,10 @@ export function AuditoriaEvolucoesShell() {
     }
   }
 
-  // Filtragem da lista para o feed por busca
   const evolucoesFiltradas = React.useMemo(() => {
     if (!busca) return evolucoes
     const b = busca.toLowerCase()
-    return evolucoes.filter(r => 
+    return evolucoes.filter(r =>
       r.paciente_nome.toLowerCase().includes(b) ||
       r.profissional_nome.toLowerCase().includes(b) ||
       (r.terapia_nome && r.terapia_nome.toLowerCase().includes(b)) ||
@@ -218,314 +225,267 @@ export function AuditoriaEvolucoesShell() {
     )
   }, [evolucoes, busca])
 
-  return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 p-4 sm:p-6 lg:p-8 space-y-6">
-      
-      {/* Header & Ação de Auditoria */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-zinc-200/80 dark:border-zinc-800 shadow-sm">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2 text-teal-600 dark:text-teal-400 text-xs font-bold uppercase tracking-wider">
-            <Sparkles className="w-4 h-4" />
-            Auditoria Clínica & Anti-Glosa de Convênios
-          </div>
-          <h1 className="text-2xl font-black tracking-tight text-zinc-900 dark:text-zinc-100">
-            Auditoria de Evoluções Terapêuticas
-          </h1>
-          <p className="text-xs text-zinc-500 dark:text-zinc-400 max-w-xl">
-            Validação técnica das 4 perguntas obrigatórias, termos proibidos, sigilo e consistência documental com IA a partir de setembro de 2026.
-          </p>
-        </div>
+  const periodoAtivo = (ini: string, fim: string) => dataInicio === ini && dataFim === fim
 
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            onClick={carregarDados}
-            disabled={loading}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-xs font-medium text-zinc-700 dark:text-zinc-200 transition"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+  const atalhoPeriodo = (rotulo: string, ini: string, fim: string) => (
+    <button
+      type="button"
+      onClick={() => { setDataInicio(ini); setDataFim(fim) }}
+      aria-pressed={periodoAtivo(ini, fim)}
+      className={`rounded-md px-2.5 py-1 text-[11px] font-semibold transition ${FOCO} ${
+        periodoAtivo(ini, fim)
+          ? 'bg-brand-fg text-white'
+          : 'text-muted-foreground hover:bg-card hover:text-foreground'
+      }`}
+    >
+      {rotulo}
+    </button>
+  )
+
+  const primeiraCarga = carregando && !carregouUmaVez
+
+  return (
+    <div className="mx-auto flex w-full max-w-7xl flex-col gap-4">
+
+      {/* Ações da tela. O título vive no header do layout (HeaderContext). */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="max-w-xl text-xs text-muted-foreground">
+          As quatro perguntas obrigatórias, termos vedados, sigilo e consistência
+          documental — conferidos por IA a partir de {new Date(PISO_PERIODO + 'T12:00:00Z').toLocaleDateString('pt-BR')}.
+        </p>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <button onClick={carregarDados} disabled={carregando} className={BOTAO_SECUNDARIO}>
+            <RefreshCw className={`h-3.5 w-3.5 ${carregando ? 'motion-safe:animate-spin' : ''}`} />
             Atualizar
           </button>
 
-          <button
-            onClick={handleAuditarLote}
-            disabled={auditandoLote || loading}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 text-white text-xs font-bold shadow-md shadow-teal-500/20 transition disabled:opacity-50"
-          >
-            <Sparkles className={`w-4 h-4 ${auditandoLote ? 'animate-spin' : ''}`} />
-            {auditandoLote ? 'Auditando com IA...' : 'Auditar Novas Evoluções'}
+          <button onClick={handleAuditarLote} disabled={auditandoLote || carregando} className={BOTAO_PRIMARIO}>
+            <Sparkles className={`h-4 w-4 ${auditandoLote ? 'motion-safe:animate-spin' : ''}`} />
+            {auditandoLote ? 'Auditando…' : 'Auditar novas evoluções'}
           </button>
         </div>
       </div>
 
-      {/* Barra de Progresso do Lote */}
-      {auditandoLote && progressoLote && (
-        <div className="p-4 bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800 rounded-2xl space-y-2 animate-in fade-in">
-          <div className="flex justify-between text-xs font-semibold text-teal-900 dark:text-teal-200">
-            <span>Auditando lote de evoluções com IA...</span>
-            <span>{progressoLote.atual} de {progressoLote.total} processadas</span>
-          </div>
-          <div className="w-full bg-teal-200/60 dark:bg-teal-900/60 h-2 rounded-full overflow-hidden">
-            <div 
-              className="bg-teal-600 h-full rounded-full transition-all duration-300"
-              style={{ width: `${Math.round((progressoLote.atual / progressoLote.total) * 100)}%` }}
-            />
-          </div>
-        </div>
+      {avisoLote && (
+        <p className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          {avisoLote}
+        </p>
       )}
 
-      {/* Cards de Métricas Principais */}
-      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
-        
-        {/* Total */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 shadow-sm">
-          <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400 block">Total Evoluções</span>
-          <div className="text-2xl font-black text-zinc-900 dark:text-zinc-100 mt-1">
-            {totalEvolucoes}
+      {auditandoLote && progressoLote && (
+        <div className="space-y-2 rounded-xl border border-border bg-card p-4 shadow-sm">
+          <div className="flex justify-between text-xs font-semibold text-foreground">
+            <span>Auditando evoluções com IA…</span>
+            <span className="tabular-nums">
+              {progressoLote.atual} de {progressoLote.total}
+            </span>
           </div>
-          <span className="text-[11px] text-zinc-400 mt-1 block">
-            {totalAuditadas} auditadas ({totalEvolucoes - totalAuditadas} pendentes)
-          </span>
-        </div>
-
-        {/* Conformidade */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 shadow-sm">
-          <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400 block">Taxa de Conformidade</span>
-          <div className="text-2xl font-black text-teal-600 dark:text-teal-400 mt-1">
-            {taxaConformidadeGeral}%
-          </div>
-          <span className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1 block font-medium">
-            {totalSemRisco} sem risco de glosa
-          </span>
-        </div>
-
-        {/* Risco Específico */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 shadow-sm">
-          <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400 block">Risco em Ponto Específico</span>
-          <div className="text-2xl font-black text-amber-600 dark:text-amber-400 mt-1">
-            {totalRiscoEspecifico}
-          </div>
-          <span className="text-[11px] text-amber-600/80 mt-1 block">
-            Ajustes pontuais de redação
-          </span>
-        </div>
-
-        {/* Risco Relevante */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-red-200/60 dark:border-red-950/60 bg-red-50/20 dark:bg-red-950/10 shadow-sm">
-          <span className="text-xs font-medium text-red-600 dark:text-red-400 block">Risco Relevante (Glosa)</span>
-          <div className="text-2xl font-black text-red-600 dark:text-red-400 mt-1">
-            {totalRiscoRelevante}
-          </div>
-          <span className="text-[11px] text-red-500 mt-1 block font-medium">
-            Incompletas ou termos vedados
-          </span>
-        </div>
-
-        {/* Pendentes de Cobrança */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-teal-200/60 dark:border-teal-950/60 bg-teal-50/20 dark:bg-teal-950/10 shadow-sm col-span-2 lg:col-span-1">
-          <span className="text-xs font-medium text-teal-700 dark:text-teal-400 block">Pendentes de Cobrança</span>
-          <div className="text-2xl font-black text-teal-700 dark:text-teal-300 mt-1">
-            {totalPendentesCobranca}
-          </div>
-          <span className="text-[11px] text-teal-600 mt-1 block">
-            Cobrar do terapeuta no TiTa
-          </span>
-        </div>
-
-      </div>
-
-      {/* Barra de Filtros e Abas */}
-      <div className="space-y-4">
-        
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          
-          {/* Seletor de Abas */}
-          <div className="flex items-center p-1 bg-zinc-200/70 dark:bg-zinc-800 rounded-2xl w-fit">
-            <button
-              onClick={() => setAbaAtiva('profissionais')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition ${
-                abaAtiva === 'profissionais'
-                  ? 'bg-white dark:bg-zinc-900 text-teal-600 dark:text-teal-400 shadow-sm'
-                  : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900'
-              }`}
-            >
-              <Users className="w-4 h-4" />
-              Por Profissional (Cobrança)
-              {totalPendentesCobranca > 0 && (
-                <span className="px-1.5 py-0.5 rounded-full bg-red-500 text-white text-[10px]">
-                  {totalPendentesCobranca}
-                </span>
-              )}
-            </button>
-
-            <button
-              onClick={() => setAbaAtiva('feed')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition ${
-                abaAtiva === 'feed'
-                  ? 'bg-white dark:bg-zinc-900 text-teal-600 dark:text-teal-400 shadow-sm'
-                  : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900'
-              }`}
-            >
-              <FileSearch className="w-4 h-4" />
-              Todas as Evoluções ({totalEvolucoes})
-            </button>
-          </div>
-
-          {/* Filtros de Data e Busca */}
-          <div className="flex flex-wrap items-center gap-2.5 text-xs">
-            
-            {/* Atalhos rápidos */}
-            <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-800/80 p-1 rounded-xl">
-              <button
-                type="button"
-                onClick={() => {
-                  setDataInicio('2026-09-15')
-                  setDataFim('2026-09-15')
-                }}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition ${
-                  dataInicio === '2026-09-15' && dataFim === '2026-09-15'
-                    ? 'bg-teal-600 text-white shadow-xs'
-                    : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900'
-                }`}
-              >
-                15/09
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const hoje = new Date().toISOString().split('T')[0]
-                  setDataInicio(hoje)
-                  setDataFim(hoje)
-                }}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition ${
-                  dataInicio === dataFim && dataFim === new Date().toISOString().split('T')[0]
-                    ? 'bg-teal-600 text-white shadow-xs'
-                    : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900'
-                }`}
-              >
-                Hoje
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setDataInicio('2026-09-01')
-                  setDataFim('')
-                }}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition ${
-                  dataInicio === '2026-09-01' && dataFim === ''
-                    ? 'bg-teal-600 text-white shadow-xs'
-                    : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900'
-                }`}
-              >
-                Mês Setembro
-              </button>
-            </div>
-
-            {/* Data Início */}
-            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl">
-              <Calendar className="w-3.5 h-3.5 text-zinc-400" />
-              <span className="text-zinc-500">De:</span>
-              <input
-                type="date"
-                value={dataInicio}
-                onChange={e => {
-                  setDataInicio(e.target.value)
-                  // Se dataFim estiver vazia e o usuário alterar a data, define a data fim igual para facilitar dia único
-                  if (!dataFim) {
-                    setDataFim(e.target.value)
-                  }
-                }}
-                className="bg-transparent text-zinc-800 dark:text-zinc-200 focus:outline-none"
-              />
-            </div>
-
-            {/* Data Fim */}
-            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl">
-              <span className="text-zinc-500">Até:</span>
-              <input
-                type="date"
-                value={dataFim}
-                onChange={e => setDataFim(e.target.value)}
-                className="bg-transparent text-zinc-800 dark:text-zinc-200 focus:outline-none"
-              />
-            </div>
-
-            {/* Filtro Risco */}
-            <select
-              value={statusRisco}
-              onChange={e => setStatusRisco(e.target.value as any)}
-              className="px-3 py-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-800 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-teal-500"
-            >
-              <option value="todos">Todos os Riscos</option>
-              <option value="risco_relevante">Risco Relevante</option>
-              <option value="risco_especifico">Risco Específico</option>
-              <option value="sem_risco">Sem Risco</option>
-            </select>
-
-            {/* Filtro Cobrança */}
-            <select
-              value={statusCobranca}
-              onChange={e => setStatusCobranca(e.target.value as any)}
-              className="px-3 py-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-800 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-teal-500"
-            >
-              <option value="todos">Todas Cobranças</option>
-              <option value="pendente">Pendente</option>
-              <option value="cobrado">Cobrado</option>
-              <option value="aguardando_correcao">Aguardando Correção</option>
-              <option value="corrigido_tita">Corrigido no TiTa</option>
-              <option value="ignorado">Dispensado</option>
-            </select>
-
-            {/* Input Busca */}
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-zinc-400" />
-              <input
-                type="text"
-                placeholder="Buscar paciente, terapeuta..."
-                value={busca}
-                onChange={e => setBusca(e.target.value)}
-                className="pl-8 pr-3 py-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-800 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-teal-500 w-48 sm:w-56"
-              />
-            </div>
-
-          </div>
-
-        </div>
-
-      </div>
-
-      {/* Conteúdo Principal */}
-      {loading ? (
-        <div className="py-20 flex flex-col items-center justify-center gap-3">
-          <RefreshCw className="w-8 h-8 text-teal-600 animate-spin" />
-          <p className="text-xs text-zinc-500">Carregando evoluções e auditorias...</p>
-        </div>
-      ) : erro ? (
-        <div className="p-6 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900 rounded-2xl text-center space-y-2">
-          <AlertTriangle className="w-8 h-8 text-red-500 mx-auto" />
-          <h3 className="text-sm font-semibold text-red-800 dark:text-red-200">Erro ao carregar dados</h3>
-          <p className="text-xs text-red-600 dark:text-red-400">{erro}</p>
-        </div>
-      ) : (
-        <>
-          {abaAtiva === 'profissionais' ? (
-            <ProfissionaisCobrancaTab
-              resumos={resumosProfissionais}
-              onCobrarProfissional={prof => setProfSelecionadoCobranca(prof)}
-              onVerEvolucoesProfissional={prof => {
-                setBusca(prof.profissional_nome)
-                setAbaAtiva('feed')
+          <div className="h-2 overflow-hidden rounded-full border border-border bg-muted">
+            <div
+              className="h-full w-full bg-brand"
+              style={{
+                clipPath: `inset(0 ${100 - Math.round((progressoLote.atual / progressoLote.total) * 100)}% 0 0)`,
+                transition: 'clip-path 500ms cubic-bezier(0.16, 1, 0.3, 1)'
               }}
             />
-          ) : (
-            <EvolucoesFeedTab
-              evolucoes={evolucoesFiltradas}
-              onSelecionarEvolucao={item => setItemSelecionado(item)}
-            />
-          )}
-        </>
+          </div>
+        </div>
       )}
 
-      {/* Side Panel da Evolução */}
+      {/* KPIs */}
+      {primeiraCarga ? (
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+              <div className="h-3 w-24 rounded bg-muted motion-safe:animate-pulse" />
+              <div className="mt-2 h-7 w-12 rounded bg-muted motion-safe:animate-pulse" />
+              <div className="mt-2 h-2.5 w-28 rounded bg-muted motion-safe:animate-pulse" />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+          <Kpi
+            rotulo="Evoluções no período"
+            valor={totalEvolucoes}
+            nota={totalPendentesIA > 0
+              ? `${totalAuditadas} auditadas · ${totalPendentesIA} aguardando IA`
+              : `${totalAuditadas} auditadas`}
+          />
+          <Kpi
+            rotulo="Conformidade"
+            valor={taxaConformidadeGeral === null ? '—' : `${taxaConformidadeGeral}%`}
+            cor={toneColor(tomDaConformidade(taxaConformidadeGeral))}
+            nota={`${totalSemRisco} sem risco de glosa`}
+          />
+          <Kpi
+            rotulo="Ponto específico"
+            valor={totalRiscoEspecifico}
+            cor={toneColor(tomSeHouver(totalRiscoEspecifico, 'amber'))}
+            nota="Ajustes pontuais de redação"
+          />
+          <Kpi
+            rotulo="Risco relevante"
+            valor={totalRiscoRelevante}
+            cor={toneColor(tomSeHouver(totalRiscoRelevante, 'red'))}
+            nota="Incompletas ou termos vedados"
+          />
+          <Kpi
+            rotulo="A cobrar"
+            valor={totalPendentesCobranca}
+            cor={toneColor(tomSeHouver(totalPendentesCobranca, 'blue'))}
+            nota="Terapeuta ainda não avisado"
+            className="col-span-2 lg:col-span-1"
+          />
+        </div>
+      )}
+
+      {/* Abas + filtros */}
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+
+        <div role="tablist" className="flex w-fit shrink-0 items-center gap-1 rounded-lg bg-muted/60 p-1">
+          <button
+            role="tab"
+            aria-selected={abaAtiva === 'profissionais'}
+            onClick={() => setAbaAtiva('profissionais')}
+            className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-xs transition ${FOCO} ${
+              abaAtiva === 'profissionais'
+                ? 'bg-card font-bold text-foreground shadow-sm'
+                : 'font-semibold text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <Users className="h-4 w-4" />
+            Por profissional
+            {totalPendentesCobranca > 0 && (
+              <span className={`rounded-full px-1.5 text-[10px] font-bold tabular-nums ${TONE_CHIP.blue.bg} ${TONE_CHIP.blue.text}`}>
+                {totalPendentesCobranca}
+              </span>
+            )}
+          </button>
+
+          <button
+            role="tab"
+            aria-selected={abaAtiva === 'feed'}
+            onClick={() => setAbaAtiva('feed')}
+            className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-xs transition ${FOCO} ${
+              abaAtiva === 'feed'
+                ? 'bg-card font-bold text-foreground shadow-sm'
+                : 'font-semibold text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <FileSearch className="h-4 w-4" />
+            Todas as evoluções
+            <span className={`rounded-full px-1.5 text-[10px] font-bold tabular-nums ${TONE_CHIP.gray.bg} ${TONE_CHIP.gray.text}`}>
+              {totalEvolucoes}
+            </span>
+          </button>
+        </div>
+
+        <div className="flex min-w-0 flex-wrap items-center gap-2 lg:justify-end">
+
+          <div className="flex items-center gap-0.5 rounded-lg bg-muted/60 p-1">
+            {atalhoPeriodo('Ontem', ontemISO(), ontemISO())}
+            {atalhoPeriodo('Hoje', hojeISO(), hojeISO())}
+            {atalhoPeriodo('Desde setembro', PISO_PERIODO, '')}
+          </div>
+
+          <label className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs text-foreground">
+            <span className="text-muted-foreground">De</span>
+            <input
+              type="date"
+              value={dataInicio}
+              onChange={e => {
+                setDataInicio(e.target.value)
+                if (!dataFim) setDataFim(e.target.value)
+              }}
+              className="bg-transparent tabular-nums focus:outline-none"
+            />
+          </label>
+
+          <label className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs text-foreground">
+            <span className="text-muted-foreground">Até</span>
+            <input
+              type="date"
+              value={dataFim}
+              onChange={e => setDataFim(e.target.value)}
+              className="bg-transparent tabular-nums focus:outline-none"
+            />
+          </label>
+
+          <select
+            value={statusRisco}
+            onChange={e => setStatusRisco(e.target.value as StatusRiscoEvolucao | 'todos')}
+            aria-label="Filtrar por risco"
+            className={CAMPO}
+          >
+            <option value="todos">Todos os riscos</option>
+            <option value="risco_relevante">Risco relevante</option>
+            <option value="risco_especifico">Ponto específico</option>
+            <option value="sem_risco">Sem risco</option>
+          </select>
+
+          <select
+            value={statusCobranca}
+            onChange={e => setStatusCobranca(e.target.value as StatusCobrancaEvolucao | 'todos')}
+            aria-label="Filtrar por cobrança"
+            className={CAMPO}
+          >
+            <option value="todos">Todas as cobranças</option>
+            <option value="pendente">Pendente</option>
+            <option value="cobrado">Cobrado</option>
+            <option value="aguardando_correcao">Aguardando correção</option>
+            <option value="corrigido_tita">Corrigido no TiTa</option>
+            <option value="ignorado">Dispensado</option>
+          </select>
+
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="search"
+              placeholder="Buscar paciente ou terapeuta"
+              value={busca}
+              onChange={e => setBusca(e.target.value)}
+              className={`${CAMPO} w-52 pl-8`}
+            />
+          </div>
+
+        </div>
+      </div>
+
+      {/* Recarga com dado na tela: a lista fica, o aviso é discreto (§3.9). */}
+      {carregando && carregouUmaVez && (
+        <p className="text-xs text-muted-foreground">Atualizando…</p>
+      )}
+
+      {erro ? (
+        <div className="space-y-2 rounded-xl border border-rose-200 bg-rose-50 p-6 text-center dark:border-rose-900/60 dark:bg-rose-950/30">
+          <AlertTriangle className="mx-auto h-8 w-8 text-rose-600 dark:text-rose-400" />
+          <h3 className="text-sm font-semibold text-foreground">Não foi possível carregar as evoluções</h3>
+          <p className="text-xs text-muted-foreground">{erro}</p>
+          <button onClick={carregarDados} className={`${BOTAO_SECUNDARIO} mx-auto mt-1`}>
+            <RefreshCw className="h-3.5 w-3.5" />
+            Tentar de novo
+          </button>
+        </div>
+      ) : primeiraCarga ? (
+        <ListaSkeleton aba={abaAtiva} />
+      ) : abaAtiva === 'profissionais' ? (
+        <ProfissionaisCobrancaTab
+          resumos={resumosProfissionais}
+          onCobrarProfissional={prof => setProfSelecionadoCobranca(prof)}
+          onVerEvolucoesProfissional={prof => {
+            setBusca(prof.profissional_nome)
+            setAbaAtiva('feed')
+          }}
+        />
+      ) : (
+        <EvolucoesFeedTab
+          evolucoes={evolucoesFiltradas}
+          onSelecionarEvolucao={item => setItemSelecionado(item)}
+        />
+      )}
+
       <EvolucaoSidePanel
         item={itemSelecionado}
         isOpen={Boolean(itemSelecionado)}
@@ -534,7 +494,6 @@ export function AuditoriaEvolucoesShell() {
         onAtualizarStatusCobranca={handleAtualizarStatusCobranca}
       />
 
-      {/* Modal de Cobrança WhatsApp */}
       <ModalCobrancaWhatsApp
         profissional={profSelecionadoCobranca}
         isOpen={Boolean(profSelecionadoCobranca)}
@@ -542,6 +501,65 @@ export function AuditoriaEvolucoesShell() {
         onConfirmarCobranca={handleConfirmarCobrancaWhatsApp}
       />
 
+    </div>
+  )
+}
+
+function Kpi({ rotulo, valor, nota, cor, className = '' }: {
+  rotulo: string
+  valor: number | string
+  nota: string
+  cor?: string
+  className?: string
+}) {
+  return (
+    <div className={`rounded-2xl border border-border bg-card p-5 shadow-sm ${className}`}>
+      <span className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+        {rotulo}
+      </span>
+      <div
+        className="mt-1.5 text-2xl font-bold leading-none tabular-nums text-foreground"
+        style={cor ? { color: cor } : undefined}
+      >
+        {valor}
+      </div>
+      <span className="mt-1.5 block text-[11px] text-muted-foreground">{nota}</span>
+    </div>
+  )
+}
+
+/** Skeleton no formato do layout real — §3.9: o vazio só aparece depois da carga. */
+function ListaSkeleton({ aba }: { aba: 'profissionais' | 'feed' }) {
+  if (aba === 'profissionais') {
+    return (
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="rounded-xl border border-border bg-card p-5 shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-lg bg-muted motion-safe:animate-pulse" />
+              <div className="flex-1 space-y-1.5">
+                <div className="h-3.5 w-32 rounded bg-muted motion-safe:animate-pulse" />
+                <div className="h-2.5 w-20 rounded bg-muted motion-safe:animate-pulse" />
+              </div>
+            </div>
+            <div className="mt-4 h-1.5 rounded-full bg-muted motion-safe:animate-pulse" />
+            <div className="mt-4 h-14 rounded-lg bg-muted motion-safe:animate-pulse" />
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+      {Array.from({ length: 8 }).map((_, i) => (
+        <div key={i} className="flex items-center gap-4 border-b border-border px-4 py-3 last:border-0">
+          <div className="h-5 w-24 rounded-full bg-muted motion-safe:animate-pulse" />
+          <div className="h-3 w-16 rounded bg-muted motion-safe:animate-pulse" />
+          <div className="h-3 w-32 rounded bg-muted motion-safe:animate-pulse" />
+          <div className="h-3 flex-1 rounded bg-muted motion-safe:animate-pulse" />
+        </div>
+      ))}
     </div>
   )
 }
