@@ -237,18 +237,15 @@ export function AuditoriaEvolucoesShell() {
   }, [evolucoes, busca])
 
   /**
-   * A aba "Por profissional" é o ponto de partida, então ela abre limpa: o
-   * recorte que veio do "Ver evoluções" (busca pelo nome do terapeuta, mais o
-   * risco/cobrança escolhidos no feed) some ao voltar. Sem isto a visão geral
-   * volta mostrando um profissional só, e nada na tela explica por quê.
+   * Só a busca é limpa ao voltar: ela foi posta pelo "Ver evoluções" para
+   * isolar UM terapeuta, então sobrevivendo faria a visão geral reabrir com um
+   * profissional só, sem nada na tela explicando o sumiço dos outros.
    *
-   * O PERÍODO fica: é o contexto de trabalho da pessoa, não herança da outra
-   * aba — e mexer nele a faria recarregar um recorte que ela não pediu.
+   * Período, risco e cobrança FICAM — são o recorte que a pessoa escolheu, e
+   * valem igual nas duas abas.
    */
   const voltarParaProfissionais = () => {
     setBusca('')
-    setStatusRisco('todos')
-    setStatusCobranca('todos')
     setAbaAtiva('profissionais')
   }
 
