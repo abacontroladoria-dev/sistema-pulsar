@@ -157,9 +157,15 @@ DECLARE
   v_falhas int := 0;
 BEGIN
   FOR r IN
+    -- ILIKE, e não LIKE: o predicado injetado é '%UNIDADE%' em
+    -- get_auditoria_assim_periodo (que compara com `upper(...)`) e '%unidade%'
+    -- em get_faltas_auditoria_assim (que usa ILIKE). Um LIKE maiúsculo aqui
+    -- reprova a segunda função mesmo com o conserto aplicado -- e, como o SQL
+    -- Editor roda o script inteiro em UMA transação, essa reprovação falsa
+    -- desfaz os dois replaces junto. Foi o que aconteceu na primeira tentativa.
     SELECT p.proname,
-           pg_get_functiondef(p.oid) LIKE '%UNIDADE%'      AS tem_feriado,
-           pg_get_functiondef(p.oid) LIKE '%substituicao%' AS tem_substituicao
+           pg_get_functiondef(p.oid) ILIKE '%unidade%'      AS tem_feriado,
+           pg_get_functiondef(p.oid) ILIKE '%substituicao%' AS tem_substituicao
       FROM pg_proc p
       JOIN pg_namespace n ON n.oid = p.pronamespace
      WHERE n.nspname = 'public'
