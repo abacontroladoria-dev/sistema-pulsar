@@ -21,63 +21,65 @@ export interface FiltrosAuditoriaEvolucoes {
 const DATA_CORTE_PADRAO = '2026-09-01'
 
 /**
+ * O PostgREST corta QUALQUER resposta em `max_rows` (1000 nesta base), e sem
+ * `Range` ele corta calado — nada no retorno diz que faltou linha. Em 22/09/2026
+ * isso deixava a tela cega: as 5.099 sessões do período viravam as 1.000 mais
+ * recentes (16/09 a 21/09), e como as 155 auditorias eram todas de sessões
+ * anteriores, NENHUMA aparecia. Os filtros de risco/cobrança rodam em memória,
+ * então filtravam uma fatia sem auditoria alguma e devolviam sempre vazio.
+ */
+const TAMANHO_PAGINA = 1000
+
+const COLUNAS_GRADE = `
+  id,
+  tita_agendamento_id,
+  data,
+  profissional_id,
+  profissional_nome,
+  paciente_id,
+  paciente_nome,
+  terapia_nome,
+  unidade_id,
+  unidade_nome,
+  descricao_evolucao,
+  status_execucao
+`
+
+/**
  * Busca evoluções de `csv_grades_profissionais` e seus resultados de auditoria em `auditoria_evolucoes`
  * Restrito por padrão a partir de 01/09/2026.
+ *
+ * Dois caminhos, porque o volume manda:
+ * - COM filtro de risco/cobrança: parte de `auditoria_evolucoes` (centenas de
+ *   linhas, filtradas no banco) e busca só as sessões correspondentes.
+ * - SEM filtro: pagina a grade inteira, para o total e a taxa de conformidade
+ *   valerem sobre todo o período, não sobre a primeira página.
  */
 export async function buscarEvolucoesComAuditoria(
   filtros: FiltrosAuditoriaEvolucoes = {}
 ): Promise<{ data: EvolucaoPendenteAuditoria[]; error: string | null }> {
   const supabase = getSupabaseClient()
-  
+
   const dataInicio = filtros.dataInicio || DATA_CORTE_PADRAO
-  
+  const filtraRisco = Boolean(filtros.statusRisco && filtros.statusRisco !== 'todos')
+  const filtraCobranca = Boolean(filtros.statusCobranca && filtros.statusCobranca !== 'todos')
+
   try {
-    // 1. Buscar sessões com evolução preenchida
-    let queryGrade = supabase
-      .from('csv_grades_profissionais')
-      .select(`
-        id,
-        tita_agendamento_id,
-        data,
-        profissional_id,
-        profissional_nome,
-        paciente_id,
-        paciente_nome,
-        terapia_nome,
-        unidade_id,
-        unidade_nome,
-        descricao_evolucao,
-        status_execucao
-      `)
-      .gte('data', dataInicio)
-      .eq('ativo', true)
-      .not('descricao_evolucao', 'is', null)
-      .neq('descricao_evolucao', '')
-      .order('data', { ascending: false })
+    const gradeRows = filtraRisco || filtraCobranca
+      ? await buscarGradePelaAuditoria(supabase, dataInicio, filtros)
+      : await buscarGradePaginada(supabase, dataInicio, filtros)
 
-    if (filtros.dataFim) {
-      queryGrade = queryGrade.lte('data', filtros.dataFim)
-    }
-    if (filtros.profissionalId) {
-      queryGrade = queryGrade.eq('profissional_id', filtros.profissionalId)
-    }
-    if (filtros.unidadeId) {
-      queryGrade = queryGrade.eq('unidade_id', filtros.unidadeId)
+    if ('erro' in gradeRows) {
+      return { data: [], error: gradeRows.erro }
     }
 
-    const { data: gradeRows, error: gradeErr } = await queryGrade
-
-    if (gradeErr) {
-      return { data: [], error: `Erro ao buscar grade: ${gradeErr.message}` }
-    }
-
-    if (!gradeRows || gradeRows.length === 0) {
+    if (gradeRows.linhas.length === 0) {
       return { data: [], error: null }
     }
 
     // 2. Buscar registros de auditoria correspondentes
-    const gradeIds = gradeRows.map(r => r.id)
-    
+    const gradeIds = gradeRows.linhas.map(r => r.id)
+
     // Chunking to prevent URL length limits if gradeIds is huge
     const chunkSize = 200
     const auditoriaMap = new Map<string, RegistroAuditoriaEvolucao>()
@@ -89,7 +91,10 @@ export async function buscarEvolucoesComAuditoria(
         .select('*')
         .in('grade_id', chunk)
 
-      if (!audErr && audRows) {
+      if (audErr) {
+        return { data: [], error: `Erro ao buscar auditorias: ${audErr.message}` }
+      }
+      if (audRows) {
         for (const a of audRows) {
           auditoriaMap.set(a.grade_id, a as unknown as RegistroAuditoriaEvolucao)
         }
@@ -97,7 +102,7 @@ export async function buscarEvolucoesComAuditoria(
     }
 
     // 3. Mesclar resultados
-    let resultado: EvolucaoPendenteAuditoria[] = gradeRows.map(r => {
+    let resultado: EvolucaoPendenteAuditoria[] = gradeRows.linhas.map(r => {
       const auditoria = auditoriaMap.get(r.id) || null
       return {
         grade_id: r.id,
@@ -116,12 +121,14 @@ export async function buscarEvolucoesComAuditoria(
       }
     })
 
-    // Aplicar filtros de status_risco e status_cobranca em memória caso solicitados
-    if (filtros.statusRisco && filtros.statusRisco !== 'todos') {
+    // Os filtros de risco/cobrança já foram aplicados NO BANCO quando ativos
+    // (ver buscarGradePelaAuditoria). Reaplicar aqui é de graça e protege contra
+    // uma sessão que tenha perdido a auditoria entre as duas consultas.
+    if (filtraRisco) {
       resultado = resultado.filter(r => r.auditoria?.status_risco === filtros.statusRisco)
     }
 
-    if (filtros.statusCobranca && filtros.statusCobranca !== 'todos') {
+    if (filtraCobranca) {
       resultado = resultado.filter(r => r.auditoria?.status_cobranca === filtros.statusCobranca)
     }
 
@@ -136,9 +143,135 @@ export async function buscarEvolucoesComAuditoria(
     }
 
     return { data: resultado, error: null }
-  } catch (err: any) {
-    return { data: [], error: err.message || 'Erro inesperado ao buscar auditorias' }
+  } catch (err: unknown) {
+    return {
+      data: [],
+      error: err instanceof Error ? err.message : 'Erro inesperado ao buscar auditorias'
+    }
   }
+}
+
+type LinhaGrade = {
+  id: string
+  tita_agendamento_id: number | null
+  data: string
+  profissional_id: number | null
+  profissional_nome: string | null
+  paciente_id: number | null
+  paciente_nome: string | null
+  terapia_nome: string | null
+  unidade_id: number | null
+  unidade_nome: string | null
+  descricao_evolucao: string | null
+  status_execucao: string | null
+}
+
+type ResultadoGrade = { linhas: LinhaGrade[] } | { erro: string }
+
+/**
+ * Percorre a grade em páginas de 1000 até a última, para o período inteiro
+ * caber no resultado. Sem isto o PostgREST devolve só a primeira página e não
+ * avisa — ver o comentário de TAMANHO_PAGINA.
+ */
+async function buscarGradePaginada(
+  supabase: ReturnType<typeof getSupabaseClient>,
+  dataInicio: string,
+  filtros: FiltrosAuditoriaEvolucoes
+): Promise<ResultadoGrade> {
+  const linhas: LinhaGrade[] = []
+
+  for (let pagina = 0; ; pagina++) {
+    let query = supabase
+      .from('csv_grades_profissionais')
+      .select(COLUNAS_GRADE)
+      .gte('data', dataInicio)
+      .eq('ativo', true)
+      .not('descricao_evolucao', 'is', null)
+      .neq('descricao_evolucao', '')
+      .order('data', { ascending: false })
+      .order('id', { ascending: false }) // desempate estável entre páginas
+      .range(pagina * TAMANHO_PAGINA, (pagina + 1) * TAMANHO_PAGINA - 1)
+
+    if (filtros.dataFim) query = query.lte('data', filtros.dataFim)
+    if (filtros.profissionalId) query = query.eq('profissional_id', filtros.profissionalId)
+    if (filtros.unidadeId) query = query.eq('unidade_id', filtros.unidadeId)
+
+    const { data, error } = await query
+    if (error) return { erro: `Erro ao buscar grade: ${error.message}` }
+    if (!data || data.length === 0) break
+
+    linhas.push(...(data as unknown as LinhaGrade[]))
+    if (data.length < TAMANHO_PAGINA) break
+  }
+
+  return { linhas }
+}
+
+/**
+ * Caminho invertido: com filtro de risco/cobrança ativo, quem manda é a
+ * auditoria. Filtrar no banco (centenas de linhas) e só então buscar as sessões
+ * correspondentes evita arrastar milhares de linhas para descartar quase todas
+ * — e, principalmente, não deixa o corte de 1000 esconder a auditoria que a
+ * pessoa está justamente procurando.
+ */
+async function buscarGradePelaAuditoria(
+  supabase: ReturnType<typeof getSupabaseClient>,
+  dataInicio: string,
+  filtros: FiltrosAuditoriaEvolucoes
+): Promise<ResultadoGrade> {
+  const idsAlvo: string[] = []
+
+  for (let pagina = 0; ; pagina++) {
+    let query = supabase
+      .from('auditoria_evolucoes')
+      .select('grade_id')
+      .gte('data_sessao', dataInicio)
+      .order('data_sessao', { ascending: false })
+      .order('grade_id', { ascending: false })
+      .range(pagina * TAMANHO_PAGINA, (pagina + 1) * TAMANHO_PAGINA - 1)
+
+    if (filtros.dataFim) query = query.lte('data_sessao', filtros.dataFim)
+    if (filtros.statusRisco && filtros.statusRisco !== 'todos') {
+      query = query.eq('status_risco', filtros.statusRisco)
+    }
+    if (filtros.statusCobranca && filtros.statusCobranca !== 'todos') {
+      query = query.eq('status_cobranca', filtros.statusCobranca)
+    }
+    if (filtros.profissionalId) query = query.eq('profissional_id', filtros.profissionalId)
+    if (filtros.unidadeId) query = query.eq('unidade_id', filtros.unidadeId)
+
+    const { data, error } = await query
+    if (error) return { erro: `Erro ao buscar auditorias: ${error.message}` }
+    if (!data || data.length === 0) break
+
+    idsAlvo.push(...data.map(a => a.grade_id as string))
+    if (data.length < TAMANHO_PAGINA) break
+  }
+
+  if (idsAlvo.length === 0) return { linhas: [] }
+
+  // Buscar as sessões dessas auditorias, em blocos para não estourar a URL.
+  const linhas: LinhaGrade[] = []
+  const blocos = 200
+
+  for (let i = 0; i < idsAlvo.length; i += blocos) {
+    const chunk = idsAlvo.slice(i, i + blocos)
+    let query = supabase
+      .from('csv_grades_profissionais')
+      .select(COLUNAS_GRADE)
+      .in('id', chunk)
+      .eq('ativo', true)
+
+    if (filtros.profissionalId) query = query.eq('profissional_id', filtros.profissionalId)
+    if (filtros.unidadeId) query = query.eq('unidade_id', filtros.unidadeId)
+
+    const { data, error } = await query
+    if (error) return { erro: `Erro ao buscar grade: ${error.message}` }
+    if (data) linhas.push(...(data as unknown as LinhaGrade[]))
+  }
+
+  linhas.sort((a, b) => (a.data < b.data ? 1 : a.data > b.data ? -1 : 0))
+  return { linhas }
 }
 
 /**
