@@ -37,12 +37,21 @@ import {
 /** Marco em que a auditoria de evoluções entrou em operação. */
 const PISO_PERIODO = '2026-09-01'
 
-const hojeISO = () => new Date().toISOString().split('T')[0]
+/**
+ * Data no fuso de QUEM OLHA, não em UTC. `toISOString()` converte para UTC, e
+ * em UTC-3 isso vira o dia seguinte a partir das 21h — a tela é usada pelas
+ * atendentes à noite, então "Hoje" traria o dia errado e o campo "Até"
+ * apareceria com uma data futura.
+ */
+const diaLocalISO = (d: Date) =>
+  new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().split('T')[0]
+
+const hojeISO = () => diaLocalISO(new Date())
 
 const ontemISO = () => {
   const d = new Date()
   d.setDate(d.getDate() - 1)
-  return d.toISOString().split('T')[0]
+  return diaLocalISO(d)
 }
 
 export function AuditoriaEvolucoesShell() {
@@ -50,8 +59,10 @@ export function AuditoriaEvolucoesShell() {
   const [abaAtiva, setAbaAtiva] = useState<'profissionais' | 'feed'>('profissionais')
 
   // Filtros — o período começa no marco da feature e vai até hoje.
+  // `dataFim` nasce preenchida com hoje para o campo "Até" não abrir vazio; o
+  // recorte resultante é o mesmo, já que não há sessão futura com evolução.
   const [dataInicio, setDataInicio] = useState(PISO_PERIODO)
-  const [dataFim, setDataFim] = useState('')
+  const [dataFim, setDataFim] = useState(hojeISO)
   const [busca, setBusca] = useState('')
   const [statusRisco, setStatusRisco] = useState<StatusRiscoEvolucao | 'todos'>('todos')
   const [statusCobranca, setStatusCobranca] = useState<StatusCobrancaEvolucao | 'todos'>('todos')
@@ -387,7 +398,7 @@ export function AuditoriaEvolucoesShell() {
           <div className="flex items-center gap-0.5 rounded-lg bg-muted/60 p-1">
             {atalhoPeriodo('Ontem', ontemISO(), ontemISO())}
             {atalhoPeriodo('Hoje', hojeISO(), hojeISO())}
-            {atalhoPeriodo('Desde setembro', PISO_PERIODO, '')}
+            {atalhoPeriodo('Desde setembro', PISO_PERIODO, hojeISO())}
           </div>
 
           <label className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs text-foreground">
@@ -395,10 +406,7 @@ export function AuditoriaEvolucoesShell() {
             <input
               type="date"
               value={dataInicio}
-              onChange={e => {
-                setDataInicio(e.target.value)
-                if (!dataFim) setDataFim(e.target.value)
-              }}
+              onChange={e => setDataInicio(e.target.value)}
               className="bg-transparent tabular-nums focus:outline-none"
             />
           </label>
