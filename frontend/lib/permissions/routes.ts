@@ -29,7 +29,7 @@ export const roleDefaults: Record<string, string[]> = {
     'cadastros_pacientes', 'cadastros_profissionais',
     'cronograma_por_paciente', 'cronograma_por_profissional',
     'insumos',
-    'terapeutico_pdi', 'terapeutico_pdi_painel',
+    'terapeutico_pdi', 'terapeutico_pdi_painel', 'terapeutico_auditoria_evolucoes',
   ],
   diretoria: [
     'dashboard', 'atendimentos', 'gestao',
@@ -51,7 +51,7 @@ export const roleDefaults: Record<string, string[]> = {
     'cadastros_pacientes', 'cadastros_profissionais',
     'cronograma_por_paciente', 'cronograma_por_profissional',
     'insumos',
-    'terapeutico_pdi', 'terapeutico_pdi_painel',
+    'terapeutico_pdi', 'terapeutico_pdi_painel', 'terapeutico_auditoria_evolucoes',
   ],
   recepcao: [
     'dashboard', 'atendimentos', 'autorizacoes_avulsas', 'gestao', 'auditoria_assim',
@@ -65,7 +65,7 @@ export const roleDefaults: Record<string, string[]> = {
     'dashboard', 'auditoria_assim',
     'preauditoria',
   ],
-  terapeutico: ['dashboard', 'escala_terapeutica', 'analise_tratativas'],
+  terapeutico: ['dashboard', 'escala_terapeutica', 'analise_tratativas', 'terapeutico_auditoria_evolucoes'],
   // O setor que opera o controle de insumos, junto com admin e diretoria
   // (definido pelo usuario em 2026-08-18). Ate entao tinha so o dashboard.
   faturamento: ['dashboard', 'insumos'],
@@ -213,6 +213,7 @@ export const CODIGO_PARA_ROTAS: Record<string, string[]> = {
   // pelo drill-down (PainelAnalistaShell.tsx), mas o SALVAR falha por RLS se
   // a pessoa não tiver `terapeutico_pdi` também.
   terapeutico_pdi_painel: ['/terapeutico/pdi-painel-analista'],
+  terapeutico_auditoria_evolucoes: ['/terapeutico/auditoria-evolucoes'],
 }
 
 // Converte um conjunto de códigos de permissão em rotas permitidas,

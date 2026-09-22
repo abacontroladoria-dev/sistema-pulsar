@@ -52,6 +52,7 @@ import {
   FileClock,
   CalendarClock,
   Gauge,
+  FileSearch,
 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
@@ -112,6 +113,7 @@ const pathIconMap: Record<string, any> = {
   "/cronograma/ocupacao?tab=guia": BookOpen,
   "/cronograma/ocupacao?tab=config": Settings,
   "/analise-tratativas": ClipboardCheck,
+  "/terapeutico/auditoria-evolucoes": FileSearch,
   "/relacionamento-prestador/analise": TrendingUp,
   "/relacionamento-prestador/rp": Wallet,
   "/relacionamento-prestador/individual": UserRound,
@@ -549,17 +551,20 @@ export default function Sidebar() {
           )}
 
           {/* Terapêutico */}
-          {(canAccess("/central-terapeutas") || canAccess("/analise-tratativas") || canAccess("/terapeutico/prazos-pdi") || canAccess("/terapeutico/pdi-painel-analista")) && (
+          {(canAccess("/central-terapeutas") || canAccess("/analise-tratativas") || canAccess("/terapeutico/auditoria-evolucoes") || canAccess("/terapeutico/prazos-pdi") || canAccess("/terapeutico/pdi-painel-analista")) && (
             <SidebarGroup
               title="Terapêutico"
               icon={Stethoscope}
-              defaultOpen={["/central-terapeutas", "/analise-tratativas", "/terapeutico/prazos-pdi", "/terapeutico/pdi-painel-analista"].some(p => pathname === p)}
+              defaultOpen={["/central-terapeutas", "/analise-tratativas", "/terapeutico/auditoria-evolucoes", "/terapeutico/prazos-pdi", "/terapeutico/pdi-painel-analista"].some(p => pathname === p)}
             >
               {canAccess("/central-terapeutas") && (
                 <MenuItem label="Gestão" icon={UserRound} path="/central-terapeutas" />
               )}
               {canAccess("/analise-tratativas") && (
                 <MenuItem label="Análise de Evolução" icon={ClipboardCheck} path="/analise-tratativas" />
+              )}
+              {canAccess("/terapeutico/auditoria-evolucoes") && (
+                <MenuItem label="Auditoria de Evoluções" icon={FileSearch} path="/terapeutico/auditoria-evolucoes" />
               )}
               {canAccess("/terapeutico/prazos-pdi") && (
                 <MenuItem label="PDI - Controle" icon={CalendarClock} path="/terapeutico/prazos-pdi" />
