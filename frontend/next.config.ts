@@ -135,7 +135,23 @@ const nextConfig: NextConfig = {
             key: 'Permissions-Policy',
             value: 'geolocation=(), microphone=(), camera=(), payment=(), usb=(), magnetometer=(), gyroscope=(), accelerometer=()',
           },
-          { key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains; preload' },
+          // HSTS só em produção. Em dev ele trava o acesso por IP na rede
+          // (celular, outra máquina, a TV): o navegador guarda a ordem de usar
+          // HTTPS por um ANO para aquele host, reescreve http://192.168.x.x:3001
+          // para https://, o dev server não fala TLS e a página pisca e
+          // recarrega. O JS nunca hidrata — o sintoma é o form recarregando com
+          // `?` na URL e nenhum botão respondendo, que não se parece com
+          // problema de certificado.
+          //
+          // `localhost` não sofre disso porque os navegadores o isentam de
+          // HSTS; um IP de rede não tem essa isenção. Por isso o mesmo servidor
+          // funciona em localhost:3001 e quebra em 192.168.0.234:3001.
+          //
+          // Quem já foi marcado continua preso até limpar o registro em
+          // chrome://net-internals/#hsts (ou edge://).
+          ...(isDev
+            ? []
+            : [{ key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains; preload' }]),
         ],
       },
     ];
