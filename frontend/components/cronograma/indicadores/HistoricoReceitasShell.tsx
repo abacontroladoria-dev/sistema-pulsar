@@ -18,7 +18,7 @@
 //     implantação do histórico, ou sem dados sincronizados suficientes).
 
 import { useMemo } from "react"
-import { CalendarClock, CalendarX2, Clock, Loader2, TrendingUp, Users } from "lucide-react"
+import { CalendarClock, CalendarX2, Clock, Info, Loader2, TrendingUp, Users } from "lucide-react"
 import { StatCard } from "@/components/cronograma/ui/StatCard"
 import { type PrevisaoReceitasResumoMes } from "@/services/previsaoReceitasHistoricoResumo.service"
 import { labelMesAno } from "@/lib/cronograma/helpers"
@@ -74,6 +74,11 @@ const TAG_POR_STATUS: Partial<Record<StatusMes, { texto: string; classe: string 
   },
 }
 
+/** Jan-Jun/2026: faltas vêm do backfill do relatório do Órbita, não da sincronização diária da TiTa (ver faltas_historico_csv). */
+function usaFonteHistoricaOrbita(ano: number, mes: number): boolean {
+  return ano === 2026 && mes >= 1 && mes <= 6
+}
+
 function LinhaMesCard({ linha }: { linha: LinhaHistorico }) {
   const Icone = linha.status === "fechado" ? TrendingUp
     : linha.status === "aguardando_fechamento" ? Clock
@@ -90,6 +95,13 @@ function LinhaMesCard({ linha }: { linha: LinhaHistorico }) {
         {tag && (
           <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${tag.classe}`}>
             {tag.texto}
+          </span>
+        )}
+        {usaFonteHistoricaOrbita(linha.ano, linha.mes) && (
+          <span
+            title={"Dedução por falta calculada a partir do relatório \"relatorio_faltas_detalhado\" do Órbita, importado manualmente — este mês não passou pela sincronização diária da TiTa."}
+          >
+            <Info size={14} className="text-muted-foreground" aria-label="Fonte da dedução por falta" />
           </span>
         )}
       </div>
@@ -146,7 +158,7 @@ export function HistoricoReceitasShell() {
   return (
     <div className="flex flex-col gap-3">
       <p className="text-[11px] text-muted-foreground">
-        Índice mensal — pra ver o detalhamento por convênio/paciente/sessão de um mês específico, use o seletor de mês na aba "Previsão de Receitas".
+        Índice mensal — pra ver o detalhamento por convênio/paciente/sessão de um mês específico, use o seletor de mês na aba "Previsão de Receitas". Jan-Jun/2026 usam a dedução por falta do relatório do Órbita (ícone <Info size={10} className="inline" aria-hidden />), não a sincronização diária da TiTa.
       </p>
       <EvolucaoReceitasChart resumos={resumos} modo="cheio" />
       {linhas.map(linha => <LinhaMesCard key={`${linha.ano}-${linha.mes}`} linha={linha} />)}

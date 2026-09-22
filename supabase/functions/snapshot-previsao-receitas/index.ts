@@ -71,6 +71,19 @@ function normTxt(s: string | null | undefined): string {
   return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim()
 }
 const EXIB_ID = { PSICOLOGIA_ABA: 2271 } as const
+
+// MEMORIAL SAÚDE LTDA encerrou e toda a carteira migrou para ASSIM Saúde (ver
+// mesmo fato em scripts/importar-favorecidos-tita.js), mas o backup XLS de
+// Jan-Mar/2026 ainda traz o nome antigo do convênio nas sessões. Sem este
+// alias, cronograma_convenio_valores (só tem regra pra "ASSIM Saúde") nunca
+// resolve preço pra essas sessões — medido: 99,5% do "sem_valor" de Jan-Mar
+// era exatamente isto (17.869 de ~17.870 linhas), e 9 de 10 pacientes
+// amostrados sob MEMORIAL no histórico já estão cadastrados como ASSIM Saúde
+// hoje. Aplicado ANTES da resolução de preço e do agrupamento por convênio,
+// pra essas sessões caírem no mesmo bucket de "ASSIM Saúde" do resto do ano.
+const CONVENIO_ALIAS_HISTORICO: Record<string, string> = {
+  "MEMORIAL SAÚDE LTDA": "ASSIM Saúde",
+}
 const PROCESSO_DIAGNOSTICO_IDS = new Set([2268, 2695, 2270])
 const PROCESSO_DIAGNOSTICO_NAMES = new Set(["Avaliação Neuropsicológica", "Psiquiatra/Neurologista", "Triagem"])
 
@@ -92,6 +105,7 @@ type ConvenioValorPaciente = {
 type ConvenioPacoteAvaliacao = { convenio_nome: string; terapia_id: number; valor_a_vista: number }
 
 type AgendaSalaRow = {
+  id: string; origem: string | null
   tita_agendamento_id: number | null; paciente_id: number | null; paciente_nome: string | null
   convenio_nome: string | null; terapia_id: number | null; terapia_nome: string | null
   terapia_exibicao_id: number | null; terapia_exibicao_nome: string | null
@@ -178,6 +192,7 @@ function sessoesPorConvenio(
   pacotesAvaliacao: ConvenioPacoteAvaliacao[],
   pacientesComAba: Set<string>,
   faltasSet: Set<number>,
+  faltasPorGradeId: Set<string>,
 ): Map<string, SessaoSnapshot[]> {
   const porConvenio = new Map<string, SessaoSnapshot[]>()
 
@@ -186,7 +201,8 @@ function sessoesPorConvenio(
     const dow = data ? new Date(`${data}T12:00:00`).getDay() : NaN
     if (!Number.isFinite(dow) || dow < 1 || dow > 5) return
 
-    const convenio = cleanTxt(r.convenio_nome) || "Não informado"
+    const convenioBruto = cleanTxt(r.convenio_nome) || "Não informado"
+    const convenio = CONVENIO_ALIAS_HISTORICO[convenioBruto] ?? convenioBruto
     const pacienteId = r.paciente_id ?? null
     const paciente = cleanTxt(r.paciente_nome)
     const terapiaId = r.terapia_id ?? r.terapia_exibicao_id ?? null
@@ -203,12 +219,25 @@ function sessoesPorConvenio(
 
     const agendamentoId = r.tita_agendamento_id ?? null
 
+    // Bifurcação por origem da sessão: 'backup_xls' (Jan-Jun/2026, seed do
+    // backup XLS) nunca tem tita_agendamento_id, então a falta vem de
+    // faltas_historico_csv (backfill do relatório do Órbita), casada pelo
+    // uuid da própria sessão. 'tita_csv' (API viva, >= 2026-08-05) continua
+    // exatamente como antes, via fila_autorizacoes. Uma sessão é só uma das
+    // duas origens — nunca as duas —, então não há risco de contar a mesma
+    // falta duas vezes. NÃO "corrigir" isto pra usar tita_agendamento_id
+    // também no backup_xls: esse id não existe nessas linhas por construção
+    // (o backup nunca trouxe o id do agendamento, ver scripts/lib/backup-grade.js).
+    const emFalta = r.origem === "backup_xls"
+      ? faltasPorGradeId.has(r.id)
+      : agendamentoId !== null && faltasSet.has(agendamentoId)
+
     if (!porConvenio.has(convenio)) porConvenio.set(convenio, [])
     porConvenio.get(convenio)!.push({
       agendamentoId, pacienteId, pacienteNome: paciente || "Não informado",
       terapiaId, terapiaNome, data, horaInicial: cleanTxt(r.hora_inicial) || null,
       valor, origem,
-      emFalta: agendamentoId !== null && faltasSet.has(agendamentoId),
+      emFalta,
     })
   })
 
@@ -221,6 +250,7 @@ function calcularSessoesMensaisPorConvenio(
   excecoesPaciente: ConvenioValorPaciente[],
   pacotesAvaliacao: ConvenioPacoteAvaliacao[],
   faltasSet: Set<number>,
+  faltasPorGradeId: Set<string>,
 ): { multidisciplinar: Map<string, SessaoSnapshot[]>; processoDiagnostico: Map<string, SessaoSnapshot[]> } {
   const ativos = rowsMesInteiro.filter(isAgendadoAtivo)
 
@@ -234,8 +264,8 @@ function calcularSessoesMensaisPorConvenio(
   const rowsDiagnostico = ativos.filter(isTerapiaDiagnostico)
 
   return {
-    multidisciplinar: sessoesPorConvenio(rowsMultidisciplinar, regrasGerais, excecoesPaciente, pacotesAvaliacao, pacientesComAba, faltasSet),
-    processoDiagnostico: sessoesPorConvenio(rowsDiagnostico, [], [], pacotesAvaliacao, pacientesComAba, faltasSet),
+    multidisciplinar: sessoesPorConvenio(rowsMultidisciplinar, regrasGerais, excecoesPaciente, pacotesAvaliacao, pacientesComAba, faltasSet, faltasPorGradeId),
+    processoDiagnostico: sessoesPorConvenio(rowsDiagnostico, [], [], pacotesAvaliacao, pacientesComAba, faltasSet, faltasPorGradeId),
   }
 }
 
@@ -310,7 +340,7 @@ serve(async (req: Request) => {
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
 
   try {
-    const AGENDA_FIELDS = "tita_agendamento_id, paciente_id, paciente_nome, convenio_nome, terapia_id, terapia_nome, terapia_exibicao_id, terapia_exibicao_nome, hora_inicial, status_agendamento, data"
+    const AGENDA_FIELDS = "id, origem, tita_agendamento_id, paciente_id, paciente_nome, convenio_nome, terapia_id, terapia_nome, terapia_exibicao_id, terapia_exibicao_nome, hora_inicial, status_agendamento, data"
     // vw_grade_base é o ponto único de leitura da grade (migration 20260806110000);
     // no frontend o equivalente é lib/grade/fonte.ts, que não dá para importar aqui
     // (Deno). A view já garante `ativo` — versionamento da grade
@@ -342,8 +372,21 @@ serve(async (req: Request) => {
     )
     const faltasSet = new Set(faltasRows.map(r => Number(r.tita_agendamento_id)))
 
+    // Fonte 2, só para sessões origem='backup_xls' (Jan-Jun/2026 e até
+    // 2026-08-04): faltas_historico_csv, backfill importado do relatório
+    // "relatorio_faltas_detalhado" do Órbita. presenca_bool=false
+    // decide sozinho — sem filtrar por tipo_falta/motivo, igual ao critério
+    // real de fila_autorizacoes.status='falta' (que também não filtra por
+    // tipo, ver 20260908100200_falta_da_unidade_fora_da_assiduidade.sql).
+    const faltasHistoricoRows = await pageAll<{ csv_grade_id: string }>(
+      sb, "faltas_historico_csv", "csv_grade_id",
+      q => q.eq("presenca_bool", false).not("csv_grade_id", "is", null)
+        .gte("data_agendamento", inicio).lte("data_agendamento", fim),
+    )
+    const faltasPorGradeId = new Set(faltasHistoricoRows.map(r => r.csv_grade_id))
+
     const { multidisciplinar, processoDiagnostico } = calcularSessoesMensaisPorConvenio(
-      linhas, regrasGerais, excecoesPaciente, pacotesAvaliacao, faltasSet,
+      linhas, regrasGerais, excecoesPaciente, pacotesAvaliacao, faltasSet, faltasPorGradeId,
     )
 
     const registros: Record<string, unknown>[] = []
