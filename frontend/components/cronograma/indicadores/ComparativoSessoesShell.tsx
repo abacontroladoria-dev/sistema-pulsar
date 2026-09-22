@@ -1,19 +1,19 @@
 "use client"
 
 // ComparativoSessoesShell — compara a quantidade de sessões agendadas entre
-// dois períodos. Ambos os períodos aceitam upload manual do XLSX
-// "agendamentos_profissionais" (pra comparar qualquer mês). Se o Período 2
-// não tiver upload, cai automaticamente pra busca via API em
-// csv_grades_profissionais (primeira semana completa do mês subsequente —
-// mesma "semana de referência" de Saída de Profissional).
+// dois períodos. Cada período busca automaticamente a grade de
+// csv_grades_profissionais (via buscarGradeComparativo, sem filtro de
+// unidade). A pessoa escolhe só a data inicial (DatePicker); o fim é sempre o
+// 5º dia útil a partir dela, pulando fim de semana (ver
+// calcularFimSemanaUtil) — a data inicial padrão é a "semana de referência"
+// (getRefWeek(), mesma de Saída de Profissional). Trocar a data refaz a busca.
 // A lógica de filtro/mapeamento/agregação vive em lib/cronograma/comparativoSessoes.ts.
 // Inspirado no resultado de "comparativo_julho_agosto_2026.xlsx".
 
-import { Fragment, useEffect, useMemo, useRef, useState } from "react"
-import * as XLSX from "xlsx"
+import { Fragment, useEffect, useMemo, useState } from "react"
 import {
-  Upload, CheckCircle2, X, Loader2, TrendingUp, TrendingDown, Minus, Building2, Users, ArrowRightLeft,
-  DatabaseZap, AlertTriangle, Info, ChevronUp, ChevronDown, ChevronsUpDown, ChevronRight, Filter, Search, SlidersHorizontal, UserCheck, CalendarDays,
+  CheckCircle2, X, Loader2, TrendingUp, TrendingDown, Minus, Building2, Users, ArrowRightLeft,
+  AlertTriangle, Info, ChevronUp, ChevronDown, ChevronsUpDown, ChevronRight, Filter, Search, SlidersHorizontal, UserCheck, CalendarDays,
   Brain, Home, School, HandHelping, Paintbrush, ClipboardList, PawPrint, Dumbbell, Waves, MessageCircle, Music, Salad,
   BookOpenCheck, HeartHandshake, PersonStanding, BookOpen, Eye, Apple, Puzzle, ClipboardCheck, Footprints,
   UserMinus, UserPlus, UsersRound,
@@ -23,18 +23,54 @@ import {
 import { StatCard } from "@/components/cronograma/ui/StatCard"
 import { StatusPill } from "@/components/cronograma/ui/StatusPill"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
+import { DatePicker } from "@/components/ui/date-picker"
 import { TONE_SOFT, TONE_SOLID, TONE_ACCENT, type Tone } from "@/components/cronograma/ui/tones"
 import { getRefWeek } from "@/lib/cronograma/helpers"
 import { tCor, normTxt } from "@/lib/cronograma/constants"
 import {
-  normalizarLinhasUpload, normalizarLinhasApi, corrigirUnidadesPorPaciente, calcularComparativo, calcularPorPacienteDaUnidade, classificarMovimento, rangeDatas,
-  filtrarSessoesPorTexto, filtrarSessoesPorProfissionalTexto, passaFiltroNumerico, sessoesDoPaciente, validarDataMinimaUpload, limitarPrimeirasOcorrenciasSemana, DIAS_SEMANA_LABEL,
+  normalizarLinhasApi, corrigirUnidadesPorPaciente, calcularComparativo, calcularPorPacienteDaUnidade, classificarMovimento, rangeDatas,
+  filtrarSessoesPorTexto, filtrarSessoesPorProfissionalTexto, passaFiltroNumerico, sessoesDoPaciente, DIAS_SEMANA_LABEL,
   calcularTurnoverProfissionais, agregarPorProfissional, calcularResumoMovimentoProfissionais, dedupSessaoDuplaProfissional,
   sessoesDoProfissional, sessoesDoProfissionalNoGrupo, formatarDataSessao, ROTULO_PSICOLOGIA_ABA, IDS_PSICOLOGIA_ABA,
   type SessaoComparativo, type ComparativoResultado, type UnidadeComparativo, type PacienteComparativo, type CategoriaMovimento,
   type TurnoverTerapia, type ProfissionalTurnover, type ProfissionalMovimento,
 } from "@/lib/cronograma/comparativoSessoes"
 import { buscarGradeComparativo } from "@/lib/cronograma/gradeService"
+
+// Gatilho compacto do DatePicker padrão (ver date-picker.tsx) pra caber numa
+// barra de filtros de 24px de altura — o trigger de formulário original traz
+// `mt-1` e paddings de campo, que aqui viravam um degrau visual.
+const CLASSE_DATA_GATILHO = "flex items-center gap-1 rounded-md border border-border bg-transparent px-1.5 py-0.5 text-[10px] text-foreground hover:bg-muted/40 focus:outline-none focus:ring-1 focus:ring-ring"
+
+/**
+ * A pessoa escolhe só a data inicial — o fim é sempre o 5º dia útil a partir
+ * dela (inclusive), pulando sábado/domingo. Ex.: 05/10 (segunda) → 09/10
+ * (sexta); 13/10 (terça) → 19/10 (segunda seguinte, pulando o fim de semana).
+ */
+function calcularFimSemanaUtil(inicioISO: string): string {
+  const [ano, mes, dia] = inicioISO.split("-").map(Number)
+  const cur = new Date(ano, mes - 1, dia)
+  let diasUteis = 0
+  while (diasUteis < 5) {
+    const diaSemana = cur.getDay()
+    if (diaSemana >= 1 && diaSemana <= 5) diasUteis++
+    if (diasUteis === 5) break
+    cur.setDate(cur.getDate() + 1)
+  }
+  const yyyy = cur.getFullYear()
+  const mm = String(cur.getMonth() + 1).padStart(2, "0")
+  const dd = String(cur.getDate()).padStart(2, "0")
+  return `${yyyy}-${mm}-${dd}`
+}
+
+/** "2026-10-05" → "05/10", "2026-10-09" → "09/10/2026" (ano só no fim, ou nos dois quando divergem). */
+function formatarRangeCompacto(periodo: { inicio: string; fim: string }): string {
+  const [anoIni, mesIni, diaIni] = periodo.inicio.split("-")
+  const [anoFim, mesFim, diaFim] = periodo.fim.split("-")
+  return anoIni === anoFim
+    ? `${diaIni}/${mesIni} a ${diaFim}/${mesFim}/${anoFim}`
+    : `${diaIni}/${mesIni}/${anoIni} a ${diaFim}/${mesFim}/${anoFim}`
+}
 
 /** Filtro da tabela "Por Paciente": uma categoria de movimento, ou o total de um grupo (união de 2 categorias). */
 type FiltroCategoria = CategoriaMovimento | "ganhos" | "perdas"
@@ -703,172 +739,72 @@ function calcularResumoPorTerapia(p1: SessaoComparativo[], p2: SessaoComparativo
     .sort((a, b) => a.terapia.localeCompare(b.terapia, "pt-BR"))
 }
 
-function parseXlsxGenerico(file: File): Promise<Record<string, unknown>[]> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = e => {
-      try {
-        const wb = XLSX.read(e.target?.result, { type: "array", raw: true })
-        const ws = wb.Sheets[wb.SheetNames[0]]
-        resolve(XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "" }))
-      } catch (err) {
-        reject(err)
-      }
-    }
-    reader.onerror = () => reject(new Error("Falha ao ler arquivo."))
-    reader.readAsArrayBuffer(file)
-  })
-}
-
-interface UploadCardProps {
-  label: string
-  fileName: string | null
-  count: number
-  loading: boolean
-  error: string | null
-  onFile: (file: File) => void
-  onClear: () => void
-}
-
-function UploadCard({ label, fileName, count, loading, error, onFile, onClear }: UploadCardProps) {
-  const inputRef = useRef<HTMLInputElement>(null)
-  const [dragging, setDragging] = useState(false)
-  const loaded = count > 0
-
-  function onInputChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (file) onFile(file)
-    e.target.value = ""
-  }
-  function onDrop(e: React.DragEvent) {
-    e.preventDefault()
-    setDragging(false)
-    const file = e.dataTransfer.files?.[0]
-    if (file) onFile(file)
-  }
-
-  return (
-    <div
-      className={`relative inline-flex w-auto max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] leading-none transition-colors select-none
-        ${!loaded && !loading ? "cursor-pointer" : ""}
-        ${dragging ? "border-primary bg-primary/5" : loaded ? "border-green-400 bg-green-50 dark:bg-green-950/20" : "border-border bg-card hover:border-[#2A92C0]/40 hover:bg-muted/40"}`}
-      onClick={() => !loaded && !loading && inputRef.current?.click()}
-      onDragOver={e => { e.preventDefault(); setDragging(true) }}
-      onDragLeave={() => setDragging(false)}
-      onDrop={onDrop}
-    >
-      <input ref={inputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={onInputChange} />
-      {loaded ? (
-        <>
-          <CheckCircle2 size={11} className="shrink-0 text-green-500" />
-          <span className="max-w-[140px] truncate font-semibold text-green-700 dark:text-green-400">{fileName ?? label}</span>
-          <span className="shrink-0 text-green-600 dark:text-green-500">({count})</span>
-          <button
-            onClick={e => { e.stopPropagation(); onClear() }}
-            className="shrink-0 text-muted-foreground hover:text-destructive transition-colors"
-            title="Remover"
-          >
-            <X size={11} />
-          </button>
-        </>
-      ) : loading ? (
-        <span className="text-primary animate-pulse">Processando...</span>
-      ) : error ? (
-        <>
-          <Upload size={11} className="shrink-0 text-muted-foreground" />
-          <span className="text-destructive">{error}</span>
-        </>
-      ) : (
-        <>
-          <Upload size={11} className="shrink-0 text-muted-foreground" />
-          <span className="font-medium text-foreground">{label}</span>
-          <span className="text-muted-foreground">(.xlsx/.xls)</span>
-        </>
-      )}
-    </div>
-  )
-}
-
 export function ComparativoSessoesShell() {
   const labelP1 = "Período 1"
   const labelP2 = "Período 2"
 
+  // Cada período busca csv_grades_profissionais (via buscarGradeComparativo)
+  // no range de datas escolhido, refazendo a busca sempre que a data muda. O
+  // range inicial é a "semana de referência" (getRefWeek() — mesma usada em
+  // Saída de Profissional), mas é livremente editável.
+  const refWeek = getRefWeek()
+
+  const [periodoP1, setPeriodoP1] = useState<{ inicio: string; fim: string }>({ inicio: refWeek.inicio, fim: refWeek.fim })
   const [sessoesP1, setSessoesP1] = useState<SessaoComparativo[]>([])
-  const [fileNameP1, setFileNameP1] = useState<string | null>(null)
-  const [loadingP1, setLoadingP1] = useState(false)
+  const [loadingP1, setLoadingP1] = useState(true)
   const [errorP1, setErrorP1] = useState<string | null>(null)
 
-  // Período 2: se o usuário não anexar um XLSX, cai automaticamente pra
-  // busca via API (primeira semana completa do mês subsequente — mesma
-  // "semana de referência" usada em Saída de Profissional — getRefWeek() —
-  // já que csv_grades_profissionais só tem dados confiáveis a partir do mês
-  // seguinte). O upload manual, quando presente, tem prioridade sobre a API.
-  const refWeek = getRefWeek()
-  const [sessoesApiP2, setSessoesApiP2] = useState<SessaoComparativo[]>([])
-  const [loadingApiP2, setLoadingApiP2] = useState(true)
-  const [errorApiP2, setErrorApiP2] = useState<string | null>(null)
-
-  const [sessoesUploadP2, setSessoesUploadP2] = useState<SessaoComparativo[]>([])
-  const [fileNameP2, setFileNameP2] = useState<string | null>(null)
-  const [loadingP2, setLoadingP2] = useState(false)
+  const [periodoP2, setPeriodoP2] = useState<{ inicio: string; fim: string }>({ inicio: refWeek.inicio, fim: refWeek.fim })
+  const [sessoesP2, setSessoesP2] = useState<SessaoComparativo[]>([])
+  const [loadingP2, setLoadingP2] = useState(true)
   const [errorP2, setErrorP2] = useState<string | null>(null)
 
-  const usandoUploadP2 = sessoesUploadP2.length > 0
-  const sessoesP2 = usandoUploadP2 ? sessoesUploadP2 : sessoesApiP2
-
-  async function handleFileP1(file: File) {
-    setLoadingP1(true)
-    setErrorP1(null)
-    try {
-      const raw = await parseXlsxGenerico(file)
-      const rows = corrigirUnidadesPorPaciente(normalizarLinhasUpload(raw))
-      if (rows.length === 0) throw new Error("Nenhuma sessão agendada encontrada no arquivo.")
-      validarDataMinimaUpload(rows)
-      setSessoesP1(limitarPrimeirasOcorrenciasSemana(rows))
-      setFileNameP1(file.name)
-    } catch (e: unknown) {
-      setErrorP1(e instanceof Error ? e.message : "Erro ao processar arquivo.")
-    } finally {
-      setLoadingP1(false)
-    }
+  function selecionarInicioP1(inicio: string) {
+    if (!inicio) return
+    setPeriodoP1({ inicio, fim: calcularFimSemanaUtil(inicio) })
   }
-
-  async function handleFileP2(file: File) {
-    setLoadingP2(true)
-    setErrorP2(null)
-    try {
-      const raw = await parseXlsxGenerico(file)
-      const rows = corrigirUnidadesPorPaciente(normalizarLinhasUpload(raw))
-      if (rows.length === 0) throw new Error("Nenhuma sessão agendada encontrada no arquivo.")
-      validarDataMinimaUpload(rows)
-      setSessoesUploadP2(limitarPrimeirasOcorrenciasSemana(rows))
-      setFileNameP2(file.name)
-    } catch (e: unknown) {
-      setErrorP2(e instanceof Error ? e.message : "Erro ao processar arquivo.")
-    } finally {
-      setLoadingP2(false)
-    }
+  function selecionarInicioP2(inicio: string) {
+    if (!inicio) return
+    setPeriodoP2({ inicio, fim: calcularFimSemanaUtil(inicio) })
   }
 
   useEffect(() => {
     let cancelado = false
-    setLoadingApiP2(true)
-    setErrorApiP2(null)
-    buscarGradeComparativo(refWeek.inicio, refWeek.fim)
+    setLoadingP1(true)
+    setErrorP1(null)
+    buscarGradeComparativo(periodoP1.inicio, periodoP1.fim)
       .then(raw => {
         if (cancelado) return
         const rows = corrigirUnidadesPorPaciente(normalizarLinhasApi(raw))
         if (rows.length === 0) throw new Error("Nenhuma sessão agendada encontrada no período.")
-        setSessoesApiP2(rows)
+        setSessoesP1(rows)
       })
       .catch((e: unknown) => {
         if (cancelado) return
-        setErrorApiP2(e instanceof Error ? e.message : "Erro ao buscar dados da grade.")
+        setErrorP1(e instanceof Error ? e.message : "Erro ao buscar dados da grade.")
       })
-      .finally(() => { if (!cancelado) setLoadingApiP2(false) })
+      .finally(() => { if (!cancelado) setLoadingP1(false) })
     return () => { cancelado = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [periodoP1.inicio, periodoP1.fim])
+
+  useEffect(() => {
+    let cancelado = false
+    setLoadingP2(true)
+    setErrorP2(null)
+    buscarGradeComparativo(periodoP2.inicio, periodoP2.fim)
+      .then(raw => {
+        if (cancelado) return
+        const rows = corrigirUnidadesPorPaciente(normalizarLinhasApi(raw))
+        if (rows.length === 0) throw new Error("Nenhuma sessão agendada encontrada no período.")
+        setSessoesP2(rows)
+      })
+      .catch((e: unknown) => {
+        if (cancelado) return
+        setErrorP2(e instanceof Error ? e.message : "Erro ao buscar dados da grade.")
+      })
+      .finally(() => { if (!cancelado) setLoadingP2(false) })
+    return () => { cancelado = true }
+  }, [periodoP2.inicio, periodoP2.fim])
 
   const pronto = sessoesP1.length > 0 && sessoesP2.length > 0
   const dataRangeP1 = useMemo(() => rangeDatas(sessoesP1), [sessoesP1])
@@ -1124,71 +1060,31 @@ export function ComparativoSessoesShell() {
     return { profissional: p, p1, p2, horarios, dias, porTerapia }
   }, [profissionalExpandido, porProfissionalFiltrado, sessoesP1FiltradasProf, sessoesP2FiltradasProf, agruparPsicologiaAbaTurnover])
 
-  const [anoIni, mesIni, diaIni] = refWeek.inicio.split("-")
-  const [anoFim, mesFim, diaFim] = refWeek.fim.split("-")
-  const rangeCompacto = anoIni === anoFim
-    ? `${diaIni}/${mesIni} a ${diaFim}/${mesFim}/${anoFim}`
-    : refWeek.label
-
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-border bg-card px-2.5 py-1.5">
-        <div className="flex items-center gap-1">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-lg border border-border bg-card px-2.5 py-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
           <span className="shrink-0 whitespace-nowrap text-[9px] font-bold uppercase tracking-wide text-muted-foreground">Período 1</span>
-          <UploadCard
-            label="Agendamentos Profissionais"
-            fileName={fileNameP1}
-            count={sessoesP1.length}
-            loading={loadingP1}
-            error={errorP1}
-            onFile={handleFileP1}
-            onClear={() => { setSessoesP1([]); setFileNameP1(null); setErrorP1(null) }}
-          />
+          <DatePicker value={periodoP1.inicio} onChange={selecionarInicioP1} classeGatilho={CLASSE_DATA_GATILHO} />
+          <span className="shrink-0 whitespace-nowrap text-[10px] text-muted-foreground">até {formatarRangeCompacto(periodoP1).split(" a ")[1]}</span>
+          {loadingP1 && <Loader2 size={12} className="shrink-0 animate-spin text-muted-foreground" />}
+          {errorP1 && <AlertTriangle size={12} className="shrink-0 text-rose-500" aria-label={errorP1} />}
         </div>
 
         <div className="hidden h-4 w-px shrink-0 bg-border sm:block" />
 
-        <div className="flex flex-wrap items-center gap-1">
+        <div className="flex flex-wrap items-center gap-1.5">
           <span className="shrink-0 whitespace-nowrap text-[9px] font-bold uppercase tracking-wide text-muted-foreground">Período 2</span>
-          <UploadCard
-            label="Agendamentos Profissionais (opcional)"
-            fileName={fileNameP2}
-            count={sessoesUploadP2.length}
-            loading={loadingP2}
-            error={errorP2}
-            onFile={handleFileP2}
-            onClear={() => { setSessoesUploadP2([]); setFileNameP2(null); setErrorP2(null) }}
-          />
-          {!usandoUploadP2 && (
-            <span
-              className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] leading-none
-                ${loadingApiP2 ? "border-border bg-card" : errorApiP2 ? "border-rose-300 bg-rose-50 dark:bg-rose-950/20" : "border-green-400 bg-green-50 dark:bg-green-950/20"}`}
-            >
-              {loadingApiP2 ? (
-                <>
-                  <Loader2 size={10} className="shrink-0 animate-spin text-muted-foreground" />
-                  <span className="text-foreground">Carregando grade...</span>
-                </>
-              ) : errorApiP2 ? (
-                <>
-                  <AlertTriangle size={10} className="shrink-0 text-rose-500" />
-                  <span className="text-rose-700 dark:text-rose-400">{errorApiP2}</span>
-                </>
-              ) : (
-                <>
-                  <DatabaseZap size={10} className="shrink-0 text-green-500" />
-                  <span className="font-semibold text-green-700 dark:text-green-400">{sessoesApiP2.length} horários</span>
-                  <span className="text-green-600 dark:text-green-500">· {rangeCompacto}</span>
-                </>
-              )}
-            </span>
-          )}
+          <DatePicker value={periodoP2.inicio} onChange={selecionarInicioP2} classeGatilho={CLASSE_DATA_GATILHO} />
+          <span className="shrink-0 whitespace-nowrap text-[10px] text-muted-foreground">até {formatarRangeCompacto(periodoP2).split(" a ")[1]}</span>
+          {loadingP2 && <Loader2 size={12} className="shrink-0 animate-spin text-muted-foreground" />}
+          {errorP2 && <AlertTriangle size={12} className="shrink-0 text-rose-500" aria-label={errorP2} />}
         </div>
       </div>
 
       {!pronto && (
         <p className="text-xs text-muted-foreground text-center">
-          Carregue o arquivo de Agendamentos do Período 1 para ver o comparativo (o Período 2 usa a grade da API automaticamente, a menos que você anexe um arquivo).
+          {loadingP1 || loadingP2 ? "Carregando a grade..." : "Ajuste as datas de cada período para ver o comparativo."}
         </p>
       )}
 
