@@ -19,7 +19,8 @@ export default function CentralWorkspace() {
   // lista de conversas. useConversas é compartilhado — as duas chamadas atingem
   // as mesmas rotas no mesmo intervalo, o custo é o cache HTTP do navegador.
   const { conversas } = useConversas()
-  const contato = conversas.find(c => c.conversa.id === selectedId)?.contato ?? null
+  const conversaSelecionada = conversas.find(c => c.conversa.id === selectedId) ?? null
+  const contato = conversaSelecionada?.contato ?? null
 
   function selecionar(id: string) {
     setSelectedId(id)
@@ -57,6 +58,7 @@ export default function CentralWorkspace() {
         <ContextPanel
           isOpen={contextPanelOpen}
           onClose={() => setContextPanelOpen(false)}
+          conversation={conversaSelecionada?.conversa ?? null}
         />
       </div>
     </div>

@@ -144,6 +144,16 @@ export class TagDesconhecidaError extends CentralError {
   }
 }
 
+export class TagNaoAplicavelPelaMaiaError extends CentralError {
+  constructor(chaves: string[]) {
+    super(
+      `Tag existe no catálogo mas a Maia não pode aplicá-la (maia_pode_aplicar = false): ${chaves.join(', ')}`,
+      'TAG_NAO_APLICAVEL_PELA_MAIA',
+      { chaves },
+    )
+  }
+}
+
 // ----------------------------------------------------------------------------
 // Agendamento
 // ----------------------------------------------------------------------------

@@ -17,6 +17,9 @@ export type EntidadeAuditada =
   | "alta"
   | "alta_individualidade"
   | "suspensao_temporaria"
+  // Alta clínica geral (encerra todas as terapias do paciente), distinta da
+  // alta por especialidade (`alta`). Ver 20260921200000/200200.
+  | "alta_clinica"
   // Acompanhamento de laudo do Órbita (tela /acompanhamento/laudos). O
   // `registro_id` é o `ID Laudo` do Órbita — texto, não id numérico do Pulsar —,
   // que é a única chave daquele relatório que sobrevive à troca de importação do
@@ -76,6 +79,7 @@ export const ENTIDADE_LABEL: Record<EntidadeAuditada, string> = {
   alta: "Alta",
   alta_individualidade: "Individualidades",
   suspensao_temporaria: "Suspensão temporária",
+  alta_clinica: "Alta clínica",
   laudo_acompanhamento: "Acompanhamento de laudo",
   pdi_controle_prazos: "Controle de Prazos PDI",
 }

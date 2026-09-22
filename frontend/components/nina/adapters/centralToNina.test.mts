@@ -90,6 +90,7 @@ function conv(over: Partial<Conversation> = {}): Conversation {
     id: 'c1', organization_id: 'o1', inbox_id: 'i1', channel_id: 'ch1',
     contact_id: 'ct1', assigned_user_id: null, status: 'open',
     priority: null, intent: null, sentiment: null, ai_mode: 'off', tags: null,
+    campanha: null, objecao: null,
     last_message_at: '2026-09-01T13:32:42Z', last_read_at: null,
     resolved_at: null, archived_at: null,
     created_at: '2026-09-01T13:00:00Z', updated_at: '2026-09-01T13:32:42Z',

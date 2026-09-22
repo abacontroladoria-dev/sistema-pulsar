@@ -44,8 +44,8 @@ export function SalasSeletorDeVista({ modo, onModo }: { modo: ModoLista; onModo:
       onChange={onModo}
       ariaLabel="Modo de visualização"
       tabs={[
-        { value: "cards", label: "Cards" },
         { value: "lista", label: "Lista compacta" },
+        { value: "cards", label: "Cards" },
         { value: "mapa", label: "Mapa de calor" },
         { value: "regularizacoes", label: "Regularizações" },
       ]}
@@ -68,6 +68,7 @@ interface SalasListaViewProps {
   unidades: string[]
   nucleos: string[]
   andares: string[]
+  diasSemana: string[]
 
   somenteInconsistentes: boolean
   onToggleInconsistentes: () => void
@@ -101,7 +102,7 @@ interface SalasListaViewProps {
 export function SalasListaView(props: SalasListaViewProps) {
   const {
     modo, filtradas, filtradasPadrao, gruposEspeciais,
-    filtros, onFiltros, unidades, nucleos, andares,
+    filtros, onFiltros, unidades, nucleos, andares, diasSemana,
     somenteInconsistentes, onToggleInconsistentes, isolada, onLimparIsolada, onIsolarSala,
     totalInconsistencias,
     loading, error, onRecarregarTudo, onVerDetalhes, onEditarSala,
@@ -157,7 +158,7 @@ export function SalasListaView(props: SalasListaViewProps) {
       {!emRegularizacoes && (
         <div className="flex flex-col gap-2">
           <div className="flex flex-wrap items-center gap-2">
-            <SalasFiltros value={filtros} onChange={onFiltros} unidades={unidades} nucleos={nucleos} andares={andares} />
+            <SalasFiltros value={filtros} onChange={onFiltros} unidades={unidades} nucleos={nucleos} andares={andares} diasSemana={diasSemana} />
             {/* O aviso é um FILTRO, e por isso mora entre os filtros. Zero não
                 tem cor: sem inconsistência não há o que filtrar, some. */}
             {totalInconsistencias > 0 && (
@@ -241,6 +242,7 @@ export function SalasListaView(props: SalasListaViewProps) {
               exclusividades={exclusividades}
               profissionaisTodos={profissionaisTodos}
               terapiasTodas={terapiasTodas}
+              diasFiltro={filtros.dia}
             />
           )}
           {gruposEspeciais.map(grupo => (
@@ -260,6 +262,7 @@ export function SalasListaView(props: SalasListaViewProps) {
                 exclusividades={exclusividades}
                 profissionaisTodos={profissionaisTodos}
                 terapiasTodas={terapiasTodas}
+                diasFiltro={filtros.dia}
               />
             </GrupoEspecial>
           ))}

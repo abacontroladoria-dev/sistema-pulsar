@@ -7,9 +7,14 @@ import type { ListConversationsFilters, CreateConversationInput } from '../repos
 import type { ConversationRepository } from '../repositories/conversation.repository'
 import type { AuditRepository } from '../repositories/audit.repository'
 import type { TypedEventBus } from '../events/event-bus'
+// `import type` para não criar dependência de runtime entre dois services —
+// mesma convenção de contact.service.ts.
+import type { TagDefinitionService } from './tag-definition.service'
+import type { TagDefinition } from '../types/central.types'
 import {
   ConversationNotFoundError,
   ConversationAlreadyClosedError,
+  TagDesconhecidaError,
 } from '../types/errors.types'
 import { isUniqueViolation } from '../utils/pg-errors'
 
@@ -46,7 +51,11 @@ export class ConversationService {
   constructor(
     private readonly conv:   ConversationRepository,
     private readonly audit:  AuditRepository,
-    private readonly events: TypedEventBus
+    private readonly events: TypedEventBus,
+    // Para `atualizarTags`. Opcional pela mesma razão de ContactService: os
+    // callers que não mexem em tags (a maioria) não precisam montá-lo, e sem
+    // ele o método recusa em vez de gravar sem conferir contra o catálogo.
+    private readonly tagDefs?: TagDefinitionService,
   ) {}
 
   // -------------------------------------------------------------------------
@@ -386,6 +395,122 @@ export class ConversationService {
     }
 
     return { jaEstavaEscalada }
+  }
+
+  // -------------------------------------------------------------------------
+  // atualizarTags
+  //
+  // MERGE POR GRUPO, não substituição total do array (ao contrário de
+  // ContactService.update, cujo `tags` é escolha deliberada do chamador
+  // humano na tela). Aqui o chamador (a ferramenta registrar_tags, ou o
+  // cálculo de status do paciente) manda só os grupos que mudaram — os
+  // demais grupos da conversa ficam intocados.
+  //
+  // Para cada grupo em `porGrupoValores`: as tags atuais DAQUELE grupo saem,
+  // as novas entram. Precisa de `porGrupo` (TagDefinitionRepository.porGrupo)
+  // para saber a que grupo cada key pertence — é o que permite remover só o
+  // valor antigo do mesmo grupo, nunca mexer nos demais.
+  //
+  // `origem` decide qual validação corre: 'maia' passa pelo filtro extra de
+  // maia_pode_aplicar (Regra 3 do maia_tagging_BUILD.md — segunda camada de
+  // defesa, a primeira é o enum da própria ferramenta em agente/tags.ts);
+  // 'sistema' e 'humano' só conferem que a chave existe e está ativa.
+  // -------------------------------------------------------------------------
+  async atualizarTags(
+    conversationId:  string,
+    porGrupoValores: Record<string, string | string[] | null>,
+    porGrupo:        Map<string, TagDefinition[]>,
+    origem:          'maia' | 'sistema' | 'humano',
+    actorId:         string | null,
+  ): Promise<{ tagsResultantes: string[] }> {
+    if (!this.tagDefs) throw new TagDesconhecidaError(['(TagDefinitionService não injetado)'])
+
+    const conv         = await this.getById(conversationId)
+    const tagsAtuais    = new Set(conv.tags ?? [])
+    let gruposMexidos   = Object.keys(porGrupoValores)
+
+    // paciente_ativo/paciente_inativo são calculados pelo sistema (Passo 5 —
+    // central.contact_patient_status), não pela Maia. Se a Maia tentar mexer
+    // em tipo_de_contato numa conversa onde o sistema já aplicou um dos dois,
+    // o grupo inteiro é ignorado nesta chamada: nem remove o que está lá, nem
+    // grava o palpite da Maia por cima. Fora desse caso (origem !== 'maia',
+    // ou o sistema ainda não decidiu nada), o grupo segue tratado normalmente.
+    if (origem === 'maia' && gruposMexidos.includes('tipo_de_contato')) {
+      const statusDoSistema = tagsAtuais.has('paciente_ativo') || tagsAtuais.has('paciente_inativo')
+      if (statusDoSistema) {
+        gruposMexidos = gruposMexidos.filter((g) => g !== 'tipo_de_contato')
+        porGrupoValores = { ...porGrupoValores }
+        delete porGrupoValores.tipo_de_contato
+      }
+    }
+
+    // Remove do conjunto atual toda tag que pertence a um grupo que está
+    // sendo atualizado agora — independente de qual era o valor anterior.
+    for (const grupoKey of gruposMexidos) {
+      const chavesDoGrupo = new Set((porGrupo.get(grupoKey) ?? []).map((t) => t.key))
+      for (const chave of tagsAtuais) {
+        if (chavesDoGrupo.has(chave)) tagsAtuais.delete(chave)
+      }
+    }
+
+    // Coleta o que entra, achatando single (string) e multi (string[]).
+    const novasBrutas: string[] = []
+    for (const valor of Object.values(porGrupoValores)) {
+      if (valor === null) continue
+      if (Array.isArray(valor)) novasBrutas.push(...valor)
+      else novasBrutas.push(valor)
+    }
+
+    const novasValidadas = origem === 'maia'
+      ? await this.tagDefs.validarAplicacaoPelaMaia(conv.organization_id, novasBrutas)
+      : await this.tagDefs.validarChaves(conv.organization_id, novasBrutas)
+
+    for (const chave of novasValidadas) tagsAtuais.add(chave)
+
+    const tagsResultantes = [...tagsAtuais]
+    await this.conv.updateTags(conversationId, tagsResultantes)
+
+    void this.audit.insert({
+      organization_id: conv.organization_id,
+      conversation_id: conversationId,
+      event_type:      'conversation.tags_applied',
+      performed_by:    actorId ?? undefined,
+      payload:         { grupos: gruposMexidos, origem, tagsResultantes },
+    })
+
+    return { tagsResultantes }
+  }
+
+  // -------------------------------------------------------------------------
+  // aplicarOrigemDeCampanha
+  //
+  // O matcher de campanha (agente/origem-campanha.ts, Regra 5) chama isto
+  // quando a primeira mensagem casa com uma frase cadastrada: grava a tag de
+  // ORIGEM (grupo single — origem='sistema', sem passar pelo filtro
+  // maia_pode_aplicar) e o campo campanha na mesma operação, porque as duas
+  // escritas descrevem o mesmo evento e não faz sentido uma acontecer sem a
+  // outra.
+  // -------------------------------------------------------------------------
+  async aplicarOrigemDeCampanha(
+    conversationId: string,
+    origemTag:      string,
+    campanha:       string,
+    porGrupo:       Map<string, TagDefinition[]>,
+  ): Promise<void> {
+    await this.atualizarTags(conversationId, { origem: origemTag }, porGrupo, 'sistema', null)
+    await this.conv.updateCampanha(conversationId, campanha)
+  }
+
+  // -------------------------------------------------------------------------
+  // atualizarObjecao
+  //
+  // Campo, não tag (aba Regras, item 8): frase curta do motivo de recuo da
+  // família, quando houver. Sem auditoria própria — viaja junto do evento
+  // 'conversation.tags_applied' de quem chama (registrar_tags), que já
+  // registra o turno em que a informação apareceu.
+  // -------------------------------------------------------------------------
+  async atualizarObjecao(conversationId: string, objecao: string | null): Promise<void> {
+    await this.conv.updateObjecao(conversationId, objecao)
   }
 
   // -------------------------------------------------------------------------

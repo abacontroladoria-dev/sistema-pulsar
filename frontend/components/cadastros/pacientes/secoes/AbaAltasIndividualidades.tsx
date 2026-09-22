@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { AlertCircle, ExternalLink, FileText, Loader2, Plus, Trash2, CalendarDays, RotateCcw, CalendarClock } from "lucide-react"
+import { AlertCircle, AlertTriangle, ExternalLink, FileText, Loader2, Plus, Trash2, CalendarDays, RotateCcw, CalendarClock } from "lucide-react"
 import toast from "react-hot-toast"
 import {
   getAltasDoPaciente,
@@ -20,6 +20,15 @@ import {
   uploadArquivoSuspensao,
   getUrlAssinadaSuspensao,
 } from "@/services/pacienteSuspensaoTemporaria.service"
+import {
+  getAltasClinicasDoPaciente,
+  altaClinicaVigente,
+  criarAltaClinica,
+  excluirAltaClinica,
+  reativarAltaClinica,
+  uploadArquivoAltaClinica,
+  getUrlAssinadaAltaClinica,
+} from "@/services/pacienteAltaClinica.service"
 import { getCriadores } from "@/services/cadastrosAuditoria.service"
 import { campo, rotulo, CampoSelect, CampoTextarea, CampoCheckbox } from "@/components/cadastros/pacientes/ui/campos"
 import { ESP_CLINICO } from "@/lib/cronograma/constants"
@@ -32,6 +41,7 @@ import type {
   NivelSuporte,
   OrigemJudicial,
   PacienteAlta,
+  PacienteAltaClinica,
   PacienteAltaForm,
   PacienteSuspensaoTemporaria,
   PacienteSuspensaoTemporariaForm,
@@ -111,6 +121,7 @@ export function AbaAltasIndividualidades({
 }: Props) {
   const [altas, setAltas] = useState<PacienteAlta[]>([])
   const [suspensoes, setSuspensoes] = useState<PacienteSuspensaoTemporaria[]>([])
+  const [altasClinicas, setAltasClinicas] = useState<PacienteAltaClinica[]>([])
 
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
@@ -119,9 +130,13 @@ export function AbaAltasIndividualidades({
   const [reativando, setReativando] = useState<number | null>(null)
   const [reativandoSuspensao, setReativandoSuspensao] = useState<number | null>(null)
   const [estendendoPrazo, setEstendendoPrazo] = useState<number | null>(null)
+  const [excluindoAltaClinica, setExcluindoAltaClinica] = useState<number | null>(null)
+  const [reativandoAltaClinica, setReativandoAltaClinica] = useState<number | null>(null)
+  const [abrindoLinkAltaClinica, setAbrindoLinkAltaClinica] = useState(false)
 
   const [modalAberto, setModalAberto] = useState(false)
   const [modalSuspensaoAberto, setModalSuspensaoAberto] = useState(false)
+  const [modalAltaClinicaAberto, setModalAltaClinicaAberto] = useState(false)
   const [detalheAlta, setDetalheAlta] = useState<PacienteAlta | null>(null)
   const [detalheSuspensao, setDetalheSuspensao] = useState<PacienteSuspensaoTemporaria | null>(null)
   const [abrindoLink, setAbrindoLink] = useState<number | null>(null)
@@ -140,14 +155,16 @@ export function AbaAltasIndividualidades({
 
   const carregar = useCallback(async () => {
     setCarregando(true)
-    const [resAltas, resSuspensoes] = await Promise.all([
+    const [resAltas, resSuspensoes, resAltasClinicas] = await Promise.all([
       getAltasDoPaciente(pacienteId),
-      getSuspensoesDoPaciente(pacienteId)
+      getSuspensoesDoPaciente(pacienteId),
+      getAltasClinicasDoPaciente(pacienteId),
     ])
 
     setAltas(ordenarPorAtivoEData(resAltas.data, (a) => a.data_alta))
     setSuspensoes(ordenarPorAtivoEData(resSuspensoes.data, (s) => s.data_suspensao))
-    setErro(resAltas.error || resSuspensoes.error)
+    setAltasClinicas(resAltasClinicas.data)
+    setErro(resAltas.error || resSuspensoes.error || resAltasClinicas.error)
     setCarregando(false)
 
     // Quem criou cada card — separado do carregamento principal para não
@@ -263,6 +280,61 @@ export function AbaAltasIndividualidades({
     return true
   }
 
+  async function confirmarAltaClinica(dataAltaClinica: string, arquivoPath: string | null): Promise<boolean> {
+    const { error } = await criarAltaClinica(pacienteId, pacienteNome, {
+      data_alta_clinica: dataAltaClinica,
+      arquivo_alta_clinica_path: arquivoPath,
+    })
+    if (error) {
+      toast.error(`Não foi possível registrar: ${error}`)
+      return false
+    }
+    toast.success("Alta clínica registrada. Todas as terapias foram encerradas.")
+    void carregar()
+    return true
+  }
+
+  async function confirmarReversaoAltaClinica(altaClinica: PacienteAltaClinica): Promise<boolean> {
+    if (!window.confirm("Reverter a alta clínica? O paciente volta a constar como ativo.")) {
+      return false
+    }
+    setExcluindoAltaClinica(altaClinica.id_alta_clinica)
+    const { error } = await excluirAltaClinica(pacienteId, pacienteNome, altaClinica)
+    setExcluindoAltaClinica(null)
+    if (error) {
+      toast.error(`Erro ao reverter: ${error}`)
+      return false
+    }
+    toast.success("Alta clínica revertida.")
+    void carregar()
+    return true
+  }
+
+  async function reativarAltaClinicaExcluida(altaClinica: PacienteAltaClinica): Promise<boolean> {
+    setReativandoAltaClinica(altaClinica.id_alta_clinica)
+    const { error } = await reativarAltaClinica(pacienteId, pacienteNome, altaClinica)
+    setReativandoAltaClinica(null)
+    if (error) {
+      toast.error(`Erro ao reativar: ${error}`)
+      return false
+    }
+    toast.success("Alta clínica reativada.")
+    void carregar()
+    return true
+  }
+
+  async function abrirArquivoAltaClinica(altaClinica: PacienteAltaClinica) {
+    if (!altaClinica.arquivo_alta_clinica_path) return
+    setAbrindoLinkAltaClinica(true)
+    const url = await getUrlAssinadaAltaClinica(altaClinica.arquivo_alta_clinica_path)
+    setAbrindoLinkAltaClinica(false)
+    if (url) {
+      window.open(url, "_blank")
+    } else {
+      toast.error("Não foi possível acessar o arquivo.")
+    }
+  }
+
   async function abrirArquivoSuspensao(suspensao: PacienteSuspensaoTemporaria) {
     if (!suspensao.arquivo_suspensao_path) return
     setAbrindoLinkSuspensao(suspensao.id_suspensao)
@@ -297,6 +369,10 @@ export function AbaAltasIndividualidades({
       </div>
     )
   }
+
+  const vigenteAltaClinica = altaClinicaVigente(altasClinicas)
+  // Lista já vem ordenada por criado_em desc — a primeira inativa é a mais recente.
+  const ultimaAltaClinicaRevertida = altasClinicas.find((a) => !a.ativo) ?? null
 
   return (
     <div className="min-w-0 flex-1 space-y-6">
@@ -587,6 +663,122 @@ export function AbaAltasIndividualidades({
       </section>
 
       </div>
+
+      {/* ── Alta Clínica: fora do grid, tratamento visual distinto — não é
+          "mais um registro por especialidade", é o encerramento geral do
+          paciente. ── */}
+      <section
+        className={`rounded-lg border px-4 py-4 shadow-sm ${
+          vigenteAltaClinica
+            ? "border-destructive/40 bg-destructive/5"
+            : "border-border bg-card"
+        }`}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <AlertTriangle
+              className={`h-5 w-5 shrink-0 mt-0.5 ${
+                vigenteAltaClinica ? "text-destructive" : "text-muted-foreground"
+              }`}
+            />
+            <div>
+              <h2 className="text-base font-semibold text-foreground">
+                Alta Clínica / Alta de todas as Terapias
+              </h2>
+              {vigenteAltaClinica ? (
+                <p className="mt-1 text-sm text-foreground">
+                  Encerrada em {dataBR(vigenteAltaClinica.data_alta_clinica)} · @
+                  {vigenteAltaClinica.criado_por_usuario_nome ?? "—"}
+                </p>
+              ) : (
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Paciente ativo. Nenhuma alta clínica registrada.
+                </p>
+              )}
+            </div>
+          </div>
+
+          {vigenteAltaClinica ? (
+            <div className="flex items-center gap-2">
+              {vigenteAltaClinica.arquivo_alta_clinica_path && (
+                <button
+                  type="button"
+                  onClick={() => void abrirArquivoAltaClinica(vigenteAltaClinica)}
+                  disabled={abrindoLinkAltaClinica}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  title="Ver anexo da alta clínica"
+                >
+                  {abrindoLinkAltaClinica ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <ExternalLink className="h-4 w-4" />
+                  )}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => void confirmarReversaoAltaClinica(vigenteAltaClinica)}
+                disabled={excluindoAltaClinica === vigenteAltaClinica.id_alta_clinica}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-2 text-sm text-foreground hover:bg-muted disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {excluindoAltaClinica === vigenteAltaClinica.id_alta_clinica ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RotateCcw className="h-4 w-4" />
+                )}
+                Reverter alta clínica
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setModalAltaClinicaAberto(true)}
+              // text-destructive-foreground depende de --destructive-foreground
+              // (globals.css) resolver certo em toda combinação de navegador/
+              // build — texto direto elimina essa dependência: branco no claro,
+              // quase-preto no escuro (onde o vermelho de fundo é mais claro).
+              className="inline-flex items-center gap-1.5 rounded-md bg-destructive px-3 py-2 text-sm font-semibold text-white hover:bg-destructive/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:text-neutral-900"
+            >
+              <AlertTriangle className="h-4 w-4" />
+              Registrar alta clínica
+            </button>
+          )}
+        </div>
+
+        {/* Sem vigente, mas existe alguma revertida: oferece desfazer a
+            última reversão em vez de abrir o modal e registrar de novo. */}
+        {!vigenteAltaClinica && ultimaAltaClinicaRevertida && (
+          <div className="mt-3 flex items-center justify-between gap-2 border-t border-border pt-3">
+            <p className="text-xs text-muted-foreground">
+              Última alta clínica revertida em {dataBR(ultimaAltaClinicaRevertida.data_alta_clinica)}.
+            </p>
+            <button
+              type="button"
+              onClick={() => void reativarAltaClinicaExcluida(ultimaAltaClinicaRevertida)}
+              disabled={reativandoAltaClinica === ultimaAltaClinicaRevertida.id_alta_clinica}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs text-foreground hover:bg-muted disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {reativandoAltaClinica === ultimaAltaClinicaRevertida.id_alta_clinica ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <RotateCcw className="h-3.5 w-3.5" />
+              )}
+              Reativar
+            </button>
+          </div>
+        )}
+      </section>
+
+      {modalAltaClinicaAberto && (
+        <AltaClinicaConfirmModal
+          pacienteId={pacienteId}
+          onClose={() => setModalAltaClinicaAberto(false)}
+          onConfirmar={async (data, arquivoPath) => {
+            const ok = await confirmarAltaClinica(data, arquivoPath)
+            if (ok) setModalAltaClinicaAberto(false)
+          }}
+        />
+      )}
 
       {modalAberto && (
         <AltaFormModal
@@ -998,6 +1190,127 @@ function SuspensaoFormModal({
           >
             {salvando && <Loader2 className="h-4 w-4 animate-spin" />}
             Salvar suspensão
+          </button>
+        </div>
+      </div>
+    </ScheduleModal>
+  )
+}
+
+// ─── MODAL CONFIRMAÇÃO ALTA CLÍNICA ─────────────────────────────────────────
+
+/**
+ * Checkbox + confirmação, não um formulário: alta clínica não tem
+ * especialidade nem anexo, só a data e a certeza de que é o encerramento
+ * geral, não de uma terapia específica.
+ */
+function AltaClinicaConfirmModal({
+  pacienteId,
+  onClose,
+  onConfirmar,
+}: {
+  pacienteId: number
+  onClose: () => void
+  onConfirmar: (dataAltaClinica: string, arquivoPath: string | null) => Promise<void>
+}) {
+  const [data, setData] = useState(new Date().toISOString().slice(0, 10))
+  const [confirmado, setConfirmado] = useState(false)
+  const [salvando, setSalvando] = useState(false)
+  const [arquivoPath, setArquivoPath] = useState<string | null>(null)
+  const [uploadando, setUploadando] = useState(false)
+  const [erroArquivo, setErroArquivo] = useState<string | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setErroArquivo(null)
+    setUploadando(true)
+    const { path, error } = await uploadArquivoAltaClinica(pacienteId, file)
+    setUploadando(false)
+    if (error || !path) {
+      setErroArquivo(error ?? "Erro ao fazer upload.")
+      return
+    }
+    setArquivoPath(path)
+  }
+
+  async function confirmar() {
+    setSalvando(true)
+    await onConfirmar(data, arquivoPath)
+    setSalvando(false)
+  }
+
+  return (
+    <ScheduleModal onClose={onClose} title="Registrar Alta Clínica">
+      <div className="space-y-5 p-6">
+        <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            Isto encerra TODAS as terapias do paciente, não apenas uma especialidade. Use
+            &quot;Adicionar&quot; em Altas Registradas para alta de uma única especialidade.
+          </span>
+        </div>
+
+        <div>
+          <label className={rotulo}>Data da alta clínica *</label>
+          <DatePicker value={data} onChange={setData} />
+        </div>
+
+        <div>
+          <label className={rotulo}>Anexo (opcional — PDF ou imagem)</label>
+          <div className="mt-1 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              disabled={uploadando}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm text-foreground hover:bg-muted disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {uploadando ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <FileText className="h-4 w-4" />
+              )}
+              {arquivoPath ? "Substituir arquivo selecionado" : "Selecionar arquivo"}
+            </button>
+            {arquivoPath && (
+              <span className="text-xs font-medium text-emerald-600">Arquivo anexado</span>
+            )}
+          </div>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".pdf,image/*"
+            className="hidden"
+            onChange={handleFileChange}
+          />
+          {erroArquivo && <p className="mt-1 text-xs text-destructive">{erroArquivo}</p>}
+        </div>
+
+        <CampoCheckbox
+          label="Confirmo que este é o encerramento de todas as terapias do paciente"
+          checked={confirmado}
+          onChange={setConfirmado}
+          disabled={salvando}
+        />
+
+        <div className="flex justify-end gap-2 border-t border-border pt-4">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={salvando}
+            className="rounded-md border border-border px-4 py-2 text-sm text-foreground hover:bg-muted disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={() => void confirmar()}
+            disabled={salvando || uploadando || !confirmado || !data}
+            className="inline-flex items-center gap-1.5 rounded-md bg-destructive px-4 py-2 text-sm font-semibold text-white hover:bg-destructive/90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:text-neutral-900"
+          >
+            {salvando && <Loader2 className="h-4 w-4 animate-spin" />}
+            Confirmar alta clínica
           </button>
         </div>
       </div>
