@@ -711,23 +711,37 @@ const CartaoAtendimento = memo(function CartaoAtendimento({
       significado no mesmo modal é o que o vocabulário proíbe; o selo, ao
       contrário, só existe em par triado — não há como confundi-lo com estado.
 
-      Quem decide é o VÍNCULO, e a situação entra só para excluir a falta — ver
-      `cobertaPorAvulsa`. `origem.situacao` não é crua na prática: com a migration
-      viva a RPC já devolve GLOSA_RESOLVIDA na linha que `montarGrade` guarda em
-      `origem`.
+      Quem decide é o VÍNCULO, e a situação entra só para excluir a falta em que
+      NADA foi coberto — ver `cobertaPorAvulsa`. `origem.situacao` não é crua na
+      prática: com a migration viva a RPC já devolve GLOSA_RESOLVIDA na linha que
+      `montarGrade` guarda em `origem`.
+
+      A SUBSTITUIÇÃO CAI AQUI DENTRO (2026-09-22), e é o caso em que a marca
+      mais trabalha: a origem diz FALTA_TERAPEUTA e o cartão sai esmeralda,
+      porque a sessão aconteceu com outro profissional. Sem procedência, ele
+      seria indistinguível de uma sessão que correu normal — e ali o titular
+      faltou de verdade; o que houve foi alguém assumindo no lugar dele.
     */
     const porAvulsa = cobertaPorAvulsa(cartao.origem.situacao, cartao.vinculo)
+    const porSubstituicao = cartao.vinculo?.tipo === 'substituicao'
 
     // Violeta sempre que houver selo, sem ramo de esmeralda: selo só existe onde
-    // houve triagem, e o único vínculo que `porAvulsa` recusa é o de uma FALTA —
-    // sessão que não aconteceu, cuja cobertura não é substituição de nada. Ali o
-    // slate diz o que é: um vínculo que não surtiu efeito.
+    // houve triagem, e o único vínculo que `porAvulsa` recusa é o da falta que
+    // NINGUÉM cobriu (`falta_terapeuta`) — sessão que não aconteceu, cuja
+    // cobertura não é substituição de nada. Ali o slate diz o que é: um vínculo
+    // que não surtiu efeito.
     const selo = cartao.vinculo ? (
       <SeloDoPar
         guia={cartao.vinculo.guia}
         Icone={Link2}
         tom={porAvulsa ? 'bg-violet-100 text-violet-800' : 'bg-slate-200 text-slate-700'}
-        titulo={`Coberta pela guia ${cartao.vinculo.guia}${autoriaDaTriagem(cartao.vinculo)}`}
+        titulo={`${
+          porSubstituicao
+            ? // O verbo muda porque o fato é outro: não se cobriu uma glosa, se
+              // registrou que o titular faltou e outro profissional atendeu.
+              `Titular faltou, atendida por substituto — guia ${cartao.vinculo.guia}`
+            : `Coberta pela guia ${cartao.vinculo.guia}`
+        }${autoriaDaTriagem(cartao.vinculo)}`}
       />
     ) : undefined
 

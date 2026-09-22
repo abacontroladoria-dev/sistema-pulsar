@@ -14,7 +14,12 @@ type Props = {
   /** Nula = o modal está confirmando o descarte ("sem sessão correspondente"). */
   candidata: CandidataVinculo | null
   salvando: boolean
-  onConfirmar: (observacao: string) => Promise<void>
+  /**
+   * `houveSubstituto` só vai preenchido quando a candidata é uma falta — é a
+   * resposta do rádio que decide entre os dois desfechos possíveis dela. Nas
+   * sessões e no descarte vai `undefined`, porque ali a pergunta não existe.
+   */
+  onConfirmar: (observacao: string, houveSubstituto?: boolean) => Promise<void>
 }
 
 function dataHora(valor: string | null) {
@@ -97,10 +102,23 @@ export default function ModalConfirmarVinculo({
   const { refDialogo, propsDialogo } = useModalDialog(open, onClose, idTitulo)
   const [observacao, setObservacao] = useState('')
   const [erro, setErro] = useState<string | null>(null)
+  /**
+   * Houve substituto naquele horário? — a pergunta que decide o desfecho.
+   *
+   * SEM PADRÃO (`null`), de propósito, e é a decisão de desenho que mais importa
+   * nesta tela. Qualquer um dos dois lados pré-marcado vira a resposta de quem
+   * clicar direto em "Registrar", e as duas são afirmações fortes e opostas
+   * sobre a assiduidade do paciente: "não houve" apaga uma sessão que
+   * aconteceu, "houve" credita uma que não aconteceu. A que a pessoa não leu não
+   * pode ser a que o sistema grava.
+   */
+  const [houveSubstituto, setHouveSubstituto] = useState<boolean | null>(null)
 
-  // Reabrir para outra guia não deve herdar o texto (nem o erro) da anterior.
+  // Reabrir para outra guia não deve herdar o texto (nem o erro, nem a resposta)
+  // da anterior. A resposta é a mais importante das três: herdá-la marcaria uma
+  // falta com o que alguém respondeu sobre outra.
   useEffect(() => {
-    if (open) { setObservacao(''); setErro(null) }
+    if (open) { setObservacao(''); setErro(null); setHouveSubstituto(null) }
   }, [open, guia?.guia, candidata?.bloco_id])
 
   if (!open || !guia) return null
@@ -118,7 +136,7 @@ export default function ModalConfirmarVinculo({
   async function confirmar() {
     setErro(null)
     try {
-      await onConfirmar(observacao.trim())
+      await onConfirmar(observacao.trim(), ehFalta ? houveSubstituto ?? undefined : undefined)
     } catch (e) {
       // O erro vem das validações da RPC, com mensagem escrita para ser lida por
       // uma pessoa ("TUSS divergente: guia X é ..., bloco é ..."). Mostrar aqui
@@ -147,11 +165,13 @@ export default function ModalConfirmarVinculo({
                   ? <><Link2 size={17} className="text-amber-600" aria-hidden /> Registrar a autorização desta falta</>
                   : <><Link2 size={17} className="text-emerald-600" aria-hidden /> Confirmar cobertura da sessão</>}
             </h2>
+            {/* A subtítulo de uma falta não pode prometer desfecho: qual dos
+                dois vai acontecer só se sabe depois do rádio lá embaixo. */}
             <p className="mt-0.5 text-[12px] text-slate-500">
               {ehDescarte
                 ? 'A guia sai da fila de trabalho sem afirmar que cobre alguma sessão.'
                 : ehFalta
-                  ? 'A falta continua registrada como falta. O que passa a existir é a relação entre as duas.'
+                  ? 'O que este registro faz depende de ter havido substituto — a pergunta está abaixo.'
                   : 'A glosa continua registrada. O que passa a existir é a relação entre as duas.'}
             </p>
           </div>
@@ -232,28 +252,93 @@ export default function ModalConfirmarVinculo({
             </p>
           )}
 
-          {/* O que este registro FAZ e o que ele não faz.
-              Dito por extenso e no último clique porque "vincular" é a palavra
-              que a tela usa para cobrir uma sessão, e aqui ela significa outra
-              coisa — deixar isso implícito seria deixar o operador concluir que
-              a falta foi resolvida. */}
+          {/* A PERGUNTA QUE O BANCO NÃO SABE RESPONDER (2026-09-22).
+
+              A FALTA DO TITULAR É FATO NOS DOIS CASOS — e é isto que este bloco
+              precisa deixar claro, porque a primeira redação errava aqui.
+
+              O que o slot não diz é o que veio DEPOIS da falta: ou ninguém
+              assumiu e a sessão não aconteceu, ou outro profissional assumiu e
+              ela aconteceu. Os dois são registrados igual, e a recepção acertou
+              nos dois — ela lançou a falta que de fato houve. Quem sabe do
+              desfecho é quem está triando, então a tela pergunta.
+
+              Antes daqui havia um bloco âmbar afirmando "a falta continua sendo
+              falta" para os dois. Estava certo sobre a falta e errado sobre a
+              sessão: no caso relatado (João Lucas, 21/09) o titular faltou, um
+              substituto atendeu, e o vínculo deixava "1 Autorização a mais" de
+              pé porque a falta não consumia cota.
+
+              O que este rádio decide é grande e não parece: assiduidade do
+              paciente, cota do TUSS e a pendência da listagem. Por isso ele vem
+              ANTES da observação e sem opção pré-marcada — ver `houveSubstituto`. */}
           {ehFalta && (
-            <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] leading-relaxed text-amber-900">
-              <p>
-                <strong className="font-semibold">A falta continua sendo falta.</strong> Nenhuma
-                sessão é criada, e assiduidade, cota e glosa não mudam. O que este registro faz é
-                tirar a guia da fila de autorizações sem vínculo e mostrar, no slot da falta, de
-                onde veio a autorização.
+            <fieldset className="mt-3 rounded-lg border border-slate-200 px-3 py-2.5">
+              <legend className="px-1 text-[12px] font-semibold text-slate-700">
+                O profissional titular faltou. Outro assumiu o atendimento?
+              </legend>
+              <p className="mb-2 text-[11px] leading-relaxed text-slate-500">
+                A falta do titular está registrada e continua valendo nos dois casos. O que a
+                resposta decide é se <strong className="font-semibold">a sessão aconteceu</strong> —
+                e isso o sistema não tem como saber sozinho.
               </p>
-              {/* O efeito colateral real, anunciado antes de acontecer. Sem esta
-                  frase ele acontece igual, e é descoberto pela grade. */}
-              <p className="mt-1.5">
-                Esta guia também deixa de disputar posição no pareamento automático de{' '}
+
+              <div className="space-y-1.5">
+                {/*
+                  A ordem põe "não houve" primeiro porque é o caso que o rótulo
+                  do slot já sugere — ele diz FALTA e para por aí. A segunda
+                  opção não corrige a falta: acrescenta o que houve depois dela.
+                */}
+                <label className={`flex cursor-pointer gap-2.5 rounded-lg border px-3 py-2 text-[12px] leading-relaxed transition ${
+                  houveSubstituto === false
+                    ? 'border-amber-300 bg-amber-50 text-amber-900'
+                    : 'border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50'
+                }`}>
+                  <input
+                    type="radio"
+                    name="houve-substituto"
+                    className="mt-0.5 shrink-0 accent-amber-600"
+                    checked={houveSubstituto === false}
+                    onChange={() => setHouveSubstituto(false)}
+                  />
+                  <span>
+                    <strong className="font-semibold">Não — ninguém assumiu.</strong>{' '}
+                    A sessão não aconteceu: nada é criado, e assiduidade, cota e glosa não mudam. O
+                    registro só tira a guia da fila e mostra, no slot, de onde veio a autorização.
+                  </span>
+                </label>
+
+                <label className={`flex cursor-pointer gap-2.5 rounded-lg border px-3 py-2 text-[12px] leading-relaxed transition ${
+                  houveSubstituto === true
+                    ? 'border-emerald-300 bg-emerald-50 text-emerald-900'
+                    : 'border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50'
+                }`}>
+                  <input
+                    type="radio"
+                    name="houve-substituto"
+                    className="mt-0.5 shrink-0 accent-emerald-600"
+                    checked={houveSubstituto === true}
+                    onChange={() => setHouveSubstituto(true)}
+                  />
+                  <span>
+                    <strong className="font-semibold">Sim — outro profissional atendeu.</strong>{' '}
+                    A sessão aconteceu e esta guia a cobre: ela passa a contar como realizada e sai
+                    das pendências.{' '}
+                    <strong className="font-semibold">A falta do titular continua registrada</strong>{' '}
+                    — ela é fato, e nada aqui a desfaz.
+                  </span>
+                </label>
+              </div>
+
+              {/* O efeito colateral real, anunciado antes de acontecer. Vale para
+                  os dois desfechos: os dois tiram a guia do pareamento. */}
+              <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+                Nos dois casos esta guia deixa de disputar posição no pareamento automático de{' '}
                 <span className="tabular-nums">{dia(guia.data_execucao?.slice(0, 10) ?? null)}</span>.
                 Se ela estava casada com alguma sessão daquele dia por posição, essa sessão volta a
                 aparecer sem cobertura.
               </p>
-            </div>
+            </fieldset>
           )}
 
           <label className="mt-4 block">
@@ -292,20 +377,36 @@ export default function ModalConfirmarVinculo({
           <button
             type="button"
             onClick={confirmar}
-            disabled={salvando}
+            // Numa falta, sem resposta não há o que gravar: os dois desfechos
+            // são afirmações opostas sobre a assiduidade, e nenhuma delas pode
+            // sair de um clique que não passou pela pergunta. O `title` diz o
+            // porquê — botão desabilitado e mudo é o que faz alguém achar que a
+            // tela travou.
+            disabled={salvando || (ehFalta && houveSubstituto === null)}
+            title={ehFalta && houveSubstituto === null
+              ? 'Responda se houve substituto para poder registrar'
+              : undefined}
             className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-[13px] font-semibold text-white disabled:opacity-60 ${
               ehDescarte
                 ? 'bg-slate-700 hover:bg-slate-800'
                 : ehFalta
-                  ? // Âmbar, e não esmeralda: o verde desta tela significa
-                    // "coberto", e aqui nada foi coberto. O matiz da falta é o
-                    // que o botão deve prometer.
-                    'bg-amber-600 hover:bg-amber-700'
+                  ? // O matiz segue a RESPOSTA, porque é ela que diz o que vai
+                    // acontecer: âmbar quando nada foi coberto (o verde desta
+                    // tela significa "coberto"), esmeralda quando a sessão
+                    // aconteceu e esta guia a cobre — ali o verde é literal.
+                    // Sem resposta, âmbar: é o matiz do slot que está na tela.
+                    houveSubstituto === true
+                      ? 'bg-emerald-600 hover:bg-emerald-700'
+                      : 'bg-amber-600 hover:bg-amber-700'
                   : 'bg-emerald-600 hover:bg-emerald-700'
             }`}
           >
             {salvando && <Loader2 size={15} className="animate-spin" aria-hidden />}
-            {ehDescarte ? 'Marcar sem sessão' : ehFalta ? 'Registrar autorização' : 'Confirmar vínculo'}
+            {ehDescarte
+              ? 'Marcar sem sessão'
+              : ehFalta
+                ? houveSubstituto === true ? 'Registrar sessão realizada' : 'Registrar autorização'
+                : 'Confirmar vínculo'}
           </button>
         </footer>
       </div>
