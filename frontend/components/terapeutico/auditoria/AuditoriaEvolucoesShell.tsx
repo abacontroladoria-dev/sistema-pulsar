@@ -236,6 +236,22 @@ export function AuditoriaEvolucoesShell() {
     )
   }, [evolucoes, busca])
 
+  /**
+   * A aba "Por profissional" é o ponto de partida, então ela abre limpa: o
+   * recorte que veio do "Ver evoluções" (busca pelo nome do terapeuta, mais o
+   * risco/cobrança escolhidos no feed) some ao voltar. Sem isto a visão geral
+   * volta mostrando um profissional só, e nada na tela explica por quê.
+   *
+   * O PERÍODO fica: é o contexto de trabalho da pessoa, não herança da outra
+   * aba — e mexer nele a faria recarregar um recorte que ela não pediu.
+   */
+  const voltarParaProfissionais = () => {
+    setBusca('')
+    setStatusRisco('todos')
+    setStatusCobranca('todos')
+    setAbaAtiva('profissionais')
+  }
+
   const periodoAtivo = (ini: string, fim: string) => dataInicio === ini && dataFim === fim
 
   const atalhoPeriodo = (rotulo: string, ini: string, fim: string) => (
@@ -359,7 +375,7 @@ export function AuditoriaEvolucoesShell() {
           <button
             role="tab"
             aria-selected={abaAtiva === 'profissionais'}
-            onClick={() => setAbaAtiva('profissionais')}
+            onClick={voltarParaProfissionais}
             className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-xs transition ${FOCO} ${
               abaAtiva === 'profissionais'
                 ? 'bg-card font-bold text-foreground shadow-sm'
