@@ -374,9 +374,12 @@ export default function ReconciliacaoTab({ alvo, onAlvoConsumido }: Props) {
         guia={guiaEmVinculo}
         candidata={candidataEscolhida}
         salvando={fila.salvando}
-        onConfirmar={async (observacao) => {
+        onConfirmar={async (observacao, houveSubstituto) => {
           if (!guiaEmVinculo) return
-          if (candidataEscolhida) await fila.confirmarVinculo(candidataEscolhida, observacao)
+          // `houveSubstituto` só vem preenchido quando a candidata é uma falta —
+          // é a resposta que escolhe entre os dois desfechos dela. O hook
+          // recusa a gravação se vier indefinido numa falta.
+          if (candidataEscolhida) await fila.confirmarVinculo(candidataEscolhida, observacao, houveSubstituto)
           else await fila.descartarGuia(guiaEmVinculo.guia, observacao)
           // Os dois lados envelhecem juntos, e a recarga é o que traz as
           // QUATRO cargas de volta em bloco — inclusive a das triagens, que é o

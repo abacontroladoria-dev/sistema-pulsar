@@ -166,6 +166,42 @@ export async function vincularAutorizacaoFalta(params: {
 }
 
 /**
+ * Registra que o slot de falta na verdade teve SUBSTITUTO — a sessão aconteceu.
+ *
+ * A irmã de `vincularAutorizacaoFalta`, e a diferença entre as duas é a única
+ * coisa que importa aqui: lá a sessão NÃO aconteceu (a falta continua falta e
+ * nada é coberto), aqui ela ACONTECEU, com outro profissional, e esta guia a
+ * cobre. Para todo efeito de cobertura isto é um vínculo — a sessão sai de
+ * "autorização a mais" e deixa de pedir trabalho.
+ *
+ * Nenhum dado do banco distingue os dois casos: os dois chegam como uma falta
+ * de terapeuta na fila. Quem sabe é quem triou, e por isso a tela PERGUNTA. O
+ * caso que a exigiu (João Lucas, 21/09): a substituição foi informada depois de
+ * a recepção lançar a falta, e triar como `falta_terapeuta` deixava a pendência
+ * "1 Autorização a mais" de pé mesmo depois do vínculo.
+ *
+ * NÃO reverte a falta em `fila_autorizacoes` (decidido em 2026-09-22): o
+ * lançamento da recepção continua lá, e é a auditoria que passa a discordar
+ * dele. Desfazer o registro operacional é outro gesto, com outra dona.
+ */
+export async function vincularAutorizacaoSubstituicao(params: {
+  guia: string
+  filaId: string
+  observacao?: string | null
+  janelaDias?: number
+}): Promise<string> {
+  const { data, error } = await supabase.rpc('vincular_autorizacao_substituicao', {
+    p_guia: params.guia,
+    p_fila_id: params.filaId,
+    p_observacao: params.observacao ?? null,
+    p_janela_dias: params.janelaDias ?? 7,
+  })
+
+  if (error) throw error
+  return data as string
+}
+
+/**
  * Marca a guia como autorização extra, sem sessão correspondente.
  *
  * Não é enfeite: 7 das 18 órfãs medidas na Etapa 0 têm como candidata mais

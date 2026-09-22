@@ -558,25 +558,41 @@ export type VinculoAutorizacao = {
   /** A guia da ASSIM que foi triada. É a chave da triagem: uma ativa por guia. */
   guia: string
   /**
-   * O desfecho da triagem — e são TRÊS, não dois.
+   * O desfecho da triagem — e são QUATRO, não dois.
    *
-   * - `vinculo` — cobre a sessão em `bloco_id`. Só este afirma COBERTURA, e é por
-   *   isso que todo leitor que decide cobertura filtra exatamente por ele;
+   * - `vinculo` — cobre a sessão em `bloco_id`;
    * - `sem_sessao` — autorização extra, não cobre sessão nenhuma;
-   * - `falta_terapeuta` — a guia autorizou um horário em que o TERAPEUTA faltou
-   *   (2026-09-21). É vínculo PURO: registra de onde veio a autorização e tira a
-   *   guia da fila de órfãs, mas a falta continua sendo falta — nenhuma sessão é
-   *   criada, e assiduidade, cota, glosa e KPIs não mudam. `bloco_id` é o bloco
-   *   SINTÉTICO da falta (`falta_…`), que não existe em `fn_blocos_assim` e
-   *   portanto nunca casa com o join de cobertura da Conferência.
+   * - `falta_terapeuta` — a guia autorizou um horário em que o TITULAR faltou e
+   *   NINGUÉM assumiu (2026-09-21). É vínculo PURO: registra de onde veio a
+   *   autorização e tira a guia da fila de órfãs, mas não houve sessão —
+   *   assiduidade, cota, glosa e KPIs não mudam. `bloco_id` é o bloco SINTÉTICO
+   *   da falta (`falta_…`), que não existe em `fn_blocos_assim` e portanto nunca
+   *   casa com o join de cobertura da Conferência;
+   * - `substituicao` — o titular faltou e OUTRO PROFISSIONAL assumiu, então a
+   *   sessão aconteceu (2026-09-22). O `bloco_id` é o mesmo sintético.
    *
-   * O valor novo é invisível para os leitores de cobertura por construção: todos
-   * filtram `tipo = 'vinculo'`. As duas exceções — os `NOT EXISTS` que tiram a
-   * guia triada do pareamento posicional — não filtram tipo DE PROPÓSITO: uma
-   * guia que autorizou uma falta não deve seguir disputando posição, e é o mesmo
-   * predicado que a tira da fila de órfãs.
+   * OS DOIS ÚLTIMOS NÃO SE CONTRADIZEM SOBRE A FALTA: nos dois o titular faltou,
+   * e nos dois a falta foi lançada corretamente e continua registrada. O que os
+   * separa é o que veio DEPOIS — se alguém assumiu o atendimento ou não.
+   *
+   * COBERTURA SÃO DOIS TIPOS, não um (2026-09-22).
+   *
+   * Até aqui a regra era "só `vinculo` afirma cobertura", e ela sustentava a
+   * afirmação de que o tipo novo seria invisível por construção. `substituicao`
+   * quebra isso de propósito: ela É cobertura, e por isso todo leitor que decide
+   * cobertura passa a aceitar os dois — ver `TIPOS_QUE_COBREM` em
+   * `reconciliacao/cobertura.ts`, que é onde essa lista mora de uma vez só.
+   *
+   * O caso que a exigiu (João Lucas, 21/09): o titular de Fonoaudiologia faltou
+   * às 09:20 e outro profissional assumiu. Marcar como `falta_terapeuta` tirava
+   * a guia da fila de órfãs e mesmo assim deixava "1 Autorização a mais" de pé,
+   * porque a sessão não contava como agendada e o excedente do placar renomeava
+   * a guia de volta.
+   *
+   * Os `NOT EXISTS` que tiram a guia triada do pareamento posicional continuam
+   * sem filtrar tipo, e continua certo: guia triada não disputa posição.
    */
-  tipo: 'vinculo' | 'sem_sessao' | 'falta_terapeuta'
+  tipo: 'vinculo' | 'sem_sessao' | 'falta_terapeuta' | 'substituicao'
   /**
    * A sessão coberta, ou a falta autorizada. Sempre nula em `sem_sessao` (a
    * constraint da tabela exige); em `falta_terapeuta` é o bloco sintético.

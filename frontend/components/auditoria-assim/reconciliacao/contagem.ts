@@ -1,8 +1,17 @@
 import type {
+  AuditoriaAssimItem,
   AutorizacaoAssimSemana,
   ContagemPendencias,
   PlacarTuss,
+  VinculoAutorizacao,
 } from '../types'
+import {
+  SITUACOES_SEM_SESSAO,
+  sessaoDecorrida,
+  sessaoNaoSolicitada,
+  sessaoSemCobertura,
+  situacaoComVinculo,
+} from './cobertura'
 
 /**
  * A aritmética da reconciliação — separada do hook porque é PURA.
@@ -188,6 +197,120 @@ export function contarPendencias(
   */
   contagem.total = contagem.glosa + contagem['autorizacao-a-mais'] + faltando
   return contagem
+}
+
+/**
+ * O placar de um conjunto de sessões contra um conjunto de autorizações.
+ *
+ * Pura de propósito: a listagem chama isto uma vez por paciente do período e o
+ * modal chama de novo para o paciente aberto (e para a semana aberta). Duas
+ * implementações fariam a linha da tabela e o card do modal discordarem sobre
+ * o mesmo paciente — que é exatamente o tipo de divergência que esta tela
+ * existe para caçar.
+ *
+ * MUDOU DE ARQUIVO EM 2026-09-22, pelo motivo do cabeçalho deste — o mesmo que
+ * já moveu `guiasSubstituidas` e `contarPendencias` antes dela. Morava em
+ * `useAnaliseReincidencia.ts`, que importa os services e com eles o cliente do
+ * Supabase: um teste que a tocasse morria com "Your project's URL and API key
+ * are required" antes de somar um número. Foi o que aconteceu ao tentar travar
+ * o caso João Lucas (ver `placarSubstituicao.test.ts`), e a função sem teste era
+ * exatamente onde o defeito estava. O hook segue reexportando.
+ *
+ * `cutoff` é o instante (inclusivo) até o qual uma sessão já aconteceu E já
+ * passou dos 30 minutos de tolerância. Ela separa `agendadas` de
+ * `decorridas`, e a diferença não é cosmética: contar como "autorização
+ * faltando" uma sessão que ainda vai acontecer — ou que aconteceu há 5
+ * minutos — transformaria a tela em ruído. Só sessão realmente decorrida
+ * pode estar sem cobertura.
+ *
+ * `faltante` conta SESSÕES, uma a uma, por `sessaoSemCobertura` — não é mais
+ * `decorridas − liberadas`. A troca (2026-08-24) tem um motivo e um efeito:
+ *
+ * - motivo: a subtração diz quantas faltam e não diz QUAIS, então a grade não
+ *   tinha como marcar a sessão problemática. Contando por sessão, cada unidade
+ *   do número é um cartão que a tela consegue apontar.
+ * - efeito: os dois números divergem num caso, e é o caso que importa. Três
+ *   sessões decorridas, três liberações, mas uma delas órfã e uma sessão em
+ *   glosa: a subtração fechava `0` e escondia tudo; a contagem por sessão diz
+ *   `1`, e do lado das guias a órfã aparece como "sem vínculo". Que é
+ *   exatamente o par que esta tela existe para reconciliar.
+ */
+export function calcularPlacar(
+  sessoes: AuditoriaAssimItem[],
+  autorizacoes: AutorizacaoAssimSemana[],
+  cutoff: string,
+  /** As triagens vivas, por bloco — ver `sessaoSemCobertura`. */
+  vinculosPorBloco: ReadonlyMap<string, VinculoAutorizacao> = new Map()
+): PlacarTuss[] {
+  const porTuss = new Map<string, PlacarTuss & { terapiasVistas: Set<string> }>()
+
+  const entrada = (codigo: string | null) => {
+    const chave = codigo ?? '—'
+    let atual = porTuss.get(chave)
+    if (!atual) {
+      atual = {
+        codigo_tuss: chave,
+        terapias: '',
+        agendadas: 0,
+        decorridas: 0,
+        autorizadas: 0,
+        liberadas: 0,
+        canceladas: 0,
+        excedente: 0,
+        faltante: 0,
+        naoSolicitada: 0,
+        terapiasVistas: new Set<string>(),
+      }
+      porTuss.set(chave, atual)
+    }
+    return atual
+  }
+
+  for (const s of sessoes) {
+    const item = entrada(s.codigo_tuss)
+    if (s.terapias) item.terapiasVistas.add(s.terapias)
+    /*
+      Sessão com falta não aconteceu, então não é cota — e autorizar em cima
+      dela é justamente um dos jeitos de estourar a cota.
+
+      A SUBSTITUIÇÃO É A EXCEÇÃO, e ela é o motivo de este teste ler a situação
+      JÁ COM O VÍNCULO APLICADO (2026-09-22). Quando a triagem afirma que houve
+      substituto, `situacaoComVinculo` promove a falta a LIBERADA: a sessão
+      aconteceu, consome cota, e conta como agendada como qualquer outra.
+
+      Ler a situação crua aqui era a segunda fonte do defeito relatado (João
+      Lucas, 21/09). A guia vinculada saía da fila de órfãs, mas a falta seguia
+      pulada por este `continue` — então `agendadas` não a contava, o
+      `excedente = liberadas − agendadas` acusava 1, e `excedentesDoPlacar`
+      renomeava a guia recém-triada de volta como "Autorização a mais". A
+      pendência não sobrevivia por engano de contagem: sobrevivia porque metade
+      do sistema já sabia do vínculo e esta metade não.
+    */
+    const situacaoEfetiva = situacaoComVinculo(
+      s.situacao,
+      s.bloco_id ? vinculosPorBloco.get(s.bloco_id) : undefined
+    )
+    if (SITUACOES_SEM_SESSAO.has(situacaoEfetiva ?? '')) continue
+    item.agendadas += 1
+    if (sessaoDecorrida(s, cutoff)) item.decorridas += 1
+    if (sessaoSemCobertura(s, cutoff, vinculosPorBloco)) item.faltante += 1
+    if (sessaoNaoSolicitada(s, cutoff, vinculosPorBloco)) item.naoSolicitada += 1
+  }
+
+  for (const a of autorizacoes) {
+    const item = entrada(a.codigo_tuss)
+    item.autorizadas += 1
+    if (autorizacaoLiberada(a.status)) item.liberadas += 1
+    else if (autorizacaoCancelada(a.status)) item.canceladas += 1
+  }
+
+  return [...porTuss.values()]
+    .map(({ terapiasVistas, ...item }) => ({
+      ...item,
+      terapias: [...terapiasVistas].join(' | '),
+      excedente: item.liberadas - item.agendadas,
+    }))
+    .sort((a, b) => b.excedente - a.excedente || a.codigo_tuss.localeCompare(b.codigo_tuss))
 }
 
 /**

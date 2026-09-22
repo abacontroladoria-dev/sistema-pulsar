@@ -29,6 +29,7 @@ import {
   sessaoDecorrida,
   sessaoNaoSolicitada,
   sessaoSemCobertura,
+  situacaoComVinculo,
 } from '@/components/auditoria-assim/reconciliacao/cobertura'
 import {
   cartaoPendente,
@@ -50,6 +51,7 @@ import {
   autorizacaoLiberada,
   autorizacaoReincidencia,
   calcularLedger,
+  calcularPlacar,
   contarPendencias,
   excedentesDoPlacar,
 } from '@/components/auditoria-assim/reconciliacao/contagem'
@@ -69,6 +71,7 @@ export {
   autorizacaoLiberada,
   autorizacaoReincidencia,
   calcularLedger,
+  calcularPlacar,
   contarPendencias,
   diasUteisDe,
   excedentesDoPlacar,
@@ -207,93 +210,6 @@ import {
   guiaDoPaciente,
 } from '@/components/auditoria-assim/reconciliacao/agruparPacientes'
 
-
-/**
- * O placar de um conjunto de sessões contra um conjunto de autorizações.
- *
- * Pura de propósito: a listagem chama isto uma vez por paciente do período e o
- * modal chama de novo para o paciente aberto (e para a semana aberta). Duas
- * implementações fariam a linha da tabela e o card do modal discordarem sobre
- * o mesmo paciente — que é exatamente o tipo de divergência que esta tela
- * existe para caçar.
- *
- * `cutoff` é o instante (inclusivo) até o qual uma sessão já aconteceu E já
- * passou dos 30 minutos de tolerância. Ela separa `agendadas` de
- * `decorridas`, e a diferença não é cosmética: contar como "autorização
- * faltando" uma sessão que ainda vai acontecer — ou que aconteceu há 5
- * minutos — transformaria a tela em ruído. Só sessão realmente decorrida
- * pode estar sem cobertura.
- *
- * `faltante` conta SESSÕES, uma a uma, por `sessaoSemCobertura` — não é mais
- * `decorridas − liberadas`. A troca (2026-08-24) tem um motivo e um efeito:
- *
- * - motivo: a subtração diz quantas faltam e não diz QUAIS, então a grade não
- *   tinha como marcar a sessão problemática. Contando por sessão, cada unidade
- *   do número é um cartão que a tela consegue apontar.
- * - efeito: os dois números divergem num caso, e é o caso que importa. Três
- *   sessões decorridas, três liberações, mas uma delas órfã e uma sessão em
- *   glosa: a subtração fechava `0` e escondia tudo; a contagem por sessão diz
- *   `1`, e do lado das guias a órfã aparece como "sem vínculo". Que é
- *   exatamente o par que esta tela existe para reconciliar.
- */
-export function calcularPlacar(
-  sessoes: AuditoriaAssimItem[],
-  autorizacoes: AutorizacaoAssimSemana[],
-  cutoff: string,
-  /** As triagens vivas, por bloco — ver `sessaoSemCobertura`. */
-  vinculosPorBloco: ReadonlyMap<string, VinculoAutorizacao> = new Map()
-): PlacarTuss[] {
-  const porTuss = new Map<string, PlacarTuss & { terapiasVistas: Set<string> }>()
-
-  const entrada = (codigo: string | null) => {
-    const chave = codigo ?? '—'
-    let atual = porTuss.get(chave)
-    if (!atual) {
-      atual = {
-        codigo_tuss: chave,
-        terapias: '',
-        agendadas: 0,
-        decorridas: 0,
-        autorizadas: 0,
-        liberadas: 0,
-        canceladas: 0,
-        excedente: 0,
-        faltante: 0,
-        naoSolicitada: 0,
-        terapiasVistas: new Set<string>(),
-      }
-      porTuss.set(chave, atual)
-    }
-    return atual
-  }
-
-  for (const s of sessoes) {
-    const item = entrada(s.codigo_tuss)
-    if (s.terapias) item.terapiasVistas.add(s.terapias)
-    // Sessão com falta não aconteceu, então não é cota — e autorizar em cima
-    // dela é justamente um dos jeitos de estourar a cota.
-    if (SITUACOES_SEM_SESSAO.has(s.situacao ?? '')) continue
-    item.agendadas += 1
-    if (sessaoDecorrida(s, cutoff)) item.decorridas += 1
-    if (sessaoSemCobertura(s, cutoff, vinculosPorBloco)) item.faltante += 1
-    if (sessaoNaoSolicitada(s, cutoff, vinculosPorBloco)) item.naoSolicitada += 1
-  }
-
-  for (const a of autorizacoes) {
-    const item = entrada(a.codigo_tuss)
-    item.autorizadas += 1
-    if (autorizacaoLiberada(a.status)) item.liberadas += 1
-    else if (autorizacaoCancelada(a.status)) item.canceladas += 1
-  }
-
-  return [...porTuss.values()]
-    .map(({ terapiasVistas, ...item }) => ({
-      ...item,
-      terapias: [...terapiasVistas].join(' | '),
-      excedente: item.liberadas - item.agendadas,
-    }))
-    .sort((a, b) => b.excedente - a.excedente || a.codigo_tuss.localeCompare(b.codigo_tuss))
-}
 
 /**
  * O destino de uma autorização, em cinco estados. Ver `EstadoAutorizacao`.
@@ -694,10 +610,11 @@ export function useAnaliseReincidencia(dataInicial: string, pacienteInicial: str
    * segundo: a constraint da tabela garante `bloco_id` nulo nele, e indexá-lo
    * daria uma chave `''` cobrindo todo bloco sem id.
    *
-   * `falta_terapeuta` entra (2026-09-21), e o bloco dele é o SINTÉTICO da falta
-   * — a mesma chave que o cartão da falta usa na grade. Indexá-lo aqui é o que
-   * faz o slot mostrar de onde veio a autorização; não é o que decide cobertura,
-   * que continua sendo decidida por `situacaoComVinculo` e só para `vinculo`.
+   * `falta_terapeuta` entra (2026-09-21) e `substituicao` também (2026-09-22);
+   * o bloco dos dois é o SINTÉTICO da falta — a mesma chave que o cartão da
+   * falta usa na grade. Indexá-los aqui é o que faz o slot mostrar de onde veio
+   * a autorização. Quem decide cobertura segue sendo `situacaoComVinculo`, e
+   * dos quatro tipos só `vinculo` e `substituicao` a afirmam (`TIPOS_QUE_COBREM`).
    */
   const vinculos = useMemo<Vinculos>(() => {
     if (triagens.length === 0) return SEM_VINCULOS

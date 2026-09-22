@@ -7,6 +7,7 @@ import {
   marcarGuiaSemSessao,
   vincularAutorizacao,
   vincularAutorizacaoFalta,
+  vincularAutorizacaoSubstituicao,
 } from '@/services/reconciliacao-assim.service'
 import { getSupabaseClient } from '@/lib/supabase/client'
 import type { CandidataVinculo } from '@/components/auditoria-assim/types'
@@ -151,7 +152,18 @@ export function useReconciliacaoAssim(aoMudarExternamente?: () => void) {
     }
   }, [])
 
-  const confirmarVinculo = useCallback(async (candidata: CandidataVinculo, observacao: string) => {
+  /**
+   * `houveSubstituto` só é lido quando a candidata é uma FALTA, e é a resposta
+   * que a tela coleta no último passo do modal. É ela que escolhe entre os dois
+   * desfechos possíveis de um slot de falta — e a escolha decide assiduidade,
+   * então ela não tem padrão: `undefined` numa falta é erro de programação, não
+   * um "não". Ver `TIPOS_QUE_COBREM` em `reconciliacao/cobertura.ts`.
+   */
+  const confirmarVinculo = useCallback(async (
+    candidata: CandidataVinculo,
+    observacao: string,
+    houveSubstituto?: boolean
+  ) => {
     if (!guiaSelecionada) return
     setSalvando(true)
     try {
@@ -166,7 +178,17 @@ export function useReconciliacaoAssim(aoMudarExternamente?: () => void) {
           // mandar `null` e receber um erro do banco que não diz o que houve.
           throw new Error('Esta falta não tem solicitação na fila — não é vinculável.')
         }
-        await vincularAutorizacaoFalta({
+        if (houveSubstituto === undefined) {
+          // Sem resposta não há desfecho certo: gravar 'falta_terapeuta' por
+          // padrão afirmaria "ninguém cobriu", que é metade das vezes o oposto
+          // do que aconteceu — e é uma afirmação sobre a assiduidade do
+          // paciente, feita por omissão da tela.
+          throw new Error('Responda se houve substituto antes de registrar esta autorização.')
+        }
+        const vincular = houveSubstituto
+          ? vincularAutorizacaoSubstituicao
+          : vincularAutorizacaoFalta
+        await vincular({
           guia: guiaSelecionada,
           filaId: candidata.fila_id,
           observacao,

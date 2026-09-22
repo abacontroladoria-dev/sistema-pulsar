@@ -36,6 +36,31 @@ export const SITUACOES_SEM_SESSAO = new Set(['FALTA', 'FALTA_TERAPEUTA', 'UNIDAD
 type TipoDaTriagem = { tipo: VinculoAutorizacao['tipo'] }
 
 /**
+ * Os desfechos de triagem que AFIRMAM COBERTURA — a lista, em um lugar só.
+ *
+ * Era a comparação `tipo === 'vinculo'`, repetida em quatro funções deste
+ * arquivo. Enquanto houve um tipo só ela era a própria definição; com
+ * `substituicao` (2026-09-22) passaram a ser dois, e quatro comparações soltas
+ * viram quatro chances de um leitor ficar para trás — exatamente o defeito que
+ * este arquivo existe para impedir, já registrado no seu cabeçalho.
+ *
+ * `substituicao` entra porque ela diz que a SESSÃO ACONTECEU: o titular faltou
+ * — isso é fato e continua registrado — e outro profissional assumiu o
+ * atendimento. Para toda pergunta sobre cobertura ("alguém cobriu?", "esta guia
+ * ainda pede trabalho?") a resposta dela é idêntica à de um `vinculo`.
+ *
+ * `falta_terapeuta` fica de fora, e isso é o par dela, não um esquecimento: ali
+ * a sessão NÃO aconteceu, e promovê-la creditaria assiduidade por atendimento
+ * que não existiu. Ver a nota em `VinculoAutorizacao['tipo']`.
+ */
+export const TIPOS_QUE_COBREM = new Set<VinculoAutorizacao['tipo']>(['vinculo', 'substituicao'])
+
+/** Este desfecho de triagem afirma que a sessão foi coberta? */
+export function triagemCobre(vinculo: TipoDaTriagem | null | undefined): boolean {
+  return vinculo != null && TIPOS_QUE_COBREM.has(vinculo.tipo)
+}
+
+/**
  * Os dois desfechos em que a sessão saiu coberta por uma liberação.
  *
  * Não é lista de conveniência: são exatamente os dois ramos que a migration
@@ -89,11 +114,30 @@ export function situacaoComVinculo(
   situacao: string | null,
   vinculo: TipoDaTriagem | null | undefined
 ): string | null {
-  if (!vinculo || vinculo.tipo !== 'vinculo') return situacao
-  // Falta continua sendo falta: a sessão não aconteceu, e uma guia não a faz
-  // acontecer. Não é caso de borda teórico — `vincular_autorizacao` não impede
-  // vincular a um bloco que virou falta depois.
-  if (SITUACOES_SEM_SESSAO.has(situacao ?? '')) return situacao
+  if (!triagemCobre(vinculo)) return situacao
+  /*
+    SEM SESSÃO NÃO HÁ COBERTURA — exceto quando houve SUBSTITUTO.
+
+    A regra original: a sessão não aconteceu, e uma guia não a faz acontecer.
+    Não é borda teórica — `vincular_autorizacao` não impede vincular a um bloco
+    que virou falta depois, e é por isso que `vinculo` segue barrado aqui.
+
+    `substituicao` é a única exceção, e ela NÃO nega a falta. A falta do titular
+    é fato, foi lançada corretamente e continua registrada; o que a triagem
+    acrescenta é o que veio depois dela — outro profissional assumiu e atendeu.
+    São dois fatos verdadeiros ao mesmo tempo, não um corrigindo o outro.
+
+    Promover aqui não credita atendimento inexistente: a sessão existiu, e o que
+    faltava era o sistema saber disso. O nome `SITUACOES_SEM_SESSAO` é o que
+    importa neste teste — a pergunta é "houve sessão?", não "houve falta?".
+
+    A distinção é por TIPO e não por situação de propósito: as duas chegam aqui
+    com `FALTA_TERAPEUTA` idêntico, e só quem triou sabe o desfecho. É a razão de
+    `substituicao` existir como tipo próprio.
+  */
+  if (SITUACOES_SEM_SESSAO.has(situacao ?? '') && vinculo!.tipo !== 'substituicao') {
+    return situacao
+  }
   /*
     IDEMPOTÊNCIA — e o defeito que a falta dela causava (2026-08-27).
 
@@ -155,7 +199,15 @@ export function cobertaPorAvulsa(
   situacaoCrua: string | null,
   vinculo: TipoDaTriagem | null | undefined
 ): boolean {
-  if (!vinculo || vinculo.tipo !== 'vinculo') return false
+  if (!triagemCobre(vinculo)) return false
+  /*
+    A substituição É procedência manual, e das mais fortes: alguém olhou um slot
+    que o sistema dava como falta e afirmou que houve atendimento. Ela não cai
+    no `SITUACOES_SEM_SESSAO` abaixo — que serve ao `vinculo` apontado a uma
+    falta, onde não há cobertura a marcar — porque aqui há, e é justamente a que
+    mais precisa ficar distinguível de uma liberação automática.
+  */
+  if (vinculo!.tipo === 'substituicao') return true
   return !SITUACOES_SEM_SESSAO.has(situacaoCrua ?? '')
 }
 
@@ -269,13 +321,15 @@ export function sessaoNaoSolicitada(
  * `CANCELADA` que um vínculo cobriu (aí a sessão vira LIBERADA), pelo mesmo
  * motivo — a liberação desfeita foi substituída por uma que valeu.
  *
- * SÓ `tipo === 'vinculo'` aposenta guia (2026-08-27). `sem_sessao` é o outro
- * desfecho da triagem — "esta guia é autorização extra, não cobre sessão
- * nenhuma" — e sempre tem `bloco_id: null` (a constraint da tabela exige). Sem
- * este filtro, `vinculosPorBloco.has(s.bloco_id ?? '')` bateria também num
- * `sem_sessao` cujo mapa foi indexado com a chave `''`, contra qualquer sessão
- * cujo `bloco_id` também for nulo — as linhas de falta sintetizadas no serviço
- * — aposentando a guia glosada de uma falta por uma triagem que não a cobre.
+ * SÓ TRIAGEM QUE COBRE aposenta guia — `TIPOS_QUE_COBREM`, e não um tipo só
+ * (2026-08-27, ampliado em 2026-09-22). `sem_sessao` é o desfecho que diz "esta
+ * guia é autorização extra, não cobre sessão nenhuma" e sempre tem
+ * `bloco_id: null` (a constraint da tabela exige). Sem este filtro,
+ * `vinculosPorBloco.has(s.bloco_id ?? '')` bateria também num `sem_sessao` cujo
+ * mapa foi indexado com a chave `''`, contra qualquer sessão cujo `bloco_id`
+ * também for nulo — as linhas de falta sintetizadas no serviço —, aposentando a
+ * guia glosada de uma falta por uma triagem que não a cobre. `falta_terapeuta`
+ * fica de fora pela mesma razão: ela não cobriu nada.
  */
 export function guiasSubstituidas(
   sessoes: AuditoriaAssimItem[],
@@ -285,7 +339,7 @@ export function guiasSubstituidas(
   if (vinculosPorBloco.size === 0) return substituidas
   for (const s of sessoes) {
     const vinculo = s.bloco_id ? vinculosPorBloco.get(s.bloco_id) : undefined
-    if (s.guia && vinculo?.tipo === 'vinculo') substituidas.add(s.guia)
+    if (s.guia && triagemCobre(vinculo)) substituidas.add(s.guia)
   }
   return substituidas
 }

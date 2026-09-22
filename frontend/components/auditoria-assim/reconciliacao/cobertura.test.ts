@@ -311,4 +311,69 @@ describe('guiasSubstituidas', () => {
     const mapa = new Map([[falta.bloco_id!, vinculo({ guia: '15032', tipo: 'falta_terapeuta' })]])
     expect(guiasSubstituidas([falta], mapa).size).toBe(0)
   })
+
+  it('tipo "substituicao" APOSENTA — ali houve sessão', () => {
+    // O par do teste acima, e a diferença entre os dois é a razão de o tipo
+    // existir: mesmo bloco sintético, mesma falta na origem, desfecho oposto.
+    const falta = sessao({ bloco_id: 'falta_1_2026-09-21_09:20:00_22070397', guia: 'G-ANTIGA' })
+    const mapa = new Map([[falta.bloco_id!, vinculo({ guia: '321907', tipo: 'substituicao' })]])
+    expect([...guiasSubstituidas([falta], mapa)]).toEqual(['G-ANTIGA'])
+  })
+})
+
+/*
+  O caso João Lucas Pereira Da Silva (21/09/2026), que criou este tipo.
+
+  O titular de Fonoaudiologia faltou às 09:20 — fato, lançado corretamente — e
+  OUTRO PROFISSIONAL ASSUMIU: a sessão aconteceu. Pediu-se a avulsa 22070397 para
+  autorizá-la, e triá-la como 'falta_terapeuta' — o único desfecho que existia —
+  deixava "1 Autorização a mais" de pé na listagem.
+
+  A causa não era a contagem: era que a falta não consumia cota, então a guia
+  liberada ficava sem sessão embaixo e o excedente do placar a renomeava de
+  volta. Estes testes travam o que separa os dois desfechos — não a falta, que é
+  a mesma nos dois, mas ter havido substituto ou não. Se algum dia alguém
+  unificar os tipos, é aqui que quebra antes de quebrar a assiduidade de um
+  paciente (nos DOIS sentidos: creditando o que não houve, ou negando o que houve).
+*/
+describe('substituicao — o titular faltou e outro assumiu', () => {
+  const BLOCO = 'falta_1_2026-09-21_09:20:00_22070397'
+
+  it('promove a falta a LIBERADA — a sessão aconteceu', () => {
+    expect(situacaoComVinculo('FALTA_TERAPEUTA', { tipo: 'substituicao' })).toBe('LIBERADA')
+  })
+
+  it('e o irmão NÃO promove — é a única diferença entre os dois', () => {
+    // Lado a lado de propósito: as duas chegam com a MESMA situação crua, e só o
+    // tipo as separa. Nenhum dado do banco distingue os casos.
+    expect(situacaoComVinculo('FALTA_TERAPEUTA', { tipo: 'falta_terapeuta' })).toBe('FALTA_TERAPEUTA')
+  })
+
+  it('a falta com substituto deixa de ser sessão sem cobertura', () => {
+    const falta = sessao({ bloco_id: BLOCO, situacao: 'FALTA_TERAPEUTA' })
+    const mapa = new Map([[BLOCO, { tipo: 'substituicao' as const }]])
+    expect(sessaoSemCobertura(falta, '2026-09-30T23:59', mapa)).toBe(false)
+    expect(sessaoNaoSolicitada(falta, '2026-09-30T23:59', mapa)).toBe(false)
+  })
+
+  it('pinta a marca de procedência — o cartão não pode parecer liberação comum', () => {
+    // Sem ela, um slot que a origem ainda chama de falta sairia esmeralda e
+    // indistinguível de uma sessão que nunca teve problema nenhum.
+    expect(cobertaPorAvulsa('FALTA_TERAPEUTA', { tipo: 'substituicao' })).toBe(true)
+    // E o irmão segue sem pintar: ali não houve cobertura.
+    expect(cobertaPorAvulsa('FALTA_TERAPEUTA', { tipo: 'falta_terapeuta' })).toBe(false)
+  })
+
+  it('é idempotente — LIBERADA reaplicada continua LIBERADA', () => {
+    // A mesma armadilha que rebaixava GLOSA_RESOLVIDA em 2026-08-27: esta função
+    // recebe de volta a própria saída quando a RPC já resolveu a linha.
+    const uma = situacaoComVinculo('FALTA_TERAPEUTA', { tipo: 'substituicao' })
+    expect(situacaoComVinculo(uma, { tipo: 'substituicao' })).toBe(uma)
+  })
+
+  it('a glosa coberta por substituição continua dizendo GLOSA_RESOLVIDA', () => {
+    // O bloco de uma falta não chega glosado, mas a regra não pode depender
+    // disso: `substituicao` é cobertura, e cobertura sobre glosa é resolução.
+    expect(situacaoComVinculo('GLOSA', { tipo: 'substituicao' })).toBe('GLOSA_RESOLVIDA')
+  })
 })

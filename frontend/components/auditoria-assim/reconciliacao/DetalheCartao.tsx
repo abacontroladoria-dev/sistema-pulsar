@@ -362,7 +362,9 @@ export default function DetalheCartao({
               ? 'Vínculo'
               : vinculo.tipo === 'falta_terapeuta'
                 ? 'Autorização da falta'
-                : 'Triagem'
+                : vinculo.tipo === 'substituicao'
+                  ? 'Sessão com substituto'
+                  : 'Triagem'
           }
         >
           {daSessao ? (
@@ -375,6 +377,17 @@ export default function DetalheCartao({
                   a falta continua registrada como falta — a guia só diz de onde veio a autorização
                 </span>
               )}
+              {vinculo.tipo === 'substituicao' && (
+                /* O complemento do de cima, e é aqui que ele precisa estar
+                   escrito: o cartão saiu esmeralda sobre um slot que a origem
+                   chama de falta, e quem abre a gaveta veio entender por quê. A
+                   segunda oração não é detalhe — é o que evita alguém concluir
+                   que a falta do titular deixou de valer. */
+                <span className="mt-0.5 block text-[11px] font-normal text-slate-500">
+                  o titular faltou e outro profissional assumiu — a sessão aconteceu, e a falta do
+                  titular continua registrada
+                </span>
+              )}
             </Campo>
           ) : vinculo.tipo === 'falta_terapeuta' ? (
             <Campo rotulo="Autorizou a falta de">
@@ -383,6 +396,15 @@ export default function DetalheCartao({
                   cartão da guia quando a falta não está na semana carregada. */}
               <span className="font-normal text-slate-500">
                 uma falta de terapeuta — nenhuma sessão foi coberta
+              </span>
+            </Campo>
+          ) : vinculo.tipo === 'substituicao' ? (
+            <Campo rotulo="Cobre a sessão de">
+              {/* Mesmo caso do bloco sintético: ele não passa por
+                  `sessaoDoBloco`. O que o cartão da GUIA precisa dizer aqui é
+                  que houve sessão — é o que a distingue da irmã acima. */}
+              <span className="font-normal text-slate-500">
+                um horário registrado como falta em que houve substituto
               </span>
             </Campo>
           ) : vinculo.tipo === 'vinculo' ? (
