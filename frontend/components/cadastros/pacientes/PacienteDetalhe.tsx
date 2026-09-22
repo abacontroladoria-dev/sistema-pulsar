@@ -21,6 +21,8 @@ import { AbaLaudo } from "./secoes/AbaLaudo"
 import { AbaAltasIndividualidades } from "./secoes/AbaAltasIndividualidades"
 import { AbaEscola } from "./secoes/AbaEscola"
 import { foco } from "./ui/campos"
+import { getAltasClinicasDoPaciente, altaClinicaVigente } from "@/services/pacienteAltaClinica.service"
+import type { PacienteAltaClinica } from "@/types/laudos"
 
 type Aba = "cadastro" | "ficha" | "laudo" | "altas" | "escola"
 type SecaoCadastro = "dados" | "endereco" | "filiacao" | "plano"
@@ -63,6 +65,19 @@ export function PacienteDetalhe({
   const [editando, setEditando] = useState(false)
   const [verHistorico, setVerHistorico] = useState(false)
   const [verInativar, setVerInativar] = useState(false)
+  // Independente da aba "Altas e Individualidades" estar montada: o badge no
+  // header precisa saber se há alta clínica vigente mesmo em outras abas.
+  const [altaClinicaVigenteAtual, setAltaClinicaVigenteAtual] = useState<PacienteAltaClinica | null>(null)
+
+  useEffect(() => {
+    let cancelado = false
+    void getAltasClinicasDoPaciente(idPaciente).then(({ data }) => {
+      if (!cancelado) setAltaClinicaVigenteAtual(altaClinicaVigente(data))
+    })
+    return () => {
+      cancelado = true
+    }
+  }, [idPaciente])
 
   const { registerGuard } = useUnsavedChangesGuard()
   useEffect(() => {
@@ -139,6 +154,7 @@ export function PacienteDetalhe({
         onFotoAlterada={() => void recarregar()}
         onVerHistorico={() => setVerHistorico(true)}
         onAlterarSituacao={() => setVerInativar(true)}
+        temAltaClinica={!!altaClinicaVigenteAtual}
       />
 
       {/* O motivo da falha de gravação aparece na TELA, não só no console — sem
@@ -242,6 +258,7 @@ export function PacienteDetalhe({
             setIndividualidade={setIndividualidade}
             disabled={!editando}
             suspensaoIdInicial={suspensaoIdInicial}
+            onAltaClinicaVigenteMudou={setAltaClinicaVigenteAtual}
           />
         )}
       </div>
@@ -251,7 +268,7 @@ export function PacienteDetalhe({
         <HistoricoCadastrosModal
           titulo={`Histórico — ${paciente.nome}`}
           subtitulo="Alterações no cadastro, responsáveis, ficha médica, laudos, altas/individualidades e suspensões temporárias deste paciente."
-          entidades={["paciente", "responsavel", "ficha_medica", "laudo", "alta", "alta_individualidade", "suspensao_temporaria"]}
+          entidades={["paciente", "responsavel", "ficha_medica", "laudo", "alta", "alta_individualidade", "alta_clinica", "suspensao_temporaria"]}
           pacienteId={idPaciente}
           onClose={() => setVerHistorico(false)}
         />

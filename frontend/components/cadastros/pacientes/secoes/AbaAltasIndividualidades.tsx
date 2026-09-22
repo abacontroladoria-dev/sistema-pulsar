@@ -63,6 +63,8 @@ type Props = {
   disabled: boolean
   /** Deep link (ex.: vindo de Ocupação de Paciente) — abre o detalhe desta suspensão ao carregar. */
   suspensaoIdInicial?: number
+  /** Avisa o header (badge "Alta clínica" ao lado de Ativo/Inativo) sempre que a vigente mudar. */
+  onAltaClinicaVigenteMudou?: (vigente: PacienteAltaClinica | null) => void
 }
 
 function dataBR(isoStr: string) {
@@ -118,6 +120,7 @@ export function AbaAltasIndividualidades({
   setIndividualidade,
   disabled,
   suspensaoIdInicial,
+  onAltaClinicaVigenteMudou,
 }: Props) {
   const [altas, setAltas] = useState<PacienteAlta[]>([])
   const [suspensoes, setSuspensoes] = useState<PacienteSuspensaoTemporaria[]>([])
@@ -166,6 +169,7 @@ export function AbaAltasIndividualidades({
     setAltasClinicas(resAltasClinicas.data)
     setErro(resAltas.error || resSuspensoes.error || resAltasClinicas.error)
     setCarregando(false)
+    onAltaClinicaVigenteMudou?.(altaClinicaVigente(resAltasClinicas.data))
 
     // Quem criou cada card — separado do carregamento principal para não
     // atrasar a primeira renderização por causa de uma info secundária.
