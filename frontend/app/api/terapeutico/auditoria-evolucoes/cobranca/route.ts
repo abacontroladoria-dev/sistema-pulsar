@@ -1,19 +1,13 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { exigirPermissaoAuditoria, respostaDeErroAuth } from '@/lib/auditoria/auth'
 
 export const dynamic = 'force-dynamic'
 
 export async function POST(req: Request) {
   try {
-    const supabase = await createClient()
-
-    const {
-      data: { user }
-    } = await supabase.auth.getUser()
-
-    if (!user) {
-      return NextResponse.json({ success: false, error: 'Não autenticado' }, { status: 401 })
-    }
+    // Sem isto, qualquer usuário logado alterava cobrança de qualquer
+    // profissional: o matcher do proxy.ts não cobre /api.
+    const { supabase, usuarioNome } = await exigirPermissaoAuditoria()
 
     const body = await req.json()
     const { auditoriaId, auditoriaIds, novoStatus, observacao } = body
@@ -21,15 +15,6 @@ export async function POST(req: Request) {
     if (!novoStatus) {
       return NextResponse.json({ success: false, error: 'novoStatus é obrigatório' }, { status: 400 })
     }
-
-    // Buscar nome do usuário atual
-    const { data: usuarioPerfil } = await supabase
-      .from('usuarios')
-      .select('nome')
-      .eq('id', user.id)
-      .maybeSingle()
-
-    const usuarioNome = usuarioPerfil?.nome || user.email || 'Usuário'
 
     const idsParaAtualizar: string[] = Array.isArray(auditoriaIds)
       ? auditoriaIds
@@ -85,6 +70,10 @@ export async function POST(req: Request) {
       atualizados: resultados.length
     })
   } catch (err: any) {
+    const authErr = respostaDeErroAuth(err)
+    if (authErr) {
+      return NextResponse.json({ success: false, error: authErr.error }, { status: authErr.status })
+    }
     return NextResponse.json({ success: false, error: err.message || 'Erro interno' }, { status: 500 })
   }
 }

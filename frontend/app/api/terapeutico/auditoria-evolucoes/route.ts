@@ -1,20 +1,13 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import { auditarEvolucaoComIA } from '@/lib/auditoria/auditorEngine'
+import { exigirPermissaoAuditoria, respostaDeErroAuth } from '@/lib/auditoria/auth'
+import { carregarCriteriosVigentes } from '@/lib/auditoria/criterios'
 
 export const dynamic = 'force-dynamic'
 
 export async function POST(req: Request) {
   try {
-    const supabase = await createClient()
-
-    const {
-      data: { user }
-    } = await supabase.auth.getUser()
-
-    if (!user) {
-      return NextResponse.json({ success: false, error: 'Não autenticado' }, { status: 401 })
-    }
+    const { supabase } = await exigirPermissaoAuditoria()
 
     const body = await req.json()
     const { gradeIds, limite = 10, dataInicio = '2026-09-01', dataFim, reauditar = false } = body
@@ -78,6 +71,12 @@ export async function POST(req: Request) {
     }
 
     const resultadosProcessados: any[] = []
+    const falhas: { grade_id: string; paciente_nome: string; motivo: string }[] = []
+
+    // Fora do loop: os critérios valem para o lote inteiro, e o loop é
+    // sequencial — resolver aqui evita N leituras do banco e garante que todas
+    // as linhas do lote fiquem carimbadas com a MESMA versão.
+    const { criterios, versaoId, versaoNumero } = await carregarCriteriosVigentes(supabase)
 
     for (const item of lote) {
       try {
@@ -86,7 +85,8 @@ export async function POST(req: Request) {
           profissionalNome: item.profissional_nome || 'Profissional',
           terapiaNome: item.terapia_nome,
           dataSessao: item.data,
-          textoOriginal: item.descricao_evolucao || ''
+          textoOriginal: item.descricao_evolucao || '',
+          criterios
         })
 
         const record = {
@@ -108,6 +108,10 @@ export async function POST(req: Request) {
           inconsistencias_estruturais: analise.inconsistencias_estruturais,
           texto_revisado: analise.texto_revisado,
           modelo_ia: analise.modelo_usado,
+          criterios_versao_id: versaoId,
+          criterios_versao_numero: versaoNumero,
+          // Deu certo agora: limpa o erro de uma tentativa anterior.
+          erro_auditoria: null,
           auditado_em: new Date().toISOString(),
           updated_at: new Date().toISOString()
         }
@@ -120,11 +124,37 @@ export async function POST(req: Request) {
 
         if (upsertErr) {
           console.error('[Auditoria] Erro ao gravar auditoria:', upsertErr)
+          falhas.push({
+            grade_id: item.id,
+            paciente_nome: item.paciente_nome || 'Paciente',
+            motivo: upsertErr.message
+          })
         } else {
           resultadosProcessados.push(upsertData)
         }
       } catch (itemErr: any) {
-        console.error(`[Auditoria] Falha ao processar item ${item.id}:`, itemErr.message)
+        const motivo = itemErr?.message || 'Erro desconhecido'
+        console.error(`[Auditoria] Falha ao processar item ${item.id}:`, motivo)
+        falhas.push({
+          grade_id: item.id,
+          paciente_nome: item.paciente_nome || 'Paciente',
+          motivo
+        })
+
+        // `status_risco` é NOT NULL + CHECK: não existe veredito "erro". Então
+        // só dá para registrar a falha onde JÁ existe uma auditoria anterior —
+        // o veredito antigo fica preservado e a tela o marca como desatualizado.
+        // Item nunca auditado não vira linha: some da lista de auditados e
+        // aparece em `falhas`, que a tela informa. O que não pode acontecer é o
+        // que acontecia antes: inventar um veredito para a linha.
+        const { error: erroMarcacao } = await supabase
+          .from('auditoria_evolucoes')
+          .update({ erro_auditoria: motivo, updated_at: new Date().toISOString() })
+          .eq('grade_id', item.id)
+
+        if (erroMarcacao) {
+          console.error('[Auditoria] Falha ao registrar erro_auditoria:', erroMarcacao.message)
+        }
       }
     }
 
@@ -132,9 +162,15 @@ export async function POST(req: Request) {
       success: true,
       processados: resultadosProcessados.length,
       total_solicitados: lote.length,
-      itens: resultadosProcessados
+      itens: resultadosProcessados,
+      falhas,
+      criterios_versao: versaoNumero
     })
   } catch (err: any) {
+    const authErr = respostaDeErroAuth(err)
+    if (authErr) {
+      return NextResponse.json({ success: false, error: authErr.error }, { status: authErr.status })
+    }
     return NextResponse.json({ success: false, error: err.message || 'Erro interno no servidor' }, { status: 500 })
   }
 }

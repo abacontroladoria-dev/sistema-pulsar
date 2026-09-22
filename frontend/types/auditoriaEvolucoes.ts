@@ -68,6 +68,14 @@ export interface RegistroAuditoriaEvolucao {
   cobrado_por_nome: string | null
   
   modelo_ia: string | null
+  /** Versão dos critérios que julgou esta evolução. Null = auditada antes do versionamento. */
+  criterios_versao_id?: string | null
+  criterios_versao_numero?: number | null
+  /**
+   * Motivo da última falha de auditoria. Quando preenchido, os campos de
+   * veredito acima são da tentativa ANTERIOR, bem-sucedida.
+   */
+  erro_auditoria?: string | null
   auditado_em: string
   created_at: string
   updated_at: string

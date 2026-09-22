@@ -1,8 +1,10 @@
-import { SYSTEM_PROMPT_AUDITORIA_EVOLUCAO, montarMensagemAuditoria } from './prompts'
-import type { 
-  StatusRiscoEvolucao, 
-  ChecklistPerguntas, 
-  ApontamentoAuditoria 
+import { montarMensagemAuditoria, montarSystemPrompt } from './prompts'
+import type { CriteriosAuditoria } from '@/types/auditoriaCriterios'
+import { CHAVES_PILARES, CHAVES_STATUS_RISCO } from '@/types/auditoriaCriterios'
+import type {
+  StatusRiscoEvolucao,
+  ChecklistPerguntas,
+  ApontamentoAuditoria
 } from '@/types/auditoriaEvolucoes'
 
 export interface ResultadoAuditoriaIA {
@@ -15,12 +17,44 @@ export interface ResultadoAuditoriaIA {
   modelo_usado: string
 }
 
+/**
+ * A IA respondeu algo que não dá para tratar como veredito.
+ *
+ * Existe para NÃO inventar resultado. Antes, resposta inválida virava
+ * 'risco_especifico' e texto_revisado caía no original — a auditoria parecia
+ * ter acontecido. Com critérios editáveis isso ficou inaceitável: uma
+ * configuração ruim produziria vereditos plausíveis e errados, e ninguém veria.
+ */
+/** Espelha a união ApontamentoAuditoria['tipo'] e o schema enviado à IA. */
+const TIPOS_APONTAMENTO: readonly string[] = [
+  'estrutura_incompleta',
+  'termo_vago',
+  'negacao_sem_contexto',
+  'termo_absoluto',
+  'julgamento_subjetivo',
+  'procedimento_aversivo',
+  'foco_tempo',
+  'sigla_sem_contexto',
+  'sigilo_cfp',
+  'inconsistencia_estrutural',
+  'outro'
+]
+
+export class ErroAuditoriaInvalida extends Error {
+  constructor(motivo: string) {
+    super(`Resposta inválida da IA: ${motivo}`)
+    this.name = 'ErroAuditoriaInvalida'
+  }
+}
+
 export async function auditarEvolucaoComIA(params: {
   pacienteNome: string
   profissionalNome: string
   terapiaNome?: string | null
   dataSessao: string
   textoOriginal: string
+  /** Critérios vigentes. Obrigatório: quem chama resolve a versão e a registra. */
+  criterios: CriteriosAuditoria
 }): Promise<ResultadoAuditoriaIA> {
   const apiKey = (process.env.OPENAI_API_KEY ?? '').trim()
   if (!apiKey) {
@@ -56,7 +90,7 @@ export async function auditarEvolucaoComIA(params: {
   const payload = {
     model,
     messages: [
-      { role: 'system', content: SYSTEM_PROMPT_AUDITORIA_EVOLUCAO },
+      { role: 'system', content: montarSystemPrompt(params.criterios) },
       { role: 'user', content: userContent }
     ],
     temperature: 0.2,
@@ -91,36 +125,74 @@ export async function auditarEvolucaoComIA(params: {
       throw new Error('OpenAI retornou uma resposta sem conteúdo.')
     }
 
-    const parsed = JSON.parse(rawContent)
-
-    const statusRisco: StatusRiscoEvolucao = ['sem_risco', 'risco_especifico', 'risco_relevante'].includes(parsed.status_risco)
-      ? parsed.status_risco
-      : 'risco_especifico'
-
-    const checklist: ChecklistPerguntas = {
-      chegou: Boolean(parsed.checklist_perguntas?.chegou),
-      objetivo: Boolean(parsed.checklist_perguntas?.objetivo),
-      recursos: Boolean(parsed.checklist_perguntas?.recursos),
-      reacao_saida: Boolean(parsed.checklist_perguntas?.reacao_saida)
+    // `Record<string, any>` e não um tipo fechado: isto é JSON de fora, e a
+    // validação de cada campo vem logo abaixo. Tipar como se já fosse a
+    // resposta certa daria uma garantia que o parse não tem.
+    let parsed: Record<string, unknown>
+    try {
+      parsed = JSON.parse(rawContent) as Record<string, unknown>
+    } catch {
+      throw new ErroAuditoriaInvalida('o conteúdo devolvido não é JSON válido.')
     }
 
+    // --- Veredito: sem fallback. Errado aqui é erro, não palpite. ---
+
+    if (!CHAVES_STATUS_RISCO.includes(parsed.status_risco as StatusRiscoEvolucao)) {
+      throw new ErroAuditoriaInvalida(
+        `status_risco "${parsed.status_risco}" fora dos valores aceitos (${CHAVES_STATUS_RISCO.join(', ')}).`
+      )
+    }
+    const statusRisco = parsed.status_risco as StatusRiscoEvolucao
+
+    const checklistBruto = parsed.checklist_perguntas as Record<string, unknown> | undefined
+    if (!checklistBruto || typeof checklistBruto !== 'object') {
+      throw new ErroAuditoriaInvalida('checklist_perguntas ausente.')
+    }
+    for (const chave of CHAVES_PILARES) {
+      if (typeof checklistBruto[chave] !== 'boolean') {
+        throw new ErroAuditoriaInvalida(`checklist_perguntas.${chave} não veio como booleano.`)
+      }
+    }
+    const checklist: ChecklistPerguntas = {
+      // O laço acima já provou que as quatro são booleanas.
+      chegou: checklistBruto.chegou as boolean,
+      objetivo: checklistBruto.objetivo as boolean,
+      recursos: checklistBruto.recursos as boolean,
+      reacao_saida: checklistBruto.reacao_saida as boolean
+    }
+
+    // Cair no texto original mascararia "a IA não revisou nada" como revisão.
+    if (typeof parsed.texto_revisado !== 'string' || parsed.texto_revisado.trim() === '') {
+      throw new ErroAuditoriaInvalida('texto_revisado vazio.')
+    }
+
+    // `tipo` e `gravidade` seguem tolerantes: são rótulos de classificação, não
+    // veredito, e não têm CHECK no banco. Mas agora o desvio aparece no log.
     const apontamentos: ApontamentoAuditoria[] = Array.isArray(parsed.apontamentos)
-      ? parsed.apontamentos.map((ap: any) => ({
-          tipo: ap.tipo || 'outro',
-          titulo: ap.titulo || 'Apontamento de auditoria',
-          descricao: ap.descricao || '',
-          trecho: ap.trecho || undefined,
-          gravidade: ['alta', 'media', 'baixa'].includes(ap.gravidade) ? ap.gravidade : 'media'
-        }))
+      ? parsed.apontamentos.map((bruto: unknown) => {
+          const ap = (bruto ?? {}) as Record<string, unknown>
+          const tipo = ap.tipo as ApontamentoAuditoria['tipo']
+          if (ap.tipo && !TIPOS_APONTAMENTO.includes(tipo)) {
+            console.warn(`[auditoria] tipo de apontamento desconhecido: "${String(ap.tipo)}"`)
+          }
+          const gravidade = ap.gravidade as ApontamentoAuditoria['gravidade']
+          return {
+            tipo: TIPOS_APONTAMENTO.includes(tipo) ? tipo : 'outro',
+            titulo: (ap.titulo as string) || 'Apontamento de auditoria',
+            descricao: (ap.descricao as string) || '',
+            trecho: (ap.trecho as string) || undefined,
+            gravidade: ['alta', 'media', 'baixa'].includes(gravidade) ? gravidade : 'media'
+          }
+        })
       : []
 
     return {
       status_risco: statusRisco,
-      resumo_justificativa: parsed.resumo_justificativa || 'Análise concluída.',
+      resumo_justificativa: (parsed.resumo_justificativa as string) || 'Análise concluída.',
       checklist_perguntas: checklist,
       inconsistencias_estruturais: Array.isArray(parsed.inconsistencias_estruturais) ? parsed.inconsistencias_estruturais : [],
       apontamentos,
-      texto_revisado: parsed.texto_revisado || params.textoOriginal,
+      texto_revisado: parsed.texto_revisado,
       modelo_usado: model
     }
   } catch (err: any) {
