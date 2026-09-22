@@ -169,8 +169,10 @@ export default function RegistroDisponibilidadePage() {
 
   const filtrados = useMemo(() => {
     return dados
+      // terapiaDeveAparecer já descarta as contas de teste por lista de nomes
+      // (helpers). Antes havia um includes('teste') aqui, que derrubava junto
+      // qualquer pessoa real com "teste" no nome.
       .filter(terapiaDeveAparecer)
-      .filter((item) => !getTerapeuta(item).toLowerCase().includes('teste'))
       .filter((item) => {
         if (!filters.unidade) return true
         return getUnidade(item) === filters.unidade

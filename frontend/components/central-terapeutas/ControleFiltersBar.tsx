@@ -4,6 +4,7 @@ import {
   AlertCircle,
   CalendarDays,
   Clock,
+  FileSpreadsheet,
   Clock3,
   MapPin,
   RefreshCw,
@@ -33,6 +34,7 @@ type Props = {
   statusContagem: StatusContagem
   onChange: (filters: ControleFilters) => void
   onSincronizar?: () => void
+  onRelatorio?: () => void
   sincronizando?: boolean
   loading?: boolean
 }
@@ -45,6 +47,7 @@ export default function ControleFiltersBar({
   statusContagem,
   onChange,
   onSincronizar,
+  onRelatorio,
   sincronizando,
   loading,
 }: Props) {
@@ -184,6 +187,17 @@ export default function ControleFiltersBar({
             >
               <RefreshCw size={13} className={sincronizando ? 'animate-spin' : ''} />
               Sincronizar
+            </button>
+          )}
+          {onRelatorio && (
+            <button
+              type="button"
+              onClick={onRelatorio}
+              title="Gerar relatório .xlsx por período"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100 text-xs font-medium transition"
+            >
+              <FileSpreadsheet size={13} />
+              Relatório
             </button>
           )}
         </div>

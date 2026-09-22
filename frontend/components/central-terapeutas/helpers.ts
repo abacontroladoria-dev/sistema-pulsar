@@ -87,8 +87,64 @@ export function normalizarStatus(status?: string | null) {
   return (status || 'pendente').toLowerCase()
 }
 
+// Profissionais que não são gente atendendo: contas de teste e placeholders da
+// agenda. Mesma lista/semântica de PROFS_IGNORAR em lib/remuneracao/constants.ts
+// — `includes`, não igualdade, porque os nomes reais vêm como
+// "Testes Técnicos - Fulano de Tal".
+export const profissionaisIgnorados = [
+  'Profissional Teste',
+  'Testes Técnicos',
+  'Combinar Consulta',
+]
+
+export function profissionalDeveAparecer(item: ControleTerapeuticoItem) {
+  const nome = `${getTerapeuta(item)} ${item.profissional_substituto_nome || ''}`
+  return !profissionaisIgnorados.some((f) => nome.includes(f))
+}
+
+// Linhas cujo "paciente" é na verdade um marcador de agenda (bloqueio,
+// horário administrativo, alinhamento, supervisão) ou uma conta de teste.
+// Mesma lista de lib/remuneracao/constants.ts — lá são
+// PACIENTES_FICTICIOS_POR_ID / NOMES_FALSOS / NOMES_FALSOS_PREFIXOS.
+export const pacientesIgnoradosIds = new Set([
+  17795, 18565, 19196, 20471, 20472, 20473,
+  20475, 20476, 20477, 20478, 20479, 20725,
+])
+
+// Filtra também por nome porque um id novo no mesmo padrão apareceria cru na
+// tela até alguém atualizar a lista de ids.
+export const pacientesIgnoradosNomes = [
+  'Notificação Prévia',
+  'Horário Administrativo',
+  'Horário Bloqueado',
+  'Horário Reservado',
+  'Ainda não selecionado',
+]
+
+export const pacientesIgnoradosPrefixos = [
+  'Supervisor',
+  'Supervisora',
+  'Alinhamento',
+  'Paciente Teste',
+]
+
+export function pacienteDeveAparecer(item: ControleTerapeuticoItem) {
+  const id = Number(item.paciente_id)
+  if (Number.isFinite(id) && pacientesIgnoradosIds.has(id)) return false
+
+  const nome = getPaciente(item).trim()
+  if (pacientesIgnoradosNomes.some((n) => nome === n)) return false
+  if (pacientesIgnoradosPrefixos.some((p) => nome.startsWith(p))) return false
+
+  return true
+}
+
 export function terapiaDeveAparecer(item: ControleTerapeuticoItem) {
-  return !terapiasIgnoradas.includes(getTerapia(item))
+  return (
+    !terapiasIgnoradas.includes(getTerapia(item)) &&
+    profissionalDeveAparecer(item) &&
+    pacienteDeveAparecer(item)
+  )
 }
 
 export function getIniciais(nome: string): string {
