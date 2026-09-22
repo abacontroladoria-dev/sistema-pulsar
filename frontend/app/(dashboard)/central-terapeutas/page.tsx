@@ -7,6 +7,7 @@ import { useHeader } from '@/contexts/HeaderContext'
 import ControleFiltersBar from '@/components/central-terapeutas/ControleFiltersBar'
 import ControleTerapeutaMobileCard from '@/components/central-terapeutas/ControleTerapeutaMobileCard'
 import CoberturaModal from '@/components/central-terapeutas/CoberturaModal'
+import RelatorioModal from '@/components/central-terapeutas/RelatorioModal'
 import {
   useControleDisponibilidade,
   type StatusDisponibilidade,
@@ -73,6 +74,7 @@ export default function ControleTerapeuticoPage() {
   const [sincronizando, setSincronizando] = useState(false)
   const [grupoCobertura, setGrupoCobertura] = useState<GrupoTerapeutaMobile | null>(null)
   const [pagina, setPagina] = useState(0)
+  const [relatorioAberto, setRelatorioAberto] = useState(false)
 
   const [filters, setFilters] = useState<ControleFilters>({
     data: hoje,
@@ -213,8 +215,10 @@ export default function ControleTerapeuticoPage() {
 
     for (const item of dados) {
       if (!terapiaDeveAparecer(item)) continue
+      // O descarte de contas de teste mora em terapiaDeveAparecer (helpers),
+      // por lista de nomes. Antes era includes('teste') aqui, que derrubava
+      // junto qualquer pessoa real com "teste" no nome.
       const terapeuta = getTerapeuta(item)
-      if (terapeuta.toLowerCase().includes('teste')) continue
       if (q && !terapeuta.toLowerCase().includes(q) && !getPaciente(item).toLowerCase().includes(q)) continue
       if (filters.horario && getHorarioInicial(item) !== filters.horario) continue
       if (unidadeLower && !getUnidade(item).toLowerCase().includes(unidadeLower)) continue
@@ -387,6 +391,7 @@ return (
         statusContagem={statusContagem}
         onChange={setFilters}
         onSincronizar={handleSincronizar}
+        onRelatorio={() => setRelatorioAberto(true)}
         sincronizando={sincronizando}
         loading={loading}
       />
@@ -475,6 +480,12 @@ return (
 	  data={filters.data}
 	  onClose={() => setGrupoCobertura(null)}
 	  onSuccess={carregarDados}
+	/>
+
+	<RelatorioModal
+	  aberto={relatorioAberto}
+	  dataPadrao={filters.data}
+	  onClose={() => setRelatorioAberto(false)}
 	/>
 
   </div>
