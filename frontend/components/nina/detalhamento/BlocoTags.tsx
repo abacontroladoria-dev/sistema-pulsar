@@ -4,6 +4,7 @@ import React, { useState } from 'react'
 import { Tag, Plus, Loader2, X } from 'lucide-react'
 import type { TagDefinition } from '@/modules/atendimento/types/central.types'
 import { Bloco, Vazio, BotaoAcao } from './Bloco'
+import { TagChip as Chip } from '../../central/shared/TagChip'
 
 // ----------------------------------------------------------------------------
 // Rótulos da pessoa.
@@ -12,49 +13,10 @@ import { Bloco, Vazio, BotaoAcao } from './Bloco'
 // Elas descrevem quem é ('convênio', 'particular', 'documentação'), e por isso
 // acompanham a pessoa quando ela volta meses depois numa conversa nova.
 //
-// A cor vem de tag_definitions.color — hex do banco, não classe do Tailwind.
-// Por isso é style inline: as classes do Tailwind são estáticas em build, e
-// `bg-[${cor}]` não existiria no CSS final. A cor entra com transparência no
-// fundo e cheia no texto, o que mantém contraste legível para qualquer matiz
-// que alguém cadastre depois.
-//
-// Chave desconhecida (no contato mas fora do catálogo) é DESENHADA assim mesmo,
-// em cinza. Escondê-la faria a pessoa perder um rótulo sem nunca saber que ele
-// existia — e o banco aceita qualquer string nesta coluna.
+// O chip em si (cor com transparência, chave desconhecida em cinza) é
+// components/central/shared/TagChip.tsx — compartilhado com a exibição de
+// tags de conversa no painel de contexto da Central de Atendimento.
 // ----------------------------------------------------------------------------
-
-function comAlfa(hex: string | null, alfa: string): string | undefined {
-  if (!hex || !/^#[0-9a-f]{6}$/i.test(hex)) return undefined
-  return `${hex}${alfa}`
-}
-
-const Chip: React.FC<{
-  rotulo:    string
-  cor:       string | null
-  aoRemover?: () => void
-}> = ({ rotulo, cor, aoRemover }) => (
-  <span
-    className="inline-flex items-center gap-1 pl-2.5 pr-2 py-1 rounded-full text-[11px] font-medium border"
-    style={{
-      backgroundColor: comAlfa(cor, '22'),
-      borderColor:     comAlfa(cor, '55'),
-      color:           cor ?? undefined,
-    }}
-  >
-    <span className={cor ? '' : 'text-muted-foreground'}>{rotulo}</span>
-    {aoRemover && (
-      <button
-        type="button"
-        onClick={aoRemover}
-        title={`Remover ${rotulo}`}
-        aria-label={`Remover ${rotulo}`}
-        className="opacity-60 hover:opacity-100 transition-opacity"
-      >
-        <X className="w-3 h-3" />
-      </button>
-    )}
-  </span>
-)
 
 export const BlocoTags: React.FC<{
   tags:      string[] | null

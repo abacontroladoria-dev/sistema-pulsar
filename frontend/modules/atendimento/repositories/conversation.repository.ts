@@ -275,6 +275,44 @@ export class ConversationRepository {
   // Escreve a decisão de IA DESTA conversa. `null` devolve a conversa ao padrão
   // da inbox/organização — não é o mesmo que 'off', que é uma decisão de
   // desligar. Ver 20260915220000.
+  // Escrita crua do array inteiro — quem decide o que entra/sai por grupo é
+  // ConversationService.atualizarTags (merge por grupo, validação contra o
+  // catálogo). Este método só grava o que mandaram, igual updatePriority.
+  async updateTags(id: string, tags: string[]): Promise<void> {
+    const { error } = await (this.supabase as any)
+      .schema('central')
+      .from('conversations')
+      .update({ tags })
+      .eq('id', id)
+
+    if (error) throw error
+  }
+
+  // Campo, não tag (aba Regras, item 5) — coluna própria (20260922100200).
+  // Só o matcher de campanha (agente/origem-campanha.ts) grava aqui; a Maia
+  // nunca decide este campo.
+  async updateCampanha(id: string, campanha: string): Promise<void> {
+    const { error } = await (this.supabase as any)
+      .schema('central')
+      .from('conversations')
+      .update({ campanha })
+      .eq('id', id)
+
+    if (error) throw error
+  }
+
+  // Campo, não tag (aba Regras, item 8) — coluna própria (20260922100200),
+  // fora de conversations.tags.
+  async updateObjecao(id: string, objecao: string | null): Promise<void> {
+    const { error } = await (this.supabase as any)
+      .schema('central')
+      .from('conversations')
+      .update({ objecao })
+      .eq('id', id)
+
+    if (error) throw error
+  }
+
   async updateAiMode(id: string, aiMode: AIMode | null): Promise<void> {
     const { error } = await (this.supabase as any)
       .schema('central')

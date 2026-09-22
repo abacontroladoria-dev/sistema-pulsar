@@ -6,17 +6,21 @@ import { createSystemServices, createAppointmentSystemService } from '../service
 import { ContactRepository } from '../repositories/contact.repository'
 import { MessageRepository } from '../repositories/message.repository'
 import { AppointmentRepository } from '../repositories/appointment.repository'
+import { TagDefinitionRepository } from '../repositories/tag-definition.repository'
+import { CampaignPhraseRepository } from '../repositories/campaign-phrase.repository'
 import { AuditRepository } from '../repositories/audit.repository'
 import { normalizarMensagemMeta } from '../providers/meta-waba.normalizar'
 import { montarContexto, LIMITE_HISTORICO } from '../agente/contexto'
 import { executarTurno } from '../agente/orquestrador'
 import { FerramentasAgente } from '../agente/ferramentas'
+import { montarFerramentaRegistrarTags } from '../agente/tags'
+import { casarPrimeiraMensagem } from '../agente/origem-campanha'
 import { openAiProvider } from '../llm/openai.provider'
 import { lerAgentSettings } from '../agente/agent-settings'
 import { resolverModoEfetivo } from '../agente/modo-efetivo'
 import { decidirEntrega } from '../agente/entrega'
 import { createFichaService } from '../services/ficha.service'
-import type { FichaPaciente } from '../types/central.types'
+import type { FichaPaciente, TagDefinition } from '../types/central.types'
 
 // ============================================================================
 // Worker de agrupamento — o miolo do pipeline
@@ -193,7 +197,7 @@ async function processarContato(
   const contato = await acharOuCriarContato(contatos, orgId, from, itens)
 
   // 3. Conversa. `findOrCreate` já trata a corrida por 23505.
-  const { conversation } = await conversationService.findOrCreate(
+  const { conversation, created: conversaNova } = await conversationService.findOrCreate(
     contato.id, canal.id, canal.inbox_id, orgId,
   )
 
@@ -222,6 +226,42 @@ async function processarContato(
 
   if (textos.filter((t) => t.trim()).length === 0) {
     return { tipo: 'silencio', detalhe: 'nada que peça resposta (ex.: só reação)' }
+  }
+
+  // O catálogo da taxonomia da Maia (144 tags, 13 grupos) — usado pelo
+  // matcher de campanha logo abaixo (grupo `origem`) e, mais tarde, para
+  // montar o schema de `registrar_tags` e o executor validar/mesclar por
+  // grupo (ConversationService.atualizarTags). Falha isolada: não conseguir
+  // ler o catálogo não pode calar a atendente — o pior caso é um turno sem a
+  // ferramenta de classificação, não sem resposta.
+  let porGrupoTags: Map<string, TagDefinition[]> = new Map()
+  try {
+    porGrupoTags = await new TagDefinitionRepository(supabase).porGrupo(orgId)
+  } catch (err) {
+    console.warn('[worker agrupamento] catálogo de tags indisponível; turno sem classificação', err)
+  }
+
+  // 4.5. Matcher de campanha (Regra 5) — só na PRIMEIRA mensagem de uma
+  // conversa NOVA. Roda antes do turno do agente e sem custo de LLM: se a
+  // primeira mensagem casar com uma frase cadastrada, aplica a tag de ORIGEM
+  // e grava o campo campanha diretamente. Sem casar, cai no fallback textual
+  // que a instrução de agente/tags.ts já cobre (prefixos "Gostaria de", "Vim
+  // do" etc.) — não precisa de lógica extra aqui.
+  //
+  // Falha isolada, como os demais blocos opcionais deste worker: não achar
+  // frase, ou o catálogo estar indisponível, não pode impedir a resposta.
+  if (conversaNova) {
+    try {
+      const frases = await new CampaignPhraseRepository(supabase).listar(orgId)
+      const casada = casarPrimeiraMensagem(textos[0] ?? '', frases)
+      if (casada) {
+        await conversationService.aplicarOrigemDeCampanha(
+          conversation.id, casada.origemTag, casada.campanha, porGrupoTags,
+        )
+      }
+    } catch (err) {
+      console.warn('[worker agrupamento] matcher de campanha falhou; seguindo sem aplicar', err)
+    }
   }
 
   // 5. Configuração da atendente para esta organização.
@@ -317,6 +357,10 @@ async function processarContato(
     // fazer: sem ele a ferramenta recusa, e não oferecê-la é o que garante que a
     // Maia não pergunte cadastro a quem já é paciente da clínica.
     ficha ? fichas : null,
+    // Para `registrar_tags`. Mesmo catálogo usado para montar o schema logo
+    // abaixo — precisa estar aqui de novo porque a validação e o merge por
+    // grupo em ConversationService.atualizarTags também dependem dele.
+    porGrupoTags,
   )
 
   // 7. O turno.
@@ -341,6 +385,7 @@ async function processarContato(
       // que decide o bloco de contexto, de propósito: a ferramenta e a
       // informação sobre o que falta precisam aparecer e sumir juntas.
       coletaDeCadastro: ficha !== null,
+      ferramentaTags:   montarFerramentaRegistrarTags(porGrupoTags),
       aoChamarFerramenta: (registro) => {
         void auditoria.insert({
           organization_id: orgId,

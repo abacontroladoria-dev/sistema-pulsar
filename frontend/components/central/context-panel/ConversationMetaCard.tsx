@@ -1,6 +1,9 @@
 import { MessageSquare, Inbox, Globe, UserCircle, Clock, Tag, Calendar } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import SectionHeader from './SectionHeader'
+import { TagChip } from '../shared/TagChip'
+import { useTagCatalogo } from '../useCentralData'
+import type { Conversation } from '@/modules/atendimento/types/central.types'
 
 interface HistoryEntry {
   id:       string
@@ -15,7 +18,7 @@ const MOCK_HISTORY: HistoryEntry[] = [
   { id: '3', preview: 'Confirmação retorno escolar',  date: '02/06/2026',     resolved: true  },
 ]
 
-export default function ConversationMetaCard() {
+export default function ConversationMetaCard({ conversation }: { conversation: Conversation | null }) {
   return (
     <div className="px-5 py-4 border-b border-border/60 space-y-5">
       {/* Conversation info */}
@@ -27,7 +30,7 @@ export default function ConversationMetaCard() {
           <MetaRow icon={UserCircle} label="Atribuído a" value="—"                  />
           <MetaRow icon={Clock}      label="Iniciado"    value="Hoje, 09:32"        />
           <StatusRow />
-          <TagsRow />
+          <TagsRow conversation={conversation} />
         </div>
       </div>
 
@@ -68,15 +71,29 @@ function StatusRow() {
   )
 }
 
-function TagsRow() {
+// Tags automáticas da Maia (central.conversations.tags) — 144 tags, 13
+// grupos. O catálogo (central.tag_definitions) dá o rótulo e a cor de cada
+// chave; sem ele (ainda carregando, ou a chamada falhou), cai no fallback do
+// próprio TagChip e mostra a chave crua em cinza — nunca esconde a tag.
+function TagsRow({ conversation }: { conversation: Conversation | null }) {
+  const { catalogo } = useTagCatalogo()
+  const porChave = new Map(catalogo.map(t => [t.key, t]))
+  const tags = conversation?.tags ?? []
+
   return (
     <div className="flex items-start gap-2 text-xs">
       <Tag className="size-3.5 text-muted-foreground shrink-0 mt-0.5" />
       <span className="text-muted-foreground flex-1">Tags</span>
-      <div className="flex flex-wrap gap-1 justify-end">
-        <span className="text-[10px] bg-muted text-muted-foreground rounded-full px-2 py-0.5">ASSIM</span>
-        <span className="text-[10px] bg-muted text-muted-foreground rounded-full px-2 py-0.5">Agendamento</span>
-      </div>
+      {tags.length === 0 ? (
+        <span className="text-[10px] text-muted-foreground/70">Nenhuma</span>
+      ) : (
+        <div className="flex flex-wrap gap-1 justify-end">
+          {tags.map(chave => {
+            const def = porChave.get(chave)
+            return <TagChip key={chave} rotulo={def?.label ?? chave} cor={def?.color ?? null} />
+          })}
+        </div>
+      )}
     </div>
   )
 }

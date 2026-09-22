@@ -5,13 +5,18 @@ import ContactCard          from './ContactCard'
 import PatientLinksCard     from './PatientLinksCard'
 import ConversationMetaCard from './ConversationMetaCard'
 import InternalNotesCard    from './InternalNotesCard'
+import type { Conversation } from '@/modules/atendimento/types/central.types'
 
 interface Props {
-  isOpen:  boolean
-  onClose: () => void
+  isOpen:       boolean
+  onClose:      () => void
+  // Só as tags de ConversationMetaCard leem isto por enquanto — o resto do
+  // painel (ContactCard, PatientLinksCard, InternalNotesCard) continua mock,
+  // fora do escopo desta etapa.
+  conversation: Conversation | null
 }
 
-export default function ContextPanel({ isOpen, onClose }: Props) {
+export default function ContextPanel({ isOpen, onClose, conversation }: Props) {
   return (
     <>
       {isOpen && (
@@ -44,7 +49,7 @@ export default function ContextPanel({ isOpen, onClose }: Props) {
           <div className="flex-1 overflow-y-auto">
             <ContactCard />
             <PatientLinksCard />
-            <ConversationMetaCard />
+            <ConversationMetaCard conversation={conversation} />
             <InternalNotesCard />
           </div>
         </div>

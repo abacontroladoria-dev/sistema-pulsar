@@ -12,6 +12,9 @@ import {
 import { horaCurta } from './formato'
 import { UNIDADES, unidadeDaSala, normalizarUnidade, type Unidade } from './unidade'
 import { resolverTerapia, nomesOfertaveis, especialidadesNaGrade } from './terapia'
+import { interpretarArgumentosTags, gruposFaltantesParaLead, ClassificacaoInvalidaError } from './tags'
+import type { TagDefinition } from '../types/central.types'
+import { TagDesconhecidaError, TagNaoAplicavelPelaMaiaError } from '../types/errors.types'
 
 // ============================================================================
 // Ferramentas do agente de atendimento
@@ -416,6 +419,10 @@ export const FERRAMENTAS_SEMPRE = [
 export type NomeFerramenta =
   | typeof DEFINICOES_FERRAMENTAS[number]['function']['name']
   | typeof FERRAMENTAS_SEMPRE[number]['function']['name']
+  // 'registrar_tags' fica fora dos dois arrays: seu schema é dinâmico
+  // (enums vêm do catálogo da organização, ver agente/tags.ts), montado pelo
+  // worker e anexado em DepsTurno.ferramentaTags — não cabe num `as const`.
+  | 'registrar_tags'
 
 // ----------------------------------------------------------------------------
 // Executor
@@ -446,6 +453,12 @@ export class FerramentasAgente {
     // a Maia ouviu mora em FichaService, onde o painel também a alcança — se a
     // ferramenta tivesse caminho próprio, as duas superfícies discordariam.
     private readonly fichas:       FichaService | null = null,
+    // Para `registrar_tags`. Mesmo catálogo (TagDefinitionRepository.porGrupo)
+    // usado para montar o schema da ferramenta (agente/tags.ts) — precisa
+    // estar aqui de novo porque a validação e o merge por grupo em
+    // ConversationService.atualizarTags também dependem dele. Opcional pela
+    // mesma razão das demais: sem ele, a ferramenta recusa.
+    private readonly porGrupoTags: Map<string, TagDefinition[]> | null = null,
   ) {}
 
   // A escalada pedida NESTE turno, ou null. Lida pelo worker depois de
@@ -496,6 +509,7 @@ export class FerramentasAgente {
         case 'cancelar_sessao':                      return await this.cancelar(args)
         case 'escalar_para_humano':                  return await this.escalarParaHumano(args)
         case 'registrar_dados_do_paciente':          return await this.registrarDadosDoPaciente(args)
+        case 'registrar_tags':                       return await this.registrarTags(args)
         default:
           return recusa(MOTIVO.ERRO_INTERNO, `Ferramenta desconhecida: ${nome}`)
       }
@@ -1096,6 +1110,85 @@ export class FerramentasAgente {
       avisoInterno: ficha.faltantes.length === 0
         ? 'A ficha está completa. Não pergunte mais nada sobre cadastro.'
         : 'Não pergunte tudo de uma vez: siga o assunto da conversa e pergunte UM item por vez, quando fizer sentido.',
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // registrar_tags
+  //
+  // Grava a classificação nos 13 grupos da taxonomia. Devolve `faltam` (Regra
+  // 1: sinaliza, não bloqueia) para a Maia saber o que ainda falta perguntar
+  // quando o contato for lead — mesmo padrão de `registrarDadosDoPaciente`.
+  // --------------------------------------------------------------------------
+  private async registrarTags(args: Record<string, any>): Promise<ResultadoFerramenta> {
+    if (!this.conversas || !this.porGrupoTags || !this.contexto.conversationId) {
+      return recusa(
+        MOTIVO.ERRO_INTERNO,
+        'Não consegui registrar as tags agora. Siga a conversa normalmente e não repita a tentativa.',
+      )
+    }
+
+    let classificacao
+    try {
+      classificacao = interpretarArgumentosTags(args, this.porGrupoTags)
+    } catch (err) {
+      if (err instanceof ClassificacaoInvalidaError) {
+        // Devolve o motivo ao modelo — ele reformula na próxima chamada, em
+        // vez de repetir os mesmos argumentos inválidos (o que cairia no
+        // detector de laço do orquestrador).
+        return recusa(MOTIVO.ERRO_INTERNO, `Classificação inválida: ${err.message}. Corrija e chame de novo.`)
+      }
+      throw err
+    }
+
+    // Achata para o formato que ConversationService.atualizarTags espera:
+    // grupos single como string|null, grupos multi como array — só entram os
+    // grupos que vieram não-vazios, porque um grupo ausente do objeto não
+    // mexe no que já está gravado (ver o comentário de atualizarTags).
+    const porGrupoValores: Record<string, string | string[] | null> = {}
+    const entradas = Object.entries(classificacao) as [string, string | string[] | null][]
+    for (const [grupo, valor] of entradas) {
+      if (grupo === 'objecao') continue
+      if (Array.isArray(valor)) {
+        if (valor.length > 0) porGrupoValores[grupo] = valor
+      } else if (valor !== null) {
+        porGrupoValores[grupo] = valor
+      }
+    }
+
+    if (Object.keys(porGrupoValores).length === 0 && classificacao.objecao === null) {
+      return {
+        ok: true,
+        aplicado: false,
+        avisoInterno: 'Nada novo para classificar. Chame esta ferramenta só quando uma informação nova aparecer ou mudar.',
+      }
+    }
+
+    let tagsResultantes: string[]
+    try {
+      const resultado = await this.conversas.atualizarTags(
+        this.contexto.conversationId,
+        porGrupoValores,
+        this.porGrupoTags,
+        'maia',
+        null,
+      )
+      tagsResultantes = resultado.tagsResultantes
+    } catch (err) {
+      if (err instanceof TagDesconhecidaError || err instanceof TagNaoAplicavelPelaMaiaError) {
+        return recusa(MOTIVO.ERRO_INTERNO, `Classificação inválida: ${err.message}. Corrija e chame de novo.`)
+      }
+      throw err
+    }
+
+    if (classificacao.objecao !== null) {
+      await this.conversas.atualizarObjecao(this.contexto.conversationId, classificacao.objecao)
+    }
+
+    return {
+      ok:      true,
+      aplicado: true,
+      faltam:  gruposFaltantesParaLead(classificacao, tagsResultantes, this.porGrupoTags),
     }
   }
 

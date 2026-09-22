@@ -102,7 +102,10 @@ export function createConversationService(userClient: SupabaseClient): Conversat
   return new ConversationService(
     new ConversationRepository(userClient),
     new AuditRepository(supabaseService),   // sempre service role
-    caEventBus
+    caEventBus,
+    // Para `atualizarTags` validar contra o catálogo antes de gravar
+    // conversations.tags — mesmo motivo de ContactService (ver createContactService).
+    new TagDefinitionService(new TagDefinitionRepository(userClient)),
   )
 }
 
@@ -148,7 +151,11 @@ export function createSystemServices(): {
   const conversationService = new ConversationService(
     convRepo,
     auditRepo,
-    caEventBus
+    caEventBus,
+    // O agente de IA (agente/tags.ts via ferramentas.ts) e o cálculo de
+    // status do paciente (Passo 5) gravam tags por este caminho — sem sessão
+    // de usuário, service role em tudo, como o resto deste factory.
+    new TagDefinitionService(new TagDefinitionRepository(supabaseService)),
   )
 
   return {

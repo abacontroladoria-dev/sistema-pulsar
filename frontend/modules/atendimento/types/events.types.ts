@@ -56,6 +56,12 @@ export type ConversationEventType =
   // worker fazia UPDATE cru e a convenção do `performed_by` ausente, descrita
   // aqui desde o começo, nunca tinha sido cumprida por ninguém.
   | 'conversation.ai_mode_changed'
+  // Tags automáticas da Maia — grupo(s) alterados por registrar_tags, pelo
+  // matcher de campanha (origem='sistema') ou pelo recálculo de status do
+  // paciente (Passo 5). payload: { grupos, origem, tagsResultantes }. Só
+  // auditoria: nada no domínio reage a isso hoje, e um evento a cada tag
+  // classificada afogaria o barramento de side effects.
+  | 'conversation.tags_applied'
   // Mensagens
   | 'message.received'
   | 'message.sent'

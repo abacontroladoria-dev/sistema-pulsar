@@ -151,6 +151,11 @@ export interface Conversation {
   // TEXT[] em vez de tabela de junção, e deixou a validação das chaves para a
   // aplicação — o banco aceita qualquer string aqui.
   tags:             string[] | null
+  // Campos, não tags (aba Regras, itens 5 e 8 — migration 20260922100200).
+  // campanha: só o matcher de campanha grava (agente/origem-campanha.ts); a
+  // Maia sempre devolve null aqui. objecao: frase curta do motivo de recuo.
+  campanha:         string | null
+  objecao:          string | null
   last_message_at:  string | null
   // Marca d'água de leitura pela EQUIPE, não por usuário (20260921140000).
   // Não-lido é uma COMPARAÇÃO, não um contador: existe mensagem inbound com
@@ -230,19 +235,35 @@ export interface Contact {
   updated_at:             string
 }
 
+// Cardinalidade de um grupo da taxonomia: quantas tags do mesmo grupo_key
+// podem valer ao mesmo tempo numa conversa/contato. Aba Regras, item 2.
+export type TagCardinalidade = 'single' | 'multi'
+
 // Catálogo de tags reutilizáveis da organização (central.tag_definitions,
-// migration 20260701010000). `key` é o que fica gravado em contacts.tags /
-// conversations.tags; `label` é o que a tela mostra; `color` é hex (#rrggbb).
+// migration 20260701010000, estendida em 20260922100000). `key` é o que fica
+// gravado em contacts.tags / conversations.tags; `label` é o que a tela
+// mostra; `color` é hex (#rrggbb).
+//
+// Os seis campos abaixo de `category` só existem para tags da taxonomia de
+// classificação automática da Maia (144 tags, 13 grupos —
+// maia_tags_catalog.json). Tags do seed genérico anterior (20260701010500)
+// têm todos eles NULL/false.
 export interface TagDefinition {
-  id:              string
-  organization_id: string
-  key:             string
-  label:           string
-  color:           string | null
-  category:        string | null
-  is_active:       boolean
-  created_at:      string
-  updated_at:      string
+  id:                 string
+  organization_id:    string
+  key:                string
+  label:              string
+  color:              string | null
+  category:           string | null
+  is_active:          boolean
+  created_at:         string
+  updated_at:         string
+  grupo_key:          string | null
+  grupo_ordem:        number | null
+  cardinalidade:      TagCardinalidade | null
+  maia_pode_aplicar:  boolean
+  automatico_sistema: boolean
+  requer_humano:      boolean
 }
 
 export interface ContactIdentifier {
