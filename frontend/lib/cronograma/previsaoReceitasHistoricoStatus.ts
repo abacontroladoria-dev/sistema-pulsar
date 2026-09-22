@@ -5,8 +5,15 @@
 
 import type { PrevisaoReceitasResumoMes } from "@/services/previsaoReceitasHistoricoResumo.service"
 
-/** Primeiro mês considerado pelo índice — antes disso não há (nem haverá) dado sincronizado suficiente pra calcular nada (ver project_sync_grade_csv_deploy_drift_fix na memória do projeto: csv_grades_profissionais só passou a ter cobertura completa a partir daqui). */
-export const MES_INICIO_HISTORICO = { ano: 2026, mes: 6 }
+/**
+ * Primeiro mês considerado pelo índice. Jan-Jun/2026 usa csv_grades_profissionais
+ * (origem='backup_xls', seed do backup XLS da TiTa) + faltas_historico_csv
+ * (backfill de dedução a partir do relatório "relatorio_faltas_detalhado" do
+ * Órbita, já que o backup não traz tita_agendamento_id pra casar com
+ * fila_autorizacoes). Antes de Jan/2026 não há dado sincronizado suficiente
+ * pra calcular nada.
+ */
+export const MES_INICIO_HISTORICO = { ano: 2026, mes: 1 }
 
 export type StatusMes = "futuro" | "em_desenvolvimento" | "aguardando_fechamento" | "fechado" | "sem_historico"
 
