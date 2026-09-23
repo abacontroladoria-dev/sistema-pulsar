@@ -10,7 +10,8 @@ import {
   Users,
   FileSearch,
   ScrollText,
-  History
+  History,
+  Copy
 } from 'lucide-react'
 import { useToneColor } from '@/hooks/useToneColor'
 import type { Tone } from '@/hooks/useToneColor'
@@ -19,7 +20,8 @@ import { DateRangePicker } from '@/components/ui/date-range-picker'
 import type { AtalhoPeriodo } from '@/components/ui/date-range-picker'
 import {
   buscarEvolucoesComAuditoria,
-  calcularResumoProfissionais
+  calcularResumoProfissionais,
+  detectarEvolucoesDuplicadasEntrePacientes
 } from '@/services/auditoriaEvolucoes.service'
 import { buscarCriteriosVigentes } from '@/services/auditoriaCriterios.service'
 import type {
@@ -30,6 +32,7 @@ import type {
 } from '@/types/auditoriaEvolucoes'
 import { ProfissionaisCobrancaTab } from './ProfissionaisCobrancaTab'
 import { EvolucoesFeedTab } from './EvolucoesFeedTab'
+import { EvolucoesDuplicadasTab } from './EvolucoesDuplicadasTab'
 import { ModalDetalheEvolucao } from './ModalDetalheEvolucao'
 import { ModalCriterios } from './ModalCriterios'
 import { ModalCobrancaWhatsApp } from './ModalCobrancaWhatsApp'
@@ -91,7 +94,7 @@ interface Recorte {
   busca: string
   statusRisco: StatusRiscoEvolucao | 'todos'
   statusCobranca: StatusCobrancaEvolucao | 'todos'
-  aba: 'profissionais' | 'feed'
+  aba: 'profissionais' | 'feed' | 'duplicadas'
 }
 
 const RISCOS_VALIDOS: readonly string[] = ['sem_risco', 'risco_especifico', 'risco_relevante']
@@ -123,7 +126,7 @@ function lerRecorte(sp: URLSearchParams): Recorte {
     statusCobranca: COBRANCAS_VALIDAS.includes(cobranca ?? '')
       ? (cobranca as StatusCobrancaEvolucao)
       : 'todos',
-    aba: sp.get('aba') === 'feed' ? 'feed' : 'profissionais'
+    aba: sp.get('aba') === 'feed' ? 'feed' : sp.get('aba') === 'duplicadas' ? 'duplicadas' : 'profissionais'
   }
 }
 
@@ -294,6 +297,13 @@ export function AuditoriaEvolucoesShell() {
   const resumosProfissionais = React.useMemo(() => {
     return calcularResumoProfissionais(evolucoesFiltradas)
   }, [evolucoesFiltradas])
+
+  // Mesmo texto, mesmo profissional, pacientes diferentes: a assinatura de
+  // quem copia e cola a evolução de um atendimento para preencher outro.
+  const gruposDuplicados = React.useMemo(() => {
+    return detectarEvolucoesDuplicadasEntrePacientes(evolucoesFiltradas)
+  }, [evolucoesFiltradas])
+  const totalDuplicadas = gruposDuplicados.reduce((acc, g) => acc + g.itens.length, 0)
 
   // KPIs — sobre a lista filtrada, para não contradizerem o que está na tela
   // quando a busca recorta um terapeuta.
@@ -593,12 +603,12 @@ export function AuditoriaEvolucoesShell() {
 
       {/* KPIs — e os KPIs SÃO o filtro de risco/cobrança. */}
       {primeiraCarga ? (
-        <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
-          {Array.from({ length: 5 }).map((_, i) => (
+        <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-6">
+          {Array.from({ length: 6 }).map((_, i) => (
             <div
               key={i}
               className={`rounded-2xl border-2 border-border bg-card p-5 shadow-sm ${
-                i === 4 ? 'col-span-2 lg:col-span-1' : ''
+                i === 5 ? 'col-span-2 lg:col-span-1' : ''
               }`}
             >
               <div className="h-3 w-24 rounded bg-muted motion-safe:animate-pulse" />
@@ -608,7 +618,7 @@ export function AuditoriaEvolucoesShell() {
           ))}
         </div>
       ) : (
-        <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-6">
           <Kpi
             rotulo="Evoluções no período"
             valor={totalEvolucoes}
@@ -662,6 +672,17 @@ export function AuditoriaEvolucoesShell() {
             onClick={() => alternarCard({ cobranca: 'pendente' })}
             desabilitado={totalPendentesCobranca === 0}
             rotuloFiltro="Ver quem falta cobrar"
+          />
+          <Kpi
+            rotulo="Duplicadas"
+            valor={totalDuplicadas}
+            tom={tomSeHouver(totalDuplicadas, 'purple')}
+            cor={toneColor(tomSeHouver(totalDuplicadas, 'purple'))}
+            nota="Mesmo texto em 2+ pacientes"
+            ativo={abaAtiva === 'duplicadas'}
+            onClick={() => aplicar({ aba: 'duplicadas' })}
+            desabilitado={totalDuplicadas === 0}
+            rotuloFiltro="Ver as duplicadas"
             className="col-span-2 lg:col-span-1"
           />
         </div>
@@ -711,6 +732,25 @@ export function AuditoriaEvolucoesShell() {
               {totalEvolucoes}
             </span>
           </button>
+
+          <button
+            role="tab"
+            aria-selected={abaAtiva === 'duplicadas'}
+            onClick={() => aplicar({ aba: 'duplicadas' })}
+            className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-xs transition ${FOCO} ${
+              abaAtiva === 'duplicadas'
+                ? 'bg-card font-bold text-foreground shadow-sm'
+                : 'font-semibold text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <Copy className="h-4 w-4" />
+            Duplicadas
+            {totalDuplicadas > 0 && (
+              <span className={`rounded-full px-1.5 text-[10px] font-bold tabular-nums ${TONE_CHIP.red.bg} ${TONE_CHIP.red.text}`}>
+                {totalDuplicadas}
+              </span>
+            )}
+          </button>
         </div>
 
         {/*
@@ -731,11 +771,11 @@ export function AuditoriaEvolucoesShell() {
 
         {/*
           A busca é auxiliar e se comporta como tal: sem moldura em repouso,
-          só um fundo sutil. Antes era `flex-1` com borda — ocupava metade da
-          linha e pesava mais que os dois controles que mandam na tela.
-          A borda aparece no foco, quando ela vira o objeto da atenção.
+          só um fundo sutil. A borda aparece no foco, quando ela vira o
+          objeto da atenção. `flex-1` para ocupar o espaço vago da linha
+          em vez de deixá-lo ocioso entre o período e as ações.
         */}
-        <div className="relative">
+        <div className="relative min-w-32 flex-1">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/70" />
           <input
             type="search"
@@ -743,8 +783,7 @@ export function AuditoriaEvolucoesShell() {
             placeholder="Buscar paciente ou terapeuta"
             value={buscaLocal}
             onChange={e => setBuscaLocal(e.target.value)}
-            className={`h-9 w-44 rounded-lg border border-transparent bg-muted/50 pl-8 pr-2.5 text-xs
-              xl:w-56
+            className={`h-9 w-full rounded-lg border border-transparent bg-muted/50 pl-8 pr-2.5 text-xs
               text-foreground placeholder:text-muted-foreground/70 transition
               hover:bg-muted focus:border-border focus:bg-background
               focus:outline-none focus:ring-2 focus:ring-ring`}
@@ -868,9 +907,14 @@ export function AuditoriaEvolucoesShell() {
               aplicar({ busca: prof.profissional_nome, aba: 'feed' })
             }}
           />
-        ) : (
+        ) : abaAtiva === 'feed' ? (
           <EvolucoesFeedTab
             evolucoes={evolucoesFiltradas}
+            onSelecionarEvolucao={item => setItemSelecionado(item)}
+          />
+        ) : (
+          <EvolucoesDuplicadasTab
+            grupos={gruposDuplicados}
             onSelecionarEvolucao={item => setItemSelecionado(item)}
           />
         )}
@@ -986,7 +1030,7 @@ function Kpi({
 }
 
 /** Skeleton no formato do layout real — §3.9: o vazio só aparece depois da carga. */
-function ListaSkeleton({ aba }: { aba: 'profissionais' | 'feed' }) {
+function ListaSkeleton({ aba }: { aba: 'profissionais' | 'feed' | 'duplicadas' }) {
   if (aba === 'profissionais') {
     return (
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">

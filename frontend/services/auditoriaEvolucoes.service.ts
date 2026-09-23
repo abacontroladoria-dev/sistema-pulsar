@@ -347,6 +347,145 @@ export function calcularResumoProfissionais(
 }
 
 /**
+ * Normaliza o texto para comparação: minúsculas, sem acento, espaços e
+ * pontuação colapsados. Duas evoluções copiadas raramente ficam byte-a-byte
+ * idênticas — um espaço duplo ou uma vírgula a mais não pode esconder a cópia.
+ */
+function normalizarTextoEvolucao(texto: string): string {
+  return texto
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/** Conjunto de trigramas de caracteres — a unidade que a similaridade compara. */
+function trigramas(texto: string): Set<string> {
+  const t = `  ${texto} `
+  const set = new Set<string>()
+  for (let i = 0; i < t.length - 2; i++) {
+    set.add(t.slice(i, i + 3))
+  }
+  return set
+}
+
+/**
+ * Coeficiente de Dice sobre trigramas: 1 = idêntico, 0 = nada em comum.
+ * Robusto a pequenas edições (uma frase trocada, uma data diferente) que o
+ * texto normalizado exato deixaria passar — é justamente o copy-paste com
+ * retoque que se quer pescar.
+ */
+function similaridade(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 || b.size === 0) return 0
+  let intersecao = 0
+  const [menor, maior] = a.size <= b.size ? [a, b] : [b, a]
+  for (const tri of menor) {
+    if (maior.has(tri)) intersecao++
+  }
+  return (2 * intersecao) / (a.size + b.size)
+}
+
+export interface GrupoEvolucaoDuplicada {
+  chave: string
+  profissional_id: number | null
+  profissional_nome: string
+  /** Menor similaridade entre qualquer par do grupo — o "pior caso", não a média. */
+  similaridadeMinima: number
+  itens: EvolucaoPendenteAuditoria[]
+}
+
+/**
+ * Evoluções PARECIDAS ou IDÊNTICAS, do MESMO profissional, lançadas em
+ * pacientes DIFERENTES — a assinatura de quem copia e cola a evolução de um
+ * atendimento para preencher outro, com ou sem retoque. Mesmo paciente com o
+ * texto repetido em duas sessões não entra aqui: isso é rotina de terapia,
+ * não a falha que se quer pescar.
+ *
+ * Comparação par a par dentro de cada profissional (O(n²) por profissional,
+ * não no total) e agrupamento por componente conexo: se A~B e B~C acima do
+ * limiar, os três formam um grupo mesmo que A e C sozinhos fiquem abaixo.
+ */
+export function detectarEvolucoesDuplicadasEntrePacientes(
+  evolucoes: EvolucaoPendenteAuditoria[],
+  limiarSimilaridade = 0.75
+): GrupoEvolucaoDuplicada[] {
+  const TAMANHO_MINIMO = 20 // texto curto ("Sessão realizada.") coincide por ser curto, não por ser cópia
+
+  const porProfissional = new Map<string, EvolucaoPendenteAuditoria[]>()
+  for (const item of evolucoes) {
+    const texto = item.texto_original?.trim()
+    if (!texto || texto.length < TAMANHO_MINIMO) continue
+    const profKey = item.profissional_id ? String(item.profissional_id) : item.profissional_nome
+    if (!porProfissional.has(profKey)) porProfissional.set(profKey, [])
+    porProfissional.get(profKey)!.push(item)
+  }
+
+  const grupos: GrupoEvolucaoDuplicada[] = []
+
+  for (const [profKey, itensProf] of porProfissional) {
+    const normalizados = itensProf.map(i => normalizarTextoEvolucao(i.texto_original!.trim()))
+    const trigramasPorItem = normalizados.map(trigramas)
+
+    // Union-find simples: cada item começa isolado, pares acima do limiar se fundem.
+    const pai = itensProf.map((_, i) => i)
+    const encontrar = (i: number): number => (pai[i] === i ? i : (pai[i] = encontrar(pai[i])))
+    const unir = (i: number, j: number) => {
+      const ri = encontrar(i)
+      const rj = encontrar(j)
+      if (ri !== rj) pai[ri] = rj
+    }
+
+    // Menor similaridade observada em CADA ARESTA que uniu o par — não a do grupo final.
+    const piorArestaPorPar = new Map<string, number>()
+
+    for (let i = 0; i < itensProf.length; i++) {
+      for (let j = i + 1; j < itensProf.length; j++) {
+        const pacienteI = itensProf[i].paciente_id ? String(itensProf[i].paciente_id) : itensProf[i].paciente_nome
+        const pacienteJ = itensProf[j].paciente_id ? String(itensProf[j].paciente_id) : itensProf[j].paciente_nome
+        if (pacienteI === pacienteJ) continue // mesmo paciente: repetição é rotina, não o caso
+
+        const sim = similaridade(trigramasPorItem[i], trigramasPorItem[j])
+        if (sim < limiarSimilaridade) continue
+
+        unir(i, j)
+        const raiz = encontrar(i)
+        piorArestaPorPar.set(String(raiz), Math.min(piorArestaPorPar.get(String(raiz)) ?? 1, sim))
+      }
+    }
+
+    const porRaiz = new Map<number, number[]>()
+    for (let i = 0; i < itensProf.length; i++) {
+      const raiz = encontrar(i)
+      if (!porRaiz.has(raiz)) porRaiz.set(raiz, [])
+      porRaiz.get(raiz)!.push(i)
+    }
+
+    for (const [raiz, indices] of porRaiz) {
+      if (indices.length < 2) continue // grupo de 1 = não achou par acima do limiar
+
+      const pacientesDistintos = new Set(
+        indices.map(i => (itensProf[i].paciente_id ? String(itensProf[i].paciente_id) : itensProf[i].paciente_nome))
+      )
+      if (pacientesDistintos.size < 2) continue
+
+      grupos.push({
+        chave: `${profKey}::${raiz}`,
+        profissional_id: itensProf[indices[0]].profissional_id,
+        profissional_nome: itensProf[indices[0]].profissional_nome,
+        similaridadeMinima: piorArestaPorPar.get(String(raiz)) ?? limiarSimilaridade,
+        itens: indices
+          .map(i => itensProf[i])
+          .sort((a, b) => (a.data_sessao < b.data_sessao ? 1 : -1))
+      })
+    }
+  }
+
+  return grupos.sort((a, b) => b.similaridadeMinima - a.similaridadeMinima)
+}
+
+/**
  * Atualiza o status de cobrança de uma evolução auditada
  */
 export async function atualizarStatusCobranca(params: {
