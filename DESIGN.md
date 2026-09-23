@@ -239,6 +239,8 @@ Two constraints, same as the other axes:
 
 **The Status Lock Rule.** The five semantic state colors (emerald, rose, amber, sky, slate) are locked to their meanings. Emerald is always available. Rose is always unavailable. Adding a colour for a new state requires updating this document first — see the authorization extension above, which added violet and stone under that rule.
 
+Added under this rule (2026-09-23): the audit-risk badge in `ModalDetalheEvolucao` (`/terapeutico/auditoria-evolucoes`) reuses the existing meanings rather than a new hue — `sem_risco` (no glosa risk) is emerald, `risco_especifico` (a small, fixable gap) is amber, `risco_relevante` (real glosa risk) is rose. No new state color was introduced; a prior version of this badge used Tailwind `red-*`, a hue outside this vocabulary, and has been corrected to `rose-*`.
+
 **The Decoration-Free Semantics Rule.** A hue that carries a status meaning is spent; it may not also decorate. Focus rings, sort indicators, pagination, and primary actions use Clinical Steel — never a status hue. This is what `/auditoria-assim` violated before 2026-08-19: violet meant "glosa" in the badge and "sorted by this column" in the header two rows up, while the brand steel was absent from the surface and two other blues (indigo, violet) competed for the accent role.
 
 ## 3. Typography

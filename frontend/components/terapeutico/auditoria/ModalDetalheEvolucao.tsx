@@ -28,6 +28,41 @@ import type {
 // renomeá-los, o painel de critérios já exibe a versão vigente.
 import { CRITERIOS_FALLBACK } from '@/lib/auditoria/criterios'
 
+const ROTULOS_STATUS_COBRANCA: Record<StatusCobrancaEvolucao, string> = {
+  pendente: 'Pendente de Cobrança',
+  cobrado: 'Cobrado do Profissional',
+  aguardando_correcao: 'Aguardando Correção',
+  corrigido_tita: 'Corrigido no TiTa',
+  ignorado: 'Dispensado / Ignorado'
+}
+
+/**
+ * Cores de risco alinhadas ao Status Lock Rule do DESIGN.md: rose é sempre o
+ * estado negativo do sistema (não red-*, que é uma família Tailwind à parte).
+ */
+const RISCO_TONE = {
+  sem_risco: {
+    bg: 'bg-emerald-100 dark:bg-emerald-950/60',
+    text: 'text-emerald-700 dark:text-emerald-300',
+    border: 'border-emerald-200 dark:border-emerald-800'
+  },
+  risco_especifico: {
+    bg: 'bg-amber-100 dark:bg-amber-950/60',
+    text: 'text-amber-700 dark:text-amber-300',
+    border: 'border-amber-200 dark:border-amber-800'
+  },
+  risco_relevante: {
+    bg: 'bg-rose-100 dark:bg-rose-950/60',
+    text: 'text-rose-700 dark:text-rose-300',
+    border: 'border-rose-200 dark:border-rose-800'
+  }
+} as const
+
+const GRAVIDADE_TONE: Record<string, string> = {
+  alta: 'bg-rose-200 text-rose-800 dark:bg-rose-900 dark:text-rose-200',
+  media: 'bg-amber-200 text-amber-800 dark:bg-amber-900 dark:text-amber-200'
+}
+
 interface Props {
   item: EvolucaoPendenteAuditoria | null
   isOpen: boolean
@@ -46,12 +81,24 @@ export function ModalDetalheEvolucao({
   const [copiado, setCopiado] = useState(false)
   const [reauditando, setReauditando] = useState(false)
   const [salvandoStatus, setSalvandoStatus] = useState(false)
-  const [novoStatus, setNovoStatus] = useState<StatusCobrancaEvolucao>('pendente')
+  const [novoStatus, setNovoStatus] = useState<StatusCobrancaEvolucao>(
+    item?.auditoria?.status_cobranca ?? 'pendente'
+  )
   const [observacaoStatus, setObservacaoStatus] = useState('')
 
   if (!isOpen || !item) return null
 
   const aud = item.auditoria
+
+  const fecharComConfirmacao = () => {
+    if (observacaoStatus.trim() !== '') {
+      const confirmar = window.confirm(
+        'A observação digitada ainda não foi salva e será perdida. Fechar mesmo assim?'
+      )
+      if (!confirmar) return
+    }
+    onClose()
+  }
 
   const handleCopiarTextoRevisado = async () => {
     if (!aud?.texto_revisado) return
@@ -93,28 +140,31 @@ export function ModalDetalheEvolucao({
       )
     }
     if (aud.status_risco === 'sem_risco') {
+      const tone = RISCO_TONE.sem_risco
       return (
-        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+        <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${tone.bg} ${tone.text} border ${tone.border}`}>
           <CheckCircle2 className="w-3.5 h-3.5" /> Sem Risco de Glosa
         </span>
       )
     }
     if (aud.status_risco === 'risco_especifico') {
+      const tone = RISCO_TONE.risco_especifico
       return (
-        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+        <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${tone.bg} ${tone.text} border ${tone.border}`}>
           <AlertTriangle className="w-3.5 h-3.5" /> Risco em Ponto Específico
         </span>
       )
     }
+    const tone = RISCO_TONE.risco_relevante
     return (
-      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800">
+      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${tone.bg} ${tone.text} border ${tone.border}`}>
         <XCircle className="w-3.5 h-3.5" /> Risco Relevante de Glosa
       </span>
     )
   }
 
   return (
-    <Dialog open onOpenChange={aberto => { if (!aberto) onClose() }}>
+    <Dialog open onOpenChange={aberto => { if (!aberto) fecharComConfirmacao() }}>
       <DialogContent
         showCloseButton={false}
         aria-describedby={undefined}
@@ -168,7 +218,7 @@ export function ModalDetalheEvolucao({
           {/* Absoluto para não empurrar o nome no mobile. */}
           <button
             type="button"
-            onClick={onClose}
+            onClick={fecharComConfirmacao}
             aria-label="Fechar detalhe da evolução"
             className="absolute top-3 right-3 flex size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
           >
@@ -223,9 +273,9 @@ export function ModalDetalheEvolucao({
                       {atendido ? (
                         <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
                       ) : (
-                        <XCircle className="w-4 h-4 text-red-500 shrink-0" />
+                        <XCircle className="w-4 h-4 text-rose-500 shrink-0" />
                       )}
-                      <span className={atendido ? 'text-foreground' : 'text-red-600 dark:text-red-400 font-medium'}>
+                      <span className={atendido ? 'text-foreground' : 'text-rose-600 dark:text-rose-400 font-medium'}>
                         {i + 1}. {pilar.rotulo}
                       </span>
                     </div>
@@ -244,25 +294,23 @@ export function ModalDetalheEvolucao({
           {/* Apontamentos de Risco de Glosa */}
           {aud && aud.apontamentos && aud.apontamentos.length > 0 && (
             <div className="space-y-2.5">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-red-600 dark:text-red-400 flex items-center gap-2">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400 flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4" />
                 Pontos de Atenção & Risco de Glosa ({aud.apontamentos.length})
               </h3>
               <div className="space-y-2">
                 {aud.apontamentos.map((ap, idx) => (
-                  <div 
-                    key={idx} 
-                    className="p-3 rounded-xl bg-red-50/60 dark:bg-red-950/30 border border-red-200/70 dark:border-red-900/50 space-y-1.5 text-xs"
+                  <div
+                    key={idx}
+                    className="p-3 rounded-xl bg-rose-50/60 dark:bg-rose-950/30 border border-rose-200/70 dark:border-rose-900/50 space-y-1.5 text-xs"
                   >
                     <div className="flex items-center justify-between">
-                      <span className="font-semibold text-red-900 dark:text-red-200 flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                      <span className="font-semibold text-rose-900 dark:text-rose-200 flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
                         {ap.titulo}
                       </span>
                       <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase ${
-                        ap.gravidade === 'alta' ? 'bg-red-200 text-red-800 dark:bg-red-900 dark:text-red-200' :
-                        ap.gravidade === 'media' ? 'bg-amber-200 text-amber-800 dark:bg-amber-900 dark:text-amber-200' :
-                        'bg-muted text-muted-foreground'
+                        GRAVIDADE_TONE[ap.gravidade] ?? 'bg-muted text-muted-foreground'
                       }`}>
                         Gravidade {ap.gravidade}
                       </span>
@@ -271,7 +319,7 @@ export function ModalDetalheEvolucao({
                       {ap.descricao}
                     </p>
                     {ap.trecho && (
-                      <div className="p-1.5 bg-background rounded font-mono text-[11px] text-red-700 dark:text-red-400 border border-red-100 dark:border-red-900/30">
+                      <div className="p-1.5 bg-background rounded font-mono text-[11px] text-rose-700 dark:text-rose-400 border border-rose-100 dark:border-rose-900/30">
                         &quot;{ap.trecho}&quot;
                       </div>
                     )}
@@ -332,9 +380,14 @@ export function ModalDetalheEvolucao({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground">Alterar Status:</label>
+                  <label className="text-xs text-muted-foreground flex items-center justify-between">
+                    <span>Alterar Status:</span>
+                    <span className="text-[11px] text-muted-foreground/80">
+                      Status atual: {ROTULOS_STATUS_COBRANCA[aud.status_cobranca]}
+                    </span>
+                  </label>
                   <select
-                    defaultValue={aud.status_cobranca}
+                    value={novoStatus}
                     onChange={e => setNovoStatus(e.target.value as StatusCobrancaEvolucao)}
                     className="w-full text-xs p-2 rounded-lg border border-border bg-background text-foreground focus:ring-2 focus:ring-ring"
                   >
