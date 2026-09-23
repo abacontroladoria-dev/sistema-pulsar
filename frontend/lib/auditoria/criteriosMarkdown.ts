@@ -221,11 +221,7 @@ const normalizar = (s: string) =>
 
 /** Extrai a chave congelada do fim do título: `Rótulo (chave)`. */
 function chaveDoTitulo(bloco: Bloco): { rotulo: string; chave: string } {
-  // Word/exportadores de .docx costumam escapar parênteses em Markdown
-  // (`\(chave\)`); desfazemos isso antes de validar, já que o escape não
-  // muda o que a pessoa via na tela.
-  const titulo = bloco.titulo.replace(/\\([()])/g, '$1')
-  const m = titulo.match(/^(.*)\(([a-z_]+)\)\s*$/)
+  const m = bloco.titulo.match(/^(.*)\(([a-z_]+)\)\s*$/)
   if (!m) {
     throw new CriteriosInvalidosError(
       `linha ${bloco.linha}: "### ${bloco.titulo}" perdeu o código entre parênteses no fim ` +

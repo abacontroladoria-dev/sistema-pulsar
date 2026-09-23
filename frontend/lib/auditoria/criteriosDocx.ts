@@ -244,7 +244,20 @@ export async function criteriosParaDocx(
 export async function docxParaMarkdown(arquivo: File): Promise<string> {
   const buffer = await arquivo.arrayBuffer()
   const resultado = await mammoth.convertToMarkdown({ arrayBuffer: buffer })
-  return resultado.value
+  return desescaparMarkdown(resultado.value)
+}
+
+/**
+ * O mammoth escapa qualquer caractere ASCII com significado em Markdown
+ * (`. ( ) _ - [ ] etc.`) para que o texto original não vire sintaxe sem
+ * querer. Isso inclui a chave congelada (`reacao_saida` → `reacao\_saida`)
+ * e o carimbo de versão (`[versao-origem:1]` → `\[versao\-origem:1\]`),
+ * que o parser de .md não reconhece escapados. Como este .docx é gerado e
+ * lido só por nós (não é markdown livre da pessoa), desfazer todo o escape
+ * é seguro: nunca vamos precisar de um `\` literal antes desses símbolos.
+ */
+function desescaparMarkdown(md: string): string {
+  return md.replace(/\\([\\`*_{}[\]()#+\-.!>])/g, '$1')
 }
 
 /** Acha o carimbo de versão de origem escondido no corpo do .docx. */
