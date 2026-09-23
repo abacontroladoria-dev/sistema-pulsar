@@ -17,9 +17,8 @@
 //   - sem_historico: mês passado sem NENHUM snapshot (ex.: antes da
 //     implantação do histórico, ou sem dados sincronizados suficientes).
 
-import { useMemo } from "react"
-import { CalendarClock, CalendarX2, Clock, Info, Loader2, TrendingUp, Users } from "lucide-react"
-import { StatCard } from "@/components/cronograma/ui/StatCard"
+import { useMemo, useState } from "react"
+import { CalendarClock, CalendarX2, Clock, Info, Loader2, TrendingUp } from "lucide-react"
 import { type PrevisaoReceitasResumoMes } from "@/services/previsaoReceitasHistoricoResumo.service"
 import { labelMesAno } from "@/lib/cronograma/helpers"
 import { useResumoHistoricoReceitas } from "@/hooks/useResumoHistoricoReceitas"
@@ -79,7 +78,11 @@ function usaFonteHistoricaOrbita(ano: number, mes: number): boolean {
   return ano === 2026 && mes >= 1 && mes <= 6
 }
 
+const NOTA_FONTE_ORBITA = "Dedução por falta calculada a partir do relatório \"relatorio_faltas_detalhado\" do Órbita, importado manualmente — este mês não passou pela sincronização diária da TiTa."
+
 function LinhaMesCard({ linha }: { linha: LinhaHistorico }) {
+  const [mostrarNotaFonte, setMostrarNotaFonte] = useState(false)
+
   const Icone = linha.status === "fechado" ? TrendingUp
     : linha.status === "aguardando_fechamento" ? Clock
     : linha.status === "futuro" ? CalendarX2
@@ -88,38 +91,48 @@ function LinhaMesCard({ linha }: { linha: LinhaHistorico }) {
   const tag = TAG_POR_STATUS[linha.status]
 
   return (
-    <div className="rounded-xl border border-border bg-card p-4">
-      <div className="mb-2 flex flex-wrap items-center gap-2">
-        <Icone size={16} className={ICONE_CLASSE_POR_STATUS[linha.status]} />
-        <div className="text-sm font-bold text-foreground">{linha.label}</div>
+    <div className="rounded-lg border border-border bg-card px-3 py-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <Icone size={14} className={ICONE_CLASSE_POR_STATUS[linha.status]} />
+        <div className="text-xs font-bold text-foreground">{linha.label}</div>
         {tag && (
           <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${tag.classe}`}>
             {tag.texto}
           </span>
         )}
         {usaFonteHistoricaOrbita(linha.ano, linha.mes) && (
-          <span
-            title={"Dedução por falta calculada a partir do relatório \"relatorio_faltas_detalhado\" do Órbita, importado manualmente — este mês não passou pela sincronização diária da TiTa."}
+          <button
+            type="button"
+            onClick={() => setMostrarNotaFonte(v => !v)}
+            className="rounded-full text-muted-foreground hover:text-foreground hover:bg-muted"
+            title={NOTA_FONTE_ORBITA}
+            aria-label="Fonte da dedução por falta deste mês"
+            aria-expanded={mostrarNotaFonte}
           >
-            <Info size={14} className="text-muted-foreground" aria-label="Fonte da dedução por falta" />
-          </span>
+            <Info size={14} />
+          </button>
         )}
       </div>
 
+      {mostrarNotaFonte && (
+        <p className="mt-1 text-[11px] text-muted-foreground">{NOTA_FONTE_ORBITA}</p>
+      )}
+
       {linha.resumo ? (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+        <div className="mt-1 flex flex-wrap items-baseline gap-x-4 gap-y-0.5 text-xs">
           {(["receitaSemDeducao", "deducaoFalta", "receitaComDeducao", "sessoesMes"] as const).map(key => {
             const config = METRICAS_RECEITAS[key]
-            const Icone = config.icon
             return (
-              <StatCard key={key} tone={config.tone} icon={<Icone size={14} />} label={config.label} tinted={false}>
-                <div className="text-lg font-black text-foreground">{formatarMetrica(config, config.acessor(linha.resumo!))}</div>
-              </StatCard>
+              <span key={key} className="flex items-baseline gap-1">
+                <span className="text-muted-foreground">{config.label}</span>
+                <span className="font-bold text-foreground">{formatarMetrica(config, config.acessor(linha.resumo!))}</span>
+              </span>
             )
           })}
-          <StatCard tone="slate" icon={<Users size={14} />} label="Faltas / Pacientes" tinted={false}>
-            <div className="text-lg font-black text-foreground">{linha.resumo.faltasMes} / {linha.resumo.pacientesUnicos}</div>
-          </StatCard>
+          <span className="flex items-baseline gap-1">
+            <span className="text-muted-foreground">Faltas / Pacientes</span>
+            <span className="font-bold text-foreground">{linha.resumo.faltasMes} / {linha.resumo.pacientesUnicos}</span>
+          </span>
         </div>
       ) : (
         <ExplicacaoStatus status={linha.status} />
@@ -156,12 +169,14 @@ export function HistoricoReceitasShell() {
   if (error) return <div className="text-sm font-semibold text-rose-600 dark:text-rose-400">{error}</div>
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-2">
       <p className="text-[11px] text-muted-foreground">
-        Índice mensal — pra ver o detalhamento por convênio/paciente/sessão de um mês específico, use o seletor de mês na aba "Previsão de Receitas". Jan-Jun/2026 usam a dedução por falta do relatório do Órbita (ícone <Info size={10} className="inline" aria-hidden />), não a sincronização diária da TiTa.
+        Índice mensal — pra ver o detalhamento por convênio/paciente/sessão de um mês específico, use o seletor de mês na aba "Previsão de Receitas". Jan-Jun/2026 usam a dedução por falta do relatório do Órbita, não a sincronização diária da TiTa — clique no ícone de informação ao lado do mês pra ver.
       </p>
       <EvolucaoReceitasChart resumos={resumos} modo="cheio" />
-      {linhas.map(linha => <LinhaMesCard key={`${linha.ano}-${linha.mes}`} linha={linha} />)}
+      <div className="flex flex-col gap-1.5">
+        {linhas.map(linha => <LinhaMesCard key={`${linha.ano}-${linha.mes}`} linha={linha} />)}
+      </div>
     </div>
   )
 }
