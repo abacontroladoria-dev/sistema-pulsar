@@ -1,6 +1,7 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
   Sparkles,
   Search,
@@ -9,14 +10,19 @@ import {
   Users,
   FileSearch,
   ScrollText,
-  History
+  Copy
 } from 'lucide-react'
 import { useToneColor } from '@/hooks/useToneColor'
-import { TONE_CHIP } from '@/components/ui/tones'
+import type { Tone } from '@/hooks/useToneColor'
+import { TONE_CHIP, TONE_PANEL } from '@/components/ui/tones'
+import { DateRangePicker } from '@/components/ui/date-range-picker'
+import type { AtalhoPeriodo } from '@/components/ui/date-range-picker'
 import {
   buscarEvolucoesComAuditoria,
-  calcularResumoProfissionais
+  calcularResumoProfissionais,
+  detectarEvolucoesDuplicadasEntrePacientes
 } from '@/services/auditoriaEvolucoes.service'
+import type { GrupoEvolucaoDuplicada } from '@/services/auditoriaEvolucoes.service'
 import { buscarCriteriosVigentes } from '@/services/auditoriaCriterios.service'
 import type {
   EvolucaoPendenteAuditoria,
@@ -26,13 +32,16 @@ import type {
 } from '@/types/auditoriaEvolucoes'
 import { ProfissionaisCobrancaTab } from './ProfissionaisCobrancaTab'
 import { EvolucoesFeedTab } from './EvolucoesFeedTab'
+import { EvolucoesDuplicadasTab } from './EvolucoesDuplicadasTab'
+import { ModalComparadorDuplicadas } from './ModalComparadorDuplicadas'
 import { ModalDetalheEvolucao } from './ModalDetalheEvolucao'
 import { ModalCriterios } from './ModalCriterios'
+import { ModalConfirmacao } from './ModalConfirmacao'
 import { ModalCobrancaWhatsApp } from './ModalCobrancaWhatsApp'
 import {
   tomDaConformidade,
   tomSeHouver,
-  CAMPO,
+  CARTAO,
   BOTAO_PRIMARIO,
   BOTAO_SECUNDARIO,
   FOCO
@@ -52,24 +61,168 @@ const diaLocalISO = (d: Date) =>
 
 const hojeISO = () => diaLocalISO(new Date())
 
-const ontemISO = () => {
+const diasAtrasISO = (n: number) => {
   const d = new Date()
-  d.setDate(d.getDate() - 1)
+  d.setDate(d.getDate() - n)
   return diaLocalISO(d)
+}
+
+const ontemISO = () => diasAtrasISO(1)
+
+/**
+ * Atalhos de período — dentro do calendário, não na faixa de filtros.
+ *
+ * Como botões soltos ao lado dos campos, eles eram um segundo widget
+ * escrevendo a mesma variável, e ao digitar uma data ficavam visíveis e sem
+ * sentido. Dentro do popover são o que sempre foram: um jeito rápido de
+ * preencher o intervalo, fechado logo em seguida.
+ *
+ * O intervalo é função e não valor: "hoje" mudaria se a tela ficasse aberta
+ * pela virada do dia — e ela fica, porque a recepção usa isto à noite.
+ */
+const ATALHOS_PERIODO: AtalhoPeriodo[] = [
+  { rotulo: 'Ontem', intervalo: () => ({ inicio: ontemISO(), fim: ontemISO() }) },
+  { rotulo: 'Hoje', intervalo: () => ({ inicio: hojeISO(), fim: hojeISO() }) },
+  { rotulo: 'Últimos 7 dias', intervalo: () => ({ inicio: diasAtrasISO(6), fim: hojeISO() }) }
+  // "Desde o início" saiu: é exatamente o que o "Limpar" do calendário faz, e
+  // dois botões com o mesmo efeito lado a lado é a duplicação que esta tela
+  // vem perdendo.
+]
+
+/** Recorte que a tela mostra. Vive na URL, não em `useState`. */
+interface Recorte {
+  dataInicio: string
+  dataFim: string
+  busca: string
+  statusRisco: StatusRiscoEvolucao | 'todos' | 'com_risco'
+  statusCobranca: StatusCobrancaEvolucao | 'todos'
+  aba: 'profissionais' | 'feed' | 'duplicadas'
+}
+
+const RISCOS_VALIDOS: readonly string[] = ['sem_risco', 'risco_especifico', 'risco_relevante', 'com_risco']
+
+const ROTULO_STATUS_RISCO: Record<StatusRiscoEvolucao | 'com_risco', string> = {
+  sem_risco: 'Sem risco',
+  risco_especifico: 'Ponto específico',
+  risco_relevante: 'Risco relevante',
+  com_risco: 'Com risco'
+}
+
+const ROTULO_STATUS_COBRANCA: Record<StatusCobrancaEvolucao, string> = {
+  pendente: 'A cobrar',
+  cobrado: 'Cobrado',
+  aguardando_correcao: 'Aguardando correção',
+  corrigido_tita: 'Corrigido no TiTa',
+  ignorado: 'Ignorado'
+}
+const COBRANCAS_VALIDAS: readonly string[] = [
+  'pendente', 'cobrado', 'aguardando_correcao', 'corrigido_tita', 'ignorado'
+]
+
+/** `YYYY-MM-DD` e nada mais — a URL é entrada de fora, não estado confiável. */
+const dataValida = (v: string | null): v is string => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v)
+
+/**
+ * Lê o recorte da query string.
+ *
+ * Valor ausente ou inválido cai no padrão em silêncio: um link velho ou torto
+ * deve abrir a tela no estado normal, nunca numa tela quebrada.
+ */
+function lerRecorte(sp: URLSearchParams): Recorte {
+  const risco = sp.get('risco')
+  const cobranca = sp.get('cobranca')
+  const de = sp.get('de')
+  const ate = sp.get('ate')
+  return {
+    dataInicio: dataValida(de) ? de : PISO_PERIODO,
+    dataFim: dataValida(ate) ? ate : hojeISO(),
+    busca: sp.get('q') ?? '',
+    statusRisco: RISCOS_VALIDOS.includes(risco ?? '')
+      ? (risco as StatusRiscoEvolucao)
+      : 'todos',
+    statusCobranca: COBRANCAS_VALIDAS.includes(cobranca ?? '')
+      ? (cobranca as StatusCobrancaEvolucao)
+      : 'todos',
+    aba: sp.get('aba') === 'feed' ? 'feed' : sp.get('aba') === 'duplicadas' ? 'duplicadas' : 'profissionais'
+  }
+}
+
+/**
+ * Só o que difere do padrão entra na URL.
+ *
+ * Sem isso, a barra de endereços viraria um paredão de parâmetros no estado
+ * inicial — e o link que a pessoa copia para um colega deve carregar a
+ * intenção dela, não o default da tela.
+ */
+function escreverRecorte(r: Recorte): string {
+  const sp = new URLSearchParams()
+  if (r.dataInicio !== PISO_PERIODO) sp.set('de', r.dataInicio)
+  if (r.dataFim !== hojeISO()) sp.set('ate', r.dataFim)
+  if (r.busca) sp.set('q', r.busca)
+  if (r.statusRisco !== 'todos') sp.set('risco', r.statusRisco)
+  if (r.statusCobranca !== 'todos') sp.set('cobranca', r.statusCobranca)
+  if (r.aba !== 'profissionais') sp.set('aba', r.aba)
+  const s = sp.toString()
+  return s ? `?${s}` : ''
 }
 
 export function AuditoriaEvolucoesShell() {
   const toneColor = useToneColor()
-  const [abaAtiva, setAbaAtiva] = useState<'profissionais' | 'feed'>('profissionais')
+  const router = useRouter()
+  const searchParams = useSearchParams()
 
-  // Filtros — o período começa no marco da feature e vai até hoje.
-  // `dataFim` nasce preenchida com hoje para o campo "Até" não abrir vazio; o
-  // recorte resultante é o mesmo, já que não há sessão futura com evolução.
-  const [dataInicio, setDataInicio] = useState(PISO_PERIODO)
-  const [dataFim, setDataFim] = useState(hojeISO)
-  const [busca, setBusca] = useState('')
-  const [statusRisco, setStatusRisco] = useState<StatusRiscoEvolucao | 'todos'>('todos')
-  const [statusCobranca, setStatusCobranca] = useState<StatusCobrancaEvolucao | 'todos'>('todos')
+  /*
+   * O recorte é derivado da URL a cada render — a URL é a fonte única.
+   *
+   * Isso resolve três coisas de uma vez: F5 não perde mais o que a pessoa
+   * escolheu, o botão Voltar do navegador desfaz um filtro, e o link copiado
+   * abre o mesmo recorte no outro computador. O custo é que toda mudança de
+   * filtro passa por `router.replace`.
+   */
+  const recorte = React.useMemo(
+    () => lerRecorte(new URLSearchParams(searchParams.toString())),
+    [searchParams]
+  )
+  const { dataInicio, dataFim, statusRisco, statusCobranca, aba: abaAtiva } = recorte
+
+  /*
+   * `replace` e não `push`: cada tecla digitada na busca criaria uma entrada no
+   * histórico, e voltar exigiria um Voltar por caractere. `scroll: false`
+   * porque trocar filtro não é navegar — a pessoa continua olhando o mesmo
+   * ponto da tela.
+   */
+  const pathname = usePathname()
+
+  const aplicar = useCallback(
+    (mudanca: Partial<Recorte>) => {
+      // O caminho vai junto: `router.replace('')` é destino vazio e não
+      // navega, então voltar o recorte ao padrão — que produz query vazia —
+      // deixava a tela congelada no filtro anterior.
+      router.replace(`${pathname}${escreverRecorte({ ...recorte, ...mudanca })}`, { scroll: false })
+    },
+    [router, pathname, recorte]
+  )
+
+  /*
+   * A busca é a exceção: digitar precisa de resposta imediata no input, e
+   * `router.replace` a cada tecla engasgaria. O campo é controlado por estado
+   * local e a URL recebe o valor depois de 350ms parado.
+   */
+  const [buscaLocal, setBuscaLocal] = useState(recorte.busca)
+
+  // A URL mandando de volta no campo: acontece quando o recorte veio de fora
+  // (link colado, Voltar do navegador, ou o "Ver evoluções" de um card).
+  useEffect(() => {
+    setBuscaLocal(recorte.busca)
+  }, [recorte.busca])
+
+  useEffect(() => {
+    if (buscaLocal === recorte.busca) return
+    const t = setTimeout(() => aplicar({ busca: buscaLocal }), 350)
+    return () => clearTimeout(t)
+  }, [buscaLocal, recorte.busca, aplicar])
+
+  const busca = recorte.busca
 
   const [evolucoes, setEvolucoes] = useState<EvolucaoPendenteAuditoria[]>([])
   // `carregouUmaVez` separa a primeira carga (skeleton) da recarga (a lista fica
@@ -81,24 +234,45 @@ export function AuditoriaEvolucoesShell() {
 
   const [auditandoLote, setAuditandoLote] = useState(false)
   const [progressoLote, setProgressoLote] = useState<{ atual: number; total: number } | null>(null)
-  const [avisoLote, setAvisoLote] = useState<string | null>(null)
+  /*
+   * O aviso carrega o próprio tom, em vez de a UI adivinhá-lo pelo texto.
+   * "N não puderam ser auditadas" e "todas já foram auditadas" dividiam o mesmo
+   * cinza mudo — duas mensagens de significado oposto com a mesma aparência.
+   */
+  const [avisoLote, setAvisoLote] = useState<{ texto: string; falha: boolean } | null>(null)
+  const falhaNoLote = avisoLote?.falha ?? false
 
   const [criteriosAberto, setCriteriosAberto] = useState(false)
   // Versão vigente dos critérios, para saber quais auditorias ficaram para trás.
   const [versaoCriteriosVigente, setVersaoCriteriosVigente] = useState<number | null>(null)
   const [itemSelecionado, setItemSelecionado] = useState<EvolucaoPendenteAuditoria | null>(null)
   const [profSelecionadoCobranca, setProfSelecionadoCobranca] = useState<ResumoProfissionalAuditoria | null>(null)
+  const [comparacaoDuplicada, setComparacaoDuplicada] = useState<{
+    grupo: GrupoEvolucaoDuplicada
+    item: EvolucaoPendenteAuditoria
+  } | null>(null)
 
-  const carregarDados = async () => {
+  /*
+   * A busca NÃO vai para o servidor.
+   *
+   * Antes ela era mandada na requisição e também aplicada no cliente, mas não
+   * entrava nas dependências do efeito — então o recorte do servidor só mudava
+   * na próxima recarga por outro motivo, e no meio tempo valia o filtro local.
+   * Dois significados no mesmo campo. Agora há um: o servidor traz o período e
+   * os status, a busca recorta em memória.
+   */
+  const carregarDados = useCallback(async () => {
     setCarregando(true)
     setErro(null)
     try {
+      // Sem statusRisco/statusCobranca aqui: o servidor sempre traz o período
+      // inteiro. Os KPIs precisam do total do período mesmo com outro KPI
+      // ativo — mandando o filtro para o servidor, "Evoluções no período" e
+      // os demais KPIs encolhiam junto com o card clicado, e nenhum deles
+      // sobrava para mostrar "de quanto" aquele recorte era uma fatia.
       const { data, error } = await buscarEvolucoesComAuditoria({
         dataInicio,
-        dataFim: dataFim || undefined,
-        busca: busca || undefined,
-        statusRisco,
-        statusCobranca
+        dataFim: dataFim || undefined
       })
       if (error) {
         setErro(error)
@@ -111,11 +285,16 @@ export function AuditoriaEvolucoesShell() {
       setCarregando(false)
       setCarregouUmaVez(true)
     }
-  }
+  }, [dataInicio, dataFim])
+
+  // Intervalo invertido não é recorte, é erro de digitação — e buscar com ele
+  // devolveria zero linhas, que a tela mostraria como "nenhuma evolução".
+  const periodoInvertido = Boolean(dataInicio && dataFim && dataInicio > dataFim)
 
   useEffect(() => {
-    carregarDados()
-  }, [dataInicio, dataFim, statusRisco, statusCobranca])
+    if (periodoInvertido) return
+    void carregarDados()
+  }, [carregarDados, periodoInvertido])
 
   const carregarVersaoVigente = async () => {
     const { versao } = await buscarCriteriosVigentes()
@@ -126,6 +305,8 @@ export function AuditoriaEvolucoesShell() {
     void carregarVersaoVigente()
   }, [])
 
+  // Só a busca — os KPIs saem daqui, então precisam do período inteiro para
+  // continuar mostrando "de quanto" um card de risco/cobrança é uma fatia.
   const evolucoesFiltradas = React.useMemo(() => {
     if (!busca) return evolucoes
     const b = busca.toLowerCase()
@@ -137,11 +318,35 @@ export function AuditoriaEvolucoesShell() {
     )
   }, [evolucoes, busca])
 
+  // Busca + o card de risco/cobrança ativo — é o que as abas efetivamente listam.
+  const evolucoesDaLista = React.useMemo(() => {
+    let lista = evolucoesFiltradas
+    if (statusRisco === 'com_risco') {
+      lista = lista.filter(e => e.auditoria && e.auditoria.status_risco !== 'sem_risco')
+    } else if (statusRisco !== 'todos') {
+      lista = lista.filter(e => e.auditoria?.status_risco === statusRisco)
+    }
+    if (statusCobranca !== 'todos') {
+      lista = lista.filter(e => e.auditoria?.status_cobranca === statusCobranca)
+    }
+    return lista
+  }, [evolucoesFiltradas, statusRisco, statusCobranca])
+
+  // Mesmo texto, mesmo profissional, pacientes diferentes: a assinatura de
+  // quem copia e cola a evolução de um atendimento para preencher outro.
+  // Sobre o período INTEIRO (evolucoesFiltradas), não sobre a lista com o
+  // card de risco/cobrança já aplicado — senão o próprio KPI "Duplicadas"
+  // encolheria ao clicar em outro card, o mesmo bug que motivou essa troca.
+  const gruposDuplicados = React.useMemo(() => {
+    return detectarEvolucoesDuplicadasEntrePacientes(evolucoesFiltradas)
+  }, [evolucoesFiltradas])
+  const totalDuplicadas = gruposDuplicados.reduce((acc, g) => acc + g.itens.length, 0)
+
   // A busca vale nas DUAS abas: os resumos saem da lista já filtrada, senão
   // digitar um nome em "Por profissional" não mudava nada na tela.
   const resumosProfissionais = React.useMemo(() => {
-    return calcularResumoProfissionais(evolucoesFiltradas)
-  }, [evolucoesFiltradas])
+    return calcularResumoProfissionais(evolucoesDaLista, gruposDuplicados)
+  }, [evolucoesDaLista, gruposDuplicados])
 
   // KPIs — sobre a lista filtrada, para não contradizerem o que está na tela
   // quando a busca recorta um terapeuta.
@@ -151,8 +356,18 @@ export function AuditoriaEvolucoesShell() {
   const totalSemRisco = evolucoesFiltradas.filter(e => e.auditoria?.status_risco === 'sem_risco').length
   const totalRiscoEspecifico = evolucoesFiltradas.filter(e => e.auditoria?.status_risco === 'risco_especifico').length
   const totalRiscoRelevante = evolucoesFiltradas.filter(e => e.auditoria?.status_risco === 'risco_relevante').length
+  const duplicadasPorGradeId = React.useMemo(() => {
+    const s = new Set<string>()
+    for (const g of gruposDuplicados) for (const item of g.itens) s.add(item.grade_id)
+    return s
+  }, [gruposDuplicados])
+  // "Ok e sem duplicidade" não precisa de cobrança — mesmo sem risco de
+  // glosa, uma evolução duplicada ainda exige contato com o terapeuta.
   const totalPendentesCobranca = evolucoesFiltradas.filter(
-    e => e.auditoria && e.auditoria.status_risco !== 'sem_risco' && e.auditoria.status_cobranca === 'pendente'
+    e =>
+      e.auditoria &&
+      e.auditoria.status_cobranca === 'pendente' &&
+      (e.auditoria.status_risco !== 'sem_risco' || duplicadasPorGradeId.has(e.grade_id))
   ).length
   // Sem denominador não há percentual — "—", nunca 0% (§4 do padrão).
   const taxaConformidadeGeral = totalAuditadas > 0
@@ -177,8 +392,17 @@ export function AuditoriaEvolucoesShell() {
     const TAMANHO_LOTE = 5
     let processados = 0
     let falharam = 0
+    // Sessão caiu no meio do lote: continuar tentando os chunks seguintes só
+    // acumularia o mesmo 401 em cada um. Um aviso genérico de "tente
+    // novamente" também mentiria — tentar de novo sem logar não resolve nada.
+    let sessaoExpirou = false
 
     for (let i = 0; i < alvos.length; i += TAMANHO_LOTE) {
+      if (sessaoExpirou) {
+        falharam += alvos.length - i
+        break
+      }
+
       const chunk = alvos.slice(i, i + TAMANHO_LOTE)
       const ids = chunk.map(c => c.grade_id)
 
@@ -200,8 +424,11 @@ export function AuditoriaEvolucoesShell() {
           processados += json.processados || chunk.length
           falharam += Array.isArray(json.falhas) ? json.falhas.length : 0
           setProgressoLote({ atual: Math.min(processados, alvos.length), total: alvos.length })
+        } else if (res.status === 401) {
+          sessaoExpirou = true
+          falharam += chunk.length
         } else {
-          // 401/403 ou erro de servidor: o lote inteiro não passou.
+          // 403 ou erro de servidor: o lote inteiro não passou.
           falharam += chunk.length
           console.error('Lote recusado:', json.error)
         }
@@ -216,19 +443,31 @@ export function AuditoriaEvolucoesShell() {
 
     // Falha de IA não pode passar despercebida: antes, o item sumia do lote sem
     // que ninguém soubesse que ele não chegou a ser auditado.
-    if (falharam > 0) {
-      setAvisoLote(
-        `${falharam} ${falharam === 1 ? 'evolução não pôde' : 'evoluções não puderam'} ser ${falharam === 1 ? 'auditada' : 'auditadas'}. Tente novamente; se persistir, avise a tecnologia.`
-      )
+    if (sessaoExpirou) {
+      setAvisoLote({
+        texto: 'Sua sessão expirou durante a auditoria. Recarregue a página e faça login novamente para continuar.',
+        falha: true
+      })
+    } else if (falharam > 0) {
+      setAvisoLote({
+        texto: `${falharam} ${falharam === 1 ? 'evolução não pôde' : 'evoluções não puderam'} ser ${falharam === 1 ? 'auditada' : 'auditadas'}. Tente novamente; se persistir, avise a tecnologia.`,
+        falha: true
+      })
     }
 
     await carregarDados()
   }
 
   const handleAuditarLote = async () => {
-    const pendentes = evolucoes.filter(e => !e.auditoria)
+    /*
+     * Parte de `evolucoesFiltradas`, não de `evolucoes`: o botão agora anuncia
+     * a quantidade, e os KPIs já contam sobre a lista filtrada. Auditando o
+     * conjunto inteiro, "Auditar 3 novas evoluções" processaria 40 — o rótulo
+     * mentiria sempre que houvesse busca ativa.
+     */
+    const pendentes = evolucoesFiltradas.filter(e => !e.auditoria)
     if (pendentes.length === 0) {
-      setAvisoLote('Todas as evoluções deste período já foram auditadas.')
+      setAvisoLote({ texto: 'Todas as evoluções deste período já foram auditadas.', falha: false })
       return
     }
     await processarEmLotes(pendentes, { reauditar: false })
@@ -250,15 +489,15 @@ export function AuditoriaEvolucoesShell() {
     )
   }, [evolucoesFiltradas, versaoCriteriosVigente])
 
-  const handleReauditarDesatualizadas = async () => {
+  const [confirmarReauditar, setConfirmarReauditar] = useState(false)
+
+  const handleReauditarDesatualizadas = () => {
     if (desatualizadas.length === 0) return
-    if (
-      !window.confirm(
-        `Reauditar ${desatualizadas.length} ${desatualizadas.length === 1 ? 'evolução' : 'evoluções'} com os critérios atuais?\n\nO veredito anterior será substituído.`
-      )
-    ) {
-      return
-    }
+    setConfirmarReauditar(true)
+  }
+
+  const confirmarEExecutarReauditar = async () => {
+    setConfirmarReauditar(false)
     await processarEmLotes(desatualizadas, { reauditar: true })
   }
 
@@ -322,104 +561,77 @@ export function AuditoriaEvolucoesShell() {
    * valem igual nas duas abas.
    */
   const voltarParaProfissionais = () => {
-    setBusca('')
-    setAbaAtiva('profissionais')
+    aplicar({ busca: '', aba: 'profissionais' })
   }
 
-  const periodoAtivo = (ini: string, fim: string) => dataInicio === ini && dataFim === fim
+  /**
+   * Cinco cards, cinco recortes — e clicar num card É o filtro.
+   *
+   * Os dois <select> de risco e cobrança ofereciam exatamente estes mesmos
+   * cortes, sem o número que motiva o clique. Mesma decisão já documentada em
+   * auditoria-assim/FiltrosAuditoria.tsx: quando o card e o seletor escrevem o
+   * mesmo campo, o seletor é a porta que ninguém usa.
+   *
+   * `alvo` null = o card Total, que limpa os dois filtros.
+   */
+  const cardAtivo = (alvo: { risco?: StatusRiscoEvolucao | 'com_risco'; cobranca?: StatusCobrancaEvolucao } | null) => {
+    if (alvo === null) return statusRisco === 'todos' && statusCobranca === 'todos'
+    if (alvo.cobranca) return statusCobranca === alvo.cobranca
+    return statusRisco === alvo.risco
+  }
 
-  const atalhoPeriodo = (rotulo: string, ini: string, fim: string) => (
-    <button
-      type="button"
-      onClick={() => { setDataInicio(ini); setDataFim(fim) }}
-      aria-pressed={periodoAtivo(ini, fim)}
-      className={`rounded-md px-2.5 py-1 text-[11px] font-semibold transition ${FOCO} ${
-        periodoAtivo(ini, fim)
-          ? 'bg-brand-fg text-white'
-          : 'text-muted-foreground hover:bg-card hover:text-foreground'
-      }`}
-    >
-      {rotulo}
-    </button>
-  )
+  const alternarCard = (alvo: { risco?: StatusRiscoEvolucao | 'com_risco'; cobranca?: StatusCobrancaEvolucao } | null) => {
+    if (alvo === null) {
+      aplicar({ statusRisco: 'todos', statusCobranca: 'todos' })
+      return
+    }
+    // Re-clicar desfaz: um filtro que só liga é uma armadilha.
+    if (cardAtivo(alvo)) {
+      aplicar(alvo.cobranca ? { statusCobranca: 'todos' } : { statusRisco: 'todos' })
+      return
+    }
+    // Os dois eixos são independentes no banco, mas oferecer os dois ao mesmo
+    // tempo produziria interseções vazias sem explicação. Um card = um recorte.
+    aplicar(
+      alvo.cobranca
+        ? { statusCobranca: alvo.cobranca, statusRisco: 'todos' }
+        : { statusRisco: alvo.risco!, statusCobranca: 'todos' }
+    )
+  }
 
   const primeiraCarga = carregando && !carregouUmaVez
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-4">
+    <div className="mx-auto flex w-full max-w-7xl flex-col">
 
-      {/* Ações da tela. O título vive no header do layout (HeaderContext). */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="ml-auto flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => setCriteriosAberto(true)}
-            className={BOTAO_SECUNDARIO}
-            title="Ver os critérios que a IA aplica"
-          >
-            <ScrollText className="h-3.5 w-3.5" />
-            Critérios
-          </button>
-
-          {/*
-            Só aparece quando há o que reaplicar. Distinto de "Auditar novas":
-            aqui o veredito anterior é substituído, então a ação é separada e
-            pede confirmação.
-          */}
-          {desatualizadas.length > 0 && (
-            <button
-              onClick={handleReauditarDesatualizadas}
-              disabled={auditandoLote || carregando}
-              className={BOTAO_SECUNDARIO}
-              title={`${desatualizadas.length} auditada(s) com critérios anteriores`}
-            >
-              <History className="h-3.5 w-3.5" />
-              Reauditar {desatualizadas.length} com critérios atuais
-            </button>
-          )}
-
-          <button onClick={carregarDados} disabled={carregando} className={BOTAO_SECUNDARIO}>
-            <RefreshCw className={`h-3.5 w-3.5 ${carregando ? 'motion-safe:animate-spin' : ''}`} />
-            Atualizar
-          </button>
-
-          <button onClick={handleAuditarLote} disabled={auditandoLote || carregando} className={BOTAO_PRIMARIO}>
-            <Sparkles className={`h-4 w-4 ${auditandoLote ? 'motion-safe:animate-spin' : ''}`} />
-            {auditandoLote ? 'Auditando…' : 'Auditar novas evoluções'}
-          </button>
-        </div>
-      </div>
-
+      {/*
+        Falha não é recado neutro. Antes os dois casos — "N não puderam ser
+        auditadas" e "todas já foram auditadas" — dividiam o mesmo cinza, o que
+        contraria o próprio motivo de existir do aviso.
+      */}
       {avisoLote && (
-        <p className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-          {avisoLote}
+        <p
+          className={`mt-3 flex items-start gap-2 rounded-lg px-3 py-2 text-xs ${
+            falhaNoLote
+              ? `${TONE_PANEL.amber.bg} ring-1 ${TONE_PANEL.amber.ring} ${TONE_CHIP.amber.text}`
+              : 'border border-border bg-muted/40 text-muted-foreground'
+          }`}
+        >
+          {falhaNoLote && <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" />}
+          {avisoLote.texto}
         </p>
       )}
 
-      {auditandoLote && progressoLote && (
-        <div className="space-y-2 rounded-xl border border-border bg-card p-4 shadow-sm">
-          <div className="flex justify-between text-xs font-semibold text-foreground">
-            <span>Auditando evoluções com IA…</span>
-            <span className="tabular-nums">
-              {progressoLote.atual} de {progressoLote.total}
-            </span>
-          </div>
-          <div className="h-2 overflow-hidden rounded-full border border-border bg-muted">
-            <div
-              className="h-full w-full bg-brand"
-              style={{
-                clipPath: `inset(0 ${100 - Math.round((progressoLote.atual / progressoLote.total) * 100)}% 0 0)`,
-                transition: 'clip-path 500ms cubic-bezier(0.16, 1, 0.3, 1)'
-              }}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* KPIs */}
+      {/* KPIs — e os KPIs SÃO o filtro de risco/cobrança. */}
       {primeiraCarga ? (
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
           {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+            <div
+              key={i}
+              className={`rounded-2xl border-2 border-border bg-card p-5 shadow-sm ${
+                i === 4 ? 'col-span-2 lg:col-span-1' : ''
+              }`}
+            >
               <div className="h-3 w-24 rounded bg-muted motion-safe:animate-pulse" />
               <div className="mt-2 h-7 w-12 rounded bg-muted motion-safe:animate-pulse" />
               <div className="mt-2 h-2.5 w-28 rounded bg-muted motion-safe:animate-pulse" />
@@ -427,183 +639,323 @@ export function AuditoriaEvolucoesShell() {
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
           <Kpi
             rotulo="Evoluções no período"
             valor={totalEvolucoes}
             nota={totalPendentesIA > 0
               ? `${totalAuditadas} auditadas · ${totalPendentesIA} aguardando IA`
               : `${totalAuditadas} auditadas`}
+            ativo={cardAtivo(null)}
+            onClick={() => alternarCard(null)}
+            rotuloFiltro="Mostrar tudo"
           />
           <Kpi
             rotulo="Conformidade"
             valor={taxaConformidadeGeral === null ? '—' : `${taxaConformidadeGeral}%`}
+            tom={tomDaConformidade(taxaConformidadeGeral)}
             cor={toneColor(tomDaConformidade(taxaConformidadeGeral))}
             nota={`${totalSemRisco} sem risco de glosa`}
+            ativo={cardAtivo({ risco: 'sem_risco' })}
+            onClick={() => alternarCard({ risco: 'sem_risco' })}
+            desabilitado={totalSemRisco === 0}
+            rotuloFiltro="Ver as sem risco"
           />
           <Kpi
-            rotulo="Ponto específico"
-            valor={totalRiscoEspecifico}
-            cor={toneColor(tomSeHouver(totalRiscoEspecifico, 'amber'))}
-            nota="Ajustes pontuais de redação"
-          />
-          <Kpi
-            rotulo="Risco relevante"
-            valor={totalRiscoRelevante}
-            cor={toneColor(tomSeHouver(totalRiscoRelevante, 'red'))}
-            nota="Incompletas ou termos vedados"
+            rotulo="Com risco"
+            valor={totalRiscoEspecifico + totalRiscoRelevante}
+            tom={tomSeHouver(totalRiscoEspecifico + totalRiscoRelevante, totalRiscoRelevante > 0 ? 'red' : 'amber')}
+            cor={toneColor(tomSeHouver(totalRiscoEspecifico + totalRiscoRelevante, totalRiscoRelevante > 0 ? 'red' : 'amber'))}
+            nota={totalRiscoRelevante > 0
+              ? `${totalRiscoRelevante} relevante · ${totalRiscoEspecifico} específico`
+              : 'Ajustes pontuais de redação'}
+            ativo={cardAtivo({ risco: 'com_risco' })}
+            onClick={() => alternarCard({ risco: 'com_risco' })}
+            desabilitado={totalRiscoEspecifico + totalRiscoRelevante === 0}
+            rotuloFiltro="Ver as com risco"
           />
           <Kpi
             rotulo="A cobrar"
             valor={totalPendentesCobranca}
+            tom={tomSeHouver(totalPendentesCobranca, 'blue')}
             cor={toneColor(tomSeHouver(totalPendentesCobranca, 'blue'))}
             nota="Terapeuta ainda não avisado"
+            ativo={cardAtivo({ cobranca: 'pendente' })}
+            onClick={() => alternarCard({ cobranca: 'pendente' })}
+            desabilitado={totalPendentesCobranca === 0}
+            rotuloFiltro="Ver quem falta cobrar"
+          />
+          <Kpi
+            rotulo="Duplicadas"
+            valor={totalDuplicadas}
+            tom={tomSeHouver(totalDuplicadas, 'purple')}
+            cor={toneColor(tomSeHouver(totalDuplicadas, 'purple'))}
+            nota="Mesmo texto em 2+ pacientes"
+            ativo={abaAtiva === 'duplicadas'}
+            onClick={() => aplicar({ aba: 'duplicadas' })}
+            desabilitado={totalDuplicadas === 0}
+            rotuloFiltro="Ver as duplicadas"
             className="col-span-2 lg:col-span-1"
           />
         </div>
       )}
 
-      {/* Abas + filtros */}
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-
-        <div role="tablist" className="flex w-fit shrink-0 items-center gap-1 rounded-lg bg-muted/60 p-1">
+      {/*
+        Abas de verdade, em linha própria: uma borda inferior contínua sob os
+        três rótulos, com o ativo ganhando sua própria borda na cor da marca —
+        o padrão clássico de aba de painel. Precisa da própria linha porque a
+        borda tem de atravessar a largura toda; dividindo com os filtros
+        embaixo ela ficaria cortada no meio por eles.
+      */}
+      <div role="tablist" className="mt-4 flex w-full items-center gap-5 border-b border-border">
           <button
             role="tab"
             aria-selected={abaAtiva === 'profissionais'}
             onClick={voltarParaProfissionais}
-            className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-xs transition ${FOCO} ${
+            className={`inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 pb-2 pt-1 text-xs transition ${FOCO} ${
               abaAtiva === 'profissionais'
-                ? 'bg-card font-bold text-foreground shadow-sm'
-                : 'font-semibold text-muted-foreground hover:text-foreground'
+                ? 'border-brand-fg font-bold text-foreground'
+                : 'border-transparent font-semibold text-muted-foreground hover:text-foreground'
             }`}
           >
             <Users className="h-4 w-4" />
             Por profissional
-            {totalPendentesCobranca > 0 && (
-              <span className={`rounded-full px-1.5 text-[10px] font-bold tabular-nums ${TONE_CHIP.blue.bg} ${TONE_CHIP.blue.text}`}>
-                {totalPendentesCobranca}
-              </span>
-            )}
           </button>
 
           <button
             role="tab"
             aria-selected={abaAtiva === 'feed'}
-            onClick={() => setAbaAtiva('feed')}
-            className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-xs transition ${FOCO} ${
+            onClick={() => aplicar({ aba: 'feed' })}
+            className={`inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 pb-2 pt-1 text-xs transition ${FOCO} ${
               abaAtiva === 'feed'
-                ? 'bg-card font-bold text-foreground shadow-sm'
-                : 'font-semibold text-muted-foreground hover:text-foreground'
+                ? 'border-brand-fg font-bold text-foreground'
+                : 'border-transparent font-semibold text-muted-foreground hover:text-foreground'
             }`}
           >
             <FileSearch className="h-4 w-4" />
             Todas as evoluções
-            <span className={`rounded-full px-1.5 text-[10px] font-bold tabular-nums ${TONE_CHIP.gray.bg} ${TONE_CHIP.gray.text}`}>
-              {totalEvolucoes}
+          </button>
+
+          <button
+            role="tab"
+            aria-selected={abaAtiva === 'duplicadas'}
+            onClick={() => aplicar({ aba: 'duplicadas' })}
+            className={`inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 pb-2 pt-1 text-xs transition ${FOCO} ${
+              abaAtiva === 'duplicadas'
+                ? 'border-brand-fg font-bold text-foreground'
+                : 'border-transparent font-semibold text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <Copy className="h-4 w-4" />
+            Duplicadas
+          </button>
+      </div>
+
+      {/*
+        Filtros e ações, na linha abaixo das abas: período e busca à esquerda,
+        Critérios/Atualizar/Auditar à direita. Ficaram fora da linha das abas
+        de propósito — ações que disparam lote (Auditar) não devem competir
+        visualmente com navegação passiva (as abas), risco real de mis-click
+        com o botão primário logo ao lado de "Duplicadas".
+      */}
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+
+        {/*
+          O período é o filtro que importa, e é o único aqui que pede presença:
+          data em peso maior e ícone na cor da marca. Eram dois campos
+          `type="date"` — duas portas para uma variável, e no celular duas
+          tomadas de tela do seletor nativo para definir um intervalo.
+        */}
+        <DateRangePicker
+          inicio={dataInicio}
+          fim={dataFim}
+          onChange={({ inicio, fim }) => aplicar({ dataInicio: inicio, dataFim: fim })}
+          atalhos={ATALHOS_PERIODO}
+          // Limpar = voltar ao recorte com que a tela abre. Como é o padrão,
+          // os parâmetros saem da URL e o link volta a ser o endereço limpo.
+          padrao={() => ({ inicio: PISO_PERIODO, fim: hojeISO() })}
+        />
+
+        {/*
+          A busca é auxiliar e se comporta como tal: sem moldura em repouso,
+          só um fundo sutil. A borda aparece no foco, quando ela vira o
+          objeto da atenção. `flex-1` para ocupar o espaço vago da linha
+          em vez de deixá-lo ocioso entre o período e o resto.
+        */}
+        <div className="relative min-w-32 flex-1">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/70" />
+          <input
+            type="search"
+            aria-label="Buscar paciente ou terapeuta"
+            placeholder="Buscar paciente ou terapeuta"
+            value={buscaLocal}
+            onChange={e => setBuscaLocal(e.target.value)}
+            className={`h-9 w-full rounded-lg border border-transparent bg-muted/50 pl-8 pr-2.5 text-xs
+              text-foreground placeholder:text-muted-foreground/70 transition
+              hover:bg-muted focus:border-border focus:bg-background
+              focus:outline-none focus:ring-2 focus:ring-ring`}
+          />
+        </div>
+
+        {/*
+          Ações à direita, separadas das abas: Critérios/Atualizar/Auditar
+          disparam efeito (rede, lote), então ficam junto dos filtros que
+          também mudam o que a tela mostra — não coladas na navegação passiva
+          das abas, onde um botão primário ao lado de "Duplicadas" convidava
+          ao mis-click.
+        */}
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          <button
+            onClick={() => setCriteriosAberto(true)}
+            className={`${BOTAO_SECUNDARIO} w-9 justify-center px-0 xl:w-auto xl:px-2.5`}
+            title={
+              desatualizadas.length > 0
+                ? `Ver os critérios que a IA aplica — ${desatualizadas.length} ${desatualizadas.length === 1 ? 'evolução auditada' : 'evoluções auditadas'} com versão anterior`
+                : 'Ver os critérios que a IA aplica'
+            }
+            aria-label="Critérios"
+          >
+            <ScrollText className="h-3.5 w-3.5" />
+            <span className="hidden xl:inline">Critérios</span>
+          </button>
+
+          <button
+            onClick={carregarDados}
+            disabled={carregando}
+            aria-label="Atualizar"
+            title="Atualizar"
+            className={`${BOTAO_SECUNDARIO} w-9 justify-center px-0`}
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${carregando ? 'motion-safe:animate-spin' : ''}`} />
+          </button>
+
+          {/*
+            O progresso do lote é o próprio botão: como bloco separado, ele
+            empurrava a grade de KPIs para baixo exatamente no instante em que
+            a pessoa observava os números mudarem.
+          */}
+          <button
+            onClick={handleAuditarLote}
+            disabled={auditandoLote || carregando || totalPendentesIA === 0}
+            title={
+              totalPendentesIA > 0
+                ? `Auditar ${totalPendentesIA} ${totalPendentesIA === 1 ? 'nova evolução' : 'novas evoluções'} com IA`
+                : 'Nenhuma evolução nova para auditar'
+            }
+            /*
+             * Rótulo curto e `min-w` menor: o texto por extenso é o que
+             * estouraria a largura disponível. A frase completa vive no
+             * `title`, e o `min-w` segura a contagem mudando sem o botão
+             * encolher a cada lote.
+             */
+            className={`${BOTAO_PRIMARIO} relative min-w-36 justify-center overflow-hidden`}
+          >
+            {auditandoLote && progressoLote && progressoLote.total > 0 && (
+              <span
+                aria-hidden
+                className="absolute inset-0 bg-brand-dark"
+                style={{
+                  clipPath: `inset(0 ${100 - Math.round((progressoLote.atual / progressoLote.total) * 100)}% 0 0)`,
+                  transition: 'clip-path 500ms cubic-bezier(0.16, 1, 0.3, 1)'
+                }}
+              />
+            )}
+            <Sparkles className={`relative h-4 w-4 ${auditandoLote ? 'motion-safe:animate-spin' : ''}`} />
+            <span className="relative tabular-nums">
+              {auditandoLote && progressoLote
+                ? `${progressoLote.atual} de ${progressoLote.total}…`
+                : totalPendentesIA > 0
+                  ? `Auditar ${totalPendentesIA}`
+                  : 'Auditar'}
             </span>
           </button>
         </div>
-
-        <div className="flex min-w-0 flex-wrap items-center gap-2 lg:justify-end">
-
-          <div className="flex items-center gap-0.5 rounded-lg bg-muted/60 p-1">
-            {atalhoPeriodo('Ontem', ontemISO(), ontemISO())}
-            {atalhoPeriodo('Hoje', hojeISO(), hojeISO())}
-            {atalhoPeriodo('Desde setembro', PISO_PERIODO, hojeISO())}
-          </div>
-
-          <label className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs text-foreground">
-            <span className="text-muted-foreground">De</span>
-            <input
-              type="date"
-              value={dataInicio}
-              onChange={e => setDataInicio(e.target.value)}
-              className="bg-transparent tabular-nums focus:outline-none"
-            />
-          </label>
-
-          <label className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs text-foreground">
-            <span className="text-muted-foreground">Até</span>
-            <input
-              type="date"
-              value={dataFim}
-              onChange={e => setDataFim(e.target.value)}
-              className="bg-transparent tabular-nums focus:outline-none"
-            />
-          </label>
-
-          <select
-            value={statusRisco}
-            onChange={e => setStatusRisco(e.target.value as StatusRiscoEvolucao | 'todos')}
-            aria-label="Filtrar por risco"
-            className={CAMPO}
-          >
-            <option value="todos">Todos os riscos</option>
-            <option value="risco_relevante">Risco relevante</option>
-            <option value="risco_especifico">Ponto específico</option>
-            <option value="sem_risco">Sem risco</option>
-          </select>
-
-          <select
-            value={statusCobranca}
-            onChange={e => setStatusCobranca(e.target.value as StatusCobrancaEvolucao | 'todos')}
-            aria-label="Filtrar por cobrança"
-            className={CAMPO}
-          >
-            <option value="todos">Todas as cobranças</option>
-            <option value="pendente">Pendente</option>
-            <option value="cobrado">Cobrado</option>
-            <option value="aguardando_correcao">Aguardando correção</option>
-            <option value="corrigido_tita">Corrigido no TiTa</option>
-            <option value="ignorado">Dispensado</option>
-          </select>
-
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type="search"
-              placeholder="Buscar paciente ou terapeuta"
-              value={busca}
-              onChange={e => setBusca(e.target.value)}
-              className={`${CAMPO} w-52 pl-8`}
-            />
-          </div>
-
-        </div>
       </div>
+
+      {/*
+        Intervalo invertido: a busca nem sai, porque devolveria zero linhas e a
+        tela diria "nenhuma evolução" — culpando o período por um erro de
+        digitação.
+      */}
+      {periodoInvertido && (
+        <p className={`mt-2 flex items-center gap-2 rounded-lg px-3 py-2 text-xs ${TONE_PANEL.amber.bg} ring-1 ${TONE_PANEL.amber.ring} ${TONE_CHIP.amber.text}`}>
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+          A data inicial está depois da final. Corrija o intervalo para ver as evoluções.
+        </p>
+      )}
+
+      {/*
+        Um card de risco/cobrança pode ficar ativo sem que a pessoa tenha
+        clicado nele nesta visita — "Ver evoluções" de um card de profissional
+        chega direto num recorte filtrado. Sem isto, o único jeito de descobrir
+        e desfazer o filtro era achar o card "Evoluções no período" no topo.
+      */}
+      {(statusRisco !== 'todos' || statusCobranca !== 'todos') && (
+        <p className={`mt-2 flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-xs ${TONE_PANEL.blue.bg} ring-1 ${TONE_PANEL.blue.ring} ${TONE_CHIP.blue.text}`}>
+          <span>
+            Filtro ativo: {statusRisco !== 'todos' ? ROTULO_STATUS_RISCO[statusRisco] : ROTULO_STATUS_COBRANCA[statusCobranca as StatusCobrancaEvolucao]}
+          </span>
+          <button
+            onClick={() => aplicar({ statusRisco: 'todos', statusCobranca: 'todos' })}
+            className={`shrink-0 rounded px-1.5 py-0.5 font-bold underline-offset-2 hover:underline ${FOCO}`}
+          >
+            Limpar
+          </button>
+        </p>
+      )}
 
       {/* Recarga com dado na tela: a lista fica, o aviso é discreto (§3.9). */}
       {carregando && carregouUmaVez && (
-        <p className="text-xs text-muted-foreground">Atualizando…</p>
+        <p className="mt-2 text-xs text-muted-foreground">Atualizando…</p>
       )}
 
-      {erro ? (
-        <div className="space-y-2 rounded-xl border border-rose-200 bg-rose-50 p-6 text-center dark:border-rose-900/60 dark:bg-rose-950/30">
-          <AlertTriangle className="mx-auto h-8 w-8 text-rose-600 dark:text-rose-400" />
-          <h3 className="text-sm font-semibold text-foreground">Não foi possível carregar as evoluções</h3>
-          <p className="text-xs text-muted-foreground">{erro}</p>
-          <button onClick={carregarDados} className={`${BOTAO_SECUNDARIO} mx-auto mt-1`}>
-            <RefreshCw className="h-3.5 w-3.5" />
-            Tentar de novo
-          </button>
-        </div>
-      ) : primeiraCarga ? (
-        <ListaSkeleton aba={abaAtiva} />
-      ) : abaAtiva === 'profissionais' ? (
-        <ProfissionaisCobrancaTab
-          resumos={resumosProfissionais}
-          onCobrarProfissional={prof => setProfSelecionadoCobranca(prof)}
-          onVerEvolucoesProfissional={prof => {
-            setBusca(prof.profissional_nome)
-            setAbaAtiva('feed')
-          }}
-        />
-      ) : (
-        <EvolucoesFeedTab
-          evolucoes={evolucoesFiltradas}
-          onSelecionarEvolucao={item => setItemSelecionado(item)}
-        />
-      )}
+      {/*
+        O espaçamento carrega o agrupamento: `mt-1.5` para o que pertence à
+        linha acima (a legenda), `mt-3`/`mt-4` entre grupos. Antes tudo era um
+        `gap-4` uniforme — e espaçamento uniforme é a ausência de agrupamento.
+      */}
+      <div className="mt-4">
+        {erro ? (
+          <div className={`${CARTAO} space-y-2 p-6 text-center ${TONE_PANEL.red.bg}`}>
+            <AlertTriangle className={`mx-auto h-8 w-8 ${TONE_CHIP.red.text}`} />
+            <h3 className="text-sm font-semibold text-foreground">Não foi possível carregar as evoluções</h3>
+            <p className="text-xs text-muted-foreground">{erro}</p>
+            <button onClick={carregarDados} className={`${BOTAO_SECUNDARIO} mx-auto mt-1`}>
+              <RefreshCw className="h-3.5 w-3.5" />
+              Tentar de novo
+            </button>
+          </div>
+        ) : primeiraCarga ? (
+          <ListaSkeleton aba={abaAtiva} />
+        ) : abaAtiva === 'profissionais' ? (
+          <ProfissionaisCobrancaTab
+            resumos={resumosProfissionais}
+            onCobrarProfissional={prof => setProfSelecionadoCobranca(prof)}
+            onVerEvolucoesProfissional={prof => {
+              aplicar({ busca: prof.profissional_nome, aba: 'feed' })
+            }}
+            onVerMetricaProfissional={(prof, metrica) => {
+              if (metrica === 'duplicadas') {
+                aplicar({ busca: prof.profissional_nome, aba: 'duplicadas' })
+                return
+              }
+              const statusRisco =
+                metrica === 'sem_risco' ? 'sem_risco' : metrica === 'com_risco' ? 'com_risco' : 'todos'
+              aplicar({ busca: prof.profissional_nome, aba: 'feed', statusRisco })
+            }}
+          />
+        ) : abaAtiva === 'feed' ? (
+          <EvolucoesFeedTab
+            evolucoes={evolucoesDaLista}
+            onSelecionarEvolucao={item => setItemSelecionado(item)}
+          />
+        ) : (
+          <EvolucoesDuplicadasTab
+            grupos={gruposDuplicados}
+            onCompararItem={(grupo, item) => setComparacaoDuplicada({ grupo, item })}
+          />
+        )}
+      </div>
 
       {/*
         §3.12 do padrão: estado nasce limpo por `key`, não por efeito. Sem isto,
@@ -632,21 +984,93 @@ export function AuditoriaEvolucoesShell() {
         // Publicou: a Shell precisa saber para o botão "Reauditar com critérios
         // atuais" aparecer sem depender de um F5.
         onPublicou={carregarVersaoVigente}
+        totalDesatualizadas={desatualizadas.length}
+        onReauditarDesatualizadas={handleReauditarDesatualizadas}
+        auditandoLote={auditandoLote || carregando}
+      />
+
+      <ModalConfirmacao
+        isOpen={confirmarReauditar}
+        titulo="Reauditar com os critérios atuais?"
+        descricao={`${desatualizadas.length} ${desatualizadas.length === 1 ? 'evolução' : 'evoluções'} ${desatualizadas.length === 1 ? 'será reauditada' : 'serão reauditadas'}. O veredito anterior de cada uma será substituído.`}
+        rotuloConfirmar="Reauditar"
+        onConfirmar={confirmarEExecutarReauditar}
+        onCancelar={() => setConfirmarReauditar(false)}
+      />
+
+      <ModalComparadorDuplicadas
+        grupo={comparacaoDuplicada?.grupo ?? null}
+        item={comparacaoDuplicada?.item ?? null}
+        isOpen={Boolean(comparacaoDuplicada)}
+        onClose={() => setComparacaoDuplicada(null)}
       />
 
     </div>
   )
 }
 
-function Kpi({ rotulo, valor, nota, cor, className = '' }: {
+/**
+ * Borda do card selecionado, por tom.
+ *
+ * Escrita por extenso porque o Tailwind varre o código em busca de classes
+ * literais — montar `border-${tom}-300` em tempo de execução produziria classes
+ * que nunca chegam ao CSS. Espelha `TONE_PANEL.ring` de components/ui/tones.
+ */
+const BORDA_ATIVA: Record<Tone, string> = {
+  green: 'border-emerald-300 dark:border-emerald-700',
+  amber: 'border-amber-300 dark:border-amber-700',
+  red: 'border-rose-300 dark:border-rose-700',
+  purple: 'border-purple-300 dark:border-purple-700',
+  blue: 'border-sky-300 dark:border-sky-700',
+  gray: 'border-slate-300 dark:border-slate-600'
+}
+
+/**
+ * Cartão de KPI que também é o filtro daquele recorte.
+ *
+ * Era um `<div>` inerte enquanto dois `<select>` ofereciam os mesmos cortes sem
+ * o número que motiva o clique — a porta interessante estava pintada na parede.
+ * O padrão de card-como-filtro (`border-2` + tint no ativo) vem de
+ * central-terapeutas/ControleFiltersBar e auditoria-assim/FiltrosAuditoria; a
+ * diferença aqui é usar os tokens semânticos em vez da paleta crua.
+ *
+ * Card com zero fica desabilitado: oferecer um filtro que não devolve nada é
+ * prometer uma porta para um cômodo vazio.
+ */
+function Kpi({
+  rotulo, valor, nota, cor, tom = 'gray', ativo = false,
+  desabilitado = false, onClick, rotuloFiltro, className = ''
+}: {
   rotulo: string
   valor: number | string
   nota: string
   cor?: string
+  tom?: Tone
+  ativo?: boolean
+  desabilitado?: boolean
+  onClick?: () => void
+  rotuloFiltro?: string
   className?: string
 }) {
   return (
-    <div className={`rounded-2xl border border-border bg-card p-5 shadow-sm ${className}`}>
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={desabilitado}
+      aria-pressed={ativo}
+      title={desabilitado ? undefined : rotuloFiltro}
+      className={`
+        rounded-2xl border-2 p-5 text-left shadow-sm transition
+        ${FOCO}
+        ${ativo
+          ? `${TONE_PANEL[tom].bg} ${BORDA_ATIVA[tom]}`
+          : 'border-border bg-card'}
+        ${desabilitado
+          ? 'cursor-default opacity-60'
+          : 'cursor-pointer hover:-translate-y-px hover:shadow-md'}
+        ${className}
+      `}
+    >
       <span className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
         {rotulo}
       </span>
@@ -657,12 +1081,12 @@ function Kpi({ rotulo, valor, nota, cor, className = '' }: {
         {valor}
       </div>
       <span className="mt-1.5 block text-[11px] text-muted-foreground">{nota}</span>
-    </div>
+    </button>
   )
 }
 
 /** Skeleton no formato do layout real — §3.9: o vazio só aparece depois da carga. */
-function ListaSkeleton({ aba }: { aba: 'profissionais' | 'feed' }) {
+function ListaSkeleton({ aba }: { aba: 'profissionais' | 'feed' | 'duplicadas' }) {
   if (aba === 'profissionais') {
     return (
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">

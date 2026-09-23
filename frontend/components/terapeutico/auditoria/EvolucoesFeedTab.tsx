@@ -5,11 +5,19 @@ import { CheckCircle2, XCircle, AlertTriangle, Clock, ChevronRight, FileText } f
 import { StatusChip } from '@/components/ui/tones'
 import type { EvolucaoPendenteAuditoria } from '@/types/auditoriaEvolucoes'
 import { TOM_RISCO, ROTULO_RISCO, TOM_COBRANCA, ROTULO_COBRANCA, FOCO } from './vocabulario'
+import { Paginacao, usePaginacao } from './Paginacao'
 
 interface Props {
   evolucoes: EvolucaoPendenteAuditoria[]
   onSelecionarEvolucao: (item: EvolucaoPendenteAuditoria) => void
 }
+
+/*
+ * 50 linhas por página. Cada linha traz o texto da evolução, e com o período
+ * inteiro aberto eram ~400 de uma vez — o custo não estava na consulta, estava
+ * no React montar tudo antes de pintar qualquer coisa.
+ */
+const POR_PAGINA = 50
 
 const ICONE_RISCO = {
   sem_risco: CheckCircle2,
@@ -18,6 +26,9 @@ const ICONE_RISCO = {
 } as const
 
 export function EvolucoesFeedTab({ evolucoes, onSelecionarEvolucao }: Props) {
+  // Antes do early return: hook não pode ficar atrás de condicional.
+  const { pagina, setPagina, totalPaginas, fatia } = usePaginacao(evolucoes, POR_PAGINA)
+
   if (evolucoes.length === 0) {
     return (
       <div className="rounded-xl border border-border bg-card px-4 py-16 text-center shadow-sm">
@@ -71,7 +82,7 @@ export function EvolucoesFeedTab({ evolucoes, onSelecionarEvolucao }: Props) {
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {evolucoes.map(item => {
+            {fatia.map(item => {
               const dataFormatada = new Date(item.data_sessao + 'T12:00:00Z').toLocaleDateString('pt-BR')
               const aud = item.auditoria
 
@@ -87,7 +98,7 @@ export function EvolucoesFeedTab({ evolucoes, onSelecionarEvolucao }: Props) {
                     {dataFormatada}
                   </td>
 
-                  <td className="max-w-45 truncate px-4 py-3 font-medium text-foreground">
+                  <td className="max-w-45 truncate px-4 py-3 font-medium text-foreground" title={item.paciente_nome}>
                     {item.paciente_nome}
                   </td>
 
@@ -135,6 +146,15 @@ export function EvolucoesFeedTab({ evolucoes, onSelecionarEvolucao }: Props) {
           </tbody>
         </table>
       </div>
+
+      <Paginacao
+        pagina={pagina}
+        totalPaginas={totalPaginas}
+        total={evolucoes.length}
+        porPagina={POR_PAGINA}
+        onMudar={setPagina}
+        rotuloItem={['evolução', 'evoluções']}
+      />
     </div>
   )
 }

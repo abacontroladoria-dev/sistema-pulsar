@@ -6,6 +6,7 @@ import {
   Download, Upload, Save, AlertTriangle, ScrollText, FileText, CheckCircle2
 } from 'lucide-react'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
+import { ModalConfirmacao } from './ModalConfirmacao'
 import { buscarCriteriosVigentes, listarVersoes, type CriteriosVigentesUI } from '@/services/auditoriaCriterios.service'
 import {
   criteriosParaMarkdown,
@@ -22,6 +23,10 @@ interface Props {
   onClose: () => void
   /** Avisa a tela que saiu versão nova, para ela reavaliar o que ficou para trás. */
   onPublicou?: () => void | Promise<void>
+  /** Evoluções já auditadas por uma versão anterior à vigente. */
+  totalDesatualizadas: number
+  onReauditarDesatualizadas: () => void
+  auditandoLote: boolean
 }
 
 /** O que voltou de um arquivo subido e ainda não foi publicado. */
@@ -52,7 +57,14 @@ interface Pendente {
  * Casca do padrão do sistema (docs/padrao-detalhamento-modal.md §4): Dialog do
  * Radix, header fixo, corpo com scroll próprio, 3ª linha para o rodapé de ações.
  */
-export function ModalCriterios({ isOpen, onClose, onPublicou }: Props) {
+export function ModalCriterios({
+  isOpen,
+  onClose,
+  onPublicou,
+  totalDesatualizadas,
+  onReauditarDesatualizadas,
+  auditandoLote
+}: Props) {
   const [vigente, setVigente] = useState<CriteriosVigentesUI | null>(null)
   const [versoes, setVersoes] = useState<VersaoCriteriosAuditoria[]>([])
   const [carregando, setCarregando] = useState(true)
@@ -63,6 +75,9 @@ export function ModalCriterios({ isOpen, onClose, onPublicou }: Props) {
   const [publicando, setPublicando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
   const [confirmando, setConfirmando] = useState(false)
+  // 'fechar': descartar veio do X/Esc/fora, então limpa e fecha o modal.
+  // 'limpar': descartar veio do botão do rodapé, então só limpa o pendente.
+  const [confirmarDescarte, setConfirmarDescarte] = useState<'fechar' | 'limpar' | null>(null)
   const inputArquivo = useRef<HTMLInputElement>(null)
 
   const recarregar = async () => {
@@ -95,6 +110,7 @@ export function ModalCriterios({ isOpen, onClose, onPublicou }: Props) {
       setNota('')
       setErro(null)
       setConfirmando(false)
+      setConfirmarDescarte(null)
     }
   }, [isOpen])
 
@@ -166,8 +182,19 @@ export function ModalCriterios({ isOpen, onClose, onPublicou }: Props) {
   }
 
   const tentarFechar = () => {
-    if (pendente && !window.confirm('Descartar o arquivo subido sem publicar?')) return
+    if (pendente) {
+      setConfirmarDescarte('fechar')
+      return
+    }
     onClose()
+  }
+
+  const confirmarEDescartar = () => {
+    setPendente(null)
+    setNota('')
+    setErro(null)
+    if (confirmarDescarte === 'fechar') onClose()
+    setConfirmarDescarte(null)
   }
 
   // O arquivo saiu de uma versão que já não é a mais nova: publicar por cima
@@ -179,6 +206,7 @@ export function ModalCriterios({ isOpen, onClose, onPublicou }: Props) {
     pendente.versaoOrigem < vigente.versao
 
   return (
+    <>
     <Dialog open onOpenChange={aberto => { if (!aberto) tentarFechar() }}>
       <DialogContent
         showCloseButton={false}
@@ -190,9 +218,9 @@ export function ModalCriterios({ isOpen, onClose, onPublicou }: Props) {
         // referência: isto é texto para ler, e linha longa atrapalha a leitura.
         className="h-[90vh] w-[90vw] max-w-4xl gap-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-2xl bg-card p-0 sm:max-w-4xl"
         // Com arquivo subido e não publicado, clique fora e Esc não fecham
-        // direto: sairiam levando o trabalho sem aviso.
-        onInteractOutside={e => { if (pendente) e.preventDefault() }}
-        onEscapeKeyDown={e => { if (pendente) e.preventDefault() }}
+        // direto — abrem a confirmação de descarte, não silenciam a tentativa.
+        onInteractOutside={e => { if (pendente) { e.preventDefault(); tentarFechar() } }}
+        onEscapeKeyDown={e => { if (pendente) { e.preventDefault(); tentarFechar() } }}
       >
         {/* ── Cabeçalho ──────────────────────────────────────────────────── */}
         <header className="relative flex items-start justify-between gap-3 border-b border-border px-5 py-4 md:px-6">
@@ -501,11 +529,7 @@ export function ModalCriterios({ isOpen, onClose, onPublicou }: Props) {
                 <button
                   onClick={() => {
                     if (confirmando) { setConfirmando(false); return }
-                    if (window.confirm('Descartar o arquivo subido sem publicar?')) {
-                      setPendente(null)
-                      setNota('')
-                      setErro(null)
-                    }
+                    setConfirmarDescarte('limpar')
                   }}
                   disabled={publicando}
                   className={BOTAO_SECUNDARIO}
@@ -524,14 +548,37 @@ export function ModalCriterios({ isOpen, onClose, onPublicou }: Props) {
               </div>
             </div>
           ) : (
-            <p className="text-xs text-muted-foreground">
-              Estes critérios valem para as próximas auditorias. Auditorias já feitas mantêm a
-              versão sob a qual foram julgadas.
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs text-muted-foreground">
+                Estes critérios valem para as próximas auditorias. Auditorias já feitas mantêm a
+                versão sob a qual foram julgadas.
+              </p>
+              {totalDesatualizadas > 0 && (
+                <button
+                  onClick={onReauditarDesatualizadas}
+                  disabled={auditandoLote}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded font-semibold text-brand-fg underline underline-offset-2 transition hover:text-brand-dark disabled:opacity-40"
+                >
+                  <History className="h-3.5 w-3.5" />
+                  <span className="tabular-nums">{totalDesatualizadas}</span>{' '}
+                  {totalDesatualizadas === 1 ? 'auditada com versão anterior — reaplicar' : 'auditadas com versão anterior — reaplicar'}
+                </button>
+              )}
+            </div>
           )}
         </div>
       </DialogContent>
     </Dialog>
+
+    <ModalConfirmacao
+      isOpen={confirmarDescarte !== null}
+      titulo="Descartar o arquivo subido?"
+      descricao="O arquivo ainda não foi publicado. Descartando, a leitura se perde e os critérios vigentes continuam valendo."
+      rotuloConfirmar="Descartar"
+      onConfirmar={confirmarEDescartar}
+      onCancelar={() => setConfirmarDescarte(null)}
+    />
+    </>
   )
 }
 

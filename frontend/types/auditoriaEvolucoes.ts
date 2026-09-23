@@ -110,4 +110,6 @@ export interface ResumoProfissionalAuditoria {
   pendentes_cobranca: number
   taxa_conformidade: number // % sem risco
   evolucoes_com_risco: RegistroAuditoriaEvolucao[]
+  /** Evoluções deste profissional que entraram em algum grupo de duplicadas entre pacientes. */
+  duplicadas: number
 }
