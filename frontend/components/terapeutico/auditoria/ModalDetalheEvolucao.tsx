@@ -203,7 +203,7 @@ export function ModalDetalheEvolucao({
             </p>
           </div>
 
-          <div className="flex shrink-0 items-center gap-2 pr-11 lg:pr-0">
+          <div className="flex shrink-0 items-center gap-2 pr-11">
             <button
               onClick={handleReauditarClick}
               disabled={reauditando}
