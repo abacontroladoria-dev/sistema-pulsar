@@ -17,7 +17,7 @@
 //   - sem_historico: mês passado sem NENHUM snapshot (ex.: antes da
 //     implantação do histórico, ou sem dados sincronizados suficientes).
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { CalendarClock, CalendarX2, Clock, Info, Loader2, TrendingUp, Users } from "lucide-react"
 import { type PrevisaoReceitasResumoMes } from "@/services/previsaoReceitasHistoricoResumo.service"
 import { labelMesAno } from "@/lib/cronograma/helpers"
@@ -87,6 +87,18 @@ const FALTAS_PACIENTES_TONE: Tone = "slate"
 
 function LinhaMesCard({ linha }: { linha: LinhaHistorico }) {
   const [mostrarNotaFonte, setMostrarNotaFonte] = useState(false)
+  const notaFonteRef = useRef<HTMLSpanElement>(null)
+
+  useEffect(() => {
+    if (!mostrarNotaFonte) return
+    function aoClicarFora(e: MouseEvent) {
+      if (notaFonteRef.current && !notaFonteRef.current.contains(e.target as Node)) {
+        setMostrarNotaFonte(false)
+      }
+    }
+    document.addEventListener("mousedown", aoClicarFora)
+    return () => document.removeEventListener("mousedown", aoClicarFora)
+  }, [mostrarNotaFonte])
 
   const Icone = linha.status === "fechado" ? TrendingUp
     : linha.status === "aguardando_fechamento" ? Clock
@@ -106,7 +118,7 @@ function LinhaMesCard({ linha }: { linha: LinhaHistorico }) {
           </span>
         )}
         {usaFonteHistoricaOrbita(linha.ano, linha.mes) && (
-          <span className="relative inline-flex">
+          <span ref={notaFonteRef} className="relative inline-flex">
             <button
               type="button"
               onClick={() => setMostrarNotaFonte(v => !v)}
@@ -130,14 +142,14 @@ function LinhaMesCard({ linha }: { linha: LinhaHistorico }) {
       </div>
 
       {linha.resumo ? (
-        <div className="mt-1.5 flex flex-wrap items-center justify-center gap-y-1 text-xs">
+        <div className="mt-1.5 flex flex-wrap items-center gap-y-1 text-xs">
           {(["receitaSemDeducao", "deducaoFalta", "receitaComDeducao", "sessoesMes"] as const).map((key, i) => {
             const config = METRICAS_RECEITAS[key]
             const IconeMetrica = config.icon
             return (
               <span
                 key={key}
-                className={`flex items-center gap-1.5 px-3 ${i > 0 ? "border-l border-border" : ""}`}
+                className={`flex items-center gap-1.5 pr-3 ${i > 0 ? "border-l border-border pl-3" : ""}`}
               >
                 <IconeMetrica size={13} style={{ color: TONE_ACCENT[config.tone] }} />
                 <span className="text-muted-foreground">{config.label}</span>
@@ -147,7 +159,7 @@ function LinhaMesCard({ linha }: { linha: LinhaHistorico }) {
               </span>
             )
           })}
-          <span className="flex items-center gap-1.5 border-l border-border px-3">
+          <span className="flex items-center gap-1.5 border-l border-border pl-3">
             <Users size={13} style={{ color: TONE_ACCENT[FALTAS_PACIENTES_TONE] }} />
             <span className="text-muted-foreground">Faltas / Pacientes</span>
             <span className={`font-bold ${TONE_SOFT[FALTAS_PACIENTES_TONE].text}`}>
