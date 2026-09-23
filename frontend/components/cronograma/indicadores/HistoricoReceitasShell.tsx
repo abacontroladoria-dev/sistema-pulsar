@@ -18,12 +18,13 @@
 //     implantação do histórico, ou sem dados sincronizados suficientes).
 
 import { useMemo, useState } from "react"
-import { CalendarClock, CalendarX2, Clock, Info, Loader2, TrendingUp } from "lucide-react"
+import { CalendarClock, CalendarX2, Clock, Info, Loader2, TrendingUp, Users } from "lucide-react"
 import { type PrevisaoReceitasResumoMes } from "@/services/previsaoReceitasHistoricoResumo.service"
 import { labelMesAno } from "@/lib/cronograma/helpers"
 import { useResumoHistoricoReceitas } from "@/hooks/useResumoHistoricoReceitas"
 import { EvolucaoReceitasChart } from "./EvolucaoReceitasChart"
 import { METRICAS_RECEITAS, formatarMetrica } from "@/lib/cronograma/previsaoReceitasMetricas"
+import { TONE_ACCENT, TONE_SOFT, type Tone } from "@/components/cronograma/ui/tones"
 import {
   MES_INICIO_HISTORICO,
   listaChavesMes,
@@ -61,6 +62,7 @@ const ICONE_CLASSE_POR_STATUS: Record<StatusMes, string> = {
   sem_historico: "text-muted-foreground",
 }
 
+
 /** Tag ao lado do mês pros status que NÃO são o número final — deixa claro que o que está sendo mostrado ainda pode mudar. */
 const TAG_POR_STATUS: Partial<Record<StatusMes, { texto: string; classe: string }>> = {
   em_desenvolvimento: {
@@ -80,6 +82,9 @@ function usaFonteHistoricaOrbita(ano: number, mes: number): boolean {
 
 const NOTA_FONTE_ORBITA = "Dedução por falta calculada a partir do relatório \"relatorio_faltas_detalhado\" do Órbita, importado manualmente — este mês não passou pela sincronização diária da TiTa."
 
+/** "Faltas / Pacientes" não tem entrada própria em METRICAS_RECEITAS (é um par, não uma métrica) — tom neutro combinando com sessoesMes/faltasMes/pacientesUnicos (todos "slate"). */
+const FALTAS_PACIENTES_TONE: Tone = "slate"
+
 function LinhaMesCard({ linha }: { linha: LinhaHistorico }) {
   const [mostrarNotaFonte, setMostrarNotaFonte] = useState(false)
 
@@ -91,7 +96,7 @@ function LinhaMesCard({ linha }: { linha: LinhaHistorico }) {
   const tag = TAG_POR_STATUS[linha.status]
 
   return (
-    <div className="rounded-lg border border-border bg-card px-3 py-2">
+    <div className="rounded-lg border border-border bg-card px-3 py-2.5">
       <div className="flex flex-wrap items-center gap-2">
         <Icone size={14} className={ICONE_CLASSE_POR_STATUS[linha.status]} />
         <div className="text-xs font-bold text-foreground">{linha.label}</div>
@@ -101,37 +106,53 @@ function LinhaMesCard({ linha }: { linha: LinhaHistorico }) {
           </span>
         )}
         {usaFonteHistoricaOrbita(linha.ano, linha.mes) && (
-          <button
-            type="button"
-            onClick={() => setMostrarNotaFonte(v => !v)}
-            className="rounded-full text-muted-foreground hover:text-foreground hover:bg-muted"
-            title={NOTA_FONTE_ORBITA}
-            aria-label="Fonte da dedução por falta deste mês"
-            aria-expanded={mostrarNotaFonte}
-          >
-            <Info size={14} />
-          </button>
+          <span className="relative inline-flex">
+            <button
+              type="button"
+              onClick={() => setMostrarNotaFonte(v => !v)}
+              className="rounded-full text-muted-foreground hover:text-foreground hover:bg-muted"
+              title={NOTA_FONTE_ORBITA}
+              aria-label="Fonte da dedução por falta deste mês"
+              aria-expanded={mostrarNotaFonte}
+            >
+              <Info size={14} />
+            </button>
+            {mostrarNotaFonte && (
+              <div
+                role="tooltip"
+                className="absolute left-1/2 top-full z-20 mt-1.5 w-64 -translate-x-1/2 rounded-md border border-border bg-card p-2.5 text-left text-[11px] text-muted-foreground shadow-lg"
+              >
+                {NOTA_FONTE_ORBITA}
+              </div>
+            )}
+          </span>
         )}
       </div>
 
-      {mostrarNotaFonte && (
-        <p className="mt-1 text-[11px] text-muted-foreground">{NOTA_FONTE_ORBITA}</p>
-      )}
-
       {linha.resumo ? (
-        <div className="mt-1 flex flex-wrap items-baseline gap-x-4 gap-y-0.5 text-xs">
-          {(["receitaSemDeducao", "deducaoFalta", "receitaComDeducao", "sessoesMes"] as const).map(key => {
+        <div className="mt-1.5 flex flex-wrap items-center justify-center gap-y-1 text-xs">
+          {(["receitaSemDeducao", "deducaoFalta", "receitaComDeducao", "sessoesMes"] as const).map((key, i) => {
             const config = METRICAS_RECEITAS[key]
+            const IconeMetrica = config.icon
             return (
-              <span key={key} className="flex items-baseline gap-1">
+              <span
+                key={key}
+                className={`flex items-center gap-1.5 px-3 ${i > 0 ? "border-l border-border" : ""}`}
+              >
+                <IconeMetrica size={13} style={{ color: TONE_ACCENT[config.tone] }} />
                 <span className="text-muted-foreground">{config.label}</span>
-                <span className="font-bold text-foreground">{formatarMetrica(config, config.acessor(linha.resumo!))}</span>
+                <span className={`font-bold ${TONE_SOFT[config.tone].text}`}>
+                  {formatarMetrica(config, config.acessor(linha.resumo!))}
+                </span>
               </span>
             )
           })}
-          <span className="flex items-baseline gap-1">
+          <span className="flex items-center gap-1.5 border-l border-border px-3">
+            <Users size={13} style={{ color: TONE_ACCENT[FALTAS_PACIENTES_TONE] }} />
             <span className="text-muted-foreground">Faltas / Pacientes</span>
-            <span className="font-bold text-foreground">{linha.resumo.faltasMes} / {linha.resumo.pacientesUnicos}</span>
+            <span className={`font-bold ${TONE_SOFT[FALTAS_PACIENTES_TONE].text}`}>
+              {linha.resumo.faltasMes} / {linha.resumo.pacientesUnicos}
+            </span>
           </span>
         </div>
       ) : (
