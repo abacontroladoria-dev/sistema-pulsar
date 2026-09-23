@@ -13,6 +13,11 @@ import {
   markdownParaCriterios,
   lerVersaoOrigem
 } from '@/lib/auditoria/criteriosMarkdown'
+import {
+  criteriosParaDocx,
+  docxParaMarkdown,
+  lerVersaoOrigemDocx
+} from '@/lib/auditoria/criteriosDocx'
 import { CriteriosInvalidosError } from '@/lib/auditoria/criterios'
 import type { CriteriosAuditoria, VersaoCriteriosAuditoria } from '@/types/auditoriaCriterios'
 import { ROTULO_RISCO, BOTAO_PRIMARIO, BOTAO_SECUNDARIO, CAMPO } from './vocabulario'
@@ -119,7 +124,7 @@ export function ModalCriterios({
   // O que está em tela: o arquivo subido, se houver, senão o vigente.
   const criterios = pendente?.criterios ?? vigente?.criterios
 
-  const baixar = () => {
+  const baixarMd = () => {
     if (!vigente?.criterios) return
     const md = criteriosParaMarkdown(vigente.criterios, { versaoOrigem: vigente.versao })
     const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' })
@@ -131,23 +136,35 @@ export function ModalCriterios({
     URL.revokeObjectURL(url)
   }
 
+  const baixarDocx = async () => {
+    if (!vigente?.criterios) return
+    const blob = await criteriosParaDocx(vigente.criterios, { versaoOrigem: vigente.versao })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `criterios-auditoria-v${vigente.versao ?? 'padrao'}.docx`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   const subir = async (arquivo: File) => {
     setErro(null)
     setConfirmando(false)
     try {
-      const texto = await arquivo.text()
+      const ehDocx = arquivo.name.toLowerCase().endsWith('.docx')
+      const texto = ehDocx ? await docxParaMarkdown(arquivo) : await arquivo.text()
       const lidos = markdownParaCriterios(texto)
       setPendente({
         criterios: lidos,
         nomeArquivo: arquivo.name,
-        versaoOrigem: lerVersaoOrigem(texto)
+        versaoOrigem: ehDocx ? lerVersaoOrigemDocx(texto) : lerVersaoOrigem(texto)
       })
     } catch (e) {
       setPendente(null)
       setErro(
         e instanceof CriteriosInvalidosError
           ? e.message.replace(/^Critérios de auditoria inválidos:\s*/, '')
-          : 'Não consegui ler o arquivo. Ele precisa ser o .md baixado desta tela.'
+          : 'Não consegui ler o arquivo. Ele precisa ser o .md ou .docx baixado desta tela.'
       )
     }
   }
@@ -256,13 +273,13 @@ export function ModalCriterios({
           <div className="flex shrink-0 items-center gap-2">
             {!carregando && !pendente && (
               <>
-                <button onClick={baixar} className={BOTAO_SECUNDARIO}>
+                <button onClick={() => void baixarDocx()} className={BOTAO_SECUNDARIO}>
                   <Download className="h-3.5 w-3.5" />
-                  Baixar .md
+                  Baixar Critérios
                 </button>
                 <button onClick={() => inputArquivo.current?.click()} className={BOTAO_SECUNDARIO}>
                   <Upload className="h-3.5 w-3.5" />
-                  Subir .md
+                  Subir arquivo
                 </button>
               </>
             )}
@@ -286,7 +303,7 @@ export function ModalCriterios({
           <input
             ref={inputArquivo}
             type="file"
-            accept=".md,text/markdown,text/plain"
+            accept=".md,.docx,text/markdown,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             className="hidden"
             onChange={e => {
               const arquivo = e.target.files?.[0]
@@ -346,11 +363,11 @@ export function ModalCriterios({
               {!pendente && (
                 <div className="rounded-xl border border-dashed border-border p-3">
                   <p className="text-xs leading-relaxed text-muted-foreground">
-                    Para mudar a régua: <strong className="text-foreground">Baixar .md</strong>,
-                    editar o arquivo no Word ou no Bloco de Notas e{' '}
-                    <strong className="text-foreground">Subir .md</strong> de volta. Não apague as
-                    linhas de título nem o que está entre parênteses nelas — é o que liga cada item
-                    ao sistema.
+                    Para mudar a régua: <strong className="text-foreground">Baixar .docx</strong>,
+                    editar o texto no Word e <strong className="text-foreground">Subir arquivo</strong> de
+                    volta (aceita .docx ou .md). Não apague as linhas de título nem mude o estilo
+                    delas (Título 2/3), e não mexa no que está entre parênteses — é o que liga cada
+                    item ao sistema.
                   </p>
                 </div>
               )}
