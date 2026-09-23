@@ -184,6 +184,11 @@ async function iniciarWorker() {
   // Trocar de versão ou fechar o navegador no meio de uma autorização seria
   // trocar um problema por outro pior.
   let restartPedido = false
+  let restartPedidoEm = null
+  // Tarefa dentro de executarRpa. A rede de segurança da batida só age com uma
+  // tarefa presa: entre tarefas, quem obedece o reinício é o topo do laço.
+  let tarefaEmCurso = null
+  const REINICIO_FORCADO_MS = 90000
   let versaoDisponivel = ultimoEstado.versao_disponivel ?? null
   let batendo = false
   // A checagem de atualização morava dentro do `if` da batida, ou seja, rodava
@@ -206,7 +211,26 @@ async function iniciarWorker() {
       // tarefa, descartar aqui seria perder o clique de quem apertou
       // "reiniciar" no painel. Guarda, e o topo do laço obedece quando a tarefa
       // terminar.
-      if (estado.restart_solicitado) restartPedido = true
+      if (estado.restart_solicitado && !restartPedido) {
+        restartPedido = true
+        restartPedidoEm = Date.now()
+        if (tarefaEmCurso) {
+          console.log('🔄 Reinício pedido pela recepção com tarefa em andamento — encerrando a espera...')
+        }
+      }
+
+      // Rede de segurança: rpa.js sai das esperas ao ver `reinicioPedido()`,
+      // mas se a tarefa estiver presa num ponto que não consulta a marca, o
+      // pedido da recepção não pode ficar esperando para sempre.
+      if (restartPedido && tarefaEmCurso && Date.now() - restartPedidoEm >= REINICIO_FORCADO_MS) {
+        console.log('🔄 A tarefa não liberou o robô a tempo — reinício forçado')
+        await api.registrarLog(
+          tarefaEmCurso, 'Robo reiniciado pela recepcao com a tarefa presa'
+        ).catch(() => {})
+        clearInterval(batida)
+        await sessao.fecharTudo().catch(() => {})
+        process.exit(SAIDA_RELANCAR)
+      }
       if (estado.versao_disponivel) versaoDisponivel = estado.versao_disponivel
     } catch (e) {
       // Batida é sinal de vida, não trabalho: falhar aqui não derruba o robô.
@@ -292,6 +316,7 @@ async function iniciarWorker() {
       let aba = null
 
       try {
+        tarefaEmCurso = tarefa.id
         aba = await sessao.abrirFormulario(cfg)
         aba.filaId = tarefa.id
 
@@ -301,6 +326,7 @@ async function iniciarWorker() {
           cfg,
           api,
           cancelado,
+          reinicioPedido: () => restartPedido,
           // Os alertas que a ASSIM emitiu nesta aba. É por eles que uma recusa
           // do portal deixa de ser confundida com "ninguém clicou em enviar".
           alertas: aba.alertas || [],
@@ -323,6 +349,7 @@ async function iniciarWorker() {
           // "enviar". Não é falha do robô e não há nada a descartar — a aba já
           // não existe. Vem por retorno para não passar pelo catch.
           envio_nao_ocorrido: 'Encerrada sem envio (janela fechada antes do enviar)',
+          reiniciada: 'Encerrada sem envio (robo reiniciado pela recepcao)',
         }
 
         await api.registrarLog(
@@ -358,6 +385,8 @@ async function iniciarWorker() {
         if (erroExecucao.fatal) throw erroExecucao
 
         await esperar(1000)
+      } finally {
+        tarefaEmCurso = null
       }
 
     } catch (erroGeral) {

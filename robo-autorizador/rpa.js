@@ -494,7 +494,7 @@ async function seletorDe(locator) {
 // E o modal do TOKEN tem tratamento próprio: enquanto ele está na tela o prazo
 // do robô fica SUSPENSO, e ao fim ele desiste sem fechar a aba. Quem fecha o
 // token é o usuário, só.
-async function aguardarConfirmacaoBeneficiario(page, cfg, api, tarefa, alertas = []) {
+async function aguardarConfirmacaoBeneficiario(page, cfg, api, tarefa, alertas = [], cancelado = async () => false, reinicioPedido = () => false) {
   const tetoConsulta = Number(cfg.beneficiario_consulta_ms) || 60000
   const tetoAparecer = Number(cfg.identificacao_aparecer_ms) || 90000
   // `confirmacao_beneficiario_ms` NÃO é mais lido: desde a 1.1.8 a espera pela
@@ -656,6 +656,24 @@ async function aguardarConfirmacaoBeneficiario(page, cfg, api, tarefa, alertas =
   let tokenDesde = null
   let avisouToken = false
 
+  // Watchdog de "ocupada" grudada: se o usuário fecha só o modal (não a aba
+  // inteira, ex. no "x" do #checkBday) e algum resíduo mantém SEL_ASSIM_OCUPADA
+  // casando pra sempre, nenhuma das saídas abaixo dispara — nem -1 (a aba
+  // segue viva), nem silêncio (nunca fica desocupada), nem o teto do token
+  // (nunca aparece). Sem isto o robô fica preso nesta tarefa para sempre. Teto
+  // largo (20 min) e SÓ conta sem qualquer sinal de progresso, para não cortar
+  // uma leitura biométrica/QR legítima em andamento — cada sinal de vida
+  // (ocupada virou 0, token apareceu, bday foi resolvido) reseta o relógio.
+  const tetoPreso = Number(cfg.identificacao_presa_ms) || 1200000
+  let presoDesde = Date.now()
+
+  // Checagem do "botão de pânico": a atendente cancela a solicitação em
+  // /solicitar (status vira 'cancelado' na fila) e não precisa esperar nem o
+  // silêncio nem o watchdog — o robô sai desta espera sem prazo na próxima
+  // volta do laço. Espaçada porque é uma consulta ao banco a cada iteração.
+  const INTERVALO_CHECAR_CANCELADO = 3000
+  let proximaChecagemCancelado = Date.now() + INTERVALO_CHECAR_CANCELADO
+
   // Sem prazo desde a 1.1.8. Antes o laço morria em `confirmacao_beneficiario_ms`
   // (15 min) e o throw logo abaixo levava a janela junto — a recepção perdia a
   // tela no meio da leitura facial/QR. As saídas legítimas continuam todas aqui:
@@ -667,12 +685,39 @@ async function aguardarConfirmacaoBeneficiario(page, cfg, api, tarefa, alertas =
       throw new Error('A janela da ASSIM foi fechada durante a identificação do beneficiário.')
     }
 
+    if (Date.now() - presoDesde >= tetoPreso) {
+      console.warn(
+        `⚠️  A identificação está "ocupada" sem nenhum progresso há ` +
+        `${Math.round(tetoPreso / 60000)} min (provável modal fechado pelo usuário ` +
+        'deixando resíduo na tela). Devolvendo a tarefa — a aba fica aberta.'
+      )
+      await api.registrarLog(
+        filaId,
+        'Identificacao presa sem progresso: tarefa devolvida para nao travar a fila'
+      )
+      return 'identificacao_travada'
+    }
+
+    if (reinicioPedido()) {
+      console.log('🔄 Reinício pedido pela recepção — saindo da espera pela identificação')
+      return 'reinicio'
+    }
+
+    if (Date.now() >= proximaChecagemCancelado) {
+      proximaChecagemCancelado = Date.now() + INTERVALO_CHECAR_CANCELADO
+      if (await cancelado()) {
+        console.log('🛑 Solicitação cancelada pela recepção — saindo da espera pela identificação')
+        return 'identificacao_travada'
+      }
+    }
+
     // O token é do usuário e tem teto próprio, contado de quando aparece.
     if (await tokenNaTela(page)) {
       if (tokenDesde === null) tokenDesde = Date.now()
 
       if (!avisouToken) {
         avisouToken = true
+        presoDesde = Date.now()
         console.log('🔑 TOKEN DO BENEFICIÁRIO NA TELA — o robô não fecha esta janela.')
         await api.registrarLog(
           filaId, 'Modal de token aberto: robo aguardando sem prazo e sem fechar a aba'
@@ -703,6 +748,7 @@ async function aguardarConfirmacaoBeneficiario(page, cfg, api, tarefa, alertas =
     // (10s) e chamá-la às cegas a cada volta congelaria o laço, cegando o teto
     // do token e a detecção da aba fechada.
     if (!bdayResolvido && await contar(`${SEL_MODAL_BENEFICIARIO}:visible`) > 0) {
+      presoDesde = Date.now()
       if (await tentarBday() === 'recusado') {
         // Mesma decisão da etapa 2b: avisa e sai da frente, sem derrubar a
         // tarefa. A tela segue utilizável e a recepção corrige à mão.
@@ -720,6 +766,8 @@ async function aguardarConfirmacaoBeneficiario(page, cfg, api, tarefa, alertas =
     if (ocupada > 0) {
       silencioDesde = null
     } else {
+      presoDesde = Date.now()
+
       // Atalho: a ASSIM já gravou o código da identificação e não há mais nada
       // aberto. Acabou, sem esperar o silêncio inteiro.
       if (await identificado()) break
@@ -812,15 +860,19 @@ const MARCAS_DESFECHO = [
  * outra página, com recibo — não há o que reenviar, então retorna na hora.
  *
  * @param {string[]} alertas array alimentado pelo handler de dialog da aba
- * @returns {Promise<{resultado: 'sucesso'|'rejeitado'|'aba_fechada', recusa: string|null}>}
+ * @param {Function} cancelado () => Promise<boolean> — botão de pânico da /solicitar
+ * @param {Function} reinicioPedido () => boolean — botão "Reiniciar robô" da /solicitar
+ * @returns {Promise<{resultado: 'sucesso'|'rejeitado'|'aba_fechada'|'cancelado'|'reinicio', recusa: string|null}>}
  */
-async function aguardarResultadoEnvio(page, alertas = []) {
+async function aguardarResultadoEnvio(page, alertas = [], cancelado = async () => false, reinicioPedido = () => false) {
   console.log('⏳ Aguardando o envio da recepção — SEM PRAZO. Esta janela não fecha sozinha.')
 
   const inicio = Date.now()
   let ultimoLog = Date.now()
   let lidos = alertas.length
   let recusa = null
+  const INTERVALO_CHECAR_CANCELADO = 3000
+  let proximaChecagemCancelado = Date.now() + INTERVALO_CHECAR_CANCELADO
 
   while (true) {
     // Mesmo padrão da identificação (`contar`): `isClosed()` sozinho não pega o
@@ -830,6 +882,19 @@ async function aguardarResultadoEnvio(page, alertas = []) {
     if (viva === -1 || page.isClosed()) {
       console.log('🚪 A janela da ASSIM foi fechada antes do envio')
       return { resultado: 'aba_fechada', recusa }
+    }
+
+    if (reinicioPedido()) {
+      console.log('🔄 Reinício pedido pela recepção — saindo da espera pelo envio')
+      return { resultado: 'reinicio', recusa }
+    }
+
+    if (Date.now() >= proximaChecagemCancelado) {
+      proximaChecagemCancelado = Date.now() + INTERVALO_CHECAR_CANCELADO
+      if (await cancelado()) {
+        console.log('🛑 Solicitação cancelada pela recepção — saindo da espera pelo envio')
+        return { resultado: 'cancelado', recusa }
+      }
     }
 
     for (const { marca, resultado } of MARCAS_DESFECHO) {
@@ -1011,7 +1076,7 @@ function desenharModal({ opcoes, idModal, fnConfirmar }) {
   document.addEventListener('keydown', barrarEscape, true)
 }
 
-async function pedirFormaValidacao(page, timeoutMs) {
+async function pedirFormaValidacao(page, timeoutMs, reinicioPedido = () => false) {
   let resolver
   const escolhido = new Promise(res => { resolver = res })
 
@@ -1047,10 +1112,22 @@ async function pedirFormaValidacao(page, timeoutMs) {
     }
   }, 1500)
 
-  const prazo = new Promise(res => setTimeout(() => res(null), timeoutMs))
+  let temporizadorPrazo, vigiaReinicio
+  const prazo = new Promise(res => { temporizadorPrazo = setTimeout(() => res(null), timeoutMs) })
+
+  // O pedido de reinício encerra o modal como se tivesse expirado: a guia já
+  // foi capturada, então a tarefa ainda é concluída — só sem a forma.
+  const reinicio = new Promise(res => {
+    vigiaReinicio = setInterval(() => {
+      if (reinicioPedido()) {
+        console.log('🔄 Reinício pedido pela recepção — encerrando o modal de validação')
+        res(null)
+      }
+    }, 1000)
+  })
 
   try {
-    const resposta = await Promise.race([escolhido, prazo])
+    const resposta = await Promise.race([escolhido, prazo, reinicio])
     respondido = true
 
     if (resposta) {
@@ -1069,6 +1146,8 @@ async function pedirFormaValidacao(page, timeoutMs) {
 
   } finally {
     clearInterval(watchdog)
+    clearInterval(vigiaReinicio)
+    clearTimeout(temporizadorPrazo)
     await page.evaluate((id) => document.getElementById(id)?.remove(), ID_MODAL).catch(() => {})
   }
 }
@@ -1167,14 +1246,28 @@ function lerConfirmacao() {
  * @param {object}   opcoes.api       instância de Api
  * @param {Function} opcoes.cancelado () => Promise<boolean>
  * @param {string[]} opcoes.alertas   alertas que a ASSIM emitiu nesta aba
- * @returns {Promise<'sucesso'|'sem_guia'|'glosa'|'devolvida'>}
+ * @returns {Promise<'sucesso'|'sem_guia'|'glosa'|'devolvida'|'envio_nao_ocorrido'|'reiniciada'>}
  *
  * 'devolvida' = o robô desistiu de esperar mas NÃO fechou nada: o modal de token
- * ficou aberto e a tarefa voltou para a recepção. Volta por retorno, e não por
- * throw, exatamente para o worker não descartar a aba.
+ * ficou aberto, ou a identificação ficou presa sem progresso (watchdog), e a
+ * tarefa voltou para a recepção. Volta por retorno, e não por throw,
+ * exatamente para o worker não descartar a aba.
  */
-async function executarRpa({ page, tarefa, cfg, api, cancelado, alertas = [], aba = null }) {
+async function executarRpa({ page, tarefa, cfg, api, cancelado, reinicioPedido, alertas = [], aba = null }) {
   if (!cancelado) cancelado = async () => false
+  if (!reinicioPedido) reinicioPedido = () => false
+
+  // Saída pelo botão "Reiniciar robô": a linha continua 'processando', então
+  // precisa de desfecho aqui — senão ficaria órfã quando o processo relançar.
+  const encerrarPorReinicio = async () => {
+    await api.concluirTarefa(tarefa.id, 'erro', {
+      erro: 'Robo reiniciado pela recepcao antes de concluir. A solicitacao NAO ' +
+            'foi enviada: solicite de novo.',
+    })
+    concluiu = true
+    console.log('🔄 RPA encerrado — robô será reiniciado a pedido da recepção')
+    return 'reiniciada'
+  }
 
   let concluiu = false
 
@@ -1196,6 +1289,7 @@ async function executarRpa({ page, tarefa, cfg, api, cancelado, alertas = [], ab
     await page.selectOption('select[name="natureza"]',  { label: cfg.natureza })
     await page.selectOption('select[name="servico"]',   { label: cfg.tipo_servico })
 
+    if (reinicioPedido()) return await encerrarPorReinicio()
     if (await cancelado()) throw new Error('Execução cancelada')
 
     if (!tarefa.empresa || !tarefa.matricula || !tarefa.dep) {
@@ -1211,7 +1305,7 @@ async function executarRpa({ page, tarefa, cfg, api, cancelado, alertas = [], ab
     // digitado por cima disso.
     await page.press('input[name="associado3"]', 'Tab')
 
-    const identificacao = await aguardarConfirmacaoBeneficiario(page, cfg, api, tarefa, alertas)
+    const identificacao = await aguardarConfirmacaoBeneficiario(page, cfg, api, tarefa, alertas, cancelado, reinicioPedido)
 
     // O token continua na tela e o robô desistiu de esperar. Encerra a tarefa
     // AQUI, por retorno normal: nada é lançado, então o worker toma o ramo de
@@ -1229,6 +1323,32 @@ async function executarRpa({ page, tarefa, cfg, api, cancelado, alertas = [], ab
       })
       concluiu = true
       console.log('🔑 RPA devolvido à recepção — aba preservada com o token aberto')
+      return 'devolvida'
+    }
+
+    // Mesmo desenho do 'token_pendente': retorno normal, sem lançar, então o
+    // worker não chama sessao.descartar() e a aba fica de pé — mas agora o robô
+    // já está livre para pegar a próxima tarefa, que é o ponto do watchdog.
+    if (identificacao === 'reinicio') return await encerrarPorReinicio()
+
+    if (identificacao === 'identificacao_travada') {
+      // Se a saída foi por cancelamento explícito (botão na /solicitar), a
+      // linha já está 'cancelado' — não sobrescrever com 'erro' por cima da
+      // decisão da recepção, só liberar o robô.
+      if (await cancelado()) {
+        concluiu = true
+        console.log('🛑 RPA encerrado — solicitação cancelada pela recepção')
+        return 'devolvida'
+      }
+
+      await api.concluirTarefa(tarefa.id, 'erro', {
+        erro: 'A identificacao do beneficiario ficou presa na tela sem nenhum ' +
+              'progresso (provavel modal fechado antes de concluir). A tarefa ' +
+              'voltou para a recepcao e a ABA NAO FOI FECHADA: confira a janela ' +
+              'da ASSIM e solicite de novo.',
+      })
+      concluiu = true
+      console.log('🧍 RPA devolvido à recepção — identificação presa sem progresso')
       return 'devolvida'
     }
 
@@ -1302,9 +1422,19 @@ async function executarRpa({ page, tarefa, cfg, api, cancelado, alertas = [], ab
 
     let resultado, recusa
     try {
-      ;({ resultado, recusa } = await aguardarResultadoEnvio(page, alertas))
+      ;({ resultado, recusa } = await aguardarResultadoEnvio(page, alertas, cancelado, reinicioPedido))
     } finally {
       if (aba) aba.aguardandoOperador = false
+    }
+
+    // Botão de pânico: a atendente já cancelou pela /solicitar, a linha já
+    // está 'cancelado' — só libera o robô sem sobrescrever esse status.
+    if (resultado === 'reinicio') return await encerrarPorReinicio()
+
+    if (resultado === 'cancelado') {
+      concluiu = true
+      console.log('🛑 RPA encerrado — solicitação cancelada pela recepção antes do envio')
+      return 'devolvida'
     }
 
     // A janela foi fechada por uma pessoa antes do envio. Encerra AQUI por
@@ -1352,7 +1482,7 @@ async function executarRpa({ page, tarefa, cfg, api, cancelado, alertas = [], ab
       )
     }
 
-    const forma = await pedirFormaValidacao(page, Number(cfg.modal_timeout_ms) || 600000)
+    const forma = await pedirFormaValidacao(page, Number(cfg.modal_timeout_ms) || 600000, reinicioPedido)
 
     // Sem guia capturada a autorização até aconteceu na ASSIM, mas o vínculo não
     // existe. 'concluido' pintaria o card de verde e esconderia a lacuna;

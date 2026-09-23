@@ -321,6 +321,8 @@ const unidades = [
   // confirmação com os números — porque errar a data aqui atinge centenas de
   // sessões de uma vez.
   const [modalLote, setModalLote] = useState(false)
+  const [confirmarReinicio, setConfirmarReinicio] = useState(false)
+  const [reiniciando, setReiniciando] = useState(false)
   const [loteEtapa, setLoteEtapa] = useState<'form' | 'confirmacao'>('form')
   const [loteData, setLoteData] = useState('')
   const [loteMotivo, setLoteMotivo] = useState<MotivoFalta>('feriado')
@@ -1770,6 +1772,49 @@ async function handleCancelarProcessamento(p: any) {
 }
 
 // =========================
+// 🔄 REINICIAR ROBÔ
+// =========================
+
+// Sem paciente: o robô pode travar depois que o card já saiu da tela (ex.: a
+// autorização foi feita e só faltou responder o modal de forma de validação).
+// A máquina sai do usuário logado, não do MACHINE_ID — ele fica nulo justamente
+// quando o robô não responde. O worker consome a marca na próxima batida (30s).
+async function handleReiniciarRobo() {
+  setReiniciando(true)
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      toast.error('Sessão expirada. Entre de novo.')
+      return
+    }
+
+    const { data, error } = await supabase
+      .from('maquinas')
+      .update({ restart_solicitado: true })
+      .eq('user_id', user.id)
+      .select('id')
+
+    if (error) {
+      toast.error('Não foi possível pedir o reinício do robô')
+      return
+    }
+
+    if (!data?.length) {
+      toast.error('Nenhum robô registrado para este usuário')
+      return
+    }
+
+    toast.success('Pedido enviado — o robô reinicia em até 1 minuto')
+    setConfirmarReinicio(false)
+  } catch (err) {
+    console.error(err)
+    toast.error('Erro inesperado')
+  } finally {
+    setReiniciando(false)
+  }
+}
+
+// =========================
 // BUILD CARD KEY
 // =========================
 
@@ -2034,6 +2079,7 @@ useEffect(() => {
             </p>
           </div>
 
+          <div className="flex flex-col items-stretch gap-2">
           <button
             type="button"
             onClick={abrirModalLote}
@@ -2043,19 +2089,43 @@ useEffect(() => {
               inline-flex items-center gap-2
               whitespace-nowrap
               rounded-lg
-              border border-slate-200
-              bg-white
+              border border-blue-200
+              bg-blue-50
               px-3 py-1.5
-              text-[13px] font-medium text-slate-500
+              text-[13px] font-medium text-blue-700
               shadow-sm
               transition-colors
-              hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700
+              hover:border-blue-300
               focus:outline-none focus:ring-2 focus:ring-[#3A8FB7]/40
             "
           >
-            <CalendarX size={15} className="text-slate-400" />
+            <CalendarX size={15} className="text-blue-600" />
             Registrar dia sem atendimento
           </button>
+
+          <button
+            type="button"
+            onClick={() => setConfirmarReinicio(true)}
+            title="Destrava o robô de autorização deste computador"
+            className="
+              shrink-0 mt-0.5
+              inline-flex items-center gap-2
+              whitespace-nowrap
+              rounded-lg
+              border border-rose-300
+              bg-rose-50
+              px-3 py-1.5
+              text-[13px] font-medium text-rose-700
+              shadow-sm
+              transition-colors
+              hover:bg-rose-100
+              focus:outline-none focus:ring-2 focus:ring-rose-400/40
+            "
+          >
+            <RotateCw size={15} className="text-rose-600" />
+            Reiniciar robô de autorização
+          </button>
+          </div>
         </div>
         {/* O aviso muda de cor conforme a AÇÃO que ele pede. Âmbar quando a
             recepção resolve sozinha (reiniciar o robô); azul quando o robô está
@@ -3121,6 +3191,48 @@ useEffect(() => {
 
 
 {/* MODAL FALTA CONFIRMACAO */}
+{confirmarReinicio && (
+  <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 px-4">
+    <div className="relative bg-white rounded-2xl shadow-xl p-6 w-full max-w-[380px] border border-slate-200">
+      <button
+        onClick={() => setConfirmarReinicio(false)}
+        disabled={reiniciando}
+        className="absolute top-3 right-3 text-slate-400 hover:text-slate-600 text-lg"
+      >
+        ✕
+      </button>
+
+      <h2 className="text-lg font-semibold text-slate-800 text-center">
+        Reiniciar o robô de autorização?
+      </h2>
+
+      <p className="text-sm text-slate-600 text-center mt-3">
+        O robô deste computador será reiniciado em até 1 minuto. Se houver uma
+        solicitação em andamento e ainda não enviada, ela volta para a recepção
+        e precisa ser solicitada de novo.
+      </p>
+
+      <div className="mt-5 flex flex-col gap-3">
+        <button
+          onClick={handleReiniciarRobo}
+          disabled={reiniciando}
+          className="w-full py-2.5 rounded-lg bg-rose-600 text-white font-semibold hover:bg-rose-700 transition disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
+        >
+          {reiniciando && <Loader2 size={15} className="animate-spin" />}
+          Reiniciar robô de autorização
+        </button>
+        <button
+          onClick={() => setConfirmarReinicio(false)}
+          disabled={reiniciando}
+          className="w-full py-2.5 rounded-lg border border-slate-200 text-slate-600 font-medium hover:bg-slate-50 transition"
+        >
+          Voltar
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
 {confirmarFaltaDia && (
   <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50">
 
