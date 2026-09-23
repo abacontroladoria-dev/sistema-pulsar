@@ -6,6 +6,7 @@ import { useToneColor, type Tone } from '@/hooks/useToneColor'
 import { TONE_CHIP } from '@/components/ui/tones'
 import type { ResumoProfissionalAuditoria } from '@/types/auditoriaEvolucoes'
 import { tomDaConformidade, tomSeHouver, FOCO, BOTAO_SECUNDARIO } from './vocabulario'
+import { Paginacao, usePaginacao } from './Paginacao'
 
 interface Props {
   resumos: ResumoProfissionalAuditoria[]
@@ -13,12 +14,17 @@ interface Props {
   onVerEvolucoesProfissional: (prof: ResumoProfissionalAuditoria) => void
 }
 
+/* 12 = quatro linhas de três cards no desktop, sem corte pela metade. */
+const POR_PAGINA = 12
+
 export function ProfissionaisCobrancaTab({
   resumos,
   onCobrarProfissional,
   onVerEvolucoesProfissional
 }: Props) {
   const toneColor = useToneColor()
+  // Antes do early return: hook não pode ficar atrás de condicional.
+  const { pagina, setPagina, totalPaginas, fatia } = usePaginacao(resumos, POR_PAGINA)
 
   if (resumos.length === 0) {
     return (
@@ -35,8 +41,9 @@ export function ProfissionaisCobrancaTab({
   }
 
   return (
+    <>
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-      {resumos.map(prof => {
+      {fatia.map(prof => {
         const temRisco = prof.risco_relevante > 0 || prof.risco_especifico > 0
         const temPendencias = prof.pendentes_cobranca > 0
 
@@ -135,6 +142,23 @@ export function ProfissionaisCobrancaTab({
         )
       })}
     </div>
+
+    {/* Fora do grid e com moldura própria: dentro dele a paginação viraria
+        uma célula e ocuparia a vaga de um card. */}
+    {totalPaginas > 1 && (
+      <div className="mt-4 overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+        <Paginacao
+          pagina={pagina}
+          totalPaginas={totalPaginas}
+          total={resumos.length}
+          porPagina={POR_PAGINA}
+          onMudar={setPagina}
+          rotuloItem={['profissional', 'profissionais']}
+          comDivisoria={false}
+        />
+      </div>
+    )}
+    </>
   )
 }
 
