@@ -35,6 +35,7 @@ import { useLinhasMesInteiro } from "@/hooks/useLinhasMesInteiro"
 import { usePrevisaoReceitasHistorico } from "@/hooks/usePrevisaoReceitasHistorico"
 import { useResumoHistoricoReceitas } from "@/hooks/useResumoHistoricoReceitas"
 import { normalizarUnidadeOcupacao } from "@/lib/cronograma/ocupacaoProf"
+import { normTxt } from "@/lib/cronograma/constants"
 import { getRefWeekDoMes, labelMesAno, fmtReal } from "@/lib/cronograma/helpers"
 import { SeletorMesPrevisao } from "./SeletorMesPrevisao"
 import { ExportEscopoDialog } from "./ExportEscopoDialog"
@@ -544,6 +545,50 @@ function unidadeDaLinha(r: { sala_nome: string | null }): string {
   return normalizarUnidadeOcupacao(r.sala_nome || "")
 }
 
+/** Chave estável de paciente — por paciente_id quando disponível, nome normalizado como fallback (mesmo padrão de faturamentoProjecao.ts:pacienteKey). */
+function pacienteKey(pacienteId: number | null, paciente: string | null): string {
+  return pacienteId !== null ? `id:${pacienteId}` : `nome:${normTxt(paciente || "")}`
+}
+
+// Valor exato devolvido por normalizarUnidadeOcupacao — não são só rótulos,
+// são as chaves usadas pra decidir se uma sessão é "Ambiente Natural" ou uma
+// unidade física de verdade.
+const AMBIENTE_NATURAL = "Ambiente Natural"
+const RENOME_AMBIENTE_NATURAL = `${AMBIENTE_NATURAL} (Total)`
+
+// Unidades físicas que ganham o checkbox extra "Incluir Ambiente Natural"
+// (decisão de produto: só estas 3, não a Unidade Terceirizada).
+const UNIDADES_COM_OPCAO_AMBIENTE_NATURAL = new Set(["Fazendinha", "Padre Miguel", "Realengo"])
+
+/**
+ * Unidade física de cada paciente — a mais frequente entre as sessões dele no
+ * mês, EXCLUINDO Ambiente Natural e "Consertar Unidade no sistema" (não são
+ * unidade física de ninguém). Usada só pra decidir se as sessões de Ambiente
+ * Natural de um paciente entram quando "Incluir Ambiente Natural" está
+ * marcado numa unidade física — nunca pra filtrar as sessões físicas em si
+ * (essas já têm a própria unidade). Paciente sem nenhuma sessão física no mês
+ * fica de fora do Map: as sessões de Ambiente Natural dele só aparecem via
+ * "Ambiente Natural (Total)", nunca associadas a uma unidade física (decisão
+ * de produto — não adivinhar unidade de quem não tem sessão física no mês).
+ */
+function calcularUnidadeFisicaPorPaciente(linhasMes: { paciente_id: number | null; paciente_nome: string | null; sala_nome: string | null }[]): Map<string, string> {
+  const contagem = new Map<string, Map<string, number>>()
+  for (const r of linhasMes) {
+    const unidade = unidadeDaLinha(r)
+    if (unidade === AMBIENTE_NATURAL || unidade === "Consertar Unidade no sistema") continue
+    const key = pacienteKey(r.paciente_id, r.paciente_nome)
+    const porUnidade = contagem.get(key) ?? new Map<string, number>()
+    porUnidade.set(unidade, (porUnidade.get(unidade) ?? 0) + 1)
+    contagem.set(key, porUnidade)
+  }
+  const resultado = new Map<string, string>()
+  for (const [key, porUnidade] of contagem) {
+    const [unidadeMaisFrequente] = [...porUnidade.entries()].sort((a, b) => b[1] - a[1])[0]
+    resultado.set(key, unidadeMaisFrequente)
+  }
+  return resultado
+}
+
 export function PrevisaoReceitasShell() {
   const [periodo, setPeriodo] = useState(mesSeguinteAtual)
   const semanaRef = useMemo(() => getRefWeekDoMes(periodo.ano, periodo.mes), [periodo.ano, periodo.mes])
@@ -558,6 +603,12 @@ export function PrevisaoReceitasShell() {
   // já que o retrato congelado não guarda a unidade da sessão.
   const [unidadesFiltro, setUnidadesFiltro] = useState<string[]>([])
 
+  // Unidades físicas com "Incluir Ambiente Natural" marcado — decide se as
+  // sessões de Ambiente Natural dos pacientes DESSA unidade entram junto.
+  // Independente de unidadesFiltro: só tem efeito quando a unidade física
+  // correspondente também está selecionada (ver linhaPassaNoFiltro abaixo).
+  const [incluirAmbienteNaturalPorUnidade, setIncluirAmbienteNaturalPorUnidade] = useState<string[]>([])
+
   // Opções vêm de linhasMes (mês inteiro) SEM aplicar o próprio filtro, senão
   // a lista de opções encolheria conforme o usuário marca unidades.
   const { linhasMes, faltas, loading: loadingMes, error: errorMes } = useLinhasMesInteiro(periodo.ano, periodo.mes)
@@ -565,14 +616,33 @@ export function PrevisaoReceitasShell() {
     () => [...new Set(linhasMes.map(unidadeDaLinha))].sort(),
     [linhasMes],
   )
+  const unidadeFisicaPorPaciente = useMemo(
+    () => calcularUnidadeFisicaPorPaciente(linhasMes),
+    [linhasMes],
+  )
+
+  // Uma linha passa se: (a) a própria unidade normalizada dela está marcada
+  // (cobre unidades físicas normais E "Ambiente Natural (Total)"), OU (b) é
+  // Ambiente Natural e a unidade física do paciente está marcada COM
+  // "Incluir Ambiente Natural" ligado pra essa unidade.
+  const linhaPassaNoFiltro = useCallback((r: { sala_nome: string | null; paciente_id: number | null; paciente_nome: string | null }) => {
+    if (!unidadesFiltro.length) return true
+    const unidade = unidadeDaLinha(r)
+    if (unidadesFiltro.includes(unidade)) return true
+    if (unidade !== AMBIENTE_NATURAL || !incluirAmbienteNaturalPorUnidade.length) return false
+    const unidadeFisica = unidadeFisicaPorPaciente.get(pacienteKey(r.paciente_id, r.paciente_nome))
+    return unidadeFisica !== undefined
+      && unidadesFiltro.includes(unidadeFisica)
+      && incluirAmbienteNaturalPorUnidade.includes(unidadeFisica)
+  }, [unidadesFiltro, incluirAmbienteNaturalPorUnidade, unidadeFisicaPorPaciente])
 
   const linhasFiltradas = useMemo(
-    () => unidadesFiltro.length ? linhas.filter(r => unidadesFiltro.includes(unidadeDaLinha(r))) : linhas,
-    [linhas, unidadesFiltro],
+    () => unidadesFiltro.length ? linhas.filter(linhaPassaNoFiltro) : linhas,
+    [linhas, unidadesFiltro, linhaPassaNoFiltro],
   )
   const linhasMesFiltradas = useMemo(
-    () => unidadesFiltro.length ? linhasMes.filter(r => unidadesFiltro.includes(unidadeDaLinha(r))) : linhasMes,
-    [linhasMes, unidadesFiltro],
+    () => unidadesFiltro.length ? linhasMes.filter(linhaPassaNoFiltro) : linhasMes,
+    [linhasMes, unidadesFiltro, linhaPassaNoFiltro],
   )
 
   const previsaoBase = useMemo(
@@ -720,7 +790,20 @@ export function PrevisaoReceitasShell() {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <SeletorMesPrevisao ano={periodo.ano} mes={periodo.mes} onChange={(ano, mes) => setPeriodo({ ano, mes })} />
-          <UnidadeMultiSelect label="Unidades" values={unidadesFiltro} options={unidadesDisponiveis} onChange={setUnidadesFiltro} disabled={usarHistorico} />
+          <UnidadeMultiSelect
+            label="Unidades"
+            values={unidadesFiltro}
+            options={unidadesDisponiveis}
+            onChange={setUnidadesFiltro}
+            disabled={usarHistorico}
+            renderLabel={o => o === AMBIENTE_NATURAL ? RENOME_AMBIENTE_NATURAL : o}
+            subcheckbox={{
+              aplicaPara: o => UNIDADES_COM_OPCAO_AMBIENTE_NATURAL.has(o),
+              label: "Incluir Ambiente Natural",
+              values: incluirAmbienteNaturalPorUnidade,
+              onChange: setIncluirAmbienteNaturalPorUnidade,
+            }}
+          />
         </div>
         {usarHistorico && historico.snapshotData && (
           <span className="text-[11px] font-semibold text-blue-600 dark:text-blue-400">

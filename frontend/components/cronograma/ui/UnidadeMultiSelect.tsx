@@ -9,15 +9,34 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { ChevronDown, Filter } from "lucide-react"
 import { normTxt } from "@/lib/cronograma/constants"
 
+/**
+ * Checkbox secundário, indentado sob uma opção específica — usado hoje pra
+ * "Incluir Ambiente Natural" junto de uma unidade física (Previsão de
+ * Receitas), mas não amarrado a esse caso: qualquer opção pra qual
+ * `aplicaPara` devolver true ganha esse checkbox extra abaixo dela. Só reage
+ * a clique enquanto a opção-pai está marcada — sem pai marcado, o valor não
+ * tem efeito nenhum no filtro, então fica desabilitado pra não sugerir que
+ * teria.
+ */
+interface SubcheckboxConfig {
+  aplicaPara: (opcao: string) => boolean
+  label: string
+  values: string[]
+  onChange: (v: string[]) => void
+}
+
 interface UnidadeMultiSelectProps {
   label: string
   values: string[]
   options: string[]
   onChange: (v: string[]) => void
   disabled?: boolean
+  /** Texto exibido pra uma opção (checkbox e resumo do botão) — default: a própria opção. */
+  renderLabel?: (opcao: string) => string
+  subcheckbox?: SubcheckboxConfig
 }
 
-export function UnidadeMultiSelect({ label, values, options, onChange, disabled }: UnidadeMultiSelectProps) {
+export function UnidadeMultiSelect({ label, values, options, onChange, disabled, renderLabel, subcheckbox }: UnidadeMultiSelectProps) {
   const [aberto, setAberto] = useState(false)
   const [busca, setBusca] = useState("")
   const ref = useRef<HTMLDivElement>(null)
@@ -48,7 +67,7 @@ export function UnidadeMultiSelect({ label, values, options, onChange, disabled 
   const resumo = values.length === 0
     ? `Todas as ${label.toLowerCase()}`
     : values.length === 1
-      ? values[0]
+      ? (renderLabel ? renderLabel(values[0]) : values[0])
       : `${values.length} selecionadas`
 
   return (
@@ -85,17 +104,39 @@ export function UnidadeMultiSelect({ label, values, options, onChange, disabled 
             {opcoesFiltradas.length === 0 && (
               <div className="px-2 py-1 text-xs text-muted-foreground">Nenhuma unidade encontrada</div>
             )}
-            {opcoesFiltradas.map(o => (
-              <label key={o} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-sm hover:bg-muted/60">
-                <input
-                  type="checkbox"
-                  checked={values.includes(o)}
-                  onChange={() => alternar(o)}
-                  className="rounded border-border"
-                />
-                <span className="truncate">{o}</span>
-              </label>
-            ))}
+            {opcoesFiltradas.map(o => {
+              const opcaoMarcada = values.includes(o)
+              const temSubcheckbox = subcheckbox?.aplicaPara(o) ?? false
+              return (
+                <div key={o}>
+                  <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-sm hover:bg-muted/60">
+                    <input
+                      type="checkbox"
+                      checked={opcaoMarcada}
+                      onChange={() => alternar(o)}
+                      className="rounded border-border"
+                    />
+                    <span className="truncate">{renderLabel ? renderLabel(o) : o}</span>
+                  </label>
+                  {temSubcheckbox && (
+                    <label
+                      className={`ml-6 flex items-center gap-2 rounded-md px-2 py-1 text-xs ${opcaoMarcada ? "cursor-pointer text-muted-foreground hover:bg-muted/60" : "cursor-not-allowed text-muted-foreground/50"}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={subcheckbox!.values.includes(o)}
+                        disabled={!opcaoMarcada}
+                        onChange={() => subcheckbox!.onChange(
+                          subcheckbox!.values.includes(o) ? subcheckbox!.values.filter(v => v !== o) : [...subcheckbox!.values, o],
+                        )}
+                        className="rounded border-border"
+                      />
+                      <span className="truncate">{subcheckbox!.label}</span>
+                    </label>
+                  )}
+                </div>
+              )
+            })}
           </div>
         </div>
       )}
