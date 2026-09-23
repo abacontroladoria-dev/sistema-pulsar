@@ -807,7 +807,7 @@ export function AuditoriaEvolucoesShell() {
         <div className="ml-auto flex shrink-0 items-center gap-2">
           <button
             onClick={() => setCriteriosAberto(true)}
-            className={`${BOTAO_SECUNDARIO} relative w-9 justify-center px-0 xl:w-auto xl:px-2.5`}
+            className={`${BOTAO_SECUNDARIO} w-9 justify-center px-0 xl:w-auto xl:px-2.5`}
             title={
               desatualizadas.length > 0
                 ? `Ver os critérios que a IA aplica — ${desatualizadas.length} ${desatualizadas.length === 1 ? 'evolução auditada' : 'evoluções auditadas'} com versão anterior`
@@ -817,14 +817,6 @@ export function AuditoriaEvolucoesShell() {
           >
             <ScrollText className="h-3.5 w-3.5" />
             <span className="hidden xl:inline">Critérios</span>
-            {desatualizadas.length > 0 && (
-              <span
-                aria-hidden
-                className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[9px] font-bold text-white"
-              >
-                {desatualizadas.length}
-              </span>
-            )}
           </button>
 
           <button
