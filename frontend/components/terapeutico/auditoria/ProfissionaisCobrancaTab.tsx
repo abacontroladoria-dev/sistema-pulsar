@@ -108,11 +108,12 @@ export function ProfissionaisCobrancaTab({
             </p>
 
             {/* Métricas — colorido só quando > 0 (§3.5) */}
-            <dl className="mt-4 grid grid-cols-4 gap-2 rounded-lg bg-muted/50 px-1 py-2 text-center">
+            <dl className="mt-4 grid grid-cols-5 gap-2 rounded-lg bg-muted/50 px-1 py-2 text-center">
               <Metrica rotulo="Total" valor={prof.total_evolucoes} />
               <Metrica rotulo="Sem risco" valor={prof.sem_risco} tone={tomSeHouver(prof.sem_risco, 'green')} toneColor={toneColor} />
               <Metrica rotulo="Específico" valor={prof.risco_especifico} tone={tomSeHouver(prof.risco_especifico, 'amber')} toneColor={toneColor} />
               <Metrica rotulo="Relevante" valor={prof.risco_relevante} tone={tomSeHouver(prof.risco_relevante, 'red')} toneColor={toneColor} />
+              <Metrica rotulo="Duplicadas" valor={prof.duplicadas} tone={tomSeHouver(prof.duplicadas, 'purple')} toneColor={toneColor} />
             </dl>
 
             {/* Ações */}

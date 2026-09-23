@@ -275,12 +275,22 @@ async function buscarGradePelaAuditoria(
 }
 
 /**
- * Agrupa as auditorias por profissional para a visão de cobrança / ranking
+ * Agrupa as auditorias por profissional para a visão de cobrança / ranking.
+ *
+ * `grupos`: os grupos de duplicadas já calculados sobre a MESMA lista de
+ * `evolucoes` (ver `detectarEvolucoesDuplicadasEntrePacientes`) — passa-los
+ * aqui evita recalcular a detecção, que já roda uma vez na Shell.
  */
 export function calcularResumoProfissionais(
-  evolucoes: EvolucaoPendenteAuditoria[]
+  evolucoes: EvolucaoPendenteAuditoria[],
+  grupos: GrupoEvolucaoDuplicada[] = []
 ): ResumoProfissionalAuditoria[] {
   const mapa = new Map<string, ResumoProfissionalAuditoria>()
+
+  const duplicadasPorGradeId = new Set<string>()
+  for (const grupo of grupos) {
+    for (const item of grupo.itens) duplicadasPorGradeId.add(item.grade_id)
+  }
 
   for (const item of evolucoes) {
     const key = item.profissional_id ? String(item.profissional_id) : item.profissional_nome
@@ -298,12 +308,17 @@ export function calcularResumoProfissionais(
         risco_relevante: 0,
         pendentes_cobranca: 0,
         taxa_conformidade: 0,
-        evolucoes_com_risco: []
+        evolucoes_com_risco: [],
+        duplicadas: 0
       })
     }
 
     const resumo = mapa.get(key)!
     resumo.total_evolucoes++
+
+    if (duplicadasPorGradeId.has(item.grade_id)) {
+      resumo.duplicadas++
+    }
 
     if (item.auditoria) {
       resumo.total_auditadas++
@@ -483,6 +498,79 @@ export function detectarEvolucoesDuplicadasEntrePacientes(
   }
 
   return grupos.sort((a, b) => b.similaridadeMinima - a.similaridadeMinima)
+}
+
+/** Trechos de um texto marcados como coincidentes (`true`) ou não com o outro lado. */
+export interface TrechoComparado {
+  texto: string
+  coincide: boolean
+}
+
+/**
+ * Marca, em cada um dos dois textos, as palavras que fazem parte da MAIOR
+ * sequência comum entre eles (LCS por palavra) — o miolo que se repete de um
+ * paciente para o outro, para o olho ir direto ao que foi copiado sem reler
+ * o texto inteiro em busca da coincidência.
+ */
+export function compararTextosParaDestaque(
+  textoA: string,
+  textoB: string
+): { a: TrechoComparado[]; b: TrechoComparado[] } {
+  // Cada "palavra" carrega o espaço/pontuação que a segue, para a junção não
+  // perder a formatação original do texto.
+  const tokenizar = (t: string) => t.match(/\S+\s*/g) || []
+  const normalizarToken = (tok: string) => normalizarTextoEvolucao(tok.trim())
+
+  const tokensA = tokenizar(textoA)
+  const tokensB = tokenizar(textoB)
+  const normA = tokensA.map(normalizarToken)
+  const normB = tokensB.map(normalizarToken)
+
+  const n = normA.length
+  const m = normB.length
+  const dp: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0))
+
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      dp[i][j] = normA[i] && normA[i] === normB[j]
+        ? dp[i + 1][j + 1] + 1
+        : Math.max(dp[i + 1][j], dp[i][j + 1])
+    }
+  }
+
+  const marcaA = new Array(n).fill(false)
+  const marcaB = new Array(m).fill(false)
+  let i = 0
+  let j = 0
+  while (i < n && j < m) {
+    if (normA[i] && normA[i] === normB[j]) {
+      marcaA[i] = true
+      marcaB[j] = true
+      i++
+      j++
+    } else if (dp[i + 1][j] >= dp[i][j + 1]) {
+      i++
+    } else {
+      j++
+    }
+  }
+
+  // Junta tokens vizinhos com a mesma marcação num único trecho, para o
+  // realce virar poucos <mark> em vez de um por palavra.
+  const agrupar = (tokens: string[], marcas: boolean[]): TrechoComparado[] => {
+    const trechos: TrechoComparado[] = []
+    for (let k = 0; k < tokens.length; k++) {
+      const ultimo = trechos[trechos.length - 1]
+      if (ultimo && ultimo.coincide === marcas[k]) {
+        ultimo.texto += tokens[k]
+      } else {
+        trechos.push({ texto: tokens[k], coincide: marcas[k] })
+      }
+    }
+    return trechos
+  }
+
+  return { a: agrupar(tokensA, marcaA), b: agrupar(tokensB, marcaB) }
 }
 
 /**

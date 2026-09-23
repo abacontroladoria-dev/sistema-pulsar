@@ -23,6 +23,7 @@ import {
   calcularResumoProfissionais,
   detectarEvolucoesDuplicadasEntrePacientes
 } from '@/services/auditoriaEvolucoes.service'
+import type { GrupoEvolucaoDuplicada } from '@/services/auditoriaEvolucoes.service'
 import { buscarCriteriosVigentes } from '@/services/auditoriaCriterios.service'
 import type {
   EvolucaoPendenteAuditoria,
@@ -33,6 +34,7 @@ import type {
 import { ProfissionaisCobrancaTab } from './ProfissionaisCobrancaTab'
 import { EvolucoesFeedTab } from './EvolucoesFeedTab'
 import { EvolucoesDuplicadasTab } from './EvolucoesDuplicadasTab'
+import { ModalComparadorDuplicadas } from './ModalComparadorDuplicadas'
 import { ModalDetalheEvolucao } from './ModalDetalheEvolucao'
 import { ModalCriterios } from './ModalCriterios'
 import { ModalCobrancaWhatsApp } from './ModalCobrancaWhatsApp'
@@ -230,6 +232,10 @@ export function AuditoriaEvolucoesShell() {
   const [versaoCriteriosVigente, setVersaoCriteriosVigente] = useState<number | null>(null)
   const [itemSelecionado, setItemSelecionado] = useState<EvolucaoPendenteAuditoria | null>(null)
   const [profSelecionadoCobranca, setProfSelecionadoCobranca] = useState<ResumoProfissionalAuditoria | null>(null)
+  const [comparacaoDuplicada, setComparacaoDuplicada] = useState<{
+    grupo: GrupoEvolucaoDuplicada
+    item: EvolucaoPendenteAuditoria
+  } | null>(null)
 
   /*
    * A busca NÃO vai para o servidor.
@@ -292,18 +298,20 @@ export function AuditoriaEvolucoesShell() {
     )
   }, [evolucoes, busca])
 
-  // A busca vale nas DUAS abas: os resumos saem da lista já filtrada, senão
-  // digitar um nome em "Por profissional" não mudava nada na tela.
-  const resumosProfissionais = React.useMemo(() => {
-    return calcularResumoProfissionais(evolucoesFiltradas)
-  }, [evolucoesFiltradas])
-
   // Mesmo texto, mesmo profissional, pacientes diferentes: a assinatura de
   // quem copia e cola a evolução de um atendimento para preencher outro.
+  // Calculado ANTES do resumo por profissional: o card de cada um mostra
+  // quantas das suas evoluções entraram em algum grupo.
   const gruposDuplicados = React.useMemo(() => {
     return detectarEvolucoesDuplicadasEntrePacientes(evolucoesFiltradas)
   }, [evolucoesFiltradas])
   const totalDuplicadas = gruposDuplicados.reduce((acc, g) => acc + g.itens.length, 0)
+
+  // A busca vale nas DUAS abas: os resumos saem da lista já filtrada, senão
+  // digitar um nome em "Por profissional" não mudava nada na tela.
+  const resumosProfissionais = React.useMemo(() => {
+    return calcularResumoProfissionais(evolucoesFiltradas, gruposDuplicados)
+  }, [evolucoesFiltradas, gruposDuplicados])
 
   // KPIs — sobre a lista filtrada, para não contradizerem o que está na tela
   // quando a busca recorta um terapeuta.
@@ -339,8 +347,17 @@ export function AuditoriaEvolucoesShell() {
     const TAMANHO_LOTE = 5
     let processados = 0
     let falharam = 0
+    // Sessão caiu no meio do lote: continuar tentando os chunks seguintes só
+    // acumularia o mesmo 401 em cada um. Um aviso genérico de "tente
+    // novamente" também mentiria — tentar de novo sem logar não resolve nada.
+    let sessaoExpirou = false
 
     for (let i = 0; i < alvos.length; i += TAMANHO_LOTE) {
+      if (sessaoExpirou) {
+        falharam += alvos.length - i
+        break
+      }
+
       const chunk = alvos.slice(i, i + TAMANHO_LOTE)
       const ids = chunk.map(c => c.grade_id)
 
@@ -362,8 +379,11 @@ export function AuditoriaEvolucoesShell() {
           processados += json.processados || chunk.length
           falharam += Array.isArray(json.falhas) ? json.falhas.length : 0
           setProgressoLote({ atual: Math.min(processados, alvos.length), total: alvos.length })
+        } else if (res.status === 401) {
+          sessaoExpirou = true
+          falharam += chunk.length
         } else {
-          // 401/403 ou erro de servidor: o lote inteiro não passou.
+          // 403 ou erro de servidor: o lote inteiro não passou.
           falharam += chunk.length
           console.error('Lote recusado:', json.error)
         }
@@ -378,7 +398,12 @@ export function AuditoriaEvolucoesShell() {
 
     // Falha de IA não pode passar despercebida: antes, o item sumia do lote sem
     // que ninguém soubesse que ele não chegou a ser auditado.
-    if (falharam > 0) {
+    if (sessaoExpirou) {
+      setAvisoLote({
+        texto: 'Sua sessão expirou durante a auditoria. Recarregue a página e faça login novamente para continuar.',
+        falha: true
+      })
+    } else if (falharam > 0) {
       setAvisoLote({
         texto: `${falharam} ${falharam === 1 ? 'evolução não pôde' : 'evoluções não puderam'} ser ${falharam === 1 ? 'auditada' : 'auditadas'}. Tente novamente; se persistir, avise a tecnologia.`,
         falha: true
@@ -689,22 +714,21 @@ export function AuditoriaEvolucoesShell() {
       )}
 
       {/*
-        Uma linha só: abas, período e busca — nesta ordem.
-        Abas e filtros voltaram a dividir a faixa por decisão de quem usa a
-        tela. O que os separa agora não é a linha, é o peso: as abas ficam no
-        grupo com fundo (`bg-muted/60`), os filtros ficam soltos.
+        Abas de verdade, em linha própria: uma borda inferior contínua sob os
+        três rótulos, com o ativo ganhando sua própria borda na cor da marca —
+        o padrão clássico de aba de painel. Precisa da própria linha porque a
+        borda tem de atravessar a largura toda; dividindo com os filtros
+        embaixo ela ficaria cortada no meio por eles.
       */}
-      <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
-
-        <div role="tablist" className="flex w-fit shrink-0 items-center gap-1 rounded-lg bg-muted/60 p-1">
+      <div role="tablist" className="mt-4 flex w-full items-center gap-5 border-b border-border">
           <button
             role="tab"
             aria-selected={abaAtiva === 'profissionais'}
             onClick={voltarParaProfissionais}
-            className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-xs transition ${FOCO} ${
+            className={`inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 pb-2 pt-1 text-xs transition ${FOCO} ${
               abaAtiva === 'profissionais'
-                ? 'bg-card font-bold text-foreground shadow-sm'
-                : 'font-semibold text-muted-foreground hover:text-foreground'
+                ? 'border-brand-fg font-bold text-foreground'
+                : 'border-transparent font-semibold text-muted-foreground hover:text-foreground'
             }`}
           >
             <Users className="h-4 w-4" />
@@ -720,10 +744,10 @@ export function AuditoriaEvolucoesShell() {
             role="tab"
             aria-selected={abaAtiva === 'feed'}
             onClick={() => aplicar({ aba: 'feed' })}
-            className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-xs transition ${FOCO} ${
+            className={`inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 pb-2 pt-1 text-xs transition ${FOCO} ${
               abaAtiva === 'feed'
-                ? 'bg-card font-bold text-foreground shadow-sm'
-                : 'font-semibold text-muted-foreground hover:text-foreground'
+                ? 'border-brand-fg font-bold text-foreground'
+                : 'border-transparent font-semibold text-muted-foreground hover:text-foreground'
             }`}
           >
             <FileSearch className="h-4 w-4" />
@@ -737,10 +761,10 @@ export function AuditoriaEvolucoesShell() {
             role="tab"
             aria-selected={abaAtiva === 'duplicadas'}
             onClick={() => aplicar({ aba: 'duplicadas' })}
-            className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-xs transition ${FOCO} ${
+            className={`inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 pb-2 pt-1 text-xs transition ${FOCO} ${
               abaAtiva === 'duplicadas'
-                ? 'bg-card font-bold text-foreground shadow-sm'
-                : 'font-semibold text-muted-foreground hover:text-foreground'
+                ? 'border-brand-fg font-bold text-foreground'
+                : 'border-transparent font-semibold text-muted-foreground hover:text-foreground'
             }`}
           >
             <Copy className="h-4 w-4" />
@@ -751,7 +775,82 @@ export function AuditoriaEvolucoesShell() {
               </span>
             )}
           </button>
-        </div>
+
+          {/*
+            As ações fecham a linha das abas, encostadas à direita pelo
+            `ml-auto` — Critérios, Atualizar e Auditar não são mais um filtro,
+            são a barra de ferramentas da tela, e cabem na mesma linha porque
+            as abas não competem mais por peso visual com um fundo cinza.
+          */}
+          <div className="ml-auto flex shrink-0 items-center gap-2 pb-2">
+            <button
+              onClick={() => setCriteriosAberto(true)}
+              className={`${BOTAO_SECUNDARIO} w-9 justify-center px-0 xl:w-auto xl:px-2.5`}
+              title="Ver os critérios que a IA aplica"
+              aria-label="Critérios"
+            >
+              <ScrollText className="h-3.5 w-3.5" />
+              <span className="hidden xl:inline">Critérios</span>
+            </button>
+
+            <button
+              onClick={carregarDados}
+              disabled={carregando}
+              aria-label="Atualizar"
+              title="Atualizar"
+              className={`${BOTAO_SECUNDARIO} w-9 justify-center px-0`}
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${carregando ? 'motion-safe:animate-spin' : ''}`} />
+            </button>
+
+            {/*
+              O progresso do lote é o próprio botão: como bloco separado, ele
+              empurrava a grade de KPIs para baixo exatamente no instante em que
+              a pessoa observava os números mudarem.
+            */}
+            <button
+              onClick={handleAuditarLote}
+              disabled={auditandoLote || carregando || totalPendentesIA === 0}
+              title={
+                totalPendentesIA > 0
+                  ? `Auditar ${totalPendentesIA} ${totalPendentesIA === 1 ? 'nova evolução' : 'novas evoluções'} com IA`
+                  : 'Nenhuma evolução nova para auditar'
+              }
+              /*
+               * Rótulo curto e `min-w` menor: o texto por extenso é o que
+               * estouraria a largura disponível. A frase completa vive no
+               * `title`, e o `min-w` segura a contagem mudando sem o botão
+               * encolher a cada lote.
+               */
+              className={`${BOTAO_PRIMARIO} relative min-w-36 justify-center overflow-hidden`}
+            >
+              {auditandoLote && progressoLote && progressoLote.total > 0 && (
+                <span
+                  aria-hidden
+                  className="absolute inset-0 bg-brand-dark"
+                  style={{
+                    clipPath: `inset(0 ${100 - Math.round((progressoLote.atual / progressoLote.total) * 100)}% 0 0)`,
+                    transition: 'clip-path 500ms cubic-bezier(0.16, 1, 0.3, 1)'
+                  }}
+                />
+              )}
+              <Sparkles className={`relative h-4 w-4 ${auditandoLote ? 'motion-safe:animate-spin' : ''}`} />
+              <span className="relative tabular-nums">
+                {auditandoLote && progressoLote
+                  ? `${progressoLote.atual} de ${progressoLote.total}…`
+                  : totalPendentesIA > 0
+                    ? `Auditar ${totalPendentesIA}`
+                    : 'Auditar'}
+              </span>
+            </button>
+          </div>
+      </div>
+
+      {/*
+        Filtros, na linha abaixo das abas — só período e busca; as ações
+        subiram para a linha das abas.
+      */}
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
 
         {/*
           O período é o filtro que importa, e é o único aqui que pede presença:
@@ -773,7 +872,7 @@ export function AuditoriaEvolucoesShell() {
           A busca é auxiliar e se comporta como tal: sem moldura em repouso,
           só um fundo sutil. A borda aparece no foco, quando ela vira o
           objeto da atenção. `flex-1` para ocupar o espaço vago da linha
-          em vez de deixá-lo ocioso entre o período e as ações.
+          em vez de deixá-lo ocioso entre o período e o resto.
         */}
         <div className="relative min-w-32 flex-1">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/70" />
@@ -788,79 +887,6 @@ export function AuditoriaEvolucoesShell() {
               hover:bg-muted focus:border-border focus:bg-background
               focus:outline-none focus:ring-2 focus:ring-ring`}
           />
-        </div>
-
-        {/*
-          As ações fecham a linha, encostadas à direita pelo `ml-auto`.
-          A ordem segue o peso: referência (Critérios), utilitário (Atualizar,
-          só ícone) e por último a ação que cria estado.
-        */}
-        <div className="ml-auto flex shrink-0 items-center gap-2">
-          {/*
-            Rótulo só a partir de `xl`. Abaixo disso a linha não comporta os
-            sete controles, e "Critérios" é referência consultada de vez em
-            quando — o primeiro rótulo a ceder espaço, não o último.
-          */}
-          <button
-            onClick={() => setCriteriosAberto(true)}
-            className={`${BOTAO_SECUNDARIO} w-9 justify-center px-0 xl:w-auto xl:px-2.5`}
-            title="Ver os critérios que a IA aplica"
-            aria-label="Critérios"
-          >
-            <ScrollText className="h-3.5 w-3.5" />
-            <span className="hidden xl:inline">Critérios</span>
-          </button>
-
-          <button
-            onClick={carregarDados}
-            disabled={carregando}
-            aria-label="Atualizar"
-            title="Atualizar"
-            className={`${BOTAO_SECUNDARIO} w-9 justify-center px-0`}
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${carregando ? 'motion-safe:animate-spin' : ''}`} />
-          </button>
-
-          {/*
-            O progresso do lote é o próprio botão: como bloco separado, ele
-            empurrava a grade de KPIs para baixo exatamente no instante em que
-            a pessoa observava os números mudarem.
-          */}
-          <button
-            onClick={handleAuditarLote}
-            disabled={auditandoLote || carregando || totalPendentesIA === 0}
-            title={
-              totalPendentesIA > 0
-                ? `Auditar ${totalPendentesIA} ${totalPendentesIA === 1 ? 'nova evolução' : 'novas evoluções'} com IA`
-                : 'Nenhuma evolução nova para auditar'
-            }
-            /*
-             * Rótulo curto e `min-w` menor: com sete controles na linha, o
-             * texto por extenso era o que estourava a largura disponível. A
-             * frase completa vive no `title`, e o `min-w` segura a contagem
-             * mudando sem o botão encolher a cada lote.
-             */
-            className={`${BOTAO_PRIMARIO} relative min-w-36 justify-center overflow-hidden`}
-          >
-            {auditandoLote && progressoLote && progressoLote.total > 0 && (
-              <span
-                aria-hidden
-                className="absolute inset-0 bg-brand-dark"
-                style={{
-                  clipPath: `inset(0 ${100 - Math.round((progressoLote.atual / progressoLote.total) * 100)}% 0 0)`,
-                  transition: 'clip-path 500ms cubic-bezier(0.16, 1, 0.3, 1)'
-                }}
-              />
-            )}
-            <Sparkles className={`relative h-4 w-4 ${auditandoLote ? 'motion-safe:animate-spin' : ''}`} />
-            <span className="relative tabular-nums">
-              {auditandoLote && progressoLote
-                ? `${progressoLote.atual} de ${progressoLote.total}…`
-                : totalPendentesIA > 0
-                  ? `Auditar ${totalPendentesIA}`
-                  : 'Auditar'}
-            </span>
-          </button>
         </div>
       </div>
 
@@ -915,7 +941,7 @@ export function AuditoriaEvolucoesShell() {
         ) : (
           <EvolucoesDuplicadasTab
             grupos={gruposDuplicados}
-            onSelecionarEvolucao={item => setItemSelecionado(item)}
+            onCompararItem={(grupo, item) => setComparacaoDuplicada({ grupo, item })}
           />
         )}
       </div>
@@ -947,6 +973,13 @@ export function AuditoriaEvolucoesShell() {
         // Publicou: a Shell precisa saber para o botão "Reauditar com critérios
         // atuais" aparecer sem depender de um F5.
         onPublicou={carregarVersaoVigente}
+      />
+
+      <ModalComparadorDuplicadas
+        grupo={comparacaoDuplicada?.grupo ?? null}
+        item={comparacaoDuplicada?.item ?? null}
+        isOpen={Boolean(comparacaoDuplicada)}
+        onClose={() => setComparacaoDuplicada(null)}
       />
 
     </div>

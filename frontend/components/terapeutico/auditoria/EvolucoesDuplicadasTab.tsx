@@ -8,7 +8,7 @@ import { FOCO } from './vocabulario'
 
 interface Props {
   grupos: GrupoEvolucaoDuplicada[]
-  onSelecionarEvolucao: (item: EvolucaoPendenteAuditoria) => void
+  onCompararItem: (grupo: GrupoEvolucaoDuplicada, item: EvolucaoPendenteAuditoria) => void
 }
 
 /**
@@ -16,7 +16,7 @@ interface Props {
  * diferentes. A lista de pacientes fica lado a lado — é o próprio indício da
  * cópia, não um detalhe que precise ser aberto para aparecer.
  */
-export function EvolucoesDuplicadasTab({ grupos, onSelecionarEvolucao }: Props) {
+export function EvolucoesDuplicadasTab({ grupos, onCompararItem }: Props) {
   if (grupos.length === 0) {
     return (
       <div className="rounded-xl border border-border bg-card px-4 py-16 text-center shadow-sm">
@@ -68,7 +68,7 @@ export function EvolucoesDuplicadasTab({ grupos, onSelecionarEvolucao }: Props) 
               {grupo.itens.map(item => (
                 <button
                   key={item.grade_id}
-                  onClick={() => onSelecionarEvolucao(item)}
+                  onClick={() => onCompararItem(grupo, item)}
                   className={`flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left text-xs transition hover:bg-muted/40 ${FOCO}`}
                 >
                   <span className="flex min-w-0 items-center gap-2">
