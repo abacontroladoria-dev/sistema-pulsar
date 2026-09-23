@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auditarEvolucaoComIA } from '@/lib/auditoria/auditorEngine'
 import { exigirPermissaoAuditoria, respostaDeErroAuth } from '@/lib/auditoria/auth'
 import { carregarCriteriosVigentes } from '@/lib/auditoria/criterios'
+import { carregarPosicoesNoDia, descreverPosicao } from '@/lib/auditoria/posicaoSessao'
 
 export const dynamic = 'force-dynamic'
 
@@ -77,14 +78,17 @@ export async function POST(req: Request) {
     // sequencial — resolver aqui evita N leituras do banco e garante que todas
     // as linhas do lote fiquem carimbadas com a MESMA versão.
     const { criterios, versaoId, versaoNumero } = await carregarCriteriosVigentes(supabase)
+    const posicoes = await carregarPosicoesNoDia(supabase, lote)
 
     for (const item of lote) {
       try {
+        const posicao = posicoes.get(item.id)
         const analise = await auditarEvolucaoComIA({
           pacienteNome: item.paciente_nome || 'Paciente',
           profissionalNome: item.profissional_nome || 'Profissional',
           terapiaNome: item.terapia_nome,
           dataSessao: item.data,
+          posicaoNoDia: posicao ? descreverPosicao(posicao) : undefined,
           textoOriginal: item.descricao_evolucao || '',
           criterios
         })

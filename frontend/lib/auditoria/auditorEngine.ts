@@ -40,6 +40,39 @@ const TIPOS_APONTAMENTO: readonly string[] = [
   'outro'
 ]
 
+/**
+ * Marcadores neutros, não "o paciente": trocar "Gael chegou acompanhada" por
+ * "o paciente chegou acompanhada" fabricava um erro de concordância que a IA
+ * apontava como objeção.
+ */
+export const MARCADOR_PACIENTE = '[PACIENTE]'
+export const MARCADOR_TERAPEUTA = '[TERAPEUTA]'
+
+const escaparRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+/**
+ * `\b` do JS não entende acento ("Eloá" nunca casava) — por isso as bordas são
+ * por \p{L}. Nome completo antes do primeiro nome: na ordem inversa, "Gael
+ * Silva" virava "[PACIENTE] Silva" e o sobrenome vazava.
+ */
+export function mascararNome(texto: string, nome: string | undefined, marcador: string): string {
+  const completo = nome?.trim()
+  if (!completo || completo.length <= 2) return texto
+  const trocar = (t: string, alvo: string) =>
+    t.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escaparRegex(alvo)}(?![\\p{L}\\p{N}])`, 'giu'), marcador)
+  let saida = trocar(texto, completo)
+  const primeiro = completo.split(/\s+/)[0]
+  if (primeiro.length > 2 && primeiro !== completo) saida = trocar(saida, primeiro)
+  return saida
+}
+
+/** O texto revisado vai para o prontuário: marcador não pode sobrar nele. */
+export function restaurarMarcadores(texto: string): string {
+  return texto
+    .replaceAll(MARCADOR_PACIENTE, 'paciente')
+    .replaceAll(MARCADOR_TERAPEUTA, 'terapeuta')
+}
+
 export class ErroAuditoriaInvalida extends Error {
   constructor(motivo: string) {
     super(`Resposta inválida da IA: ${motivo}`)
@@ -52,6 +85,7 @@ export async function auditarEvolucaoComIA(params: {
   profissionalNome: string
   terapiaNome?: string | null
   dataSessao: string
+  posicaoNoDia?: string
   textoOriginal: string
   /** Critérios vigentes. Obrigatório: quem chama resolve a versão e a registra. */
   criterios: CriteriosAuditoria
@@ -63,27 +97,17 @@ export async function auditarEvolucaoComIA(params: {
 
   const model = (process.env.OPENAI_MODEL ?? 'gpt-4o-mini').trim()
 
-  // Sanitização de privacidade / LGPD: mascara o nome do paciente e do profissional se citado no texto
-  let textoAnonimizado = params.textoOriginal
-  if (params.pacienteNome && params.pacienteNome.length > 2) {
-    const primeiroNome = params.pacienteNome.split(' ')[0]
-    if (primeiroNome.length > 2) {
-      textoAnonimizado = textoAnonimizado.replace(new RegExp(`\\b${primeiroNome}\\b`, 'gi'), 'o paciente')
-    }
-    textoAnonimizado = textoAnonimizado.replace(new RegExp(params.pacienteNome, 'gi'), 'o paciente')
-  }
-
-  if (params.profissionalNome && params.profissionalNome.length > 2) {
-    const primeiroNomeProf = params.profissionalNome.split(' ')[0]
-    if (primeiroNomeProf.length > 2) {
-      textoAnonimizado = textoAnonimizado.replace(new RegExp(`\\b${primeiroNomeProf}\\b`, 'gi'), 'o terapeuta')
-    }
-    textoAnonimizado = textoAnonimizado.replace(new RegExp(params.profissionalNome, 'gi'), 'o terapeuta')
-  }
+  // LGPD: nenhum nome sai para a API externa.
+  const textoAnonimizado = mascararNome(
+    mascararNome(params.textoOriginal, params.pacienteNome, MARCADOR_PACIENTE),
+    params.profissionalNome,
+    MARCADOR_TERAPEUTA
+  )
 
   const userContent = montarMensagemAuditoria({
     terapiaNome: params.terapiaNome,
     dataSessao: params.dataSessao,
+    posicaoNoDia: params.posicaoNoDia,
     textoOriginal: textoAnonimizado
   })
 
@@ -192,7 +216,7 @@ export async function auditarEvolucaoComIA(params: {
       checklist_perguntas: checklist,
       inconsistencias_estruturais: Array.isArray(parsed.inconsistencias_estruturais) ? parsed.inconsistencias_estruturais : [],
       apontamentos,
-      texto_revisado: parsed.texto_revisado,
+      texto_revisado: restaurarMarcadores(parsed.texto_revisado),
       modelo_usado: model
     }
   } catch (err: any) {

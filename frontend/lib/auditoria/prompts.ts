@@ -33,6 +33,16 @@ Você DEVE responder exclusivamente um objeto JSON com o seguinte schema:
 }`
 
 /**
+ * Fixo e fora da tela, como o schema. Antes dizia "responder explicitamente a
+ * estas quatro perguntas", o que vencia as exceções escritas em cada pergunta
+ * (v2 dos critérios): a IA seguia cobrando chegada/saída já dispensadas. A
+ * precedência sobre a classificação de risco é explícita porque o texto
+ * editável de `risco_especifico` usa "faltou apenas o estado de saída" como
+ * exemplo de risco.
+ */
+export const ENQUADRAMENTO_PILARES = `Toda evolução deve permitir responder a estas quatro perguntas, respeitando as exceções descritas em cada uma delas. Quando uma exceção dispensar uma pergunta, ela conta como atendida: marque true no checklist, não gere apontamento por ela e não a use para classificar o risco. Isso prevalece sobre os exemplos da classificação de risco abaixo.`
+
+/**
  * O prompt ORIGINAL, anterior aos critérios editáveis.
  *
  * NÃO APAGUE. Ele não é mais enviado à IA — quem monta o prompt é
@@ -40,6 +50,9 @@ Você DEVE responder exclusivamente um objeto JSON com o seguinte schema:
  * __tests__/paridadePrompt.test.ts exige que montarSystemPrompt(CRITERIOS_FALLBACK)
  * o reproduza byte-a-byte. É essa igualdade que garante que introduzir a
  * configuração não mudou o comportamento da auditoria.
+ *
+ * Única mudança deliberada desde então: a frase de abertura das 4 perguntas
+ * virou ENQUADRAMENTO_PILARES (2026-09-23), aplicada aqui e no montador.
  */
 export const SYSTEM_PROMPT_AUDITORIA_EVOLUCAO = `Você atua como auditor de convênio especializado em revisão de evolução terapêutica de atendimentos realizados para a Clínica Universo ABA. Sua função é revisar rigorosamente as evoluções clínicas antes do envio ao convênio, identificando tudo o que pode gerar GLOSA, apontando as falhas e devolvendo o texto já corrigido e pronto para constar no prontuário.
 
@@ -50,7 +63,7 @@ CRITÉRIOS DE AUDITORIA (em ordem de verificação):
 - Inconsistências de registro documental.
 
 2. ESTRUTURA MÍNIMA OBRIGATÓRIA (4 Perguntas Fundamentais):
-Toda evolução deve permitir responder explicitamente a estas quatro perguntas:
+${ENQUADRAMENTO_PILARES}
 a) Como o paciente chegou à sessão (estado emocional e comportamental na chegada).
 b) Qual o objetivo do atendimento (o que estava planejado trabalhar).
 c) Quais recursos, estratégias ou materiais foram utilizados (específicos, não genéricos).
@@ -117,7 +130,7 @@ CRITÉRIOS DE AUDITORIA (em ordem de verificação):
 ${conferencia}
 
 2. ESTRUTURA MÍNIMA OBRIGATÓRIA (4 Perguntas Fundamentais):
-Toda evolução deve permitir responder explicitamente a estas quatro perguntas:
+${ENQUADRAMENTO_PILARES}
 ${pilares}
 
 3. REGRAS PARA SITUAÇÕES ESPECÍFICAS:
@@ -137,12 +150,20 @@ export function montarMensagemAuditoria(params: {
   profissionalNome?: string
   terapiaNome?: string | null
   dataSessao?: string
+  /** Texto pronto de descreverPosicao(); ausente quando não foi possível calcular. */
+  posicaoNoDia?: string
   textoOriginal: string
 }) {
-  // Anonimização total: nunca envia nomes de pessoas para a API externa
+  // Anonimização total: nunca envia nomes de pessoas para a API externa.
+  // O aviso abaixo existe porque, sem ele, a IA tratava o nome omitido como
+  // falha de registro ("profissional não informado") e a troca do nome como
+  // erro de concordância.
   return `AUDITAR A SEGUINTE EVOLUÇÃO TERAPÊUTICA:
 - Especialidade/Terapia: ${params.terapiaNome || 'Terapia Multidisciplinar'}
-- Data da Sessão: ${params.dataSessao || 'Sessão recente'}
+- Data da Sessão: ${params.dataSessao || 'Sessão recente'}${params.posicaoNoDia ? `\n- Posição no dia: ${params.posicaoNoDia}` : ''}
+- Profissional: registrado no sistema; nome omitido por privacidade.
+
+PRIVACIDADE: os nomes foram substituídos por [PACIENTE] e [TERAPEUTA] antes do envio. Isso NÃO é falha do registro: não aponte ausência de identificação do profissional ou do paciente, nem concordância de gênero causada pelos marcadores. No texto_revisado, nunca escreva os marcadores; use "paciente" e "terapeuta", com o gênero que o próprio texto indicar.
 
 TEXTO DA EVOLUÇÃO (Dados sensíveis e nomes desidentificados):
 """
