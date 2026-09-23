@@ -8,10 +8,13 @@ import type { ResumoProfissionalAuditoria } from '@/types/auditoriaEvolucoes'
 import { tomDaConformidade, tomSeHouver, FOCO, BOTAO_SECUNDARIO } from './vocabulario'
 import { Paginacao, usePaginacao } from './Paginacao'
 
+export type MetricaProfissional = 'total' | 'sem_risco' | 'com_risco' | 'duplicadas'
+
 interface Props {
   resumos: ResumoProfissionalAuditoria[]
   onCobrarProfissional: (prof: ResumoProfissionalAuditoria) => void
   onVerEvolucoesProfissional: (prof: ResumoProfissionalAuditoria) => void
+  onVerMetricaProfissional: (prof: ResumoProfissionalAuditoria, metrica: MetricaProfissional) => void
 }
 
 /* 12 = quatro linhas de três cards no desktop, sem corte pela metade. */
@@ -20,7 +23,8 @@ const POR_PAGINA = 12
 export function ProfissionaisCobrancaTab({
   resumos,
   onCobrarProfissional,
-  onVerEvolucoesProfissional
+  onVerEvolucoesProfissional,
+  onVerMetricaProfissional
 }: Props) {
   const toneColor = useToneColor()
   // Antes do early return: hook não pode ficar atrás de condicional.
@@ -108,13 +112,37 @@ export function ProfissionaisCobrancaTab({
             </p>
 
             {/* Métricas — colorido só quando > 0 (§3.5) */}
-            <dl className="mt-4 grid grid-cols-5 gap-2 rounded-lg bg-muted/50 px-1 py-2 text-center">
-              <Metrica rotulo="Total" valor={prof.total_evolucoes} />
-              <Metrica rotulo="Sem risco" valor={prof.sem_risco} tone={tomSeHouver(prof.sem_risco, 'green')} toneColor={toneColor} />
-              <Metrica rotulo="Específico" valor={prof.risco_especifico} tone={tomSeHouver(prof.risco_especifico, 'amber')} toneColor={toneColor} />
-              <Metrica rotulo="Relevante" valor={prof.risco_relevante} tone={tomSeHouver(prof.risco_relevante, 'red')} toneColor={toneColor} />
-              <Metrica rotulo="Duplicadas" valor={prof.duplicadas} tone={tomSeHouver(prof.duplicadas, 'purple')} toneColor={toneColor} />
-            </dl>
+            <div className="mt-4 grid grid-cols-4 gap-2 rounded-lg bg-muted/50 px-1 py-2 text-center">
+              <Metrica
+                rotulo="Total"
+                valor={prof.total_evolucoes}
+                onClick={() => onVerMetricaProfissional(prof, 'total')}
+              />
+              <Metrica
+                rotulo="Sem risco"
+                valor={prof.sem_risco}
+                tone={tomSeHouver(prof.sem_risco, 'green')}
+                toneColor={toneColor}
+                desabilitado={prof.sem_risco === 0}
+                onClick={() => onVerMetricaProfissional(prof, 'sem_risco')}
+              />
+              <Metrica
+                rotulo="Com risco"
+                valor={prof.risco_especifico + prof.risco_relevante}
+                tone={tomSeHouver(prof.risco_especifico + prof.risco_relevante, prof.risco_relevante > 0 ? 'red' : 'amber')}
+                toneColor={toneColor}
+                desabilitado={prof.risco_especifico + prof.risco_relevante === 0}
+                onClick={() => onVerMetricaProfissional(prof, 'com_risco')}
+              />
+              <Metrica
+                rotulo="Duplicadas"
+                valor={prof.duplicadas}
+                tone={tomSeHouver(prof.duplicadas, 'purple')}
+                toneColor={toneColor}
+                desabilitado={prof.duplicadas === 0}
+                onClick={() => onVerMetricaProfissional(prof, 'duplicadas')}
+              />
+            </div>
 
             {/* Ações */}
             <div className="mt-4 flex items-center gap-2 border-t border-border pt-3">
@@ -126,16 +154,15 @@ export function ProfissionaisCobrancaTab({
               </button>
 
               {temRisco && (
+                // Desabilitado propositalmente: cobrança via WhatsApp não está em uso por enquanto.
                 <button
                   onClick={() => onCobrarProfissional(prof)}
-                  className={`inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-3 text-xs font-bold transition ${FOCO} ${
-                    temPendencias
-                      ? 'bg-brand-fg text-white hover:bg-brand-dark'
-                      : 'border border-border bg-background text-foreground hover:bg-muted/40'
-                  }`}
+                  disabled
+                  title="Cobrança temporariamente desativada"
+                  className="inline-flex h-9 shrink-0 cursor-default items-center gap-1.5 rounded-lg border border-border bg-background px-3 text-xs font-bold text-muted-foreground opacity-60"
                 >
                   <MessageSquare className="h-3.5 w-3.5" />
-                  {temPendencias ? `Cobrar (${prof.pendentes_cobranca})` : 'Cobrar'}
+                  Cobrar
                 </button>
               )}
             </div>
@@ -163,23 +190,32 @@ export function ProfissionaisCobrancaTab({
   )
 }
 
-function Metrica({ rotulo, valor, tone, toneColor }: {
+function Metrica({ rotulo, valor, tone, toneColor, onClick, desabilitado = false }: {
   rotulo: string
   valor: number
   tone?: Tone
   toneColor?: (t: Tone) => string
+  onClick?: () => void
+  desabilitado?: boolean
 }) {
   return (
-    <div>
-      <dt className="block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={desabilitado}
+      className={`w-full rounded-md py-0.5 transition ${FOCO} ${
+        desabilitado ? 'cursor-default' : 'cursor-pointer hover:bg-muted'
+      }`}
+    >
+      <span className="block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
         {rotulo}
-      </dt>
-      <dd
-        className="text-sm font-bold tabular-nums text-foreground"
+      </span>
+      <span
+        className="block text-sm font-bold tabular-nums text-foreground"
         style={tone && toneColor ? { color: toneColor(tone) } : undefined}
       >
         {valor}
-      </dd>
-    </div>
+      </span>
+    </button>
   )
 }

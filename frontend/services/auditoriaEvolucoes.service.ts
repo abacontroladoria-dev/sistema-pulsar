@@ -12,7 +12,8 @@ export interface FiltrosAuditoriaEvolucoes {
   dataFim?: string
   profissionalId?: number | null
   unidadeId?: number | null
-  statusRisco?: StatusRiscoEvolucao | 'todos'
+  /** 'com_risco' junta risco_especifico + risco_relevante — os dois KPIs de risco viraram um só. */
+  statusRisco?: StatusRiscoEvolucao | 'todos' | 'com_risco'
   statusCobranca?: StatusCobrancaEvolucao | 'todos'
   apenasComEvolucao?: boolean
   busca?: string
@@ -125,7 +126,9 @@ export async function buscarEvolucoesComAuditoria(
     // (ver buscarGradePelaAuditoria). Reaplicar aqui é de graça e protege contra
     // uma sessão que tenha perdido a auditoria entre as duas consultas.
     if (filtraRisco) {
-      resultado = resultado.filter(r => r.auditoria?.status_risco === filtros.statusRisco)
+      resultado = filtros.statusRisco === 'com_risco'
+        ? resultado.filter(r => r.auditoria && r.auditoria.status_risco !== 'sem_risco')
+        : resultado.filter(r => r.auditoria?.status_risco === filtros.statusRisco)
     }
 
     if (filtraCobranca) {
@@ -231,7 +234,9 @@ async function buscarGradePelaAuditoria(
       .range(pagina * TAMANHO_PAGINA, (pagina + 1) * TAMANHO_PAGINA - 1)
 
     if (filtros.dataFim) query = query.lte('data_sessao', filtros.dataFim)
-    if (filtros.statusRisco && filtros.statusRisco !== 'todos') {
+    if (filtros.statusRisco === 'com_risco') {
+      query = query.neq('status_risco', 'sem_risco')
+    } else if (filtros.statusRisco && filtros.statusRisco !== 'todos') {
       query = query.eq('status_risco', filtros.statusRisco)
     }
     if (filtros.statusCobranca && filtros.statusCobranca !== 'todos') {
@@ -332,9 +337,11 @@ export function calcularResumoProfissionais(
         resumo.evolucoes_com_risco.push(item.auditoria)
       }
 
+      // "Ok e sem duplicidade" não precisa de cobrança — mesmo sem risco de
+      // glosa, uma evolução duplicada ainda exige contato com o terapeuta.
       if (
-        item.auditoria.status_risco !== 'sem_risco' &&
-        item.auditoria.status_cobranca === 'pendente'
+        item.auditoria.status_cobranca === 'pendente' &&
+        (item.auditoria.status_risco !== 'sem_risco' || duplicadasPorGradeId.has(item.grade_id))
       ) {
         resumo.pendentes_cobranca++
       }

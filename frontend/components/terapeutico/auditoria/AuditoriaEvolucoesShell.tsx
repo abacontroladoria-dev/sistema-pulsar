@@ -10,7 +10,6 @@ import {
   Users,
   FileSearch,
   ScrollText,
-  History,
   Copy
 } from 'lucide-react'
 import { useToneColor } from '@/hooks/useToneColor'
@@ -37,6 +36,7 @@ import { EvolucoesDuplicadasTab } from './EvolucoesDuplicadasTab'
 import { ModalComparadorDuplicadas } from './ModalComparadorDuplicadas'
 import { ModalDetalheEvolucao } from './ModalDetalheEvolucao'
 import { ModalCriterios } from './ModalCriterios'
+import { ModalConfirmacao } from './ModalConfirmacao'
 import { ModalCobrancaWhatsApp } from './ModalCobrancaWhatsApp'
 import {
   tomDaConformidade,
@@ -94,12 +94,27 @@ interface Recorte {
   dataInicio: string
   dataFim: string
   busca: string
-  statusRisco: StatusRiscoEvolucao | 'todos'
+  statusRisco: StatusRiscoEvolucao | 'todos' | 'com_risco'
   statusCobranca: StatusCobrancaEvolucao | 'todos'
   aba: 'profissionais' | 'feed' | 'duplicadas'
 }
 
-const RISCOS_VALIDOS: readonly string[] = ['sem_risco', 'risco_especifico', 'risco_relevante']
+const RISCOS_VALIDOS: readonly string[] = ['sem_risco', 'risco_especifico', 'risco_relevante', 'com_risco']
+
+const ROTULO_STATUS_RISCO: Record<StatusRiscoEvolucao | 'com_risco', string> = {
+  sem_risco: 'Sem risco',
+  risco_especifico: 'Ponto específico',
+  risco_relevante: 'Risco relevante',
+  com_risco: 'Com risco'
+}
+
+const ROTULO_STATUS_COBRANCA: Record<StatusCobrancaEvolucao, string> = {
+  pendente: 'A cobrar',
+  cobrado: 'Cobrado',
+  aguardando_correcao: 'Aguardando correção',
+  corrigido_tita: 'Corrigido no TiTa',
+  ignorado: 'Ignorado'
+}
 const COBRANCAS_VALIDAS: readonly string[] = [
   'pendente', 'cobrado', 'aguardando_correcao', 'corrigido_tita', 'ignorado'
 ]
@@ -250,11 +265,14 @@ export function AuditoriaEvolucoesShell() {
     setCarregando(true)
     setErro(null)
     try {
+      // Sem statusRisco/statusCobranca aqui: o servidor sempre traz o período
+      // inteiro. Os KPIs precisam do total do período mesmo com outro KPI
+      // ativo — mandando o filtro para o servidor, "Evoluções no período" e
+      // os demais KPIs encolhiam junto com o card clicado, e nenhum deles
+      // sobrava para mostrar "de quanto" aquele recorte era uma fatia.
       const { data, error } = await buscarEvolucoesComAuditoria({
         dataInicio,
-        dataFim: dataFim || undefined,
-        statusRisco,
-        statusCobranca
+        dataFim: dataFim || undefined
       })
       if (error) {
         setErro(error)
@@ -267,7 +285,7 @@ export function AuditoriaEvolucoesShell() {
       setCarregando(false)
       setCarregouUmaVez(true)
     }
-  }, [dataInicio, dataFim, statusRisco, statusCobranca])
+  }, [dataInicio, dataFim])
 
   // Intervalo invertido não é recorte, é erro de digitação — e buscar com ele
   // devolveria zero linhas, que a tela mostraria como "nenhuma evolução".
@@ -287,6 +305,8 @@ export function AuditoriaEvolucoesShell() {
     void carregarVersaoVigente()
   }, [])
 
+  // Só a busca — os KPIs saem daqui, então precisam do período inteiro para
+  // continuar mostrando "de quanto" um card de risco/cobrança é uma fatia.
   const evolucoesFiltradas = React.useMemo(() => {
     if (!busca) return evolucoes
     const b = busca.toLowerCase()
@@ -298,10 +318,25 @@ export function AuditoriaEvolucoesShell() {
     )
   }, [evolucoes, busca])
 
+  // Busca + o card de risco/cobrança ativo — é o que as abas efetivamente listam.
+  const evolucoesDaLista = React.useMemo(() => {
+    let lista = evolucoesFiltradas
+    if (statusRisco === 'com_risco') {
+      lista = lista.filter(e => e.auditoria && e.auditoria.status_risco !== 'sem_risco')
+    } else if (statusRisco !== 'todos') {
+      lista = lista.filter(e => e.auditoria?.status_risco === statusRisco)
+    }
+    if (statusCobranca !== 'todos') {
+      lista = lista.filter(e => e.auditoria?.status_cobranca === statusCobranca)
+    }
+    return lista
+  }, [evolucoesFiltradas, statusRisco, statusCobranca])
+
   // Mesmo texto, mesmo profissional, pacientes diferentes: a assinatura de
   // quem copia e cola a evolução de um atendimento para preencher outro.
-  // Calculado ANTES do resumo por profissional: o card de cada um mostra
-  // quantas das suas evoluções entraram em algum grupo.
+  // Sobre o período INTEIRO (evolucoesFiltradas), não sobre a lista com o
+  // card de risco/cobrança já aplicado — senão o próprio KPI "Duplicadas"
+  // encolheria ao clicar em outro card, o mesmo bug que motivou essa troca.
   const gruposDuplicados = React.useMemo(() => {
     return detectarEvolucoesDuplicadasEntrePacientes(evolucoesFiltradas)
   }, [evolucoesFiltradas])
@@ -310,8 +345,8 @@ export function AuditoriaEvolucoesShell() {
   // A busca vale nas DUAS abas: os resumos saem da lista já filtrada, senão
   // digitar um nome em "Por profissional" não mudava nada na tela.
   const resumosProfissionais = React.useMemo(() => {
-    return calcularResumoProfissionais(evolucoesFiltradas, gruposDuplicados)
-  }, [evolucoesFiltradas, gruposDuplicados])
+    return calcularResumoProfissionais(evolucoesDaLista, gruposDuplicados)
+  }, [evolucoesDaLista, gruposDuplicados])
 
   // KPIs — sobre a lista filtrada, para não contradizerem o que está na tela
   // quando a busca recorta um terapeuta.
@@ -321,8 +356,18 @@ export function AuditoriaEvolucoesShell() {
   const totalSemRisco = evolucoesFiltradas.filter(e => e.auditoria?.status_risco === 'sem_risco').length
   const totalRiscoEspecifico = evolucoesFiltradas.filter(e => e.auditoria?.status_risco === 'risco_especifico').length
   const totalRiscoRelevante = evolucoesFiltradas.filter(e => e.auditoria?.status_risco === 'risco_relevante').length
+  const duplicadasPorGradeId = React.useMemo(() => {
+    const s = new Set<string>()
+    for (const g of gruposDuplicados) for (const item of g.itens) s.add(item.grade_id)
+    return s
+  }, [gruposDuplicados])
+  // "Ok e sem duplicidade" não precisa de cobrança — mesmo sem risco de
+  // glosa, uma evolução duplicada ainda exige contato com o terapeuta.
   const totalPendentesCobranca = evolucoesFiltradas.filter(
-    e => e.auditoria && e.auditoria.status_risco !== 'sem_risco' && e.auditoria.status_cobranca === 'pendente'
+    e =>
+      e.auditoria &&
+      e.auditoria.status_cobranca === 'pendente' &&
+      (e.auditoria.status_risco !== 'sem_risco' || duplicadasPorGradeId.has(e.grade_id))
   ).length
   // Sem denominador não há percentual — "—", nunca 0% (§4 do padrão).
   const taxaConformidadeGeral = totalAuditadas > 0
@@ -444,15 +489,15 @@ export function AuditoriaEvolucoesShell() {
     )
   }, [evolucoesFiltradas, versaoCriteriosVigente])
 
-  const handleReauditarDesatualizadas = async () => {
+  const [confirmarReauditar, setConfirmarReauditar] = useState(false)
+
+  const handleReauditarDesatualizadas = () => {
     if (desatualizadas.length === 0) return
-    if (
-      !window.confirm(
-        `Reauditar ${desatualizadas.length} ${desatualizadas.length === 1 ? 'evolução' : 'evoluções'} com os critérios atuais?\n\nO veredito anterior será substituído.`
-      )
-    ) {
-      return
-    }
+    setConfirmarReauditar(true)
+  }
+
+  const confirmarEExecutarReauditar = async () => {
+    setConfirmarReauditar(false)
     await processarEmLotes(desatualizadas, { reauditar: true })
   }
 
@@ -529,13 +574,13 @@ export function AuditoriaEvolucoesShell() {
    *
    * `alvo` null = o card Total, que limpa os dois filtros.
    */
-  const cardAtivo = (alvo: { risco?: StatusRiscoEvolucao; cobranca?: StatusCobrancaEvolucao } | null) => {
+  const cardAtivo = (alvo: { risco?: StatusRiscoEvolucao | 'com_risco'; cobranca?: StatusCobrancaEvolucao } | null) => {
     if (alvo === null) return statusRisco === 'todos' && statusCobranca === 'todos'
     if (alvo.cobranca) return statusCobranca === alvo.cobranca
     return statusRisco === alvo.risco
   }
 
-  const alternarCard = (alvo: { risco?: StatusRiscoEvolucao; cobranca?: StatusCobrancaEvolucao } | null) => {
+  const alternarCard = (alvo: { risco?: StatusRiscoEvolucao | 'com_risco'; cobranca?: StatusCobrancaEvolucao } | null) => {
     if (alvo === null) {
       aplicar({ statusRisco: 'todos', statusCobranca: 'todos' })
       return
@@ -560,55 +605,6 @@ export function AuditoriaEvolucoesShell() {
     <div className="mx-auto flex w-full max-w-7xl flex-col">
 
       {/*
-        A lede da tela: o que está pendente. Os botões desceram para a linha de
-        abas e filtros, então aqui fica só o estado — o número que motiva a
-        ação, e não mais o `title` escondido que ele era antes.
-      */}
-      <div className="min-w-0 space-y-0.5">
-          <p className="text-sm text-foreground">
-            {primeiraCarga ? (
-              <span className="inline-block h-4 w-56 rounded bg-muted align-middle motion-safe:animate-pulse" />
-            ) : totalPendentesIA > 0 ? (
-              <>
-                <strong className="font-bold tabular-nums">{totalPendentesIA}</strong>{' '}
-                {totalPendentesIA === 1 ? 'evolução aguardando' : 'evoluções aguardando'} auditoria
-              </>
-            ) : totalEvolucoes > 0 ? (
-              'Todas as evoluções do período já foram auditadas.'
-            ) : (
-              'Nenhuma evolução neste período.'
-            )}
-          </p>
-
-          <p className="text-xs text-muted-foreground">
-            {versaoCriteriosVigente !== null && (
-              <span className="tabular-nums">Critérios v{versaoCriteriosVigente}</span>
-            )}
-            {/*
-              A reauditoria sai da fileira de botões e vem morar junto do fato
-              que a motiva. Era o rótulo mais longo da região e quebrava todo
-              cálculo de quebra de linha; e sendo destrutiva, não devia ser
-              irmã visual de "Atualizar".
-            */}
-            {desatualizadas.length > 0 && (
-              <>
-                {versaoCriteriosVigente !== null && ' · '}
-                <span className="tabular-nums">{desatualizadas.length}</span>{' '}
-                {desatualizadas.length === 1 ? 'auditada' : 'auditadas'} com a versão anterior —{' '}
-                <button
-                  onClick={handleReauditarDesatualizadas}
-                  disabled={auditandoLote || carregando}
-                  className={`rounded font-semibold text-brand-fg underline underline-offset-2 transition hover:text-brand-dark disabled:opacity-40 ${FOCO}`}
-                >
-                  <History className="mr-0.5 inline h-3 w-3 align-[-1px]" />
-                  reaplicar critérios atuais
-                </button>
-              </>
-            )}
-          </p>
-      </div>
-
-      {/*
         Falha não é recado neutro. Antes os dois casos — "N não puderam ser
         auditadas" e "todas já foram auditadas" — dividiam o mesmo cinza, o que
         contraria o próprio motivo de existir do aviso.
@@ -628,12 +624,12 @@ export function AuditoriaEvolucoesShell() {
 
       {/* KPIs — e os KPIs SÃO o filtro de risco/cobrança. */}
       {primeiraCarga ? (
-        <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-6">
-          {Array.from({ length: 6 }).map((_, i) => (
+        <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
+          {Array.from({ length: 5 }).map((_, i) => (
             <div
               key={i}
               className={`rounded-2xl border-2 border-border bg-card p-5 shadow-sm ${
-                i === 5 ? 'col-span-2 lg:col-span-1' : ''
+                i === 4 ? 'col-span-2 lg:col-span-1' : ''
               }`}
             >
               <div className="h-3 w-24 rounded bg-muted motion-safe:animate-pulse" />
@@ -643,7 +639,7 @@ export function AuditoriaEvolucoesShell() {
           ))}
         </div>
       ) : (
-        <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-6">
+        <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
           <Kpi
             rotulo="Evoluções no período"
             valor={totalEvolucoes}
@@ -666,26 +662,17 @@ export function AuditoriaEvolucoesShell() {
             rotuloFiltro="Ver as sem risco"
           />
           <Kpi
-            rotulo="Ponto específico"
-            valor={totalRiscoEspecifico}
-            tom={tomSeHouver(totalRiscoEspecifico, 'amber')}
-            cor={toneColor(tomSeHouver(totalRiscoEspecifico, 'amber'))}
-            nota="Ajustes pontuais de redação"
-            ativo={cardAtivo({ risco: 'risco_especifico' })}
-            onClick={() => alternarCard({ risco: 'risco_especifico' })}
-            desabilitado={totalRiscoEspecifico === 0}
-            rotuloFiltro="Ver só estas"
-          />
-          <Kpi
-            rotulo="Risco relevante"
-            valor={totalRiscoRelevante}
-            tom={tomSeHouver(totalRiscoRelevante, 'red')}
-            cor={toneColor(tomSeHouver(totalRiscoRelevante, 'red'))}
-            nota="Incompletas ou termos vedados"
-            ativo={cardAtivo({ risco: 'risco_relevante' })}
-            onClick={() => alternarCard({ risco: 'risco_relevante' })}
-            desabilitado={totalRiscoRelevante === 0}
-            rotuloFiltro="Ver só estas"
+            rotulo="Com risco"
+            valor={totalRiscoEspecifico + totalRiscoRelevante}
+            tom={tomSeHouver(totalRiscoEspecifico + totalRiscoRelevante, totalRiscoRelevante > 0 ? 'red' : 'amber')}
+            cor={toneColor(tomSeHouver(totalRiscoEspecifico + totalRiscoRelevante, totalRiscoRelevante > 0 ? 'red' : 'amber'))}
+            nota={totalRiscoRelevante > 0
+              ? `${totalRiscoRelevante} relevante · ${totalRiscoEspecifico} específico`
+              : 'Ajustes pontuais de redação'}
+            ativo={cardAtivo({ risco: 'com_risco' })}
+            onClick={() => alternarCard({ risco: 'com_risco' })}
+            desabilitado={totalRiscoEspecifico + totalRiscoRelevante === 0}
+            rotuloFiltro="Ver as com risco"
           />
           <Kpi
             rotulo="A cobrar"
@@ -733,11 +720,6 @@ export function AuditoriaEvolucoesShell() {
           >
             <Users className="h-4 w-4" />
             Por profissional
-            {totalPendentesCobranca > 0 && (
-              <span className={`rounded-full px-1.5 text-[10px] font-bold tabular-nums ${TONE_CHIP.blue.bg} ${TONE_CHIP.blue.text}`}>
-                {totalPendentesCobranca}
-              </span>
-            )}
           </button>
 
           <button
@@ -752,9 +734,6 @@ export function AuditoriaEvolucoesShell() {
           >
             <FileSearch className="h-4 w-4" />
             Todas as evoluções
-            <span className={`rounded-full px-1.5 text-[10px] font-bold tabular-nums ${TONE_CHIP.gray.bg} ${TONE_CHIP.gray.text}`}>
-              {totalEvolucoes}
-            </span>
           </button>
 
           <button
@@ -769,86 +748,15 @@ export function AuditoriaEvolucoesShell() {
           >
             <Copy className="h-4 w-4" />
             Duplicadas
-            {totalDuplicadas > 0 && (
-              <span className={`rounded-full px-1.5 text-[10px] font-bold tabular-nums ${TONE_CHIP.red.bg} ${TONE_CHIP.red.text}`}>
-                {totalDuplicadas}
-              </span>
-            )}
           </button>
-
-          {/*
-            As ações fecham a linha das abas, encostadas à direita pelo
-            `ml-auto` — Critérios, Atualizar e Auditar não são mais um filtro,
-            são a barra de ferramentas da tela, e cabem na mesma linha porque
-            as abas não competem mais por peso visual com um fundo cinza.
-          */}
-          <div className="ml-auto flex shrink-0 items-center gap-2 pb-2">
-            <button
-              onClick={() => setCriteriosAberto(true)}
-              className={`${BOTAO_SECUNDARIO} w-9 justify-center px-0 xl:w-auto xl:px-2.5`}
-              title="Ver os critérios que a IA aplica"
-              aria-label="Critérios"
-            >
-              <ScrollText className="h-3.5 w-3.5" />
-              <span className="hidden xl:inline">Critérios</span>
-            </button>
-
-            <button
-              onClick={carregarDados}
-              disabled={carregando}
-              aria-label="Atualizar"
-              title="Atualizar"
-              className={`${BOTAO_SECUNDARIO} w-9 justify-center px-0`}
-            >
-              <RefreshCw className={`h-3.5 w-3.5 ${carregando ? 'motion-safe:animate-spin' : ''}`} />
-            </button>
-
-            {/*
-              O progresso do lote é o próprio botão: como bloco separado, ele
-              empurrava a grade de KPIs para baixo exatamente no instante em que
-              a pessoa observava os números mudarem.
-            */}
-            <button
-              onClick={handleAuditarLote}
-              disabled={auditandoLote || carregando || totalPendentesIA === 0}
-              title={
-                totalPendentesIA > 0
-                  ? `Auditar ${totalPendentesIA} ${totalPendentesIA === 1 ? 'nova evolução' : 'novas evoluções'} com IA`
-                  : 'Nenhuma evolução nova para auditar'
-              }
-              /*
-               * Rótulo curto e `min-w` menor: o texto por extenso é o que
-               * estouraria a largura disponível. A frase completa vive no
-               * `title`, e o `min-w` segura a contagem mudando sem o botão
-               * encolher a cada lote.
-               */
-              className={`${BOTAO_PRIMARIO} relative min-w-36 justify-center overflow-hidden`}
-            >
-              {auditandoLote && progressoLote && progressoLote.total > 0 && (
-                <span
-                  aria-hidden
-                  className="absolute inset-0 bg-brand-dark"
-                  style={{
-                    clipPath: `inset(0 ${100 - Math.round((progressoLote.atual / progressoLote.total) * 100)}% 0 0)`,
-                    transition: 'clip-path 500ms cubic-bezier(0.16, 1, 0.3, 1)'
-                  }}
-                />
-              )}
-              <Sparkles className={`relative h-4 w-4 ${auditandoLote ? 'motion-safe:animate-spin' : ''}`} />
-              <span className="relative tabular-nums">
-                {auditandoLote && progressoLote
-                  ? `${progressoLote.atual} de ${progressoLote.total}…`
-                  : totalPendentesIA > 0
-                    ? `Auditar ${totalPendentesIA}`
-                    : 'Auditar'}
-              </span>
-            </button>
-          </div>
       </div>
 
       {/*
-        Filtros, na linha abaixo das abas — só período e busca; as ações
-        subiram para a linha das abas.
+        Filtros e ações, na linha abaixo das abas: período e busca à esquerda,
+        Critérios/Atualizar/Auditar à direita. Ficaram fora da linha das abas
+        de propósito — ações que disparam lote (Auditar) não devem competir
+        visualmente com navegação passiva (as abas), risco real de mis-click
+        com o botão primário logo ao lado de "Duplicadas".
       */}
       <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
 
@@ -888,6 +796,88 @@ export function AuditoriaEvolucoesShell() {
               focus:outline-none focus:ring-2 focus:ring-ring`}
           />
         </div>
+
+        {/*
+          Ações à direita, separadas das abas: Critérios/Atualizar/Auditar
+          disparam efeito (rede, lote), então ficam junto dos filtros que
+          também mudam o que a tela mostra — não coladas na navegação passiva
+          das abas, onde um botão primário ao lado de "Duplicadas" convidava
+          ao mis-click.
+        */}
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          <button
+            onClick={() => setCriteriosAberto(true)}
+            className={`${BOTAO_SECUNDARIO} relative w-9 justify-center px-0 xl:w-auto xl:px-2.5`}
+            title={
+              desatualizadas.length > 0
+                ? `Ver os critérios que a IA aplica — ${desatualizadas.length} ${desatualizadas.length === 1 ? 'evolução auditada' : 'evoluções auditadas'} com versão anterior`
+                : 'Ver os critérios que a IA aplica'
+            }
+            aria-label="Critérios"
+          >
+            <ScrollText className="h-3.5 w-3.5" />
+            <span className="hidden xl:inline">Critérios</span>
+            {desatualizadas.length > 0 && (
+              <span
+                aria-hidden
+                className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[9px] font-bold text-white"
+              >
+                {desatualizadas.length}
+              </span>
+            )}
+          </button>
+
+          <button
+            onClick={carregarDados}
+            disabled={carregando}
+            aria-label="Atualizar"
+            title="Atualizar"
+            className={`${BOTAO_SECUNDARIO} w-9 justify-center px-0`}
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${carregando ? 'motion-safe:animate-spin' : ''}`} />
+          </button>
+
+          {/*
+            O progresso do lote é o próprio botão: como bloco separado, ele
+            empurrava a grade de KPIs para baixo exatamente no instante em que
+            a pessoa observava os números mudarem.
+          */}
+          <button
+            onClick={handleAuditarLote}
+            disabled={auditandoLote || carregando || totalPendentesIA === 0}
+            title={
+              totalPendentesIA > 0
+                ? `Auditar ${totalPendentesIA} ${totalPendentesIA === 1 ? 'nova evolução' : 'novas evoluções'} com IA`
+                : 'Nenhuma evolução nova para auditar'
+            }
+            /*
+             * Rótulo curto e `min-w` menor: o texto por extenso é o que
+             * estouraria a largura disponível. A frase completa vive no
+             * `title`, e o `min-w` segura a contagem mudando sem o botão
+             * encolher a cada lote.
+             */
+            className={`${BOTAO_PRIMARIO} relative min-w-36 justify-center overflow-hidden`}
+          >
+            {auditandoLote && progressoLote && progressoLote.total > 0 && (
+              <span
+                aria-hidden
+                className="absolute inset-0 bg-brand-dark"
+                style={{
+                  clipPath: `inset(0 ${100 - Math.round((progressoLote.atual / progressoLote.total) * 100)}% 0 0)`,
+                  transition: 'clip-path 500ms cubic-bezier(0.16, 1, 0.3, 1)'
+                }}
+              />
+            )}
+            <Sparkles className={`relative h-4 w-4 ${auditandoLote ? 'motion-safe:animate-spin' : ''}`} />
+            <span className="relative tabular-nums">
+              {auditandoLote && progressoLote
+                ? `${progressoLote.atual} de ${progressoLote.total}…`
+                : totalPendentesIA > 0
+                  ? `Auditar ${totalPendentesIA}`
+                  : 'Auditar'}
+            </span>
+          </button>
+        </div>
       </div>
 
       {/*
@@ -899,6 +889,26 @@ export function AuditoriaEvolucoesShell() {
         <p className={`mt-2 flex items-center gap-2 rounded-lg px-3 py-2 text-xs ${TONE_PANEL.amber.bg} ring-1 ${TONE_PANEL.amber.ring} ${TONE_CHIP.amber.text}`}>
           <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
           A data inicial está depois da final. Corrija o intervalo para ver as evoluções.
+        </p>
+      )}
+
+      {/*
+        Um card de risco/cobrança pode ficar ativo sem que a pessoa tenha
+        clicado nele nesta visita — "Ver evoluções" de um card de profissional
+        chega direto num recorte filtrado. Sem isto, o único jeito de descobrir
+        e desfazer o filtro era achar o card "Evoluções no período" no topo.
+      */}
+      {(statusRisco !== 'todos' || statusCobranca !== 'todos') && (
+        <p className={`mt-2 flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-xs ${TONE_PANEL.blue.bg} ring-1 ${TONE_PANEL.blue.ring} ${TONE_CHIP.blue.text}`}>
+          <span>
+            Filtro ativo: {statusRisco !== 'todos' ? ROTULO_STATUS_RISCO[statusRisco] : ROTULO_STATUS_COBRANCA[statusCobranca as StatusCobrancaEvolucao]}
+          </span>
+          <button
+            onClick={() => aplicar({ statusRisco: 'todos', statusCobranca: 'todos' })}
+            className={`shrink-0 rounded px-1.5 py-0.5 font-bold underline-offset-2 hover:underline ${FOCO}`}
+          >
+            Limpar
+          </button>
         </p>
       )}
 
@@ -932,10 +942,19 @@ export function AuditoriaEvolucoesShell() {
             onVerEvolucoesProfissional={prof => {
               aplicar({ busca: prof.profissional_nome, aba: 'feed' })
             }}
+            onVerMetricaProfissional={(prof, metrica) => {
+              if (metrica === 'duplicadas') {
+                aplicar({ busca: prof.profissional_nome, aba: 'duplicadas' })
+                return
+              }
+              const statusRisco =
+                metrica === 'sem_risco' ? 'sem_risco' : metrica === 'com_risco' ? 'com_risco' : 'todos'
+              aplicar({ busca: prof.profissional_nome, aba: 'feed', statusRisco })
+            }}
           />
         ) : abaAtiva === 'feed' ? (
           <EvolucoesFeedTab
-            evolucoes={evolucoesFiltradas}
+            evolucoes={evolucoesDaLista}
             onSelecionarEvolucao={item => setItemSelecionado(item)}
           />
         ) : (
@@ -973,6 +992,18 @@ export function AuditoriaEvolucoesShell() {
         // Publicou: a Shell precisa saber para o botão "Reauditar com critérios
         // atuais" aparecer sem depender de um F5.
         onPublicou={carregarVersaoVigente}
+        totalDesatualizadas={desatualizadas.length}
+        onReauditarDesatualizadas={handleReauditarDesatualizadas}
+        auditandoLote={auditandoLote || carregando}
+      />
+
+      <ModalConfirmacao
+        isOpen={confirmarReauditar}
+        titulo="Reauditar com os critérios atuais?"
+        descricao={`${desatualizadas.length} ${desatualizadas.length === 1 ? 'evolução' : 'evoluções'} ${desatualizadas.length === 1 ? 'será reauditada' : 'serão reauditadas'}. O veredito anterior de cada uma será substituído.`}
+        rotuloConfirmar="Reauditar"
+        onConfirmar={confirmarEExecutarReauditar}
+        onCancelar={() => setConfirmarReauditar(false)}
       />
 
       <ModalComparadorDuplicadas

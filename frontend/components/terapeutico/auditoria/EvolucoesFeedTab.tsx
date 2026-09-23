@@ -98,7 +98,7 @@ export function EvolucoesFeedTab({ evolucoes, onSelecionarEvolucao }: Props) {
                     {dataFormatada}
                   </td>
 
-                  <td className="max-w-45 truncate px-4 py-3 font-medium text-foreground">
+                  <td className="max-w-45 truncate px-4 py-3 font-medium text-foreground" title={item.paciente_nome}>
                     {item.paciente_nome}
                   </td>
 
