@@ -15,6 +15,13 @@ export interface PrevisaoReceitasResumoMes {
   receitaSemDeducao: number
   deducaoFalta: number
   receitaComDeducao: number
+  // Diferente dos campos acima (todos vindos da view previsao_receitas_historico_resumo),
+  // estes dois são calculados NO CLIENTE — ver calcularIndefinidoTotalMes em
+  // lib/cronograma/receitasEfetivadas.ts — cruzando receitaComDeducao com os
+  // lançamentos manuais de previsao_receitas_faturamento da competência.
+  // Ausentes até esse cruzamento acontecer (ex.: hidratação inicial do cache).
+  efetivadoReal?: number
+  indefinido?: number
 }
 
 // Cache em memória — o dado só muda com o snapshot diário, então não há

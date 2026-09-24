@@ -183,6 +183,13 @@ const LABEL_POR_ENTIDADE: Record<EntidadeAuditada, Record<string, string>> = {
     data_validade: "Data de validade",
     observacoes: "Observações",
   },
+  previsao_receitas_faturamento: {
+    paciente_id: "Paciente (ID TITA)",
+    competencia: "Mês de atendimento",
+    numero_nf: "N° da NF",
+    data_pagamento: "Data do pagamento",
+    valor_pago: "Valor pago",
+  },
 }
 
 const VALOR_LEGIVEL: Record<string, Record<string, string>> = {
