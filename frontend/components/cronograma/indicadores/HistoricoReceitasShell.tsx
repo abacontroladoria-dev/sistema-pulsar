@@ -21,7 +21,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { CalendarClock, CalendarX2, Clock, Info, Loader2, TrendingUp, Users } from "lucide-react"
 import { type PrevisaoReceitasResumoMes } from "@/services/previsaoReceitasHistoricoResumo.service"
 import { labelMesAno } from "@/lib/cronograma/helpers"
-import { useResumoHistoricoReceitas } from "@/hooks/useResumoHistoricoReceitas"
+import { useResumoHistoricoReceitasComEfetivado } from "@/hooks/useResumoHistoricoReceitasComEfetivado"
 import { EvolucaoReceitasChart } from "./EvolucaoReceitasChart"
 import { METRICAS_RECEITAS, formatarMetrica } from "@/lib/cronograma/previsaoReceitasMetricas"
 import { TONE_ACCENT, TONE_SOFT, type Tone } from "@/components/cronograma/ui/tones"
@@ -143,7 +143,7 @@ function LinhaMesCard({ linha }: { linha: LinhaHistorico }) {
 
       {linha.resumo ? (
         <div className="mt-1.5 flex flex-wrap items-center gap-y-1 text-xs">
-          {(["receitaSemDeducao", "deducaoFalta", "receitaComDeducao", "sessoesMes"] as const).map((key, i) => {
+          {(["receitaSemDeducao", "efetivadoReal", "deducaoFalta", "indefinido", "sessoesMes"] as const).map((key, i) => {
             const config = METRICAS_RECEITAS[key]
             const IconeMetrica = config.icon
             return (
@@ -175,7 +175,7 @@ function LinhaMesCard({ linha }: { linha: LinhaHistorico }) {
 }
 
 export function HistoricoReceitasShell() {
-  const { resumos, loading, error } = useResumoHistoricoReceitas()
+  const { resumos, loading, error } = useResumoHistoricoReceitasComEfetivado()
 
   const linhas = useMemo<LinhaHistorico[]>(() => {
     const hoje = new Date()

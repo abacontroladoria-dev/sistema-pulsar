@@ -29,6 +29,11 @@ export type EntidadeAuditada =
   // serene-seeking-toast.md). `registro_id` é o `paciente_id` — a PK de
   // public.pdi_controle_prazos. Ver 20260904120000/120100.
   | "pdi_controle_prazos"
+  // Lançamento manual de pagamentos/NF recebidos (tela "Preencher Receitas
+  // Faturadas", /cronograma/indicadores?tab=alimentar-bd). `registro_id` é o
+  // `id` (bigserial) de public.previsao_receitas_faturamento. Ver
+  // 20260923140000/140300.
+  | "previsao_receitas_faturamento"
 
 export type AcaoAuditada = "criar" | "editar" | "excluir" | "inativar" | "reativar"
 
@@ -82,6 +87,7 @@ export const ENTIDADE_LABEL: Record<EntidadeAuditada, string> = {
   alta_clinica: "Alta clínica",
   laudo_acompanhamento: "Acompanhamento de laudo",
   pdi_controle_prazos: "Controle de Prazos PDI",
+  previsao_receitas_faturamento: "Receita faturada (pagamento manual)",
 }
 
 export const ACAO_LABEL: Record<AcaoAuditada, string> = {

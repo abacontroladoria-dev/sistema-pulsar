@@ -27,10 +27,10 @@ import {
   XAxis,
   YAxis,
 } from "recharts"
-import { ChevronDown, ChevronUp, TrendingDown, TrendingUp } from "lucide-react"
+import { Check, ChevronDown, ChevronUp, TrendingDown, TrendingUp } from "lucide-react"
 import { SegmentedTabs } from "@/components/cronograma/ui/SegmentedTabs"
 import { TONE_ACCENT } from "@/components/cronograma/ui/tones"
-import { labelMesAno } from "@/lib/cronograma/helpers"
+import { labelMesAno, fmtReal } from "@/lib/cronograma/helpers"
 import {
   METRICAS_RECEITAS,
   ORDEM_METRICAS_PADRAO,
@@ -41,15 +41,56 @@ import { classificarStatusMes, type StatusMes } from "@/lib/cronograma/previsaoR
 import type { PrevisaoReceitasResumoMes } from "@/services/previsaoReceitasHistoricoResumo.service"
 import { InfoTooltip } from "@/components/cronograma/ui/InfoTooltip"
 
-// Paleta categórica validada (light + dark) pro modo Comparar — ver
+// Paleta categórica validada (light + dark) pro modo Comparar (%) — ver
 // cabeçalho do arquivo. Mesma ordem de ORDEM_METRICAS_PADRAO.
 const COR_COMPARATIVO: Record<MetricaReceitaKey, string> = {
-  receitaComDeducao: "#2a78d6",
-  receitaSemDeducao: "#eb6834",
+  efetivadoReal: "#0d8a4e",
+  indefinido: "#d97706",
+  receitaSemDeducao: "#2a78d6",
   deducaoFalta: "#1baf7a",
   sessoesMes: "#eda100",
   faltasMes: "#e87ba4",
   pacientesUnicos: "#4a3aa7",
+}
+
+// Comparar (R$): conjunto FIXO — Projetado = Efetivado + Deduções + Indefinido
+// (mesma decisão de 2026-09-23 em previsaoReceitasMetricas.ts) — não é
+// selecionável como o Comparar (%), de propósito, pra sempre mostrar as 4
+// partes da mesma equação lado a lado.
+const METRICAS_COMPARAR_RS: MetricaReceitaKey[] = ["receitaSemDeducao", "efetivadoReal", "deducaoFalta", "indefinido"]
+
+// Cor da linha combinada do toggle "Efetivado + Deduções" — teal,
+// deliberadamente distinta do azul de Projetado e do âmbar de Indefinido (as
+// outras duas linhas que sobram nesse modo).
+const COR_EFETIVADO_MAIS_DEDUCAO = "#0d9488"
+
+interface SerieRS {
+  key: string
+  label: string
+  cor: string
+  valor: (r: PrevisaoReceitasResumoMes) => number
+}
+
+/**
+ * Séries do modo Comparar (R$). Desagrupado: as 4 métricas fixas lado a
+ * lado. Agrupado ("Efetivado + Deduções"): Efetivado e Deduções somados numa única
+ * linha — o objetivo do usuário é ver essa linha encostar em Projetado (e
+ * Indefinido cair a zero), o que fica mais legível com 3 linhas do que 4.
+ */
+function montarSeriesRS(agrupar: boolean): SerieRS[] {
+  if (!agrupar) {
+    return METRICAS_COMPARAR_RS.map(key => ({
+      key, label: METRICAS_RECEITAS[key].labelCurto, cor: COR_COMPARATIVO[key], valor: METRICAS_RECEITAS[key].acessor,
+    }))
+  }
+  return [
+    { key: "receitaSemDeducao", label: "Projetado", cor: COR_COMPARATIVO.receitaSemDeducao, valor: METRICAS_RECEITAS.receitaSemDeducao.acessor },
+    {
+      key: "efetivadoMaisDeducao", label: "Efetivado + Deduções", cor: COR_EFETIVADO_MAIS_DEDUCAO,
+      valor: r => METRICAS_RECEITAS.efetivadoReal.acessor(r) + METRICAS_RECEITAS.deducaoFalta.acessor(r),
+    },
+    { key: "indefinido", label: "Indefinido", cor: COR_COMPARATIVO.indefinido, valor: METRICAS_RECEITAS.indefinido.acessor },
+  ]
 }
 
 // Faixas de período, estilo Google Finance — "1D"/"5D"/"1M"/"YTD" não fazem
@@ -155,12 +196,19 @@ function VariacaoBadge({ atual, anterior }: { atual: number; anterior: number | 
   )
 }
 
+type ModoExibicao = "unica" | "comparar_pct" | "comparar_rs"
+
 export function EvolucaoReceitasChart({ resumos, modo, mesSelecionado, onSelecionarMes }: EvolucaoReceitasChartProps) {
-  const [metricaAtiva, setMetricaAtiva] = useState<MetricaReceitaKey>("receitaComDeducao")
-  const [comparar, setComparar] = useState(false)
-  const [metricasComparadas, setMetricasComparadas] = useState<MetricaReceitaKey[]>(["receitaComDeducao", "receitaSemDeducao"])
+  const [metricaAtiva, setMetricaAtiva] = useState<MetricaReceitaKey>("efetivadoReal")
+  const [modoExibicao, setModoExibicao] = useState<ModoExibicao>("unica")
+  const [metricasComparadas, setMetricasComparadas] = useState<MetricaReceitaKey[]>(["efetivadoReal", "receitaSemDeducao"])
+  const [agruparEfetivadoDeducoes, setAgruparEfetivadoDeducoes] = useState(false)
   const [colapsado, setColapsado] = useState(false)
   const [range, setRange] = useState<RangeChave>("1A")
+
+  const comparar = modoExibicao === "comparar_pct"
+  const compararRS = modoExibicao === "comparar_rs"
+  const seriesRS = useMemo(() => montarSeriesRS(agruparEfetivadoDeducoes), [agruparEfetivadoDeducoes])
 
   const pontos = useMemo(() => montarPontos(resumos), [resumos])
 
@@ -188,7 +236,7 @@ export function EvolucaoReceitasChart({ resumos, modo, mesSelecionado, onSelecio
     return pontos.filter(p => p.ano * 12 + p.mes >= corteChave)
   }, [pontos, range, mesSelecionado])
 
-  const metricasAtivas = comparar ? metricasComparadas : [metricaAtiva]
+  const metricasAtivas = comparar ? metricasComparadas : compararRS ? METRICAS_COMPARAR_RS : [metricaAtiva]
 
   // Média do período visível — exclui o mês corrente (o valor ainda não é
   // definitivo e pode mudar pra cima ou pra baixo até o mês terminar) mas inclui meses
@@ -215,6 +263,18 @@ export function EvolucaoReceitasChart({ resumos, modo, mesSelecionado, onSelecio
     })
   }, [comparar, metricasComparadas, pontosFiltrados])
 
+  // Comparar (R$): valores absolutos, sem normalizar contra o primeiro ponto
+  // (diferente de dadosComparativo/%) — é justamente o ponto de ter as duas
+  // categorias separadas: aqui a régua é dinheiro, não variação relativa.
+  const dadosComparativoRS = useMemo(() => {
+    if (!compararRS || pontosFiltrados.length === 0) return []
+    return pontosFiltrados.map(p => {
+      const linha: Record<string, unknown> = { competencia: p.competencia, labelCurto: p.labelCurto }
+      for (const serie of seriesRS) linha[serie.key] = serie.valor(p.resumo)
+      return linha
+    })
+  }, [compararRS, seriesRS, pontosFiltrados])
+
   function toggleMetricaComparada(key: MetricaReceitaKey) {
     setMetricasComparadas(prev => {
       if (prev.includes(key)) return prev.filter(k => k !== key)
@@ -239,9 +299,9 @@ export function EvolucaoReceitasChart({ resumos, modo, mesSelecionado, onSelecio
       <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
         <div>
           <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
-            {comparar ? "Comparar métricas (%)" : configPrincipal.label}
+            {comparar ? "Comparar métricas (%)" : compararRS ? "Comparar métricas (R$)" : configPrincipal.label}
           </span>
-          {!comparar && (
+          {!comparar && !compararRS && (
             <>
               <div className="mt-1 flex items-baseline gap-2">
                 <span className="text-2xl font-black text-foreground">
@@ -287,16 +347,18 @@ export function EvolucaoReceitasChart({ resumos, modo, mesSelecionado, onSelecio
         <>
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <SegmentedTabs
-              value={comparar ? "__comparar__" : metricaAtiva}
+              value={comparar ? "__comparar_pct__" : compararRS ? "__comparar_rs__" : metricaAtiva}
               onChange={v => {
-                if (v === "__comparar__") { setComparar(true); return }
-                setComparar(false)
+                if (v === "__comparar_pct__") { setModoExibicao("comparar_pct"); return }
+                if (v === "__comparar_rs__") { setModoExibicao("comparar_rs"); return }
+                setModoExibicao("unica")
                 setMetricaAtiva(v as MetricaReceitaKey)
               }}
               ariaLabel="Métrica exibida"
               tabs={[
                 ...ORDEM_METRICAS_PADRAO.map(key => ({ value: key, label: METRICAS_RECEITAS[key].labelCurto })),
-                { value: "__comparar__", label: "Comparar" },
+                { value: "__comparar_pct__", label: "Comparar (%)" },
+                { value: "__comparar_rs__", label: "Comparar (R$)" },
               ]}
             />
           </div>
@@ -321,6 +383,41 @@ export function EvolucaoReceitasChart({ resumos, modo, mesSelecionado, onSelecio
                   </button>
                 )
               })}
+            </div>
+          )}
+
+          {/* Comparar (R$): legenda informativa (não togglável, série é fixa) + o
+              toggle "Efetivado + Deduções" — objetivo é ver essa linha combinada
+              encostar em Projetado (Indefinido = 0). */}
+          {compararRS && (
+            <div className="mb-3 flex flex-wrap items-center gap-1.5">
+              {seriesRS.map(serie => (
+                <span
+                  key={serie.key}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-transparent px-2.5 py-1 text-[11px] font-semibold text-white"
+                  style={{ background: serie.cor }}
+                >
+                  <span className="h-2 w-2 rounded-full bg-white" />
+                  {serie.label}
+                </span>
+              ))}
+              <button
+                type="button"
+                onClick={() => setAgruparEfetivadoDeducoes(v => !v)}
+                aria-pressed={agruparEfetivadoDeducoes}
+                className={`ml-auto inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                  agruparEfetivadoDeducoes
+                    ? "border-transparent bg-[#0d9488] text-white"
+                    : "border-border text-muted-foreground hover:bg-muted/50"
+                }`}
+              >
+                <span className={`flex h-3.5 w-3.5 items-center justify-center rounded-[4px] border ${
+                  agruparEfetivadoDeducoes ? "border-white bg-white/20" : "border-muted-foreground/50"
+                }`}>
+                  {agruparEfetivadoDeducoes && <Check size={10} strokeWidth={3} />}
+                </span>
+                Efetivado + Deduções
+              </button>
             </div>
           )}
 
@@ -350,6 +447,36 @@ export function EvolucaoReceitasChart({ resumos, modo, mesSelecionado, onSelecio
                   }} />
                   {metricasComparadas.map(key => (
                     <Line key={key} type="monotone" dataKey={key} stroke={COR_COMPARATIVO[key]} strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                  ))}
+                </LineChart>
+              ) : compararRS ? (
+                <LineChart data={dadosComparativoRS} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e1e0d9" opacity={0.4} vertical={false} />
+                  <XAxis dataKey="labelCurto" tick={{ fontSize: 11, fill: "#898781" }} axisLine={{ stroke: "#c3c2b7" }} tickLine={false} />
+                  <YAxis tick={{ fontSize: 11, fill: "#898781" }} axisLine={false} tickLine={false} width={56}
+                    tickFormatter={v => formatarTickEixoY(v, "moeda")} />
+                  <Tooltip content={({ active, payload, label }) => {
+                    if (!active || !payload?.length) return null
+                    return (
+                      <div className="min-w-36 rounded-xl border border-slate-700 bg-slate-800 px-4 py-3 text-white shadow-2xl">
+                        <p className="mb-2 text-sm font-semibold text-slate-200">{label}</p>
+                        {payload.map(p => {
+                          const serie = seriesRS.find(s => s.key === p.dataKey)
+                          return (
+                            <div key={p.dataKey as string} className="flex items-center justify-between gap-4 py-0.5 text-xs">
+                              <div className="flex items-center gap-1.5">
+                                <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: p.color }} />
+                                <span className="text-slate-300">{serie?.label ?? String(p.dataKey)}</span>
+                              </div>
+                              <span className="font-semibold text-white">{fmtReal(Number(p.value))}</span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )
+                  }} />
+                  {seriesRS.map(serie => (
+                    <Line key={serie.key} type="monotone" dataKey={serie.key} stroke={serie.cor} strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
                   ))}
                 </LineChart>
               ) : (

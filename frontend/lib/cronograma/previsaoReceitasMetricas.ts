@@ -12,7 +12,8 @@ import type { PrevisaoReceitasResumoMes } from "@/services/previsaoReceitasHisto
 export type MetricaReceitaKey =
   | "receitaSemDeducao"
   | "deducaoFalta"
-  | "receitaComDeducao"
+  | "efetivadoReal"
+  | "indefinido"
   | "sessoesMes"
   | "faltasMes"
   | "pacientesUnicos"
@@ -46,14 +47,23 @@ export const METRICAS_RECEITAS: Record<MetricaReceitaKey, MetricaReceitaConfig> 
     icon: AlertTriangle,
     acessor: r => r.deducaoFalta,
   },
-  receitaComDeducao: {
-    key: "receitaComDeducao",
-    label: "Efetivado Com Deduções",
+  efetivadoReal: {
+    key: "efetivadoReal",
+    label: "Efetivado (Recebido)",
     labelCurto: "Efetivado",
     tone: "green",
     formato: "moeda",
     icon: Wallet,
-    acessor: r => r.receitaComDeducao,
+    acessor: r => r.efetivadoReal ?? 0,
+  },
+  indefinido: {
+    key: "indefinido",
+    label: "Indefinido (Glosa ou Receita)",
+    labelCurto: "Indefinido",
+    tone: "amber",
+    formato: "moeda",
+    icon: AlertTriangle,
+    acessor: r => r.indefinido ?? 0,
   },
   sessoesMes: {
     key: "sessoesMes",
@@ -84,10 +94,17 @@ export const METRICAS_RECEITAS: Record<MetricaReceitaKey, MetricaReceitaConfig> 
   },
 }
 
+// Projetado (receitaSemDeducao) = Efetivado (efetivadoReal) + Deduções por
+// Falta (deducaoFalta) + Indefinido (indefinido) — decisão do usuário
+// (2026-09-23): só essas 4 categorias, sem nenhum "Projetado com deduções"
+// intermediário. O campo `receitaComDeducao` (previsao_receitas_historico_resumo)
+// continua existindo no banco/tipo PrevisaoReceitasResumoMes só como valor
+// intermediário pro cálculo de Indefinido — nunca é exibido como métrica.
 export const ORDEM_METRICAS_PADRAO: MetricaReceitaKey[] = [
-  "receitaComDeducao",
   "receitaSemDeducao",
+  "efetivadoReal",
   "deducaoFalta",
+  "indefinido",
   "sessoesMes",
   "faltasMes",
   "pacientesUnicos",

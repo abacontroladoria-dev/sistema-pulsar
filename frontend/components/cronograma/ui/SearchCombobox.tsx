@@ -71,6 +71,13 @@ export function SearchCombobox({
         id={id}
         type="text"
         autoComplete="off"
+        // Edge/Chrome ignoram autocomplete="off" pra campos que a heurística de
+        // preenchimento de contato/endereço reconhece pelo texto ao redor
+        // (rótulo "Paciente", placeholder "nome") — sem isso aparecia um dropdown
+        // nativo de sugestão de nome/endereço por cima da lista de opções própria
+        // deste componente. `name` aleatório quebra essa heurística sem precisar
+        // de nenhum atributo não-padrão.
+        name={`busca-${id}`}
         aria-label={ariaLabel}
         aria-autocomplete="list"
         aria-expanded={aberto}

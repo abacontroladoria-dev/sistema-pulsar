@@ -33,10 +33,16 @@ import { useConvenioValoresCalculo } from "@/hooks/useConvenioValores"
 import { useFeriados } from "@/hooks/useFeriados"
 import { useLinhasMesInteiro } from "@/hooks/useLinhasMesInteiro"
 import { usePrevisaoReceitasHistorico } from "@/hooks/usePrevisaoReceitasHistorico"
-import { useResumoHistoricoReceitas } from "@/hooks/useResumoHistoricoReceitas"
+import { useResumoHistoricoReceitasComEfetivado } from "@/hooks/useResumoHistoricoReceitasComEfetivado"
+import { useReceitasFaturamento } from "@/hooks/useReceitasFaturamento"
 import { normalizarUnidadeOcupacao } from "@/lib/cronograma/ocupacaoProf"
 import { normTxt } from "@/lib/cronograma/constants"
 import { getRefWeekDoMes, labelMesAno, fmtReal } from "@/lib/cronograma/helpers"
+import {
+  enriquecerComEfetivado,
+  calcularIndefinidoTotalMes,
+  type FaturamentoManualRow,
+} from "@/lib/cronograma/receitasEfetivadas"
 import { SeletorMesPrevisao } from "./SeletorMesPrevisao"
 import { ExportEscopoDialog } from "./ExportEscopoDialog"
 import { EvolucaoReceitasChart } from "./EvolucaoReceitasChart"
@@ -139,7 +145,7 @@ const SessaoRow = memo(function SessaoRow({ s, chave, selecionada, valorPacote, 
 })
 
 interface PacienteRowProps {
-  p: PrevisaoReceitaPacienteAgregado
+  p: PrevisaoReceitaPacienteAgregado & { efetivado: number; indefinido: number }
   convenio: string
   aberto: boolean
   onToggle: (chave: string) => void
@@ -172,11 +178,14 @@ function PacienteRow({ p, convenio, aberto, onToggle, sessaoSelecionada, onSelec
         <td className={`py-1 px-2 text-right tabular-nums ${p.deducaoFalta > 0 ? "font-semibold text-rose-600 dark:text-rose-400" : ""}`}>
           {p.deducaoFalta > 0 ? `-${fmtReal(p.deducaoFalta)}` : "—"}
         </td>
-        <td className="py-1 pl-2 text-right tabular-nums font-semibold text-emerald-600 dark:text-emerald-400">{fmtReal(p.valorComDeducao)}</td>
+        <td className="py-1 px-2 text-right tabular-nums font-semibold text-emerald-600 dark:text-emerald-400">{fmtReal(p.efetivado)}</td>
+        <td className={`py-1 pl-2 text-right tabular-nums ${p.indefinido > 0 ? "font-semibold text-amber-600 dark:text-amber-400" : ""}`}>
+          {p.indefinido > 0 ? fmtReal(p.indefinido) : "—"}
+        </td>
       </tr>
       {aberto && (
         <tr className="bg-muted/10">
-          <td colSpan={7} className="p-0">
+          <td colSpan={8} className="p-0">
             <div className="px-3 py-2">
               <table className="w-full text-[11px]">
                 <thead>
@@ -224,9 +233,13 @@ interface ConvenioRowProps {
   porSessaoMes: PrevisaoReceitaSessao[]
   /** true só no segmento Multidisciplinar — ver agregarPrevisaoPorPaciente. */
   aplicaDeducaoFalta: boolean
+  /** "YYYY-MM" do mês exibido — chave de cruzamento com os lançamentos manuais de Efetivado. */
+  competenciaSelecionada: string
+  /** Lançamentos manuais (previsao_receitas_faturamento) do mês exibido — vem de useReceitasFaturamento no shell. */
+  faturamentoRows: FaturamentoManualRow[]
 }
 
-function ConvenioRow({ c, mesReferenciaLabel, sessaoSelecionada, onSelectSessao, avisoParticular, porSessaoMes, aplicaDeducaoFalta }: ConvenioRowProps) {
+function ConvenioRow({ c, mesReferenciaLabel, sessaoSelecionada, onSelectSessao, avisoParticular, porSessaoMes, aplicaDeducaoFalta, competenciaSelecionada, faturamentoRows }: ConvenioRowProps) {
   const [aberto, setAberto] = useState(false)
   const [visao, setVisao] = useState<VisaoDetalhe>("paciente")
   const [sortPaciente, setSortPaciente] = useState(SORT_PADRAO_PACIENTE)
@@ -235,8 +248,20 @@ function ConvenioRow({ c, mesReferenciaLabel, sessaoSelecionada, onSelectSessao,
   // "Por paciente" usa o mês inteiro (porSessaoMes), diferente de "Por dia da
   // semana"/"Por terapia" abaixo, que continuam usando a amostra semanal (c.porDia/c.porTerapia).
   const pacientesAgregados = useMemo(
-    () => ordenarPor(agregarPrevisaoPorPaciente(porSessaoMes, aplicaDeducaoFalta), sortPaciente.key, sortPaciente.dir),
-    [porSessaoMes, aplicaDeducaoFalta, sortPaciente.key, sortPaciente.dir],
+    () => agregarPrevisaoPorPaciente(porSessaoMes, aplicaDeducaoFalta),
+    [porSessaoMes, aplicaDeducaoFalta],
+  )
+
+  // Efetivado/Indefinido cruzados por paciente — ver enriquecerComEfetivado em
+  // lib/cronograma/receitasEfetivadas.ts. A ordenação roda DEPOIS do
+  // cruzamento pra permitir ordenar pelas colunas novas (efetivado/indefinido).
+  const pacientesComEfetivado = useMemo(
+    () => ordenarPor(
+      enriquecerComEfetivado(pacientesAgregados, competenciaSelecionada, faturamentoRows),
+      sortPaciente.key as any,
+      sortPaciente.dir,
+    ),
+    [pacientesAgregados, competenciaSelecionada, faturamentoRows, sortPaciente.key, sortPaciente.dir],
   )
 
   const onTogglePaciente = useCallback((chave: string) => {
@@ -281,14 +306,13 @@ function ConvenioRow({ c, mesReferenciaLabel, sessaoSelecionada, onSelectSessao,
         </td>
         <td className="py-1.5 px-2 text-right tabular-nums">{fmtReal(c.receitaSemanal)}</td>
         <td className="py-1.5 px-2 text-right tabular-nums font-semibold text-amber-600 dark:text-amber-400">{fmtReal(c.receitaMensalProjetada)}</td>
-        <td className={`py-1.5 px-2 text-right tabular-nums ${c.deducaoFalta > 0 ? "font-semibold text-rose-600 dark:text-rose-400" : ""}`}>
+        <td className={`py-1.5 pl-2 text-right tabular-nums ${c.deducaoFalta > 0 ? "font-semibold text-rose-600 dark:text-rose-400" : ""}`}>
           {c.deducaoFalta > 0 ? `-${fmtReal(c.deducaoFalta)}` : "—"}
         </td>
-        <td className="py-1.5 pl-2 text-right tabular-nums font-semibold text-emerald-600 dark:text-emerald-400">{fmtReal(c.receitaMensalComDeducao)}</td>
       </tr>
       {mostrarAvisoParticular && (
         <tr className="border-b border-border/60 last:border-0">
-          <td colSpan={8} className="px-2 pb-2 pt-1">
+          <td colSpan={7} className="px-2 pb-2 pt-1">
             <AvisoAtencao>
               Para a modalidade "Particular" foi usada uma <strong>média de valor por sessão</strong> como estimativa — não é um valor negociado por sessão objetivamente. O novo modelo de captação de receita (por sessão, mensal, trimestral etc.) ainda está em estágio de definição interna; quando a transição acontecer, isso será configurado e sistematizado corretamente no cadastro.
             </AvisoAtencao>
@@ -297,7 +321,7 @@ function ConvenioRow({ c, mesReferenciaLabel, sessaoSelecionada, onSelectSessao,
       )}
       {aberto && (
         <tr className="border-b border-border/60 last:border-0 bg-muted/20">
-          <td colSpan={8} className="p-0">
+          <td colSpan={7} className="p-0">
             <div className="px-4 py-3">
               <SegmentedTabs
                 value={visao}
@@ -411,14 +435,15 @@ function ConvenioRow({ c, mesReferenciaLabel, sessaoSelecionada, onSelectSessao,
                           <SortableTh label="Faltas no mês" sortKey="faltasCount" activeKey={sortPaciente.key} dir={sortPaciente.dir} align="right" onClick={onSortClick} />
                           <SortableTh label="Receita Mês Projetada Sem Deduções" sortKey="valorSemDeducao" activeKey={sortPaciente.key} dir={sortPaciente.dir} align="right" onClick={onSortClick} />
                           <SortableTh label="Deduções por Falta" sortKey="deducaoFalta" activeKey={sortPaciente.key} dir={sortPaciente.dir} align="right" onClick={onSortClick} />
-                          <SortableTh label="Receita Mês Projetada Com Deduções" sortKey="valorComDeducao" activeKey={sortPaciente.key} dir={sortPaciente.dir} align="right" onClick={onSortClick} />
+                          <SortableTh label="Efetivado (Recebido)" sortKey="efetivado" activeKey={sortPaciente.key} dir={sortPaciente.dir} align="right" onClick={onSortClick} />
+                          <SortableTh label="Indefinido (Glosa ou Receita)" sortKey="indefinido" activeKey={sortPaciente.key} dir={sortPaciente.dir} align="right" onClick={onSortClick} />
                         </tr>
                       </thead>
                       <tbody>
                         {pacientesAgregados.length === 0 && (
-                          <tr><td colSpan={7} className="py-2 text-center text-muted-foreground">Sem sessões pra detalhar.</td></tr>
+                          <tr><td colSpan={8} className="py-2 text-center text-muted-foreground">Sem sessões pra detalhar.</td></tr>
                         )}
-                        {pacientesAgregados.map(p => (
+                        {pacientesComEfetivado.map(p => (
                           <PacienteRow
                             key={p.chave}
                             p={p}
@@ -458,9 +483,13 @@ interface TabelaPorConvenioProps {
   sessoesMensaisPorConvenio: Map<string, PrevisaoReceitaSessao[]>
   /** true só pra Multidisciplinar — ver agregarPrevisaoPorPaciente. */
   aplicaDeducaoFalta?: boolean
+  /** "YYYY-MM" do mês exibido — repassado a cada ConvenioRow pro cruzamento de Efetivado. */
+  competenciaSelecionada: string
+  /** Lançamentos manuais (previsao_receitas_faturamento) do mês exibido. */
+  faturamentoRows: FaturamentoManualRow[]
 }
 
-function TabelaPorConvenio({ titulo, segmento, mesReferenciaLabel, avisoParticular, avisoPacote, sessoesMensaisPorConvenio, aplicaDeducaoFalta = false }: TabelaPorConvenioProps) {
+function TabelaPorConvenio({ titulo, segmento, mesReferenciaLabel, avisoParticular, avisoPacote, sessoesMensaisPorConvenio, aplicaDeducaoFalta = false, competenciaSelecionada, faturamentoRows }: TabelaPorConvenioProps) {
   // Seleção de linha em "Por sessão" — só destaque visual pra apresentação
   // (ex.: marcar em verde o que está sendo mostrado ao vivo), não é gravado em
   // lugar nenhum, some ao dar refresh. Só uma linha por vez em todo o
@@ -495,13 +524,12 @@ function TabelaPorConvenio({ titulo, segmento, mesReferenciaLabel, avisoParticul
               <th className="py-1.5 px-2 text-right font-semibold">Sem valor</th>
               <th className="py-1.5 px-2 text-right font-semibold">Receita semanal</th>
               <th className="py-1.5 px-2 text-right font-semibold">Receita Mês Projetada Sem Deduções</th>
-              <th className="py-1.5 px-2 text-right font-semibold">Deduções por falta</th>
-              <th className="py-1.5 pl-2 text-right font-semibold">Receita Mês Projetada Com Deduções</th>
+              <th className="py-1.5 pl-2 text-right font-semibold">Deduções por falta</th>
             </tr>
           </thead>
           <tbody>
             {segmento.porConvenio.length === 0 && (
-              <tr><td colSpan={8} className="py-3 text-center text-muted-foreground">Sem sessões no período.</td></tr>
+              <tr><td colSpan={7} className="py-3 text-center text-muted-foreground">Sem sessões no período.</td></tr>
             )}
             {segmento.porConvenio.map(c => (
               <ConvenioRow
@@ -513,6 +541,8 @@ function TabelaPorConvenio({ titulo, segmento, mesReferenciaLabel, avisoParticul
                 avisoParticular={avisoParticular}
                 porSessaoMes={sessoesMensaisPorConvenio.get(c.convenio) ?? []}
                 aplicaDeducaoFalta={aplicaDeducaoFalta}
+                competenciaSelecionada={competenciaSelecionada}
+                faturamentoRows={faturamentoRows}
               />
             ))}
           </tbody>
@@ -592,7 +622,7 @@ function calcularUnidadeFisicaPorPaciente(linhasMes: { paciente_id: number | nul
 export function PrevisaoReceitasShell() {
   const [periodo, setPeriodo] = useState(mesSeguinteAtual)
   const semanaRef = useMemo(() => getRefWeekDoMes(periodo.ano, periodo.mes), [periodo.ano, periodo.mes])
-  const { resumos: resumosHistorico } = useResumoHistoricoReceitas()
+  const { resumos: resumosHistorico } = useResumoHistoricoReceitasComEfetivado()
 
   const { linhas, loading: loadingSalas, error: errorSalas } = useOcupacaoSalas(semanaRef.inicio, semanaRef.fim)
   const { regrasGerais, excecoesPaciente, pacotesAvaliacao, loading: loadingValores, error: errorValores } = useConvenioValoresCalculo()
@@ -676,6 +706,11 @@ export function PrevisaoReceitasShell() {
   // sentido (mês passado) — pra outros meses o hook simplesmente não é usado.
   const competenciaSelecionada = `${periodo.ano}-${String(periodo.mes).padStart(2, "0")}`
   const historico = usePrevisaoReceitasHistorico(mesEhPassado ? competenciaSelecionada : null)
+  // Lançamentos manuais de "Preencher Receitas Faturadas" pro mês exibido —
+  // fonte do Efetivado real / Indefinido. Funciona igual pro mês corrente
+  // (live) e pra meses passados (histórico), já que ambos usam a mesma
+  // competência como chave (ver enriquecerComEfetivado).
+  const { rows: faturamentoRows } = useReceitasFaturamento({ competencia: competenciaSelecionada })
   const usarHistorico = mesEhPassado && historico.disponivel
 
   const previsaoHistorico = useMemo<PrevisaoReceitaGeral | null>(() => {
@@ -780,10 +815,16 @@ export function PrevisaoReceitasShell() {
   if (error) return <div className="text-sm font-semibold text-rose-600 dark:text-rose-400">{error}</div>
 
   const receitaMensalSemDeducao = previsaoExibida.multidisciplinar.receitaMensalProjetadaTotal + previsaoExibida.processoDiagnostico.receitaMensalProjetadaTotal
+  // Valor intermediário (líquido de faltas) — nunca exibido como card/coluna
+  // própria (decisão do usuário, 2026-09-23: só Projetado, Deduções,
+  // Efetivado e Indefinido existem como categorias visíveis). Usado só pra
+  // calcular Indefinido: Projetado = Efetivado + Deduções + Indefinido.
   const receitaMensalComDeducao = previsaoExibida.multidisciplinar.receitaMensalComDeducaoTotal + previsaoExibida.processoDiagnostico.receitaMensalComDeducaoTotal
+  const deducaoFaltaTotal = receitaMensalSemDeducao - receitaMensalComDeducao
   const receitaSemanalTotal = previsaoExibida.multidisciplinar.receitaSemanalTotal + previsaoExibida.processoDiagnostico.receitaSemanalTotal
   const sessoesTotal = previsaoExibida.multidisciplinar.sessoesTotal + previsaoExibida.processoDiagnostico.sessoesTotal
   const sessoesSemValor = previsaoExibida.multidisciplinar.sessoesSemValor + previsaoExibida.processoDiagnostico.sessoesSemValor
+  const { efetivadoTotal, indefinidoTotal } = calcularIndefinidoTotalMes(receitaMensalComDeducao, faturamentoRows)
 
   return (
     <div className="flex flex-col gap-4">
@@ -834,12 +875,18 @@ export function PrevisaoReceitasShell() {
         onSelecionarMes={(ano, mes) => setPeriodo({ ano, mes })}
       />
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
         <StatCard tone="amber" icon={<Wallet size={15} />} label="Receita Mês Projetada Sem Deduções">
           <div className="text-2xl font-black text-foreground">{fmtReal(receitaMensalSemDeducao)}</div>
         </StatCard>
-        <StatCard tone="green" icon={<Wallet size={15} />} label="Receita Mês Projetada Com Deduções">
-          <div className="text-2xl font-black text-foreground">{fmtReal(receitaMensalComDeducao)}</div>
+        <StatCard tone="green" icon={<Wallet size={15} />} label="Efetivado (Recebido)">
+          <div className="text-2xl font-black text-foreground">{fmtReal(efetivadoTotal)}</div>
+        </StatCard>
+        <StatCard tone="red" icon={<AlertTriangle size={15} />} label="Deduções por Falta">
+          <div className="text-2xl font-black text-foreground">{fmtReal(deducaoFaltaTotal)}</div>
+        </StatCard>
+        <StatCard tone="amber" icon={<AlertTriangle size={15} />} label="Indefinido (Glosa ou Receita)">
+          <div className="text-2xl font-black text-foreground">{fmtReal(indefinidoTotal)}</div>
         </StatCard>
         <StatCard tone="blue" icon={<Wallet size={15} />} label="Receita semanal projetada">
           <div className="text-2xl font-black text-foreground">{fmtReal(receitaSemanalTotal)}</div>
@@ -859,6 +906,8 @@ export function PrevisaoReceitasShell() {
         sessoesMensaisPorConvenio={sessoesMensaisExibidas.multidisciplinar}
         aplicaDeducaoFalta
         avisoParticular={!usarHistorico}
+        competenciaSelecionada={competenciaSelecionada}
+        faturamentoRows={faturamentoRows}
       />
       <TabelaPorConvenio
         titulo="Por Convênio (Processo Diagnóstico)"
@@ -866,6 +915,8 @@ export function PrevisaoReceitasShell() {
         mesReferenciaLabel={mesSelecionadoLabel}
         sessoesMensaisPorConvenio={sessoesMensaisExibidas.processoDiagnostico}
         avisoPacote={!usarHistorico}
+        competenciaSelecionada={competenciaSelecionada}
+        faturamentoRows={faturamentoRows}
       />
 
       {escopoDialogAberto && (
