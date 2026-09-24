@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import {
   X, ShieldCheck, Ban, BookOpen, Scale, History, Info, ListChecks,
-  Download, Upload, Save, AlertTriangle, ScrollText, FileText, CheckCircle2
+  Download, Upload, Save, AlertTriangle, ScrollText, FileText, CheckCircle2, Loader2
 } from 'lucide-react'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { ModalConfirmacao } from './ModalConfirmacao'
@@ -76,6 +76,8 @@ export function ModalCriterios({
   const [historicoAberto, setHistoricoAberto] = useState(false)
 
   const [pendente, setPendente] = useState<Pendente | null>(null)
+  /** Nome do arquivo em leitura; o .docx grande leva segundos no mammoth. */
+  const [lendoArquivo, setLendoArquivo] = useState<string | null>(null)
   const [nota, setNota] = useState('')
   const [publicando, setPublicando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
@@ -112,6 +114,7 @@ export function ModalCriterios({
       // ter saído versão nova, e publicar por cima dela seria sobrescrever alheio.
       setCarregando(true)
       setPendente(null)
+      setLendoArquivo(null)
       setNota('')
       setErro(null)
       setConfirmando(false)
@@ -150,6 +153,7 @@ export function ModalCriterios({
   const subir = async (arquivo: File) => {
     setErro(null)
     setConfirmando(false)
+    setLendoArquivo(arquivo.name)
     try {
       const ehDocx = arquivo.name.toLowerCase().endsWith('.docx')
       const texto = ehDocx ? await docxParaMarkdown(arquivo) : await arquivo.text()
@@ -166,6 +170,8 @@ export function ModalCriterios({
           ? e.message.replace(/^Critérios de auditoria inválidos:\s*/, '')
           : 'Não consegui ler o arquivo. Ele precisa ser o .md ou .docx baixado desta tela.'
       )
+    } finally {
+      setLendoArquivo(null)
     }
   }
 
@@ -273,13 +279,26 @@ export function ModalCriterios({
           <div className="flex shrink-0 items-center gap-2">
             {!carregando && !pendente && (
               <>
-                <button onClick={() => void baixarDocx()} className={BOTAO_SECUNDARIO}>
+                <button
+                  onClick={() => void baixarDocx()}
+                  disabled={Boolean(lendoArquivo)}
+                  className={BOTAO_SECUNDARIO}
+                >
                   <Download className="h-3.5 w-3.5" />
                   Baixar Critérios
                 </button>
-                <button onClick={() => inputArquivo.current?.click()} className={BOTAO_SECUNDARIO}>
-                  <Upload className="h-3.5 w-3.5" />
-                  Subir arquivo
+                <button
+                  onClick={() => inputArquivo.current?.click()}
+                  disabled={Boolean(lendoArquivo)}
+                  aria-busy={Boolean(lendoArquivo)}
+                  className={BOTAO_SECUNDARIO}
+                >
+                  {lendoArquivo ? (
+                    <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" />
+                  ) : (
+                    <Upload className="h-3.5 w-3.5" />
+                  )}
+                  {lendoArquivo ? 'Lendo arquivo…' : 'Subir arquivo'}
                 </button>
               </>
             )}
@@ -323,6 +342,19 @@ export function ModalCriterios({
             </div>
           ) : (
             <>
+              {lendoArquivo && (
+                <div
+                  role="status"
+                  className="flex items-center gap-2.5 rounded-xl border border-border bg-muted/50 p-3 text-xs text-foreground"
+                >
+                  <Loader2 className="h-4 w-4 shrink-0 text-brand-fg motion-safe:animate-spin" />
+                  <span>
+                    Lendo <strong className="font-semibold">{lendoArquivo}</strong>… pode levar alguns
+                    segundos. Os critérios abaixo ainda são os vigentes.
+                  </span>
+                </div>
+              )}
+
               {erro && (
                 <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 dark:border-rose-900/60 dark:bg-rose-950/30">
                   <p className="flex items-start gap-2 text-xs text-rose-700 dark:text-rose-300">
@@ -534,15 +566,28 @@ export function ModalCriterios({
                   </p>
                 </div>
               ) : (
-                <input
-                  value={nota}
-                  onChange={e => setNota(e.target.value)}
-                  placeholder="O que mudou? (fica no histórico)"
-                  className={`${CAMPO} w-full`}
-                />
+                // Rótulo visível: com só o placeholder e o `title` do botão (que não
+                // aparece no toque nem em botão desativado), ninguém descobria por
+                // que o Publicar não liberava.
+                <label className="block space-y-1">
+                  <span className="text-xs font-semibold text-foreground">
+                    O que mudou nesta versão? <span className="font-normal text-muted-foreground">(obrigatório, fica no histórico)</span>
+                  </span>
+                  <input
+                    value={nota}
+                    onChange={e => setNota(e.target.value)}
+                    placeholder="Ex.: dispensa de chegada e saída quando a evolução for bem descritiva"
+                    className={`${CAMPO} w-full`}
+                  />
+                </label>
               )}
 
               <div className="flex items-center justify-end gap-2">
+                {!confirmando && !nota.trim() && (
+                  <span className="mr-auto text-xs text-muted-foreground">
+                    Escreva o que mudou para liberar o Publicar.
+                  </span>
+                )}
                 <button
                   onClick={() => {
                     if (confirmando) { setConfirmando(false); return }
