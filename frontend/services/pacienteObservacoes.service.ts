@@ -1,4 +1,5 @@
 import { getSupabaseClient } from "@/lib/supabase/client"
+import { dataHoraBrasilia } from "@/lib/dataHoraBrasilia"
 
 // CRUD + trilha de auditoria da "Observações" por paciente na tela
 // /cronograma/ocupacao-paciente. A tabela de auditoria (aumentar_ocupacao_paciente_auditoria)
@@ -22,21 +23,6 @@ export interface PacienteObservacao {
 
 export type PacienteObservacaoAcao = "criar" | "editar" | "excluir"
 
-/** DD/MM/YYYY e HH:MI:SS em horário de Brasília, mesmo formato da consulta original sobre acomp_pac_bundles. */
-function dataHoraBrasilia(): { data: string; hora: string } {
-  const partes = new Intl.DateTimeFormat("pt-BR", {
-    timeZone: "America/Sao_Paulo",
-    day: "2-digit", month: "2-digit", year: "numeric",
-    hour: "2-digit", minute: "2-digit", second: "2-digit",
-    hour12: false,
-  }).formatToParts(new Date())
-  const get = (tipo: string) => partes.find(p => p.type === tipo)?.value ?? ""
-  return {
-    data: `${get("day")}/${get("month")}/${get("year")}`,
-    hora: `${get("hour")}:${get("minute")}:${get("second")}`,
-  }
-}
-
 async function registrarAuditoriaObservacao(input: {
   pac: string
   acao: PacienteObservacaoAcao
@@ -56,6 +42,8 @@ async function registrarAuditoriaObservacao(input: {
     email: user?.email ?? null,
     data: hoje,
     hora,
+    tipo: "observacao",
+    origem: "tela",
   })
   // Auditoria não pode derrubar a ação principal (salvar/excluir a observação) — só loga o erro.
   if (error) console.error("Erro registrarAuditoriaObservacao:", error)

@@ -10,6 +10,7 @@ import {
 } from "@/services/tita/confirmar"
 import { verificarDisponibilidade, criarAgendamento } from "@/services/tita/client"
 import { registrarInclusaoTerapia } from "@/services/tita/inclusaoTerapia"
+import { acaoDaCriacao, registrarAuditoriaImplantacao } from "@/services/tita/auditoriaImplantacao"
 import type { AceiteSessao } from "@/types/acompanhamento"
 
 const LOG_TAG = "[tita:confirmar-agendamento]"
@@ -74,8 +75,18 @@ async function getCurrentUser(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const inicioTotal = Date.now()
 
+  // DISABLE_AUTH cobre o desenvolvimento local, sem sessão (mesma convenção de
+  // /api/acompanhamento-laudos, /api/pdi-controle-prazos e
+  // /api/tita/situacao-favorecidos). Diferente delas, esta rota GRAVA autoria
+  // (implantadoPor / inclusoes_terapia / log de auditoria) — sem usuário real,
+  // userId fica null (as colunas que o guardam são FK anulável para
+  // auth.users/usuarios) e o e-mail vira um marcador óbvio de teste local, pra
+  // nunca ser confundido com uma implantação real na consulta de auditoria.
+  const devBypass = process.env.DISABLE_AUTH === "true"
   const user = await getCurrentUser(request)
-  if (!user) return NextResponse.json({ ok: false, error: "not_authenticated" }, { status: 401 })
+  if (!user && !devBypass) return NextResponse.json({ ok: false, error: "not_authenticated" }, { status: 401 })
+  const userId = user?.id ?? null
+  const userEmail = user?.email ?? (devBypass ? "dev-local@localhost" : null)
 
   const body = await request.json().catch(() => null) as RequestBody | null
   if (!body?.pac || !Array.isArray(body.sessoes) || body.sessoes.length === 0) {
@@ -110,6 +121,18 @@ export async function POST(request: NextRequest) {
     // carregam resposta bruta da TiTa (essa só passa por prepararAgendamento/
     // resolverGradeTerapeuta, que já logam o detalhe técnico separadamente).
     console.error(`${LOG_TAG} cancelado na fase de preparação`, JSON.stringify(resultados))
+    await registrarAuditoriaImplantacao({
+      pac: body.pac,
+      userId,
+      userEmail,
+      modalidade: body.modalidade,
+      linhas: preparos.map(p => ({
+        sessao: p.sessao,
+        grade: p.preparo.grade,
+        acao: p.preparo.ok ? "cancelada" : "falha_preparacao",
+        detalhe: p.preparo.ok ? "outra sessão do pacote falhou na preparação" : p.preparo.erro,
+      })),
+    })
     return NextResponse.json({
       ok: false, etapa: "preparacao", mensagem: mensagemAmigavel(falhasPreparo[0].preparo.erro), resultados,
     })
@@ -143,6 +166,20 @@ export async function POST(request: NextRequest) {
       return { csvGradeId: d.sessao.csvGradeId, ok: disponivel, codigoErro, mensagem: codigoErro ? mensagemAmigavel(codigoErro) : undefined }
     })
     console.error(`${LOG_TAG} cancelado na fase de disponibilidade`, JSON.stringify(resultados))
+    await registrarAuditoriaImplantacao({
+      pac: body.pac,
+      userId,
+      userEmail,
+      modalidade: body.modalidade,
+      linhas: statusDisponibilidade.map((d, i) => ({
+        sessao: d.sessao,
+        grade: preparos[i].preparo.grade,
+        acao: d.status === "disponivel" ? "cancelada" : "falha_disponibilidade",
+        detalhe: d.status === "disponivel"
+          ? "outra sessão do pacote estava indisponível"
+          : resultados[i].codigoErro,
+      })),
+    })
     const primeiraFalha = indisponiveis[0].status === "erro_verificacao" ? "erro_ao_verificar_disponibilidade" : "indisponivel_na_tita"
     return NextResponse.json({
       ok: false, etapa: "disponibilidade", mensagem: mensagemAmigavel(primeiraFalha), resultados,
@@ -220,6 +257,23 @@ export async function POST(request: NextRequest) {
   )
   if (!ok) console.error(`${LOG_TAG} falha na chamada de criação — auditar`, JSON.stringify(resultados.map(r => ({ csvGradeId: r.csvGradeId, codigoErro: r.codigoErro }))))
 
+  // Toda sessão, aceita ou não, com o resultado real da TiTa — inclusive quando
+  // `ok` é falso e a tela não grava bundle nenhum, mas séries anteriores do mesmo
+  // pacote já foram criadas lá.
+  await registrarAuditoriaImplantacao({
+    pac: body.pac,
+    userId,
+    userEmail,
+    modalidade: body.modalidade,
+    linhas: criacoes.map((c, i) => ({
+      sessao: c.sessao,
+      grade: preparos[i].preparo.grade,
+      acao: acaoDaCriacao(c.resultado.ok, c.resumo),
+      detalhe: resultados[i].codigoErro ?? (c.resumo.rejeitadas > 0 ? `${c.resumo.rejeitadas} ocorrência(s) rejeitada(s)` : null),
+      resumo: c.resumo,
+    })),
+  })
+
   // A inclusão se anuncia ao cronograma.
   //
   // Antes disto, implantar uma terapia nova não avisava ninguém: o terapêutico
@@ -264,8 +318,8 @@ export async function POST(request: NextRequest) {
       // o card anunciar dezenas de "sessões não implantadas" onde o cronograma
       // enxerga dois horários. A unidade do card é a mesma da tela: o slot.
       naoCriadas: criacoes.length - aceitas.length,
-      userId: user.id,
-      userEmail: user.email ?? null,
+      userId,
+      userEmail,
       modalidade: body.modalidade,
     })
   }
@@ -278,8 +332,8 @@ export async function POST(request: NextRequest) {
     // servidor (fonte confiável). O cliente carimba isso no bundle de forma imutável
     // (ver confirmarImplantacao) — separado de atualizado_por, que é sobrescrito a
     // cada sincronização e não serve para autoria.
-    implantadoPor: user.id,
-    implantadoPorEmail: user.email ?? null,
+    implantadoPor: userId,
+    implantadoPorEmail: userEmail,
     mensagem: ok
       ? mensagemResumoCriacao({
           status: agregado.total === 0 ? "erro_api" : agregado.criadas === agregado.total ? "success" : agregado.criadas === 0 ? "failed" : "partial_success",

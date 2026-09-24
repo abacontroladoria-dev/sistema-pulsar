@@ -110,7 +110,7 @@ function menorData(sessoes: SessaoIncluida[]): string | null {
  * Cai no e-mail quando não há linha em `usuarios` — o card precisa dizer quem
  * pediu, e e-mail identifica melhor que "não informado".
  */
-async function resolverNome(userId: string, email: string | null): Promise<string | null> {
+export async function resolverNome(userId: string, email: string | null): Promise<string | null> {
   try {
     const { data } = await supabaseService
       .from("usuarios")
@@ -139,7 +139,8 @@ export async function registrarInclusaoTerapia(params: {
   pacienteNome: string
   entradas: EntradaInclusao[]
   naoCriadas: number
-  userId: string
+  /** null cobre DISABLE_AUTH em dev (sem sessão real) — implantado_por é FK anulável. */
+  userId: string | null
   userEmail: string | null
   modalidade?: "aumentar" | "novo"
 }): Promise<void> {
@@ -181,7 +182,7 @@ export async function registrarInclusaoTerapia(params: {
     const primeira = entradas[0].grade
 
     const bundleId = montarBundleId(entradas.map(e => e.csvGradeId))
-    const nome = await resolverNome(userId, userEmail)
+    const nome = userId ? await resolverNome(userId, userEmail) : userEmail
 
     const { error } = await supabaseService
       .from("inclusoes_terapia")

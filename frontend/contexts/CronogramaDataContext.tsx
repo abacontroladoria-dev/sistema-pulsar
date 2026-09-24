@@ -317,10 +317,8 @@ export function CronogramaDataProvider({ children }: { children: React.ReactNode
 
       // Leitura síncrona do localStorage antes de qualquer await
       let legacyProf: Record<string, string> = {}
-      let legacyBundles: AceitePacBundle[] = []
       let legacyConf: ConfItem[] = []
       try { legacyProf    = JSON.parse(localStorage.getItem(SK_PROF_LEGACY)    || "{}") } catch {}
-      try { legacyBundles = JSON.parse(localStorage.getItem(SK_BUNDLES_LEGACY) || "[]") } catch {}
       try { legacyConf    = JSON.parse(localStorage.getItem(SK_CONF_LEGACY)    || "[]") } catch {}
 
       try {
@@ -354,15 +352,10 @@ export function CronogramaDataProvider({ children }: { children: React.ReactNode
         if (rBundles.error) {
           if (isAcompTableError(rBundles.error.message)) { acompTableMissing = true; return }
         } else {
+          // O banco é a fonte de verdade. Bundles que só existem no localStorage NÃO
+          // são regravados: esse caminho era a migração de 30/06, e depois dela só
+          // servia para ressuscitar o que outro usuário tinha cancelado/removido.
           const remoteBundles: AceitePacBundle[] = (rBundles.data ?? []).map(r => r.dados as AceitePacBundle)
-          const remoteIds = new Set(remoteBundles.map(b => b.id))
-          const novasBundles = legacyBundles.filter(b => b.id && !remoteIds.has(b.id))
-          if (novasBundles.length) {
-            const nowIso = new Date().toISOString()
-            const rows = novasBundles.map(b => ({ id: b.id, dados: b, pac: b.pac, status: b.status, atualizado_por: user.id, atualizado_em: nowIso }))
-            await sb.from("acomp_pac_bundles").upsert(rows, { onConflict: "id" })
-            remoteBundles.push(...novasBundles)
-          }
           if (!hasAcompActedRef.current) setPacBundles(remoteBundles)
         }
 
@@ -564,9 +557,6 @@ export function CronogramaDataProvider({ children }: { children: React.ReactNode
         const { data: { user } } = await sb.auth.getUser()
         const nowIso = new Date().toISOString()
 
-        // Busca ids existentes para calcular o que deletar (limpeza de órfãos).
-        const { data: existing } = await sb.from("acomp_pac_bundles").select("id")
-        const existingIds = new Set((existing ?? []).map((r: { id: string }) => r.id))
         const nextIds = new Set(next.map(b => b.id))
 
         // Só faz upsert dos bundles NOVOS ou de fato ALTERADOS (identidade de
@@ -577,7 +567,10 @@ export function CronogramaDataProvider({ children }: { children: React.ReactNode
         // dados->>'implantadoPor').
         const prevById = new Map(prev.map(b => [b.id, b]))
         const toUpsert = next.filter(b => prevById.get(b.id) !== b)
-        const toDelete = [...existingIds].filter(id => !nextIds.has(id))
+        // Só apaga o que ESTA ação tirou da lista. Comparar com a tabela inteira
+        // fazia um navegador desatualizado apagar tudo que ele não conhecia —
+        // inclusive o que um colega tinha acabado de implantar.
+        const toDelete = prev.map(b => b.id).filter(id => !nextIds.has(id))
 
         if (toUpsert.length) {
           const rows = toUpsert.map(b => ({ id: b.id, dados: b, pac: b.pac, status: b.status, atualizado_por: user?.id ?? null, atualizado_em: nowIso }))
