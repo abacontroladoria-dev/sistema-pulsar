@@ -448,7 +448,6 @@ export function AuditoriaEvolucoesShell() {
   const estavaEmAndamento = React.useRef(false)
   useEffect(() => {
     void chamarFila('GET')
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   useEffect(() => {
     if (!emAndamento) {
