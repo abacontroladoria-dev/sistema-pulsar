@@ -23,6 +23,8 @@ import type {
 export interface ListConversationsFilters {
   orgId:           string
   inboxId?:        string
+  // Números selecionados no inbox. Vazio/ausente = todos os que a RLS deixa ver.
+  channelIds?:     string[]
   status?:         ConversationStatus | ConversationStatus[]
   // null = buscar não atribuídas; string = buscar por operador específico
   assignedUserId?: string | null
@@ -96,6 +98,7 @@ export class ConversationRepository {
       .eq('organization_id', filters.orgId)
 
     if (filters.inboxId) query = query.eq('inbox_id', filters.inboxId)
+    if (filters.channelIds?.length) query = query.in('channel_id', filters.channelIds)
 
     if (filters.status !== undefined) {
       query = Array.isArray(filters.status)
@@ -172,6 +175,10 @@ export class ConversationRepository {
         nullsFirst: false,
       })
       .range(offset, offset + limit - 1)
+
+    if (filters.channelIds?.length) {
+      query = query.in('channel_id', filters.channelIds)
+    }
 
     if (filters.inboxId) {
       query = query.eq('inbox_id', filters.inboxId)

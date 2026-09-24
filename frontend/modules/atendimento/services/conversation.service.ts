@@ -15,6 +15,7 @@ import {
   ConversationNotFoundError,
   ConversationAlreadyClosedError,
   TagDesconhecidaError,
+  CanalSemIaError,
 } from '../types/errors.types'
 import { isUniqueViolation } from '../utils/pg-errors'
 
@@ -286,7 +287,13 @@ export class ConversationService {
     const conv      = await this.getById(conversationId)
     const anterior  = conv.ai_mode
 
-    await this.conv.updateAiMode(conversationId, aiMode)
+    try {
+      await this.conv.updateAiMode(conversationId, aiMode)
+    } catch (err) {
+      // 23514 check_violation vindo da trigger trg_evolution_sem_ia.
+      if ((err as { code?: string } | null)?.code === '23514') throw new CanalSemIaError(conversationId)
+      throw err
+    }
 
     // Religar a Maia SOLTA a conversa: quem devolve o atendimento à IA está
     // dizendo "não sou mais eu que conduzo". Sem isto ela ficaria em "Humano"

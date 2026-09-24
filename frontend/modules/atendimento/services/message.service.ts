@@ -329,29 +329,35 @@ export class MessageService {
     }
 
     // 3 e 4. Meta: bytes viram media ID, media ID vira mensagem entregue.
+    // Evolution: sem upload separado, os bytes vão no próprio envio.
     let result
     try {
-      const { externalId: mediaId } = await provider.uploadMedia(channel, {
+      const arquivo = {
         bytes:    input.bytes,
         mimeType: input.mimeType,
         fileName: input.fileName,
-      })
+      }
+      const mediaId = provider.exigeUploadPrevio === false
+        ? undefined
+        : (await provider.uploadMedia(channel, arquivo)).externalId
       result = await provider.sendMedia(channel, {
         to:          contact.display_phone,
         messageType: input.messageType,
         mediaId,
         caption:     input.caption,
         fileName:    input.fileName,
+        arquivo,
       })
       // O media ID fica no anexo: vale 30 dias na Meta e é o que permite
-      // reenviar o mesmo arquivo sem subir de novo.
+      // reenviar o mesmo arquivo sem subir de novo. Na Evolution fica o id da
+      // mensagem, que é o que existe.
       await this.msg.criarAnexo({
         organization_id: conversation.organization_id,
         message_id:      pendente.id,
         file_name:       input.fileName,
         file_type:       input.mimeType,
         file_size:       input.bytes.byteLength,
-        external_url:    mediaId,
+        external_url:    mediaId ?? result.externalId,
         storage_path:    path,
         // 'stored' porque o arquivo JÁ está no nosso bucket — foi de lá que ele
         // saiu. Mídia de saída nunca passa por 'pending'.

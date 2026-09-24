@@ -1,0 +1,99 @@
+# Evolution API — números WhatsApp de atendimento humano do Pulsar
+#
+# Roda no MESMO servidor do Pulsar (aba-prod-01, 3,8 GB). Por isso cada serviço
+# tem teto de memória/CPU e `oom_score_adj` alto: se faltar memória (ex.: durante
+# o `next build` de um deploy), o kernel mata a Evolution ANTES do Pulsar, e o
+# Docker a sobe de novo. O WhatsApp reconecta sozinho.
+#
+# Postgres próprio e pequeno: a Evolution v2 guarda sessão/estado via Prisma.
+# NUNCA apontar para o Supabase do Pulsar — a Evolution não é fonte de verdade
+# e não pode disputar o pool do banco de produção.
+#
+# Variáveis (definir no Coolify, nunca commitar valores):
+#   EVOLUTION_API_KEY       chave global — a MESMA vai no Pulsar
+#   EVOLUTION_SERVER_URL    URL pública desta Evolution (ex.: https://evolution.seudominio)
+#   EVOLUTION_DB_PASSWORD   senha do Postgres interno
+#
+# Imagem: fixar a tag de uma v2 estável em vez de `latest`, para um redeploy
+# não trocar de versão sem ninguém saber (o formato do webhook muda entre versões).
+# CONFERIR a tag v2 mais recente em hub.docker.com/r/evoapicloud/evolution-api
+# antes do primeiro deploy — a abaixo foi escrita sem acesso ao registro.
+
+services:
+  evolution:
+    image: evoapicloud/evolution-api:v2.3.7
+    restart: unless-stopped
+    depends_on:
+      - evolution-postgres
+      - evolution-redis
+    environment:
+      SERVER_URL: ${EVOLUTION_SERVER_URL}
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY}
+      AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES: "false"
+      DEL_INSTANCE: "false"
+      CONFIG_SESSION_PHONE_CLIENT: Pulsar
+      CONFIG_SESSION_PHONE_NAME: Chrome
+      QRCODE_LIMIT: "30"
+      LOG_LEVEL: ERROR,WARN
+      LOG_BAILEYS: error
+      # Banco interno — só o necessário. Mensagens novas ficam guardadas para o
+      # download de mídia sob demanda funcionar mesmo pelo id.
+      DATABASE_ENABLED: "true"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://evolution:${EVOLUTION_DB_PASSWORD}@evolution-postgres:5432/evolution?schema=public
+      DATABASE_CONNECTION_CLIENT_NAME: evolution_pulsar
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "true"
+      DATABASE_SAVE_MESSAGE_UPDATE: "false"
+      DATABASE_SAVE_DATA_CONTACTS: "false"
+      DATABASE_SAVE_DATA_CHATS: "false"
+      DATABASE_SAVE_DATA_HISTORIC: "false"
+      CACHE_REDIS_ENABLED: "true"
+      CACHE_REDIS_URI: redis://evolution-redis:6379/6
+      CACHE_REDIS_PREFIX_KEY: evolution
+      CACHE_REDIS_SAVE_INSTANCES: "false"
+      CACHE_LOCAL_ENABLED: "false"
+      # O webhook é configurado POR INSTÂNCIA pelo Pulsar (com segredo próprio).
+      # Webhook global mandaria tudo para uma URL sem segredo.
+      WEBHOOK_GLOBAL_ENABLED: "false"
+    volumes:
+      - evolution_instances:/evolution/instances
+    mem_limit: 768m
+    cpus: 1.0
+    oom_score_adj: 500
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  evolution-postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: evolution
+      POSTGRES_PASSWORD: ${EVOLUTION_DB_PASSWORD}
+      POSTGRES_DB: evolution
+    command: ["postgres", "-c", "shared_buffers=32MB", "-c", "max_connections=20"]
+    volumes:
+      - evolution_postgres:/var/lib/postgresql/data
+    mem_limit: 256m
+    oom_score_adj: 500
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  evolution-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--maxmemory", "96mb", "--maxmemory-policy", "allkeys-lru", "--save", "60", "1"]
+    volumes:
+      - evolution_redis:/data
+    mem_limit: 128m
+    oom_score_adj: 500
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+volumes:
+  evolution_instances:
+  evolution_postgres:
+  evolution_redis:

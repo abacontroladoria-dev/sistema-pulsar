@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
     const parsed = parseListConversationsQuery(request.nextUrl.searchParams)
     if (!parsed.ok) return badRequest(parsed.errors.join('; '))
 
-    const { limit, cursor, inboxId, status, assignedUserId, contactId } = parsed.data
+    const { limit, cursor, inboxId, channelIds, status, assignedUserId, contactId } = parsed.data
 
     // O padrão da clínica vai junto da lista porque a badge "quem atende" depende
     // dele: `conversations.ai_mode` é NULL na maioria das linhas e significa
@@ -41,6 +41,7 @@ export async function GET(request: NextRequest) {
     const result  = await service.list({
       orgId:          user.orgId,
       inboxId,
+      channelIds,
       status,
       assignedUserId,
       contactId,

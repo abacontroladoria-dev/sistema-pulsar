@@ -100,6 +100,18 @@ export class AnexoIndisponivelError extends CentralError {
   }
 }
 
+// Número Evolution é atendimento humano: a trigger trg_evolution_sem_ia recusa
+// qualquer ai_mode diferente de 'off' (20260924180100).
+export class CanalSemIaError extends CentralError {
+  constructor(conversationId: string) {
+    super(
+      'Este número é de atendimento humano — a Maia não pode ser ligada nesta conversa',
+      'CANAL_SEM_IA',
+      { conversationId }
+    )
+  }
+}
+
 export class MissingContactPhoneError extends CentralError {
   constructor(contactId: string) {
     super(

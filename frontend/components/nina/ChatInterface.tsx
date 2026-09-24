@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react'
 import {
-  Search, MessageSquare, Loader2, Info, Bot, User, Pause, Send, Check, CheckCheck, ShieldAlert, AlertCircle, WifiOff, MailX, Paperclip
+  Search, MessageSquare, Loader2, Info, Bot, User, Pause, Send, Check, CheckCheck, ShieldAlert, AlertCircle, WifiOff, MailX, Paperclip, Smartphone
 } from 'lucide-react'
 
 import { ConversationStatus, MessageDirection } from '@/types/nina'
@@ -11,6 +11,7 @@ import { usePainelDetalhamento } from '@/hooks/nina/usePainelDetalhamento'
 import { Avatar } from './Avatar'
 import { SeletorEmoji } from './SeletorEmoji'
 import { ChipAnexo } from './ChipAnexo'
+import { CanalSeletor } from './CanalSeletor'
 import { PainelDetalhamento } from './detalhamento/PainelDetalhamento'
 import { ModalAgendarRetorno } from './detalhamento/ModalAgendarRetorno'
 import { ModalDesignarTarefa } from './detalhamento/ModalDesignarTarefa'
@@ -36,7 +37,19 @@ const ChatInterface: React.FC = () => {
     modoIa, definirModoIa, salvandoModo,
     detalhe, recarregarDetalhe, marcarComoNaoLida,
     enviarMidia, enviandoMidia,
+    canais, canaisSelecionados, alternarCanal, mostrarTodosCanais,
   } = useCentralInbox()
+
+  // Nome do número por id, para a badge da lista. Só aparece quando o usuário
+  // atende mais de um número — com um só, a badge repetiria a mesma coisa em
+  // toda linha.
+  const nomeDoCanal = new Map(canais.map(c => [c.id, c]))
+  const variosCanais = canais.length > 1
+
+  // Número Evolution é atendimento humano: a Maia não existe nele (trigger
+  // trg_evolution_sem_ia). A chave Maia/Atendente some, e no lugar fica dito
+  // por qual número a conversa chega.
+  const canalHumano = detalhe?.channel?.provider === 'evolution'
 
   // Fontes do painel que não vêm no detalhe da conversa (catálogo de tags,
   // usuários, agendamentos, tarefas). Fora do polling — ver o hook.
@@ -379,6 +392,12 @@ const ChatInterface: React.FC = () => {
               className="w-full pl-9 pr-4 py-2.5 bg-background border border-border rounded-xl text-sm focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 outline-none text-foreground placeholder:text-muted-foreground/70 transition-all"
             />
           </div>
+          <CanalSeletor
+            canais={canais}
+            selecionados={canaisSelecionados}
+            aoAlternar={alternarCanal}
+            aoMostrarTodos={mostrarTodosCanais}
+          />
         </div>
 
         {/* Falha de rede NÃO esvazia a lista — os dados de antes continuam na
@@ -450,8 +469,16 @@ const ChatInterface: React.FC = () => {
                       a pergunta que a lista consegue responder ("tem?"), e um
                       "3" que viesse de outro lugar seria tão inventado quanto o
                       que foi removido antes. */}
-                  <div className="flex items-center mt-2 gap-1.5">
+                  <div className="flex items-center mt-2 gap-1.5 min-w-0">
                     {renderStatusBadge(chat.status)}
+                    {variosCanais && nomeDoCanal.get(chat.canalId) && (
+                      <span className="px-2 py-0.5 rounded-md text-[10px] font-medium border border-border text-muted-foreground flex items-center gap-1 min-w-0">
+                        {nomeDoCanal.get(chat.canalId)!.provider === 'evolution'
+                          ? <Smartphone className="w-3 h-3 shrink-0" />
+                          : <Bot className="w-3 h-3 shrink-0" />}
+                        <span className="truncate">{nomeDoCanal.get(chat.canalId)!.name}</span>
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -484,18 +511,28 @@ const ChatInterface: React.FC = () => {
                         lado mostra o modo efetivo e é a fonte a acreditar;
                         suprimir a badge aqui evita as duas se contradizerem
                         numa conversa que segue o padrão da clínica. */}
-                    {modoIa?.origem === 'conversa' && renderStatusBadge(activeChat.status)}
+                    {!canalHumano && modoIa?.origem === 'conversa' && renderStatusBadge(activeChat.status)}
                   </h2>
                   <p className="text-xs text-cyan-500 font-medium">{activeChat.contactPhone}</p>
                 </div>
               </div>
 
               <div className="flex items-center gap-2 shrink-0">
-                <ChaveAtendimento
-                  modo={modoIa}
-                  salvando={salvandoModo}
-                  aoTrocar={handleTrocarModo}
-                />
+                {canalHumano ? (
+                  <span
+                    className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                    title="Número de atendimento humano — a Maia não responde por ele"
+                  >
+                    <Smartphone className="w-3.5 h-3.5" />
+                    Atendimento humano · {detalhe?.channel?.name}
+                  </span>
+                ) : (
+                  <ChaveAtendimento
+                    modo={modoIa}
+                    salvando={salvandoModo}
+                    aoTrocar={handleTrocarModo}
+                  />
+                )}
 
                 {/* "Isto ainda precisa de retorno." Recua a marca d'água para
                     antes da última mensagem do contato — a conversa volta a

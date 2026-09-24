@@ -166,6 +166,9 @@ export type NinaConversation = Omit<UIConversation, 'messages' | 'clientMemory'>
   // Rótulo já resolvido do contact_type. Vai junto da conversa porque a tela
   // não recebe o Contact cru — e derivá-lo no JSX espalharia o de-para.
   rotuloTipo: string
+  // O número (canal) por onde a conversa chega — Maia (Meta) ou um número
+  // Evolution. É o que o seletor de números filtra e a badge da lista nomeia.
+  canalId: string
 }
 
 // ----------------------------------------------------------------------------
@@ -351,6 +354,7 @@ export function toUIConversation(
     lastMessageAt:   c.last_message_at ?? c.created_at,
     assignedUserId:  c.assigned_user_id,
     rotuloTipo:      rotuloTipoContato(contato),
+    canalId:         c.channel_id,
     // clientMemory não aparece aqui: está fora do tipo (ver NinaConversation).
     // `contacts.ai_memory` existe no banco, mas com outra forma — adaptá-la é
     // trabalho próprio, não um preenchimento de campo.

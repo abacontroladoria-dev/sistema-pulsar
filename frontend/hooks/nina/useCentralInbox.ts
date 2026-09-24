@@ -52,6 +52,36 @@ const MAX_CARACTERES = 4096
 // service inteiro para o bundle do cliente.
 const MAX_BYTES_ANEXO = 16 * 1024 * 1024
 
+// Onde a seleção de números sobrevive entre visitas. Por navegador, de
+// propósito: é conveniência de quem atende, não dado do sistema.
+const CHAVE_CANAIS = 'connect.inbox.canais.v1'
+
+// Um número que este usuário pode atender (GET /channels/acessiveis).
+export interface CanalInbox {
+  id:       string
+  name:     string
+  provider: Channel['provider']
+  status:   Channel['status']
+}
+
+function lerSelecaoSalva(): string[] {
+  try {
+    const bruto = window.localStorage.getItem(CHAVE_CANAIS)
+    const lista = bruto ? JSON.parse(bruto) : []
+    return Array.isArray(lista) ? lista.filter((x): x is string => typeof x === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+function salvarSelecao(ids: string[]): void {
+  try {
+    window.localStorage.setItem(CHAVE_CANAIS, JSON.stringify(ids))
+  } catch {
+    // navegador sem storage (aba anônima, bloqueio): a seleção só não persiste
+  }
+}
+
 export type InboxErro =
   // 401/403: a sessão é válida, o que falta é `central_role` em public.usuarios.
   // Merece tela própria — vazio silencioso não diz ao operador o que fazer.
@@ -147,6 +177,12 @@ export interface UseCentralInbox {
   // "Isto ainda precisa de retorno." Recua a marca d'água e deixa a conversa
   // acesa na lista. Lança em caso de falha — ver o comentário na implementação.
   marcarComoNaoLida: (id: string) => Promise<void>
+  // Os números que este usuário pode atender e quais estão à mostra. Seleção
+  // vazia = todos.
+  canais:              CanalInbox[]
+  canaisSelecionados:  string[]
+  alternarCanal:       (id: string) => void
+  mostrarTodosCanais:  () => void
 }
 
 export function useCentralInbox(): UseCentralInbox {
@@ -180,6 +216,49 @@ export function useCentralInbox(): UseCentralInbox {
   const primeiraCarga = useRef(true)
 
   // ------------------------------------------------------------------------
+  // Números (canais)
+  //
+  // Carregados uma vez: número novo é evento raro, e um F5 o traz. A seleção
+  // salva é filtrada pelos números que ainda existem para este usuário — um id
+  // de número removido (ou de outro usuário no mesmo navegador) filtraria a
+  // lista para zero conversas sem explicação.
+
+  const [canais, setCanais] = useState<CanalInbox[]>([])
+  const [canaisSelecionados, setCanaisSelecionados] = useState<string[]>([])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    buscar<CanalInbox[]>('/api/central/channels/acessiveis', controller.signal)
+      .then(lista => {
+        setCanais(lista)
+        const validos = new Set(lista.map(c => c.id))
+        setCanaisSelecionados(lerSelecaoSalva().filter(id => validos.has(id)))
+      })
+      .catch(() => {
+        // Sem a lista de números a tela segue com todos — que é o que a RLS
+        // já deixa ver. O erro de acesso, se for o caso, aparece pela lista.
+      })
+    return () => controller.abort()
+  }, [])
+
+  const alternarCanal = useCallback((id: string) => {
+    setCanaisSelecionados(atual => {
+      const proximo = atual.includes(id) ? atual.filter(x => x !== id) : [...atual, id]
+      salvarSelecao(proximo)
+      return proximo
+    })
+  }, [])
+
+  const mostrarTodosCanais = useCallback(() => {
+    salvarSelecao([])
+    setCanaisSelecionados([])
+  }, [])
+
+  // String estável para o efeito da lista reagir à seleção, e não à identidade
+  // do array.
+  const filtroCanais = canaisSelecionados.join(',')
+
+  // ------------------------------------------------------------------------
   // Lista
 
   useEffect(() => {
@@ -187,9 +266,15 @@ export function useCentralInbox(): UseCentralInbox {
     let vivo = true
 
     async function carregar() {
+      // Aba escondida não consulta: com vários números e várias atendentes, o
+      // polling de quem nem está olhando era carga pura no pool do banco.
+      if (!primeiraCarga.current && document.visibilityState === 'hidden') return
       try {
+        const urlLista = filtroCanais
+          ? `/api/central/conversations?limit=50&channelIds=${filtroCanais}`
+          : '/api/central/conversations?limit=50'
         const [corpo, contatos] = await Promise.all([
-          buscarCorpo('/api/central/conversations?limit=50', controller.signal),
+          buscarCorpo(urlLista, controller.signal),
           buscar<Contact[]>(`/api/central/contacts?limit=${TETO_CONTATOS}`, controller.signal),
         ])
 
@@ -222,7 +307,7 @@ export function useCentralInbox(): UseCentralInbox {
     carregar()
     const t = setInterval(carregar, INTERVALO_MS)
     return () => { vivo = false; controller.abort(); clearInterval(t) }
-  }, [])
+  }, [filtroCanais])
 
   // ------------------------------------------------------------------------
   // Conversa aberta
@@ -550,5 +635,6 @@ export function useCentralInbox(): UseCentralInbox {
     enviarMidia, enviandoMidia,
     modoIa, definirModoIa, salvandoModo,
     detalhe, recarregarDetalhe, marcarComoNaoLida,
+    canais, canaisSelecionados, alternarCanal, mostrarTodosCanais,
   }
 }

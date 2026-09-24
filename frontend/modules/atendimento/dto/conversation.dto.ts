@@ -24,6 +24,7 @@ export type PatchAction = typeof VALID_ACTIONS[number]
 
 export interface ListConversationsQuery {
   inboxId?:        string
+  channelIds?:     string[]
   status?:         ConversationStatus | ConversationStatus[]
   // null = buscar não atribuídas; string UUID = atribuídas ao operador
   assignedUserId?: string | null
@@ -56,6 +57,11 @@ export function parseListConversationsQuery(p: URLSearchParams): ParseResult<Lis
     else assignedUserId = assignedRaw
   }
 
+  const channelIdsRaw = p.get('channelIds')
+  const channelIds = channelIdsRaw ? channelIdsRaw.split(',').map(s => s.trim()).filter(Boolean) : undefined
+  if (channelIds?.some(id => !isUUID(id))) errors.push('channelIds deve ser uma lista de UUIDs separada por vírgula')
+  if (channelIds && channelIds.length > 50) errors.push('channelIds aceita no máximo 50 números')
+
   const contactId = p.get('contactId') ?? undefined
   if (contactId !== undefined && !isUUID(contactId)) errors.push('contactId deve ser um UUID válido')
 
@@ -65,7 +71,7 @@ export function parseListConversationsQuery(p: URLSearchParams): ParseResult<Lis
   if (cursor !== undefined && !isISODate(cursor)) errors.push('cursor deve ser uma data ISO válida')
 
   if (errors.length) return { ok: false, errors }
-  return { ok: true, data: { inboxId, status, assignedUserId, contactId, limit, cursor } }
+  return { ok: true, data: { inboxId, channelIds, status, assignedUserId, contactId, limit, cursor } }
 }
 
 // ----------------------------------------------------------------------------

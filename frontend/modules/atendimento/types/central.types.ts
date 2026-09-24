@@ -337,6 +337,9 @@ export interface ProviderSendInput {
   caption?:    string
   fileName?:   string
   replyToId?:  string    // external_message_id da mensagem citada
+  // Os bytes, para providers sem upload separado (Evolution manda a mídia
+  // junto do envio). O meta_waba ignora: ele já recebeu os bytes em uploadMedia.
+  arquivo?:    { bytes: ArrayBuffer; mimeType: string; fileName: string }
 }
 
 // O que o provider devolve depois de receber os bytes. `externalId` é o media
@@ -368,6 +371,9 @@ export interface NormalizedIncomingMessage {
 }
 
 export interface MessagingProvider {
+  // `false` quando o provider recebe a mídia no próprio envio (Evolution). Aí o
+  // MessageService não chama uploadMedia. Ausente = true (meta_waba).
+  readonly exigeUploadPrevio?: boolean
   sendMessage(channel: Channel, input: ProviderSendInput): Promise<ProviderSendResult>
   sendMedia(channel: Channel, input: ProviderSendInput): Promise<ProviderSendResult>
   // Entrega os BYTES ao provider e recebe um identificador de mídia, separado

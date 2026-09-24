@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef, forwardRef, useImperativeHandle, useCallback } from 'react';
 import {
   Mic, Volume2, Loader2, Eye, EyeOff, Check, ChevronDown, Download, Play,
-  AlertTriangle, KeyRound, MessageSquare, ExternalLink, Brain,
+  AlertTriangle, KeyRound, ExternalLink, Brain,
 } from 'lucide-react';
 import { Button } from '../Button';
+import { EvolutionSettings } from './EvolutionSettings';
 import { toast } from 'sonner';
 import * as Collapsible from '@radix-ui/react-collapsible';
 import {
@@ -739,37 +740,9 @@ const ApiSettings = forwardRef<ApiSettingsRef>((props, ref) => {
         </div>
       </div>
 
-      {/* ---------------------------------------------------------------- */}
-      {/* WhatsApp — deliberadamente sem campos                             */}
-      {/*                                                                   */}
-      {/* Os campos antigos (Access Token, Phone Number ID, Verify Token)   */}
-      {/* gravavam no projeto Supabase do Nina, que não existe mais, e o    */}
-      {/* webhook exibido apontava para lá. Recolocá-los agora exigiria     */}
-      {/* escolher o provider — Meta Cloud API ou Evolution —, e essa       */}
-      {/* decisão muda o formato das credenciais. Campo que não grava é     */}
-      {/* pior que campo ausente: parece configurado.                       */}
-      {/* ---------------------------------------------------------------- */}
-      <div className="rounded-xl border border-border bg-card p-6">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-3">
-            <MessageSquare className="w-5 h-5 text-muted-foreground/70" />
-            <h3 className="font-semibold text-foreground">WhatsApp</h3>
-          </div>
-          <div className="flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium bg-slate-500/10 text-muted-foreground">
-            <span className="h-2 w-2 rounded-full bg-slate-500" />
-            Não conectado
-          </div>
-        </div>
-        <p className="text-sm text-muted-foreground">
-          O canal de WhatsApp ainda não está implementado. A atendente virtual já consulta a
-          grade e agenda sessões — falta o canal por onde ela conversa.
-        </p>
-        <p className="text-xs text-muted-foreground/70 mt-2">
-          Falta um número dedicado com App Business aprovado na Meta. As credenciais mudam
-          conforme o provider, então os campos entram junto com a integração — e a chave da
-          OpenAI, que o orquestrador consome, é a do bloco acima.
-        </p>
-      </div>
+      {/* WhatsApp: o número da Maia (Meta, só leitura) e os números Evolution de
+          atendimento humano, criados e distribuídos por pessoa aqui. */}
+      <EvolutionSettings />
     </div>
   );
 });

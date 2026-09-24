@@ -8,6 +8,7 @@ import {
   ChannelNotFoundError,
   ConversationAlreadyClosedError,
   MissingContactPhoneError,
+  CanalSemIaError,
   ProviderError,
   ProviderNotImplementedError,
   AppointmentNotFoundError,
@@ -85,6 +86,7 @@ export function mapCentralError(err: unknown): NextResponse {
   if (err instanceof SlotNotInGradeError)         return unprocessable(err.code, err.message)
   if (err instanceof SlotInPastError)             return unprocessable(err.code, err.message)
   if (err instanceof MissingContactPhoneError)    return unprocessable(err.code, err.message)
+  if (err instanceof CanalSemIaError)             return unprocessable(err.code, err.message)
   // 422: o array é bem-formado, mas a chave não existe no catálogo da org.
   // Repetir o mesmo corpo nunca passa — a correção é escolher outra tag.
   if (err instanceof TagDesconhecidaError)        return unprocessable(err.code, err.message)

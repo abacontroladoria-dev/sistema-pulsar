@@ -31,6 +31,7 @@ import { TaskService }          from './task.service'
 import { SentimentoService }    from './sentimento.service'
 
 import { MetaWabaProvider } from '../providers/meta-waba.provider'
+import { EvolutionProvider } from '../providers/evolution.provider'
 import { openAiProvider }   from '../llm/openai.provider'
 
 // ============================================================================
@@ -80,6 +81,7 @@ const providerFactory = new ProviderFactory()
 // Com o cliente do usuário isto responderia 403.
 // ----------------------------------------------------------------------------
 providerFactory.register('meta_waba', new MetaWabaProvider(supabaseService))
+providerFactory.register('evolution', new EvolutionProvider(supabaseService))
 
 // ============================================================================
 // Factory functions — instanciam os serviços com o cliente correto

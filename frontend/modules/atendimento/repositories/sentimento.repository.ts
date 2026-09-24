@@ -102,6 +102,8 @@ export class SentimentoRepository {
       .eq('organization_id', orgId)
       .eq('conversations.contact_id', contactId)
       .eq('direction', 'inbound')
+      // Número Evolution é atendimento humano: a IA não lê essas conversas.
+      .or('provider.is.null,provider.neq.evolution')
       .gte('sent_at', desdeISO)
       .is('deleted_at', null)
       .order('sent_at', { ascending: false })
@@ -127,6 +129,8 @@ export class SentimentoRepository {
       .eq('organization_id', orgId)
       .eq('conversations.contact_id', contactId)
       .eq('direction', 'inbound')
+      // Número Evolution é atendimento humano: a IA não lê essas conversas.
+      .or('provider.is.null,provider.neq.evolution')
       .gt('sent_at', desdeISO)
       .is('deleted_at', null)
 
