@@ -31,6 +31,51 @@ const DATA_CORTE_PADRAO = '2026-09-01'
  */
 const TAMANHO_PAGINA = 1000
 
+/**
+ * Quantas consultas em voo ao mesmo tempo. Em sequência, a abertura da tela
+ * levava ~12s (6 páginas de grade + 30 blocos de auditoria, um após o outro).
+ * Não é "tudo de uma vez": o PostgREST tem pool de 10 conexões, e saturá-lo já
+ * derrubou o sistema inteiro em 504 (incidente de 24/08). 4 deixa folga.
+ */
+const CONSULTAS_SIMULTANEAS = 4
+
+/** Roda as tarefas com no máximo `limite` em voo; devolve na ordem de entrada. */
+async function emParalelo<T>(tarefas: (() => PromiseLike<T>)[], limite = CONSULTAS_SIMULTANEAS): Promise<T[]> {
+  const resultados = new Array<T>(tarefas.length)
+  let proxima = 0
+  await Promise.all(
+    Array.from({ length: Math.min(limite, tarefas.length) }, async () => {
+      while (proxima < tarefas.length) {
+        const i = proxima++
+        resultados[i] = await tarefas[i]()
+      }
+    })
+  )
+  return resultados
+}
+
+/**
+ * Pagina em rodadas de `limite` páginas simultâneas, até a primeira página
+ * incompleta. Sem contar antes: um `count: 'exact'` seria mais uma consulta cara
+ * sobre a grade inteira só para saber quantas páginas pedir.
+ */
+async function paginarEmParalelo<T>(
+  buscarPagina: (pagina: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>
+): Promise<{ linhas: T[] } | { erro: string }> {
+  const linhas: T[] = []
+  for (let inicio = 0; ; inicio += CONSULTAS_SIMULTANEAS) {
+    const paginas = await Promise.all(
+      Array.from({ length: CONSULTAS_SIMULTANEAS }, (_, k) => buscarPagina(inicio + k))
+    )
+    for (const { data, error } of paginas) {
+      if (error) return { erro: error.message }
+      const lote = data ?? []
+      linhas.push(...lote)
+      if (lote.length < TAMANHO_PAGINA) return { linhas }
+    }
+  }
+}
+
 const COLUNAS_GRADE = `
   id,
   tita_agendamento_id,
@@ -85,20 +130,18 @@ export async function buscarEvolucoesComAuditoria(
     const chunkSize = 200
     const auditoriaMap = new Map<string, RegistroAuditoriaEvolucao>()
 
-    for (let i = 0; i < gradeIds.length; i += chunkSize) {
-      const chunk = gradeIds.slice(i, i + chunkSize)
-      const { data: audRows, error: audErr } = await supabase
-        .from('auditoria_evolucoes')
-        .select('*')
-        .in('grade_id', chunk)
+    const blocos: string[][] = []
+    for (let i = 0; i < gradeIds.length; i += chunkSize) blocos.push(gradeIds.slice(i, i + chunkSize))
+    const respostas = await emParalelo(
+      blocos.map(chunk => () => supabase.from('auditoria_evolucoes').select('*').in('grade_id', chunk))
+    )
 
+    for (const { data: audRows, error: audErr } of respostas) {
       if (audErr) {
         return { data: [], error: `Erro ao buscar auditorias: ${audErr.message}` }
       }
-      if (audRows) {
-        for (const a of audRows) {
-          auditoriaMap.set(a.grade_id, a as unknown as RegistroAuditoriaEvolucao)
-        }
+      for (const a of audRows ?? []) {
+        auditoriaMap.set(a.grade_id, a as unknown as RegistroAuditoriaEvolucao)
       }
     }
 
@@ -181,9 +224,7 @@ async function buscarGradePaginada(
   dataInicio: string,
   filtros: FiltrosAuditoriaEvolucoes
 ): Promise<ResultadoGrade> {
-  const linhas: LinhaGrade[] = []
-
-  for (let pagina = 0; ; pagina++) {
+  const r = await paginarEmParalelo<LinhaGrade>(pagina => {
     let query = supabase
       .from('csv_grades_profissionais')
       .select(COLUNAS_GRADE)
@@ -198,16 +239,10 @@ async function buscarGradePaginada(
     if (filtros.dataFim) query = query.lte('data', filtros.dataFim)
     if (filtros.profissionalId) query = query.eq('profissional_id', filtros.profissionalId)
     if (filtros.unidadeId) query = query.eq('unidade_id', filtros.unidadeId)
+    return query as unknown as PromiseLike<{ data: LinhaGrade[] | null; error: { message: string } | null }>
+  })
 
-    const { data, error } = await query
-    if (error) return { erro: `Erro ao buscar grade: ${error.message}` }
-    if (!data || data.length === 0) break
-
-    linhas.push(...(data as unknown as LinhaGrade[]))
-    if (data.length < TAMANHO_PAGINA) break
-  }
-
-  return { linhas }
+  return 'erro' in r ? { erro: `Erro ao buscar grade: ${r.erro}` } : r
 }
 
 /**
@@ -222,9 +257,7 @@ async function buscarGradePelaAuditoria(
   dataInicio: string,
   filtros: FiltrosAuditoriaEvolucoes
 ): Promise<ResultadoGrade> {
-  const idsAlvo: string[] = []
-
-  for (let pagina = 0; ; pagina++) {
+  const alvos = await paginarEmParalelo<{ grade_id: string }>(pagina => {
     let query = supabase
       .from('auditoria_evolucoes')
       .select('grade_id')
@@ -244,33 +277,31 @@ async function buscarGradePelaAuditoria(
     }
     if (filtros.profissionalId) query = query.eq('profissional_id', filtros.profissionalId)
     if (filtros.unidadeId) query = query.eq('unidade_id', filtros.unidadeId)
-
-    const { data, error } = await query
-    if (error) return { erro: `Erro ao buscar auditorias: ${error.message}` }
-    if (!data || data.length === 0) break
-
-    idsAlvo.push(...data.map(a => a.grade_id as string))
-    if (data.length < TAMANHO_PAGINA) break
-  }
+    return query as unknown as PromiseLike<{ data: { grade_id: string }[] | null; error: { message: string } | null }>
+  })
+  if ('erro' in alvos) return { erro: `Erro ao buscar auditorias: ${alvos.erro}` }
+  const idsAlvo = alvos.linhas.map(a => a.grade_id)
 
   if (idsAlvo.length === 0) return { linhas: [] }
 
   // Buscar as sessões dessas auditorias, em blocos para não estourar a URL.
   const linhas: LinhaGrade[] = []
-  const blocos = 200
+  const blocos: string[][] = []
+  for (let i = 0; i < idsAlvo.length; i += 200) blocos.push(idsAlvo.slice(i, i + 200))
 
-  for (let i = 0; i < idsAlvo.length; i += blocos) {
-    const chunk = idsAlvo.slice(i, i + blocos)
-    let query = supabase
-      .from('csv_grades_profissionais')
-      .select(COLUNAS_GRADE)
-      .in('id', chunk)
-      .eq('ativo', true)
-
-    if (filtros.profissionalId) query = query.eq('profissional_id', filtros.profissionalId)
-    if (filtros.unidadeId) query = query.eq('unidade_id', filtros.unidadeId)
-
-    const { data, error } = await query
+  const respostas = await emParalelo(
+    blocos.map(chunk => () => {
+      let query = supabase
+        .from('csv_grades_profissionais')
+        .select(COLUNAS_GRADE)
+        .in('id', chunk)
+        .eq('ativo', true)
+      if (filtros.profissionalId) query = query.eq('profissional_id', filtros.profissionalId)
+      if (filtros.unidadeId) query = query.eq('unidade_id', filtros.unidadeId)
+      return query
+    })
+  )
+  for (const { data, error } of respostas) {
     if (error) return { erro: `Erro ao buscar grade: ${error.message}` }
     if (data) linhas.push(...(data as unknown as LinhaGrade[]))
   }

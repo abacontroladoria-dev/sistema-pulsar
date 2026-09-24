@@ -13,11 +13,11 @@ import {
   markdownParaCriterios,
   lerVersaoOrigem
 } from '@/lib/auditoria/criteriosMarkdown'
-import {
-  criteriosParaDocx,
-  docxParaMarkdown,
-  lerVersaoOrigemDocx
-} from '@/lib/auditoria/criteriosDocx'
+// `criteriosDocx` NÃO é importado aqui em cima: ele puxa `docx` e `mammoth`
+// (alguns MB), e em import estático entrariam no código da página inteira,
+// baixados a cada primeira abertura sem ninguém abrir este modal. Vêm por
+// import() dinâmico, só no clique de baixar ou subir.
+const carregarDocx = () => import('@/lib/auditoria/criteriosDocx')
 import { CriteriosInvalidosError } from '@/lib/auditoria/criterios'
 import type { CriteriosAuditoria, VersaoCriteriosAuditoria } from '@/types/auditoriaCriterios'
 import { ROTULO_RISCO, BOTAO_PRIMARIO, BOTAO_SECUNDARIO, CAMPO } from './vocabulario'
@@ -141,6 +141,7 @@ export function ModalCriterios({
 
   const baixarDocx = async () => {
     if (!vigente?.criterios) return
+    const { criteriosParaDocx } = await carregarDocx()
     const blob = await criteriosParaDocx(vigente.criterios, { versaoOrigem: vigente.versao })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -156,12 +157,13 @@ export function ModalCriterios({
     setLendoArquivo(arquivo.name)
     try {
       const ehDocx = arquivo.name.toLowerCase().endsWith('.docx')
-      const texto = ehDocx ? await docxParaMarkdown(arquivo) : await arquivo.text()
+      const docx = ehDocx ? await carregarDocx() : null
+      const texto = docx ? await docx.docxParaMarkdown(arquivo) : await arquivo.text()
       const lidos = markdownParaCriterios(texto)
       setPendente({
         criterios: lidos,
         nomeArquivo: arquivo.name,
-        versaoOrigem: ehDocx ? lerVersaoOrigemDocx(texto) : lerVersaoOrigem(texto)
+        versaoOrigem: docx ? docx.lerVersaoOrigemDocx(texto) : lerVersaoOrigem(texto)
       })
     } catch (e) {
       setPendente(null)
