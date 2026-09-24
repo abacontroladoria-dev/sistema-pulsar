@@ -1,8 +1,6 @@
 import { NextResponse } from 'next/server'
-import { auditarEvolucaoComIA } from '@/lib/auditoria/auditorEngine'
 import { exigirPermissaoAuditoria, respostaDeErroAuth } from '@/lib/auditoria/auth'
-import { carregarCriteriosVigentes } from '@/lib/auditoria/criterios'
-import { carregarPosicoesNoDia, descreverPosicao } from '@/lib/auditoria/posicaoSessao'
+import { auditarEPersistir, COLUNAS_GRADE, type GradeParaAuditar } from '@/lib/auditoria/auditarEPersistir'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,19 +14,7 @@ export async function POST(req: Request) {
     // 1. Obter registros de grade para auditar
     let query = supabase
       .from('csv_grades_profissionais')
-      .select(`
-        id,
-        tita_agendamento_id,
-        data,
-        profissional_id,
-        profissional_nome,
-        paciente_id,
-        paciente_nome,
-        terapia_nome,
-        unidade_id,
-        unidade_nome,
-        descricao_evolucao
-      `)
+      .select(COLUNAS_GRADE)
       .gte('data', dataInicio)
       .eq('ativo', true)
       .not('descricao_evolucao', 'is', null)
@@ -71,104 +57,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, processados: 0, mensagem: 'Todas as evoluções do período já foram auditadas.' })
     }
 
-    const resultadosProcessados: any[] = []
-    const falhas: { grade_id: string; paciente_nome: string; motivo: string }[] = []
-
-    // Fora do loop: os critérios valem para o lote inteiro, e o loop é
-    // sequencial — resolver aqui evita N leituras do banco e garante que todas
-    // as linhas do lote fiquem carimbadas com a MESMA versão.
-    const { criterios, versaoId, versaoNumero } = await carregarCriteriosVigentes(supabase)
-    const posicoes = await carregarPosicoesNoDia(supabase, lote)
-
-    for (const item of lote) {
-      try {
-        const posicao = posicoes.get(item.id)
-        const analise = await auditarEvolucaoComIA({
-          pacienteNome: item.paciente_nome || 'Paciente',
-          profissionalNome: item.profissional_nome || 'Profissional',
-          terapiaNome: item.terapia_nome,
-          dataSessao: item.data,
-          posicaoNoDia: posicao ? descreverPosicao(posicao) : undefined,
-          textoOriginal: item.descricao_evolucao || '',
-          criterios
-        })
-
-        const record = {
-          grade_id: item.id,
-          tita_agendamento_id: item.tita_agendamento_id,
-          data_sessao: item.data,
-          profissional_id: item.profissional_id,
-          profissional_nome: item.profissional_nome || 'Profissional',
-          paciente_id: item.paciente_id,
-          paciente_nome: item.paciente_nome || 'Paciente',
-          terapia_nome: item.terapia_nome,
-          unidade_id: item.unidade_id,
-          unidade_nome: item.unidade_nome,
-          texto_original: item.descricao_evolucao,
-          status_risco: analise.status_risco,
-          resumo_justificativa: analise.resumo_justificativa,
-          apontamentos: analise.apontamentos,
-          checklist_perguntas: analise.checklist_perguntas,
-          inconsistencias_estruturais: analise.inconsistencias_estruturais,
-          texto_revisado: analise.texto_revisado,
-          modelo_ia: analise.modelo_usado,
-          criterios_versao_id: versaoId,
-          criterios_versao_numero: versaoNumero,
-          // Deu certo agora: limpa o erro de uma tentativa anterior.
-          erro_auditoria: null,
-          auditado_em: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        }
-
-        const { data: upsertData, error: upsertErr } = await supabase
-          .from('auditoria_evolucoes')
-          .upsert(record, { onConflict: 'grade_id' })
-          .select()
-          .single()
-
-        if (upsertErr) {
-          console.error('[Auditoria] Erro ao gravar auditoria:', upsertErr)
-          falhas.push({
-            grade_id: item.id,
-            paciente_nome: item.paciente_nome || 'Paciente',
-            motivo: upsertErr.message
-          })
-        } else {
-          resultadosProcessados.push(upsertData)
-        }
-      } catch (itemErr: any) {
-        const motivo = itemErr?.message || 'Erro desconhecido'
-        console.error(`[Auditoria] Falha ao processar item ${item.id}:`, motivo)
-        falhas.push({
-          grade_id: item.id,
-          paciente_nome: item.paciente_nome || 'Paciente',
-          motivo
-        })
-
-        // `status_risco` é NOT NULL + CHECK: não existe veredito "erro". Então
-        // só dá para registrar a falha onde JÁ existe uma auditoria anterior —
-        // o veredito antigo fica preservado e a tela o marca como desatualizado.
-        // Item nunca auditado não vira linha: some da lista de auditados e
-        // aparece em `falhas`, que a tela informa. O que não pode acontecer é o
-        // que acontecia antes: inventar um veredito para a linha.
-        const { error: erroMarcacao } = await supabase
-          .from('auditoria_evolucoes')
-          .update({ erro_auditoria: motivo, updated_at: new Date().toISOString() })
-          .eq('grade_id', item.id)
-
-        if (erroMarcacao) {
-          console.error('[Auditoria] Falha ao registrar erro_auditoria:', erroMarcacao.message)
-        }
-      }
-    }
+    const { processados, falhas, criteriosVersao } = await auditarEPersistir(
+      supabase,
+      lote as GradeParaAuditar[]
+    )
 
     return NextResponse.json({
       success: true,
-      processados: resultadosProcessados.length,
+      processados: processados.length,
       total_solicitados: lote.length,
-      itens: resultadosProcessados,
+      itens: processados,
       falhas,
-      criterios_versao: versaoNumero
+      criterios_versao: criteriosVersao
     })
   } catch (err: any) {
     const authErr = respostaDeErroAuth(err)

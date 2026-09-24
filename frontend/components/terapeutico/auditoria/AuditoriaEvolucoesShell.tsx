@@ -122,6 +122,22 @@ const COBRANCAS_VALIDAS: readonly string[] = [
 /** `YYYY-MM-DD` e nada mais — a URL é entrada de fora, não estado confiável. */
 const dataValida = (v: string | null): v is string => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v)
 
+// Barra final: trailingSlash está ligado no next.config; sem ela o POST passa
+// por um 308 antes de chegar.
+const URL_FILA = '/api/terapeutico/auditoria-evolucoes/fila/'
+
+/** Espelha public.resumo_fila_reauditoria(). */
+interface ResumoFila {
+  em_andamento: boolean
+  lotes: string[]
+  total: number
+  feitos: number
+  falharam: number
+  cancelados: number
+  pendentes: number
+  concluido_em: string | null
+}
+
 /**
  * Lê o recorte da query string.
  *
@@ -232,8 +248,14 @@ export function AuditoriaEvolucoesShell() {
   const [carregouUmaVez, setCarregouUmaVez] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
 
-  const [auditandoLote, setAuditandoLote] = useState(false)
-  const [progressoLote, setProgressoLote] = useState<{ atual: number; total: number } | null>(null)
+  // A auditoria em massa roda no servidor (fila); a tela só enfileira e
+  // acompanha. Fechar a aba não para mais nada.
+  const [fila, setFila] = useState<ResumoFila | null>(null)
+  const [enfileirando, setEnfileirando] = useState(false)
+  const auditandoLote = enfileirando || Boolean(fila?.em_andamento)
+  const progressoLote = fila?.em_andamento
+    ? { atual: fila.total - fila.pendentes, total: fila.total }
+    : null
   /*
    * O aviso carrega o próprio tom, em vez de a UI adivinhá-lo pelo texto.
    * "N não puderam ser auditadas" e "todas já foram auditadas" dividiam o mesmo
@@ -375,88 +397,79 @@ export function AuditoriaEvolucoesShell() {
     : null
 
   /**
-   * Processa um conjunto de evoluções em lotes.
-   *
+   * Chama a fila e devolve o resumo. Serve a enfileirar, repetir falhas,
+   * cancelar e consultar — todos respondem com o mesmo `resumo`.
+   */
+  const chamarFila = async (
+    method: 'GET' | 'POST' | 'DELETE',
+    body?: Record<string, unknown>
+  ): Promise<ResumoFila | null> => {
+    try {
+      const res = await fetch(URL_FILA, {
+        method,
+        headers: body ? { 'Content-Type': 'application/json' } : undefined,
+        body: body ? JSON.stringify(body) : undefined
+      })
+      const json = await res.json()
+      if (!json.success) {
+        setAvisoLote({
+          texto:
+            res.status === 401
+              ? 'Sua sessão expirou. Recarregue a página e faça login novamente.'
+              : json.error || 'Não foi possível falar com a fila de auditoria.',
+          falha: true
+        })
+        return null
+      }
+      setFila(json.resumo)
+      return json.resumo
+    } catch {
+      setAvisoLote({ texto: 'Falha de rede ao falar com a fila de auditoria.', falha: true })
+      return null
+    }
+  }
+
+  /**
    * Serve aos dois botões: "Auditar novas" (só o que nunca foi auditado) e
    * "Reauditar com os critérios atuais" (o que ficou numa versão antiga da
-   * régua). O que muda é a lista de entrada e a flag `reauditar`.
+   * régua). Os dois viram a mesma coisa na fila: auditar e gravar o veredito.
    */
-  const processarEmLotes = async (
-    alvos: EvolucaoPendenteAuditoria[],
-    opcoes: { reauditar: boolean }
-  ) => {
+  const enfileirar = async (alvos: EvolucaoPendenteAuditoria[]) => {
     setAvisoLote(null)
-    setAuditandoLote(true)
-    setProgressoLote({ atual: 0, total: alvos.length })
-
-    const TAMANHO_LOTE = 5
-    let processados = 0
-    let falharam = 0
-    // Sessão caiu no meio do lote: continuar tentando os chunks seguintes só
-    // acumularia o mesmo 401 em cada um. Um aviso genérico de "tente
-    // novamente" também mentiria — tentar de novo sem logar não resolve nada.
-    let sessaoExpirou = false
-
-    for (let i = 0; i < alvos.length; i += TAMANHO_LOTE) {
-      if (sessaoExpirou) {
-        falharam += alvos.length - i
-        break
-      }
-
-      const chunk = alvos.slice(i, i + TAMANHO_LOTE)
-      const ids = chunk.map(c => c.grade_id)
-
-      try {
-        const res = await fetch('/api/terapeutico/auditoria-evolucoes', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            gradeIds: ids,
-            dataInicio,
-            dataFim: dataFim || undefined,
-            limite: TAMANHO_LOTE,
-            reauditar: opcoes.reauditar
-          })
-        })
-
-        const json = await res.json()
-        if (json.success) {
-          processados += json.processados || chunk.length
-          falharam += Array.isArray(json.falhas) ? json.falhas.length : 0
-          setProgressoLote({ atual: Math.min(processados, alvos.length), total: alvos.length })
-        } else if (res.status === 401) {
-          sessaoExpirou = true
-          falharam += chunk.length
-        } else {
-          // 403 ou erro de servidor: o lote inteiro não passou.
-          falharam += chunk.length
-          console.error('Lote recusado:', json.error)
-        }
-      } catch (e) {
-        falharam += chunk.length
-        console.error('Erro no lote de auditoria:', e)
-      }
-    }
-
-    setAuditandoLote(false)
-    setProgressoLote(null)
-
-    // Falha de IA não pode passar despercebida: antes, o item sumia do lote sem
-    // que ninguém soubesse que ele não chegou a ser auditado.
-    if (sessaoExpirou) {
-      setAvisoLote({
-        texto: 'Sua sessão expirou durante a auditoria. Recarregue a página e faça login novamente para continuar.',
-        falha: true
-      })
-    } else if (falharam > 0) {
-      setAvisoLote({
-        texto: `${falharam} ${falharam === 1 ? 'evolução não pôde' : 'evoluções não puderam'} ser ${falharam === 1 ? 'auditada' : 'auditadas'}. Tente novamente; se persistir, avise a tecnologia.`,
-        falha: true
-      })
-    }
-
-    await carregarDados()
+    setEnfileirando(true)
+    await chamarFila('POST', { gradeIds: alvos.map(a => a.grade_id) })
+    setEnfileirando(false)
   }
+
+  // Acompanha a fila: consulta ao abrir e a cada 5s enquanto houver trabalho.
+  // Polling e não Realtime: o Realtime já é ~26% do orçamento de disco do banco,
+  // e aqui a consulta é um agregado barato que só roda com a fila ativa.
+  const emAndamento = Boolean(fila?.em_andamento)
+  const estavaEmAndamento = React.useRef(false)
+  useEffect(() => {
+    void chamarFila('GET')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  useEffect(() => {
+    if (!emAndamento) {
+      // Acabou enquanto a tela olhava: os vereditos mudaram.
+      if (estavaEmAndamento.current) void carregarDados()
+      estavaEmAndamento.current = false
+      return
+    }
+    estavaEmAndamento.current = true
+    const id = setInterval(() => void chamarFila('GET'), 5000)
+    return () => clearInterval(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [emAndamento])
+
+  // Falhas do último lote ficam visíveis por 24h, mesmo que ninguém estivesse
+  // olhando quando ele terminou — o worker roda sem a tela aberta.
+  const falhasRecentes =
+    fila && !fila.em_andamento && fila.falharam > 0 && fila.concluido_em &&
+    Date.now() - new Date(fila.concluido_em).getTime() < 24 * 3600_000
+      ? fila.falharam
+      : 0
 
   const handleAuditarLote = async () => {
     /*
@@ -470,7 +483,7 @@ export function AuditoriaEvolucoesShell() {
       setAvisoLote({ texto: 'Todas as evoluções deste período já foram auditadas.', falha: false })
       return
     }
-    await processarEmLotes(pendentes, { reauditar: false })
+    await enfileirar(pendentes)
   }
 
   /**
@@ -498,7 +511,7 @@ export function AuditoriaEvolucoesShell() {
 
   const confirmarEExecutarReauditar = async () => {
     setConfirmarReauditar(false)
-    await processarEmLotes(desatualizadas, { reauditar: true })
+    await enfileirar(desatualizadas)
   }
 
   const handleReauditarItem = async (gradeId: string) => {
@@ -619,6 +632,42 @@ export function AuditoriaEvolucoesShell() {
         >
           {falhaNoLote && <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" />}
           {avisoLote.texto}
+        </p>
+      )}
+
+      {fila?.em_andamento && (
+        <p
+          role="status"
+          className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground"
+        >
+          <span>
+            Auditando no servidor: <strong className="tabular-nums text-foreground">{fila.total - fila.pendentes} de {fila.total}</strong>.
+            Pode fechar esta página — o processamento continua.
+          </span>
+          <button
+            onClick={() => void chamarFila('DELETE')}
+            className={`shrink-0 rounded px-1.5 py-0.5 font-bold underline-offset-2 hover:underline ${FOCO}`}
+          >
+            Cancelar o restante
+          </button>
+        </p>
+      )}
+
+      {falhasRecentes > 0 && (
+        <p
+          className={`mt-3 flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-xs ${TONE_PANEL.amber.bg} ring-1 ${TONE_PANEL.amber.ring} ${TONE_CHIP.amber.text}`}
+        >
+          <span className="flex items-start gap-2">
+            <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" />
+            {falhasRecentes} {falhasRecentes === 1 ? 'evolução não pôde' : 'evoluções não puderam'} ser{' '}
+            {falhasRecentes === 1 ? 'auditada' : 'auditadas'} depois de 3 tentativas. Se persistir, avise a tecnologia.
+          </span>
+          <button
+            onClick={() => void chamarFila('POST', { repetirFalhasDosLotes: fila?.lotes ?? [] })}
+            className={`shrink-0 rounded px-1.5 py-0.5 font-bold underline-offset-2 hover:underline ${FOCO}`}
+          >
+            Tentar de novo
+          </button>
         </p>
       )}
 
