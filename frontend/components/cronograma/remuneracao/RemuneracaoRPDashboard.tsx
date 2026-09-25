@@ -37,7 +37,7 @@ import type { CadastroContratual, ProfRemunReal } from "@/lib/remuneracao/calcul
 
 // ─── Contagem animada do valor total (respeita prefers-reduced-motion) ───────
 
-function useCountUp(target: number, durationMs = 900): number {
+export function useCountUp(target: number, durationMs = 900): number {
   const [value, setValue] = useState(target)
   const prevTarget = useRef(0)
   const firstRun = useRef(true)

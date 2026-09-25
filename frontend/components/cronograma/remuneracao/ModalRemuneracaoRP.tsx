@@ -15,7 +15,7 @@
 // propósito: esta sprint tem escopo em /rp, então nada é extraído para um kit
 // compartilhado ainda. Quando a terceira tela pedir o mesmo, é hora de extrair.
 
-import { Fragment, useMemo, useState } from "react"
+import { Fragment, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import {
   Banknote, CalendarDays, CalendarX2, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight,
@@ -29,7 +29,7 @@ import { useToneColor, type Tone } from "@/hooks/useToneColor"
 import { fmt, isSim } from "@/lib/remuneracao/formatacao"
 import { isCancelado } from "@/lib/remuneracao/rotulosExecucao"
 import { formatDateBR } from "@/lib/remuneracao/datas"
-import { bucketDaSessao, composicaoRP, corrigirTotalComPEP } from "@/lib/remuneracao/composicaoRP"
+import { bucketDaSessao, composicaoRP, corrigirTotalComPEP, type BucketSessao } from "@/lib/remuneracao/composicaoRP"
 import type { ProfRemunReal, SessaoComPapel } from "@/lib/remuneracao/calculo"
 
 const POR_PAGINA = 15
@@ -189,6 +189,16 @@ function paginasVisiveis(atual: number, total: number): (number | "…")[] {
 
 type AbaId = "todos" | "remuneradas" | "substituicoes" | "pendentes" | "canceladas" | "cedidas" | "inconsistencias"
 
+/** Bucket de bucketDaSessao → aba deste modal, para o link "abrir a sessão X" achar a aba certa. */
+const BUCKET_PARA_ABA: Record<BucketSessao, AbaId> = {
+  comEvolucao: "remuneradas",
+  substituicao: "substituicoes",
+  pendente: "pendentes",
+  cancelada: "canceladas",
+  cedida: "cedidas",
+  inconsistencia: "inconsistencias",
+}
+
 interface Props {
   p: ProfRemunReal | null
   periodo: { de: string; ate: string } | null
@@ -198,14 +208,40 @@ interface Props {
    * aparece como nota, nunca como bloco da fórmula.
    */
   pepResumo?: { potencial: number; alcancado: number } | null
+  /**
+   * ID de uma sessão a abrir direto — de um link de outra tela (ex.: causa de
+   * diferença na Visão Geral Individual). O modal acha a aba dela, a página
+   * onde cai e já expande a linha, em vez de abrir em "Todos" na página 1 e
+   * deixar quem clicou procurar entre até 7 abas.
+   */
+  focoSessaoId?: string | null
   onClose: () => void
 }
 
-export function ModalRemuneracaoRP({ p, periodo, pepResumo, onClose }: Props) {
+export function ModalRemuneracaoRP({ p, periodo, pepResumo, focoSessaoId, onClose }: Props) {
   const toneColor = useToneColor()
-  const [aba, setAba] = useState<AbaId>("todos")
-  const [pagina, setPagina] = useState(1)
-  const [detalhe, setDetalhe] = useState<string | null>(null)
+
+  // Precisa vir antes dos useState de aba/página/detalhe: os três nascem
+  // direto no lugar certo quando há foco, sem efeito de "pular depois".
+  const c = useMemo(() => (p ? composicaoRP(p) : null), [p])
+
+  const foco = useMemo(() => {
+    if (!c || !focoSessaoId) return null
+    for (const bucket of Object.keys(BUCKET_PARA_ABA) as BucketSessao[]) {
+      const idx = c.porBucket[bucket].findIndex(s => s.id === focoSessaoId)
+      if (idx < 0) continue
+      return {
+        aba: BUCKET_PARA_ABA[bucket],
+        pagina: Math.floor(idx / POR_PAGINA) + 1,
+        chave: chaveSessao(c.porBucket[bucket][idx], idx),
+      }
+    }
+    return null
+  }, [c, focoSessaoId])
+
+  const [aba, setAba] = useState<AbaId>(() => foco?.aba ?? "todos")
+  const [pagina, setPagina] = useState(() => foco?.pagina ?? 1)
+  const [detalhe, setDetalhe] = useState<string | null>(() => foco?.chave ?? null)
   // Busca própria do modal, sempre vazia ao abrir. A busca da página escolhe
   // QUEM aparece na lista; aqui a mesma string esconderia o resto do mês desta
   // pessoa — são perguntas diferentes (§3.11). O card antigo recebia `remBusca`
@@ -213,9 +249,17 @@ export function ModalRemuneracaoRP({ p, periodo, pepResumo, onClose }: Props) {
   const [buscaLocal, setBuscaLocal] = useState("")
 
   // Nada de efeito para resetar aba/página ao trocar de profissional: quem monta
-  // remonta por `key={prof}` (ver RemunRPTab), então este estado já nasce limpo.
+  // remonta por `key={prof}` (ver RemunRPTab), então este estado já nasce limpo
+  // (com foco, nasce direto na sessão; sem foco, no de sempre).
 
-  const c = useMemo(() => (p ? composicaoRP(p) : null), [p])
+  // Rola até a linha em foco depois do primeiro paint — ela já nasce expandida
+  // (detalhe = foco.chave), só falta trazê-la pra tela em vez de deixar quem
+  // abriu o link precisar rolar a tabela sozinho.
+  const focoRef = useRef<HTMLTableRowElement>(null)
+  useEffect(() => {
+    if (foco) focoRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- só na entrada; foco não muda depois do mount (não há setFoco)
+  }, [])
 
   const especialidades = useMemo(() => {
     if (!p) return []
@@ -721,11 +765,15 @@ export function ModalRemuneracaoRP({ p, periodo, pepResumo, onClose }: Props) {
                           const situacao = situacaoDaSessao(s)
                           const remuneracao = remuneracaoDaSessao(s)
                           const aberto = detalhe === chave
+                          const emFoco = foco?.chave === chave
                           return (
                             // O par de <tr> precisa de Fragment com key: <> com
                             // keys nos filhos dispara warning do React.
                             <Fragment key={chave}>
-                              <tr className="border-t border-border/70 hover:bg-muted/40">
+                              <tr
+                                ref={emFoco ? focoRef : undefined}
+                                className={`border-t border-border/70 hover:bg-muted/40 ${emFoco ? TONE_PANEL.amber.bg : ""}`}
+                              >
                                 <td className="whitespace-nowrap px-3 py-2.5 font-medium tabular-nums text-foreground">{formatDateBR(s.data)}</td>
                                 <td className="whitespace-nowrap px-3 py-2.5 tabular-nums text-foreground">{s.hora}</td>
                                 <td className="px-3 py-2.5 text-foreground">{s.paciente || "—"}</td>
