@@ -22,8 +22,9 @@
 // realmente mudou, em vez de recriar a tabela inteira a cada clique.
 
 import { Fragment, memo, useCallback, useEffect, useMemo, useState } from "react"
-import { Loader2, Wallet, AlertTriangle, CalendarDays, ChevronDown, ChevronRight, Download } from "lucide-react"
+import { Loader2, Wallet, AlertTriangle, CalendarDays, ChevronDown, ChevronRight, Download, History } from "lucide-react"
 import { StatCard } from "@/components/cronograma/ui/StatCard"
+import { Drawer } from "@/components/cronograma/ui/Drawer"
 import { SegmentedTabs } from "@/components/cronograma/ui/SegmentedTabs"
 import { SortableTh, ordenarPor, type SortDir } from "@/components/cronograma/ui/SortableTh"
 import { UnidadeMultiSelect } from "@/components/cronograma/ui/UnidadeMultiSelect"
@@ -46,6 +47,7 @@ import {
 import { SeletorMesPrevisao } from "./SeletorMesPrevisao"
 import { ExportEscopoDialog } from "./ExportEscopoDialog"
 import { EvolucaoReceitasChart } from "./EvolucaoReceitasChart"
+import { HistoricoReceitasShell } from "./HistoricoReceitasShell"
 import { exportarPrevisaoReceitasXlsx, type EscopoExport } from "@/lib/cronograma/exportPrevisaoReceitas"
 import {
   calcularPrevisaoReceita,
@@ -434,8 +436,8 @@ function ConvenioRow({ c, mesReferenciaLabel, sessaoSelecionada, onSelectSessao,
                           <SortableTh label="Sessões no mês" sortKey="sessoesCount" activeKey={sortPaciente.key} dir={sortPaciente.dir} align="right" onClick={onSortClick} />
                           <SortableTh label="Faltas no mês" sortKey="faltasCount" activeKey={sortPaciente.key} dir={sortPaciente.dir} align="right" onClick={onSortClick} />
                           <SortableTh label="Receita Mês Projetada Sem Deduções" sortKey="valorSemDeducao" activeKey={sortPaciente.key} dir={sortPaciente.dir} align="right" onClick={onSortClick} />
-                          <SortableTh label="Deduções por Falta" sortKey="deducaoFalta" activeKey={sortPaciente.key} dir={sortPaciente.dir} align="right" onClick={onSortClick} />
-                          <SortableTh label="Efetivado (Recebido)" sortKey="efetivado" activeKey={sortPaciente.key} dir={sortPaciente.dir} align="right" onClick={onSortClick} />
+                          <SortableTh label="Potencial perdido por Falta" sortKey="deducaoFalta" activeKey={sortPaciente.key} dir={sortPaciente.dir} align="right" onClick={onSortClick} />
+                          <SortableTh label="Pago (Recebido)" sortKey="efetivado" activeKey={sortPaciente.key} dir={sortPaciente.dir} align="right" onClick={onSortClick} />
                           <SortableTh label="Indefinido (Glosa ou Receita)" sortKey="indefinido" activeKey={sortPaciente.key} dir={sortPaciente.dir} align="right" onClick={onSortClick} />
                         </tr>
                       </thead>
@@ -524,7 +526,7 @@ function TabelaPorConvenio({ titulo, segmento, mesReferenciaLabel, avisoParticul
               <th className="py-1.5 px-2 text-right font-semibold">Sem valor</th>
               <th className="py-1.5 px-2 text-right font-semibold">Receita semanal</th>
               <th className="py-1.5 px-2 text-right font-semibold">Receita Mês Projetada Sem Deduções</th>
-              <th className="py-1.5 pl-2 text-right font-semibold">Deduções por falta</th>
+              <th className="py-1.5 pl-2 text-right font-semibold">Potencial perdido por falta</th>
             </tr>
           </thead>
           <tbody>
@@ -638,6 +640,8 @@ export function PrevisaoReceitasShell() {
   // Independente de unidadesFiltro: só tem efeito quando a unidade física
   // correspondente também está selecionada (ver linhaPassaNoFiltro abaixo).
   const [incluirAmbienteNaturalPorUnidade, setIncluirAmbienteNaturalPorUnidade] = useState<string[]>([])
+
+  const [historicoAberto, setHistoricoAberto] = useState(false)
 
   // Opções vêm de linhasMes (mês inteiro) SEM aplicar o próprio filtro, senão
   // a lista de opções encolheria conforme o usuário marca unidades.
@@ -820,11 +824,9 @@ export function PrevisaoReceitasShell() {
   // Efetivado e Indefinido existem como categorias visíveis). Usado só pra
   // calcular Indefinido: Projetado = Efetivado + Deduções + Indefinido.
   const receitaMensalComDeducao = previsaoExibida.multidisciplinar.receitaMensalComDeducaoTotal + previsaoExibida.processoDiagnostico.receitaMensalComDeducaoTotal
-  const deducaoFaltaTotal = receitaMensalSemDeducao - receitaMensalComDeducao
-  const receitaSemanalTotal = previsaoExibida.multidisciplinar.receitaSemanalTotal + previsaoExibida.processoDiagnostico.receitaSemanalTotal
   const sessoesTotal = previsaoExibida.multidisciplinar.sessoesTotal + previsaoExibida.processoDiagnostico.sessoesTotal
   const sessoesSemValor = previsaoExibida.multidisciplinar.sessoesSemValor + previsaoExibida.processoDiagnostico.sessoesSemValor
-  const { efetivadoTotal, indefinidoTotal } = calcularIndefinidoTotalMes(receitaMensalComDeducao, faturamentoRows)
+  const { indefinidoTotal } = calcularIndefinidoTotalMes(receitaMensalComDeducao, faturamentoRows)
 
   return (
     <div className="flex flex-col gap-4">
@@ -845,6 +847,14 @@ export function PrevisaoReceitasShell() {
               onChange: setIncluirAmbienteNaturalPorUnidade,
             }}
           />
+          <button
+            type="button"
+            onClick={() => setHistoricoAberto(true)}
+            className="flex h-9 items-center gap-1.5 whitespace-nowrap rounded-lg border border-border bg-card px-2.5 text-sm text-foreground hover:bg-muted/50"
+          >
+            <History size={15} className="shrink-0 text-muted-foreground" />
+            Resumo mensal de receitas
+          </button>
         </div>
         {usarHistorico && historico.snapshotData && (
           <span className="text-[11px] font-semibold text-blue-600 dark:text-blue-400">
@@ -875,21 +885,12 @@ export function PrevisaoReceitasShell() {
         onSelecionarMes={(ano, mes) => setPeriodo({ ano, mes })}
       />
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatCard tone="amber" icon={<Wallet size={15} />} label="Receita Mês Projetada Sem Deduções">
           <div className="text-2xl font-black text-foreground">{fmtReal(receitaMensalSemDeducao)}</div>
         </StatCard>
-        <StatCard tone="green" icon={<Wallet size={15} />} label="Efetivado (Recebido)">
-          <div className="text-2xl font-black text-foreground">{fmtReal(efetivadoTotal)}</div>
-        </StatCard>
-        <StatCard tone="red" icon={<AlertTriangle size={15} />} label="Deduções por Falta">
-          <div className="text-2xl font-black text-foreground">{fmtReal(deducaoFaltaTotal)}</div>
-        </StatCard>
         <StatCard tone="amber" icon={<AlertTriangle size={15} />} label="Indefinido (Glosa ou Receita)">
           <div className="text-2xl font-black text-foreground">{fmtReal(indefinidoTotal)}</div>
-        </StatCard>
-        <StatCard tone="blue" icon={<Wallet size={15} />} label="Receita semanal projetada">
-          <div className="text-2xl font-black text-foreground">{fmtReal(receitaSemanalTotal)}</div>
         </StatCard>
         <StatCard tone="slate" icon={<CalendarDays size={15} />} label={usarHistorico ? "Sessões no mês" : "Sessões/semana"}>
           <div className="text-2xl font-black text-foreground">{sessoesTotal}</div>
@@ -925,6 +926,17 @@ export function PrevisaoReceitasShell() {
           onEscolher={escopo => executarExport(escopo)}
           onCancel={() => setEscopoDialogAberto(false)}
         />
+      )}
+
+      {historicoAberto && (
+        <Drawer
+          title="Resumo Mensal de Receitas"
+          subtitle="Índice mensal do histórico congelado de receita — projetado, potencial perdido e pago, mês a mês"
+          width={960}
+          onClose={() => setHistoricoAberto(false)}
+        >
+          <HistoricoReceitasShell />
+        </Drawer>
       )}
     </div>
   )

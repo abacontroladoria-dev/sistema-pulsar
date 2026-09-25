@@ -40,8 +40,8 @@ export const METRICAS_RECEITAS: Record<MetricaReceitaKey, MetricaReceitaConfig> 
   },
   deducaoFalta: {
     key: "deducaoFalta",
-    label: "Deduções por Falta",
-    labelCurto: "Deduções",
+    label: "Potencial perdido por Falta",
+    labelCurto: "Potencial perdido",
     tone: "red",
     formato: "moeda",
     icon: AlertTriangle,
@@ -49,8 +49,8 @@ export const METRICAS_RECEITAS: Record<MetricaReceitaKey, MetricaReceitaConfig> 
   },
   efetivadoReal: {
     key: "efetivadoReal",
-    label: "Efetivado (Recebido)",
-    labelCurto: "Efetivado",
+    label: "Pago (Recebido)",
+    labelCurto: "Pago",
     tone: "green",
     formato: "moeda",
     icon: Wallet,

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useSearchParams } from "next/navigation"
-import { Paperclip, Check, AlertTriangle, CalendarPlus, X, Trash2, History, Loader2 } from "lucide-react"
+import { Paperclip, Check, AlertTriangle, CalendarPlus, X, Trash2, History, Loader2, LayoutDashboard } from "lucide-react"
 import { useHeader } from "@/contexts/HeaderContext"
 import { useRemuneracaoRPContext } from "@/contexts/RemuneracaoRPContext"
 import { useParametrosGerais } from "@/hooks/useParametrosGerais"
@@ -14,6 +14,9 @@ import { SeletorMesPrevisao } from "@/components/cronograma/indicadores/SeletorM
 import { SearchCombobox } from "@/components/cronograma/ui/SearchCombobox"
 import { DatePicker } from "@/components/ui/date-picker"
 import { PepHistoricoModal } from "./PepHistoricoModal"
+import { BarraCompetencia, NotaFaturamento, VisaoGeralPep, faturamentoDaCompetencia } from "./pep/VisaoGeralPep"
+import { ExplicacaoPepTooltip } from "./pep/ExplicacaoPepTooltip"
+import { analistasDaGrade, pacientesCCDoProfissional } from "@/lib/remuneracao/visaoGeralPep"
 import { COMPETENCIA_TESTE_PEP, calcularAjusteRecorrentes } from "@/lib/remuneracao/calculoPEP"
 import type { PepCatalogoItem, PepEvidencia, PepPlanejamentoSemestral, PepRegistroEntrega } from "@/types/pep"
 
@@ -168,9 +171,6 @@ export function PepEntregasTab() {
   const { carregarGradeAuto, carregarGradeDoBanco, gradeLoading, gradeErroResumo } = controlesGrade
   const { semanas: semanasCalendario } = usePepCalendario(competencia)
 
-  // Primeira carga da Grade — mesmo gatilho que RemuneracaoUploadBadges usava
-  // no cabeçalho; guardado por ref lá dentro, então é seguro chamar de novo.
-  useEffect(() => { carregarGradeAuto() }, [carregarGradeAuto])
 
   // A Grade carregada aqui alimenta o mesmo contexto compartilhado das abas
   // Rem. Mês - Total e Individual — não precisa reanexar ao trocar de aba.
@@ -185,14 +185,10 @@ export function PepEntregasTab() {
     }
   }, [setHeader, setRightContent])
 
-  const analistas = useMemo(
-    () => Array.from(new Set(
-      (resultado ?? [])
-        .filter(p => p.sessoes.some(s => s.especialidade === "Coordenador de Caso"))
-        .map(p => p.prof)
-    )).sort((a, b) => a.localeCompare(b)),
-    [resultado]
-  )
+  // Roster da Grade: quem atende como Coordenador de Caso no mês, com seus
+  // pacientes — a mesma regra da visão geral (lib/remuneracao/visaoGeralPep.ts).
+  const analistasGrade = useMemo(() => analistasDaGrade(resultado ?? []), [resultado])
+  const analistas = useMemo(() => analistasGrade.map(a => a.nome), [analistasGrade])
 
   // Deep link vindo de outra tela (ex.: "Abrir Entregas PEP" no modal de
   // Rem. Mês - Total): ?competencia=YYYY-MM&prestador=Nome. Aplica só uma vez
@@ -214,6 +210,17 @@ export function PepEntregasTab() {
     carregarGradeDoBanco(periodoDoMes(Number(match[1]), Number(match[2])))
   }, [competenciaParam, carregarGradeDoBanco])
 
+  // Primeira carga da Grade — guardada por ref dentro de carregarGradeAuto,
+  // então é seguro chamar de novo. Esta tela abre no MÊS VIGENTE (as demais
+  // abas do segmento abrem no último mês fechado); se outra aba já carregou um
+  // mês, a grade compartilhada é respeitada. Com deep link ?competencia=, quem
+  // manda é o efeito acima.
+  useEffect(() => {
+    if (competenciaParam) { carregarGradeAuto(); return }
+    const hoje = new Date()
+    carregarGradeAuto(periodoDoMes(hoje.getFullYear(), hoje.getMonth() + 1))
+  }, [carregarGradeAuto, competenciaParam])
+
   // Ajuste de estado durante a renderização (não em efeito, e com useState em
   // vez de ref — refs não podem ser lidas durante o render) — mesmo padrão já
   // usado em SearchCombobox.tsx: só dispara setState quando a condição muda,
@@ -225,10 +232,7 @@ export function PepEntregasTab() {
 
   const pacientes = useMemo(() => {
     const p = (resultado ?? []).find(r => r.prof === prestador)
-    if (!p) return []
-    return Array.from(new Set(
-      p.sessoes.filter(s => s.especialidade === "Coordenador de Caso" && s.paciente).map(s => s.paciente)
-    )).sort((a, b) => a.localeCompare(b))
+    return p ? pacientesCCDoProfissional(p) : []
   }, [resultado, prestador])
 
   const {
@@ -286,17 +290,38 @@ export function PepEntregasTab() {
     return calcularAjusteRecorrentes(entregas, valorMensalPorPaciente).reduce((soma, a) => soma + a.valor, 0)
   }, [itensGerais, semanasCalendario, registroDe, valorMensalPorPaciente])
 
+  // Tela inicial, antes de escolher um analista: a visão do mês inteiro
+  // (VisaoGeralPep, só leitura). Antes era só "Selecione um Analista…", e nem
+  // o mês dava para trocar daqui.
   if (!prestador) {
     return (
       <div className="space-y-5">
+        <BarraCompetencia
+          competencia={competencia}
+          onMudarMes={(ano, mes) => carregarGradeDoBanco(periodoDoMes(ano, mes))}
+          carregando={gradeLoading}
+          modoTeste={competencia === COMPETENCIA_TESTE_PEP}
+        />
+        {gradeErroResumo && (
+          <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
+            {gradeErroResumo}
+          </p>
+        )}
         <SeletorPrestador analistas={analistas} prestador={prestador} onChange={setPrestador} onHistoricoGeral={() => setHistoricoAberto("geral")} carregando={gradeLoading} />
-        <div className="rounded-xl border border-border bg-card p-10 text-center text-sm text-muted-foreground">
-          {gradeLoading
-            ? <span className="inline-flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Carregando prestadores da Grade…</span>
-            : analistas.length === 0
-              ? "Nenhum Analista do Comportamento encontrado. Faça o upload da Grade no botão acima para carregar a lista de prestadores e pacientes."
-              : "Selecione um Analista do Comportamento acima para registrar as entregas da PEP."}
-        </div>
+        {gradeLoading || analistas.length === 0 ? (
+          <div className="rounded-xl border border-border bg-card p-10 text-center text-sm text-muted-foreground">
+            {gradeLoading
+              ? <span className="inline-flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Carregando prestadores da Grade…</span>
+              : "Nenhum Analista do Comportamento na grade deste mês. Troque o mês acima para ver outra competência."}
+          </div>
+        ) : (
+          <VisaoGeralPep
+            competencia={competencia}
+            analistas={analistasGrade}
+            valorPorPaciente={valorMensalPorPaciente}
+            onSelecionar={setPrestador}
+          />
+        )}
         {historicoAberto === "geral" && (
           <PepHistoricoModal catalogo={catalogoCompleto} onClose={() => setHistoricoAberto(null)} />
         )}
@@ -313,6 +338,7 @@ export function PepEntregasTab() {
         onChange={setPrestador}
         onHistoricoGeral={() => setHistoricoAberto("geral")}
         onHistoricoPrestador={() => setHistoricoAberto("prestador")}
+        onVisaoGeral={() => setPrestador("")}
         carregando={gradeLoading}
       />
 
@@ -462,8 +488,10 @@ export function PepEntregasTab() {
                       </td>
                     ))}
                     <td className={`px-3 py-3 text-right whitespace-nowrap border-l border-border transition-opacity ${apuracaoLoading ? "opacity-40" : ""}`}>
+                      {/* O valor abre a explicação: de onde vem cada desconto e o
+                          que falta para os 100% (ExplicacaoPepTooltip). */}
                       {resultadoDe(paciente)
-                        ? <span className="font-semibold text-foreground">{money(resultadoDe(paciente)!.valor_liquido)}<span className="text-muted-foreground"> / {money(resultadoDe(paciente)!.valor_bruto)}</span></span>
+                        ? <ExplicacaoPepTooltip apuracao={resultadoDe(paciente)!} catalogo={catalogoCompleto} semanasCalendario={semanasCalendario} />
                         : <span className="text-muted-foreground">—</span>}
                     </td>
                   </tr>
@@ -691,13 +719,14 @@ function CabecalhoEntregasMensais({
     <div className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 bg-muted/30 px-5 py-2.5">
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-          Competência
+          Mês de atendimento
         </span>
         <SeletorMesPrevisao
           ano={Number(competencia.split("-")[0])}
           mes={Number(competencia.split("-")[1])}
           onChange={onMudarMes}
         />
+        <NotaFaturamento competencia={competencia} />
         {carregandoLabel && (
           <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <Loader2 size={12} className="animate-spin" />
@@ -777,12 +806,14 @@ function CabecalhoEntregasMensais({
   )
 }
 
-function SeletorPrestador({ analistas, prestador, onChange, onHistoricoGeral, onHistoricoPrestador, carregando }: {
+function SeletorPrestador({ analistas, prestador, onChange, onHistoricoGeral, onHistoricoPrestador, onVisaoGeral, carregando }: {
   analistas: string[]
   prestador: string
   onChange: (v: string) => void
   onHistoricoGeral: () => void
   onHistoricoPrestador?: () => void
+  /** Volta para a visão geral do mês (limpa a seleção, sem navegar). */
+  onVisaoGeral?: () => void
   carregando?: boolean
 }) {
   return (
@@ -792,7 +823,16 @@ function SeletorPrestador({ analistas, prestador, onChange, onHistoricoGeral, on
           Analista do Comportamento
           {carregando && <Loader2 size={11} className="animate-spin" />}
         </label>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {onVisaoGeral && (
+            <button
+              type="button"
+              onClick={onVisaoGeral}
+              className="flex items-center gap-1.5 rounded-lg border border-blue-200 px-2.5 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50 dark:border-blue-900 dark:text-blue-400 dark:hover:bg-blue-950/40"
+            >
+              <LayoutDashboard size={12} /> Visão geral do mês
+            </button>
+          )}
           {onHistoricoPrestador && (
             <button
               type="button"
@@ -977,7 +1017,7 @@ function CabecalhoPainel({ item, pacienteNome, competencia, onFechar }: {
       <div>
         <p className="text-sm font-bold text-foreground">{item.nome}</p>
         <p className="text-xs text-muted-foreground">
-          {pacienteNome ?? "Geral (sem paciente)"}{competencia ? ` · Competência ${competencia}` : ""}
+          {pacienteNome ?? "Geral (sem paciente)"}{competencia ? ` · Atendimento de ${faturamentoDaCompetencia(competencia).mesAtendimento}` : ""}
         </p>
       </div>
       <button type="button" onClick={onFechar} className="text-muted-foreground hover:text-foreground">

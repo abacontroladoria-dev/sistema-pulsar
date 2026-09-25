@@ -118,6 +118,48 @@ export async function getApuracaoResumoTodosPrestadores(
   return { data: mapa, error: null }
 }
 
+/** Uma linha de pep_apuracao_mensal, só com o que a visão geral do mês lê. */
+export type PepApuracaoLinhaCompetencia = Pick<
+  PepApuracaoMensal,
+  | 'prestador_nome' | 'paciente_nome'
+  | 'valor_bruto' | 'valor_liquido'
+  | 'ajuste_recorrentes_valor' | 'ajuste_semestrais_valor' | 'devolucao_valor'
+  | 'saldo_remanescente_anterior' | 'saldo_remanescente_novo'
+  | 'estado' | 'modo_teste'
+>
+
+const PAGINA_APURACAO = 1000
+
+// Todas as linhas de uma competência, de todos os prestadores — fonte da
+// visão geral de Entregas PEP (antes de escolher um analista). SÓ LEITURA: não
+// chama apurarESalvarPEP; "não apurado" é justamente a ausência de linha.
+//
+// Pagina de propósito: o PostgREST corta em 1000 linhas SEM erro, e uma
+// competência tem uma linha por paciente — com a clínica crescendo, a soma do
+// mês ficaria errada calada. `order('id')` deixa as páginas estáveis.
+export async function getApuracaoCompetencia(
+  competencia: string
+): Promise<{ data: PepApuracaoLinhaCompetencia[]; error: unknown }> {
+  const supabase = getSupabaseClient()
+  const linhas: PepApuracaoLinhaCompetencia[] = []
+  for (let de = 0; ; de += PAGINA_APURACAO) {
+    const { data, error } = await supabase
+      .from('pep_apuracao_mensal')
+      .select('prestador_nome, paciente_nome, valor_bruto, valor_liquido, ajuste_recorrentes_valor, ajuste_semestrais_valor, devolucao_valor, saldo_remanescente_anterior, saldo_remanescente_novo, estado, modo_teste')
+      .eq('competencia', competencia)
+      .order('id')
+      .range(de, de + PAGINA_APURACAO - 1)
+    if (error) {
+      console.error('Erro getApuracaoCompetencia:', error)
+      return { data: [], error }
+    }
+    const pagina = (data ?? []) as PepApuracaoLinhaCompetencia[]
+    linhas.push(...pagina)
+    if (pagina.length < PAGINA_APURACAO) break
+  }
+  return { data: linhas, error: null }
+}
+
 // Lista de prestadores com pelo menos uma apuração — fonte do seletor da aba
 // PEP - Histórico. Vem de pep_apuracao_mensal, não do roster da Grade: por
 // isso continua listando prestadores que já saíram da clínica.

@@ -47,7 +47,7 @@ const COR_COMPARATIVO: Record<MetricaReceitaKey, string> = {
   efetivadoReal: "#0d8a4e",
   indefinido: "#d97706",
   receitaSemDeducao: "#2a78d6",
-  deducaoFalta: "#1baf7a",
+  deducaoFalta: "#e05555",
   sessoesMes: "#eda100",
   faltasMes: "#e87ba4",
   pacientesUnicos: "#4a3aa7",
@@ -86,7 +86,7 @@ function montarSeriesRS(agrupar: boolean): SerieRS[] {
   return [
     { key: "receitaSemDeducao", label: "Projetado", cor: COR_COMPARATIVO.receitaSemDeducao, valor: METRICAS_RECEITAS.receitaSemDeducao.acessor },
     {
-      key: "efetivadoMaisDeducao", label: "Efetivado + Deduções", cor: COR_EFETIVADO_MAIS_DEDUCAO,
+      key: "efetivadoMaisDeducao", label: "Pago + Potencial perdido", cor: COR_EFETIVADO_MAIS_DEDUCAO,
       valor: r => METRICAS_RECEITAS.efetivadoReal.acessor(r) + METRICAS_RECEITAS.deducaoFalta.acessor(r),
     },
     { key: "indefinido", label: "Indefinido", cor: COR_COMPARATIVO.indefinido, valor: METRICAS_RECEITAS.indefinido.acessor },
@@ -397,7 +397,7 @@ export function EvolucaoReceitasChart({ resumos, modo, mesSelecionado, onSelecio
                   className="inline-flex items-center gap-1.5 rounded-full border border-transparent px-2.5 py-1 text-[11px] font-semibold text-white"
                   style={{ background: serie.cor }}
                 >
-                  <span className="h-2 w-2 rounded-full bg-white" />
+                  <span className="h-2 w-2 rounded-full" style={{ background: "#fff" }} />
                   {serie.label}
                 </span>
               ))}
@@ -416,7 +416,7 @@ export function EvolucaoReceitasChart({ resumos, modo, mesSelecionado, onSelecio
                 }`}>
                   {agruparEfetivadoDeducoes && <Check size={10} strokeWidth={3} />}
                 </span>
-                Efetivado + Deduções
+                Pago + Potencial perdido
               </button>
             </div>
           )}

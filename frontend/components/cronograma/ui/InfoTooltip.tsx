@@ -22,12 +22,14 @@ interface InfoTooltipProps {
   onOpenChange?: (open: boolean) => void
   /** Conteúdo extra renderizado dentro do próprio botão-gatilho, antes do ícone — permite que um texto ao lado (ex.: "N oportunidade(s)") também abra o painel, em vez de só o ícone da lâmpada. */
   trigger?: ReactNode
+  /** Largura do painel em px (padrão 288). Em tela estreita continua limitada a 85% da largura. */
+  largura?: number
 }
 
 const PANEL_WIDTH = 288 // w-72
 const VIEWPORT_MARGIN = 8
 
-export function InfoTooltip({ children, ariaLabel = "Explicação das colunas", onOpenChange, trigger }: InfoTooltipProps) {
+export function InfoTooltip({ children, ariaLabel = "Explicação das colunas", onOpenChange, trigger, largura = PANEL_WIDTH }: InfoTooltipProps) {
   const [open, setOpenState] = useState(false)
   const setOpen = (value: boolean | ((prev: boolean) => boolean)) => {
     setOpenState(prev => {
@@ -43,7 +45,8 @@ export function InfoTooltip({ children, ariaLabel = "Explicação das colunas", 
   function reposition() {
     const rect = buttonRef.current?.getBoundingClientRect()
     if (!rect) return
-    const maxLeft = window.innerWidth - VIEWPORT_MARGIN - PANEL_WIDTH
+    const efetiva = Math.min(largura, window.innerWidth * 0.85)
+    const maxLeft = window.innerWidth - VIEWPORT_MARGIN - efetiva
     const left = Math.max(VIEWPORT_MARGIN, Math.min(rect.left, maxLeft))
     setCoords({ top: rect.bottom + 6, left })
   }
@@ -100,7 +103,7 @@ export function InfoTooltip({ children, ariaLabel = "Explicação das colunas", 
         <div
           ref={panelRef}
           role="tooltip"
-          style={{ top: coords.top, left: coords.left, width: PANEL_WIDTH }}
+          style={{ top: coords.top, left: coords.left, width: largura }}
           className="fixed z-50 max-w-[85vw] rounded-lg border border-border bg-popover p-3 text-xs font-normal normal-case text-popover-foreground shadow-lg"
         >
           {children}

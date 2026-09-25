@@ -1,41 +1,9 @@
-import type { SessaoReal } from "@/lib/remuneracao/relatorio"
-import { parseDateBR } from "@/lib/remuneracao/datas"
+import { sessoesDoResumo } from "@/lib/remuneracao/demonstrativo"
 
 export function exportResumoSessoesPdf(docInfo: any, sessoesFiltradas: any[]) {
-  // Mantém apenas as sessões que foram confirmadas e evoluídas pelo profissional
-  // (excluindo faltas, cancelamentos, ou sessões que ele não fez tratativa)
-  const rowsProf = sessoesFiltradas.filter(r => r.valorPA !== undefined)
-
-  let proprias = 0
-  let subs = 0
-  for (const r of rowsProf) {
-    if (r.papel === "Substituição realizada") {
-      subs++
-    } else if (r.papel === "Agenda") {
-      proprias++
-    }
-  }
-
-  // Agrupa as sessões por dia (Data) e ordena cronologicamente
-  const groups = rowsProf.reduce((acc, row) => {
-    const k = row.data // ex: "01/06/2026"
-    if (!acc[k]) acc[k] = []
-    acc[k].push(row)
-    return acc
-  }, {} as Record<string, SessaoReal[]>)
-
-  // Converte para array e ordena
-  const sessoesPorDia = Object.keys(groups)
-    .map(data => ({
-      data,
-      diaSemana: groups[data][0]?.diaSemana,
-      rows: groups[data]
-    }))
-    .sort((a, b) => {
-      const da = parseDateBR(a.data)
-      const db = parseDateBR(b.data)
-      return (da?.getTime() || 0) - (db?.getTime() || 0)
-    })
+  // Filtro, contagens e agrupamento por dia vivem em demonstrativo.ts — a mesma
+  // leitura que a tela Remuneração Individual mostra em "Sessões por dia".
+  const { rowsProf, proprias, subs, sessoesPorDia } = sessoesDoResumo(sessoesFiltradas)
 
   // Generate an HTML string tailored for mobile screen printing
   const printWindow = window.open("", "_blank")

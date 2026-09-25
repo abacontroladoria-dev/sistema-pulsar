@@ -18,13 +18,12 @@
 //     implantação do histórico, ou sem dados sincronizados suficientes).
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { CalendarClock, CalendarX2, Clock, Info, Loader2, TrendingUp, Users } from "lucide-react"
+import { CalendarClock, CalendarX2, Clock, Info, Loader2, TrendingUp } from "lucide-react"
 import { type PrevisaoReceitasResumoMes } from "@/services/previsaoReceitasHistoricoResumo.service"
 import { labelMesAno } from "@/lib/cronograma/helpers"
 import { useResumoHistoricoReceitasComEfetivado } from "@/hooks/useResumoHistoricoReceitasComEfetivado"
-import { EvolucaoReceitasChart } from "./EvolucaoReceitasChart"
-import { METRICAS_RECEITAS, formatarMetrica } from "@/lib/cronograma/previsaoReceitasMetricas"
-import { TONE_ACCENT, TONE_SOFT, type Tone } from "@/components/cronograma/ui/tones"
+import { METRICAS_RECEITAS, formatarMetrica, type MetricaReceitaKey } from "@/lib/cronograma/previsaoReceitasMetricas"
+import { TONE_SOFT } from "@/components/cronograma/ui/tones"
 import {
   MES_INICIO_HISTORICO,
   listaChavesMes,
@@ -80,26 +79,50 @@ function usaFonteHistoricaOrbita(ano: number, mes: number): boolean {
   return ano === 2026 && mes >= 1 && mes <= 6
 }
 
-const NOTA_FONTE_ORBITA = "Dedução por falta calculada a partir do relatório \"relatorio_faltas_detalhado\" do Órbita, importado manualmente — este mês não passou pela sincronização diária da TiTa."
+const NOTA_FONTE_ORBITA = "Potencial perdido por falta calculado a partir do relatório \"relatorio_faltas_detalhado\" do Órbita, importado manualmente — este mês não passou pela sincronização diária da TiTa."
 
-/** "Faltas / Pacientes" não tem entrada própria em METRICAS_RECEITAS (é um par, não uma métrica) — tom neutro combinando com sessoesMes/faltasMes/pacientesUnicos (todos "slate"). */
-const FALTAS_PACIENTES_TONE: Tone = "slate"
+/** Colunas numéricas da tabela, nesta ordem — mesma equação de sempre: Projetado = Pago + Potencial perdido + Indefinido, seguido de Sessões. */
+const COLUNAS_METRICA: MetricaReceitaKey[] = ["receitaSemDeducao", "efetivadoReal", "deducaoFalta", "indefinido", "sessoesMes"]
 
-function LinhaMesCard({ linha }: { linha: LinhaHistorico }) {
-  const [mostrarNotaFonte, setMostrarNotaFonte] = useState(false)
-  const notaFonteRef = useRef<HTMLSpanElement>(null)
+/** Ícone "i" que abre uma nota explicativa ao clique — usado tanto pro aviso de status (mês ainda não fechado) quanto pra fonte de dados (Órbita), pra não empurrar texto fixo pra dentro da linha da tabela. */
+function NotaTooltip({ texto, ariaLabel }: { texto: string; ariaLabel: string }) {
+  const [aberto, setAberto] = useState(false)
+  const ref = useRef<HTMLSpanElement>(null)
 
   useEffect(() => {
-    if (!mostrarNotaFonte) return
+    if (!aberto) return
     function aoClicarFora(e: MouseEvent) {
-      if (notaFonteRef.current && !notaFonteRef.current.contains(e.target as Node)) {
-        setMostrarNotaFonte(false)
-      }
+      if (ref.current && !ref.current.contains(e.target as Node)) setAberto(false)
     }
     document.addEventListener("mousedown", aoClicarFora)
     return () => document.removeEventListener("mousedown", aoClicarFora)
-  }, [mostrarNotaFonte])
+  }, [aberto])
 
+  return (
+    <span ref={ref} className="relative inline-flex">
+      <button
+        type="button"
+        onClick={() => setAberto(v => !v)}
+        className="rounded-full text-muted-foreground hover:text-foreground hover:bg-muted"
+        title={texto}
+        aria-label={ariaLabel}
+        aria-expanded={aberto}
+      >
+        <Info size={14} />
+      </button>
+      {aberto && (
+        <div
+          role="tooltip"
+          className="absolute left-0 top-full z-20 mt-1.5 w-64 rounded-md border border-border bg-card p-2.5 text-left text-[11px] text-muted-foreground shadow-lg"
+        >
+          {texto}
+        </div>
+      )}
+    </span>
+  )
+}
+
+function LinhaMesRow({ linha }: { linha: LinhaHistorico }) {
   const Icone = linha.status === "fechado" ? TrendingUp
     : linha.status === "aguardando_fechamento" ? Clock
     : linha.status === "futuro" ? CalendarX2
@@ -108,69 +131,41 @@ function LinhaMesCard({ linha }: { linha: LinhaHistorico }) {
   const tag = TAG_POR_STATUS[linha.status]
 
   return (
-    <div className="rounded-lg border border-border bg-card px-3 py-2.5">
-      <div className="flex flex-wrap items-center gap-2">
-        <Icone size={14} className={ICONE_CLASSE_POR_STATUS[linha.status]} />
-        <div className="text-xs font-bold text-foreground">{linha.label}</div>
-        {tag && (
-          <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${tag.classe}`}>
-            {tag.texto}
-          </span>
-        )}
-        {usaFonteHistoricaOrbita(linha.ano, linha.mes) && (
-          <span ref={notaFonteRef} className="relative inline-flex">
-            <button
-              type="button"
-              onClick={() => setMostrarNotaFonte(v => !v)}
-              className="rounded-full text-muted-foreground hover:text-foreground hover:bg-muted"
-              title={NOTA_FONTE_ORBITA}
-              aria-label="Fonte da dedução por falta deste mês"
-              aria-expanded={mostrarNotaFonte}
-            >
-              <Info size={14} />
-            </button>
-            {mostrarNotaFonte && (
-              <div
-                role="tooltip"
-                className="absolute left-1/2 top-full z-20 mt-1.5 w-64 -translate-x-1/2 rounded-md border border-border bg-card p-2.5 text-left text-[11px] text-muted-foreground shadow-lg"
-              >
-                {NOTA_FONTE_ORBITA}
-              </div>
-            )}
-          </span>
-        )}
-      </div>
+    <tr className="border-t border-border align-top">
+      <td className="py-2 pr-3 pl-3">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Icone size={14} className={`shrink-0 ${ICONE_CLASSE_POR_STATUS[linha.status]}`} />
+          <span className="text-xs font-bold text-foreground">{linha.label}</span>
+          {tag && <NotaTooltip texto={tag.texto} ariaLabel="Detalhes do status deste mês" />}
+          {usaFonteHistoricaOrbita(linha.ano, linha.mes) && (
+            <NotaTooltip texto={NOTA_FONTE_ORBITA} ariaLabel="Fonte da dedução por falta deste mês" />
+          )}
+        </div>
+      </td>
 
       {linha.resumo ? (
-        <div className="mt-1.5 flex flex-wrap items-center gap-y-1 text-xs">
-          {(["receitaSemDeducao", "efetivadoReal", "deducaoFalta", "indefinido", "sessoesMes"] as const).map((key, i) => {
+        <>
+          {COLUNAS_METRICA.map(key => {
             const config = METRICAS_RECEITAS[key]
-            const IconeMetrica = config.icon
             return (
-              <span
-                key={key}
-                className={`flex items-center gap-1.5 pr-3 ${i > 0 ? "border-l border-border pl-3" : ""}`}
-              >
-                <IconeMetrica size={13} style={{ color: TONE_ACCENT[config.tone] }} />
-                <span className="text-muted-foreground">{config.label}</span>
-                <span className={`font-bold ${TONE_SOFT[config.tone].text}`}>
-                  {formatarMetrica(config, config.acessor(linha.resumo!))}
-                </span>
-              </span>
+              <td key={key} style={{ textAlign: "right" }} className={`py-2 px-3 tabular-nums font-bold ${TONE_SOFT[config.tone].text}`}>
+                {formatarMetrica(config, config.acessor(linha.resumo!))}
+              </td>
             )
           })}
-          <span className="flex items-center gap-1.5 border-l border-border pl-3">
-            <Users size={13} style={{ color: TONE_ACCENT[FALTAS_PACIENTES_TONE] }} />
-            <span className="text-muted-foreground">Faltas / Pacientes</span>
-            <span className={`font-bold ${TONE_SOFT[FALTAS_PACIENTES_TONE].text}`}>
-              {linha.resumo.faltasMes} / {linha.resumo.pacientesUnicos}
-            </span>
-          </span>
-        </div>
+          <td style={{ textAlign: "right" }} className="py-2 px-3 tabular-nums text-foreground">
+            {linha.resumo.faltasMes}
+          </td>
+          <td style={{ textAlign: "right" }} className="py-2 pl-3 pr-3 tabular-nums text-foreground">
+            {linha.resumo.pacientesUnicos}
+          </td>
+        </>
       ) : (
-        <ExplicacaoStatus status={linha.status} />
+        <td colSpan={COLUNAS_METRICA.length + 2} className="py-2 px-3">
+          <ExplicacaoStatus status={linha.status} />
+        </td>
       )}
-    </div>
+    </tr>
   )
 }
 
@@ -206,9 +201,24 @@ export function HistoricoReceitasShell() {
       <p className="text-[11px] text-muted-foreground">
         Índice mensal — pra ver o detalhamento por convênio/paciente/sessão de um mês específico, use o seletor de mês na aba "Previsão de Receitas". Jan-Jun/2026 usam a dedução por falta do relatório do Órbita, não a sincronização diária da TiTa — clique no ícone de informação ao lado do mês pra ver.
       </p>
-      <EvolucaoReceitasChart resumos={resumos} modo="cheio" />
-      <div className="flex flex-col gap-1.5">
-        {linhas.map(linha => <LinhaMesCard key={`${linha.ano}-${linha.mes}`} linha={linha} />)}
+      <div className="overflow-x-auto rounded-lg border border-border">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="border-b border-border bg-muted/30 text-muted-foreground">
+              <th style={{ textAlign: "left" }} className="py-2 pr-3 pl-3 font-semibold">Mês</th>
+              {COLUNAS_METRICA.map(key => (
+                <th key={key} title={METRICAS_RECEITAS[key].label} style={{ textAlign: "right" }} className="py-2 px-3 font-semibold">
+                  {METRICAS_RECEITAS[key].labelCurto}
+                </th>
+              ))}
+              <th style={{ textAlign: "right" }} className="py-2 px-3 font-semibold">Faltas</th>
+              <th style={{ textAlign: "right" }} className="py-2 pl-3 pr-3 font-semibold">Pacientes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {linhas.map(linha => <LinhaMesRow key={`${linha.ano}-${linha.mes}`} linha={linha} />)}
+          </tbody>
+        </table>
       </div>
     </div>
   )

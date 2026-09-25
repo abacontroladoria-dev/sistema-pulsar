@@ -12,6 +12,7 @@
 //    formato do layout real, não a mensagem de "não existe dado" (§3.9).
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { useSearchParams } from "next/navigation"
 import { HelpCircle, Download, Loader2 } from "lucide-react"
 
 import { useHeader } from "@/contexts/HeaderContext"
@@ -60,6 +61,23 @@ export function RemunRPTab() {
   // `key`, então aba/página/detalhe nascem limpos a cada troca — nada de
   // useEffect com setState para resetar (§3.12).
   const [aberto, setAberto] = useState<string | null>(null)
+
+  // Link direto de outra tela (ex.: causa de diferença na Visão Geral
+  // Individual): ?prestador=Nome&sessao=ID abre este profissional já com
+  // aquela sessão localizada. Só na entrada — depois disso o usuário manda.
+  const searchParams = useSearchParams()
+  const prestadorLink = searchParams.get("prestador")
+  const sessaoLink = searchParams.get("sessao")
+  const [linkAplicado, setLinkAplicado] = useState(false)
+  useEffect(() => {
+    if (linkAplicado || !prestadorLink || !resultado) return
+    const alvo = resultado.find(p => normKey(p.prof) === normKey(prestadorLink))
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reage a um parâmetro de URL externo + à grade chegando de forma assíncrona; não há valor derivável no primeiro render
+    if (alvo) setAberto(alvo.prof)
+    // Marca como aplicado mesmo sem achar: a grade pode não ter mais essa
+    // pessoa (mês trocado), e não adianta tentar de novo a cada re-render.
+    setLinkAplicado(true)
+  }, [linkAplicado, prestadorLink, resultado])
   const [remBusca, setRemBusca] = useState("")
   const [apenasInconsistencia, setApenasInconsistencia] = useState(false)
   // Múltiplas especialidades ativas ao mesmo tempo (OR) — mesmo padrão do
@@ -298,6 +316,7 @@ export function RemunRPTab() {
         p={profAberto}
         periodo={controlesGrade.periodo}
         pepResumo={aberto ? pepResumo.get(aberto) ?? null : null}
+        focoSessaoId={aberto && prestadorLink && normKey(aberto) === normKey(prestadorLink) ? sessaoLink : null}
         onClose={() => setAberto(null)}
       />
     </div>

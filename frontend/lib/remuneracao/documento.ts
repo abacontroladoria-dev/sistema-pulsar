@@ -1,7 +1,7 @@
 import { cleanTxt, onlyDigits, htmlEsc } from "./formatacao"
-import { normKey, ETA_ADMIN_NOMES } from "./constants"
-import { abreviarNomePaciente } from "./pacientes"
-import { PA_TEXTO_BANCO_HORAS, ProfRemunReal } from "./calculo"
+import { normKey } from "./constants"
+import type { ProfRemunReal } from "./calculo"
+import { montarDemonstrativo, pepDasLinhas } from "./demonstrativo"
 import type { PepApuracaoMensal } from "@/types/pep"
 
 export function formatCPF(v: string | null | undefined): string {
@@ -28,12 +28,15 @@ export function pickFirst(...vals: any[]): string {
   return vals.map(cleanTxt).find(Boolean) || ""
 }
 
+/** O que o documento imprime quando não há contrato cadastrado — não é um contrato real. */
+export const CONTRATO_PROVISORIO = { pj: "PS.ABA-01-00000001", pf: "PS.ABA-PF-00000001" } as const
+
 export function resolverContratoPrestador(cadastro: any, p: any, tipo: "pj" | "pf"): string {
   const contrato = tipo === "pj"
     ? pickFirst(cadastro.contratoPJ, cadastro.contratoPj, cadastro.contrato, p.contratoPJ, p.contratoPj, p.contratoNovo)
     : pickFirst(cadastro.contratoPF, cadastro.contratoPf, cadastro.contrato, p.contratoPF, p.contratoPf, p.contratoNovo)
   if (contrato) return contrato
-  return tipo === "pj" ? "PS.ABA-01-00000001" : "PS.ABA-PF-00000001"
+  return CONTRATO_PROVISORIO[tipo]
 }
 
 export interface DocInfo {
@@ -45,6 +48,14 @@ export interface DocInfo {
   principalUpper: string
   responsavelLegal: string
   contrato: string
+  // Campos que o documento vai imprimir com texto provisório — a tela avisa
+  // antes de exportar, em vez de o prestador receber "00.000.000/0000-00".
+  /** Nem CNPJ nem CPF válidos no cadastro. */
+  docProvisorio: boolean
+  /** PJ sem razão social: sai "RAZÃO SOCIAL NÃO CADASTRADA". */
+  razaoProvisoria: boolean
+  /** Sem número de contrato: sai o placeholder CONTRATO_PROVISORIO. */
+  contratoProvisorio: boolean
 }
 
 export function montarInfoDocumentoPrestador(p: any, cadastros: Record<string, any>): DocInfo {
@@ -65,7 +76,8 @@ export function montarInfoDocumentoPrestador(p: any, cadastros: Record<string, a
   const principal = tipo === "pj" ? (razaoSocial || "RAZÃO SOCIAL NÃO CADASTRADA") : nomePF
   const responsavelLegal = pickFirst(cadastro.responsavelLegal, cadastro.responsavel, cadastro.representanteLegal, p?.prof) || nomePF
   const docNumero = tipo === "pj" ? (formatCNPJ(rawCNPJ) || "00.000.000/0000-00") : (formatCPF(rawCPF) || "000.000.000-00")
-  
+  const contrato = resolverContratoPrestador(cadastro, p || {}, tipo)
+
   return {
     tipo,
     icone: tipo === "pj" ? "🏢" : "👤",
@@ -74,7 +86,10 @@ export function montarInfoDocumentoPrestador(p: any, cadastros: Record<string, a
     principal,
     principalUpper: principal.toUpperCase(),
     responsavelLegal,
-    contrato: resolverContratoPrestador(cadastro, p || {}, tipo),
+    contrato,
+    docProvisorio: !temPJ && !temCPFRegistrado,
+    razaoProvisoria: tipo === "pj" && !razaoSocial,
+    contratoProvisorio: contrato === CONTRATO_PROVISORIO[tipo],
   }
 }
 
@@ -94,95 +109,37 @@ export interface PdfOpts {
 
 export function montarHtmlDocumentoFaturamento(p: ProfRemunReal, opts: PdfOpts): string {
   const { remPeriodo, ccPA, etaBonus, taxasPA, cadastroPrestadores, autoPrint = false, wordMode = false, pepApuracao } = opts
-  const totalSessoes = p.evoluidasProprias + p.substituicoesRealizadas
-  const isCC = p.sessoes.some(s => s.especialidade === "Coordenador de Caso")
-  const isETA = p.sessoes.some(s => s.especialidade === "Especialista Técnico de Área")
-  const hasDiaria = (p.diariaPeriodo ?? 0) > 0
+  // A conta mora em demonstrativo.ts — a mesma que a tela Remuneração Individual
+  // mostra antes de exportar. Aqui só se desenha.
+  const d = montarDemonstrativo(p, { ccPA, etaBonus, taxasPA, pep: pepDasLinhas(pepApuracao) })
+  const { isCC, totalSessoes } = d
   const per = remPeriodo
   const periodoTxt = `${per?.inicio || "—"} a ${per?.fim || "—"}`
   const docInfo = montarInfoDocumentoPrestador(p, cadastroPrestadores)
+  const valorConfirmadoPrestador = d.total
+  const pacientesCCAbrev = d.pacientesCC
 
-  // PEP — Parcela por Entregas por Paciente. Apurada por competência na aba
-  // Entregas PEP (calculoPEP.ts); aqui só lemos o resultado já persistido.
-  const pepPacientesQtd = pepApuracao?.length ?? 0
-  const pepTotal = (pepApuracao ?? []).reduce((s, a) => s + Number(a.valor_liquido || 0), 0)
-  // Valor fixo do contrato em banco de horas: não é apurado por sessão, então não
-  // está em p.valorConfirmado — entra como linha própria e soma no total, senão o
-  // demonstrativo do prestador sairia sem a parte principal do que ele recebe.
-  const fixoBancoHoras = p.valorFixoBancoHoras ?? 0
-  const valorConfirmadoPrestador = p.valorConfirmado - (p.pe || 0) + pepTotal + fixoBancoHoras
-
-  const paBreakdown: Record<string, { count: number, rate: number, total: number, explicacao: string }> = {}
-  const outroContratoBreakdown: Record<string, { count: number, explicacao: string, bancoHoras: boolean }> = {}
-  
-  p.sessoes
-    .filter(s => (s.papel === "Agenda" && s.classificacao === "Evolução normal") || (s.papel === "Substituição realizada"))
-    .forEach(s => {
-      if (!s.especialidade) return
-      const isAdm = ETA_ADMIN_NOMES.some(n => (s.paciente || "").includes(n))
-      if (isAdm) return
-      
-      if (s.semPA || s.valorPATexto) {
-        const key = s.especialidade
-        if (!outroContratoBreakdown[key]) outroContratoBreakdown[key] = {
-          count: 0,
-          explicacao: s.explicacaoPA || "",
-          // "Tratado em outro contrato" e "Banco de Horas" zeram o PA por motivos
-          // diferentes e não podem sair com o mesmo texto no demonstrativo.
-          bancoHoras: s.valorPATexto === PA_TEXTO_BANCO_HORAS,
-        }
-        outroContratoBreakdown[key].count++
-        return
-      }
-      
-      const rate = s.valorPA ?? (s.especialidade === "Coordenador de Caso" ? ccPA : (taxasPA[s.especialidade] || 0))
-      const key = s.funcaoPA || s.especialidade
-      if (!paBreakdown[key]) paBreakdown[key] = { count: 0, rate, total: 0, explicacao: s.explicacaoPA || "" }
-      paBreakdown[key].count++
-      paBreakdown[key].total += rate
-      paBreakdown[key].rate = rate
-    })
-
-  const pacientesCC = isCC
-    ? Array.from(new Set(p.sessoes.filter(s => s.especialidade === "Coordenador de Caso" && s.paciente).map(s => String(s.paciente)))).sort()
-    : []
-  const pacientesCCAbrev = pacientesCC.map(abreviarNomePaciente).filter(Boolean) as string[]
-  
   const money = (v: number | string) => `R$ ${Number(v || 0).toFixed(2).replace(".", ",")}`
   const esc = htmlEsc
 
-  let linhasFinanceiras = Object.entries(paBreakdown).map(([esp, d]) => {
-    const detalhe = esp === "Coordenador de Caso" ? "Coordenação Técnica ABA de Caso" : esp
-    return `<tr><td><strong>PA – Valor por Atendimento Realizado</strong><br><span>${esc(detalhe)}</span></td><td>${d.count} sessão(ões) × ${money(d.rate)}</td><td class="val">${money(d.total)}</td></tr>`
-  }).join("")
-  
-  linhasFinanceiras += Object.entries(outroContratoBreakdown).map(([esp, d]) => {
-    const titulo = d.bancoHoras ? "Atendimento coberto pelo banco de horas" : "Atendimento tratado em outro contrato"
-    const valor = d.bancoHoras ? "Incluído no valor fixo" : "Tratado em outro contrato"
-    return `<tr><td><strong>${titulo}</strong><br><span>${esc(esp)}</span></td><td>${d.count} sessão(ões)</td><td class="val">${valor}</td></tr>`
+  let linhasFinanceiras = d.linhas.map(l => {
+    switch (l.tipo) {
+      case "pa":
+      case "ppd":
+        return `<tr><td><strong>${l.titulo}</strong><br><span>${esc(l.detalhe ?? "")}</span></td><td>${l.qtd} ${l.tipo === "pa" ? "sessão(ões)" : "dia(s)"} × ${money(l.taxa ?? 0)}</td><td class="val">${money(l.valor ?? 0)}</td></tr>`
+      case "semPA":
+        return `<tr><td><strong>${l.titulo}</strong><br><span>${esc(l.detalhe ?? "")}</span></td><td>${l.qtd} sessão(ões)</td><td class="val">${l.valorTexto}</td></tr>`
+      case "fixoBH":
+        return `<tr><td><strong>${l.titulo}</strong>${l.detalhe ? `<br><span>${esc(l.detalhe)}</span>` : ""}</td><td>${l.calculoTexto}</td><td class="val">${money(l.valor ?? 0)}</td></tr>`
+      case "pep":
+        return l.valor === null
+          ? `<tr><td><strong>${l.titulo}</strong></td><td class="muted">${l.calculoTexto}</td><td class="val">${l.valorTexto}</td></tr>`
+          : `<tr><td><strong>${l.titulo}</strong></td><td>${l.qtd} paciente(s) apurado(s)</td><td class="val">${money(l.valor)}</td></tr>`
+      case "eta":
+        return `<tr><td><strong>${l.titulo}</strong></td><td>${l.qtd} semana(s) × ${money(l.taxa ?? 0)}</td><td class="val">${money(l.valor ?? 0)}</td></tr>`
+    }
   }).join("")
 
-  if (fixoBancoHoras > 0) {
-    const nums = (p.numerosBancoHoras ?? []).join(" / ")
-    linhasFinanceiras += `<tr><td><strong>Banco de Horas – valor fixo do contrato</strong>${nums ? `<br><span>${esc(nums)}</span>` : ""}</td><td>valor total do período (não por sessão)</td><td class="val">${money(fixoBancoHoras)}</td></tr>`
-  }
-
-  if (isCC && pepTotal > 0) {
-    linhasFinanceiras += `<tr><td><strong>PEP – Parcela por Entregas por Paciente</strong></td><td>${pepPacientesQtd} paciente(s) apurado(s)</td><td class="val">${money(pepTotal)}</td></tr>`
-  } else if (isCC) {
-    linhasFinanceiras += `<tr><td><strong>PEP – Parcela por Entregas por Paciente</strong></td><td class="muted">Ainda não apurada nesta competência</td><td class="val">—</td></tr>`
-  }
-  
-  if (hasDiaria && p.diariaDetalhe) {
-    p.diariaDetalhe.forEach(d => {
-      linhasFinanceiras += `<tr><td><strong>PPD – Pagamento por Diária</strong><br><span>${esc(d.esp)}</span></td><td>${d.dias} dia(s) × ${money(d.rate)}</td><td class="val">${money(d.total)}</td></tr>`
-    })
-  }
-  
-  if (isETA && (p.etaBonusPeriodo ?? 0) > 0) {
-    linhasFinanceiras += `<tr><td><strong>Bônus ETA</strong></td><td>${p.etaWeeksPeriodo} semana(s) × ${money(etaBonus)}</td><td class="val">${money(p.etaBonusPeriodo ?? 0)}</td></tr>`
-  }
-  
   if (!linhasFinanceiras) linhasFinanceiras = `<tr><td colspan="3" class="muted">Nenhum valor confirmado para o período.</td></tr>`
 
   const siglasHTML = isCC

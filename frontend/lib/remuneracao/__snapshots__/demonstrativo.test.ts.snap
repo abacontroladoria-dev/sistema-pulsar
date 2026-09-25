@@ -1,0 +1,397 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`DocInfo > snapshot do cabeçalho 1`] = `
+{
+  "contrato": "PS.ABA-01-00000123",
+  "docLabel": "CNPJ",
+  "docNumero": "12.345.678/0001-90",
+  "icone": "🏢",
+  "principal": "Ana Serviços Terapêuticos Ltda",
+  "principalUpper": "ANA SERVIÇOS TERAPÊUTICOS LTDA",
+  "responsavelLegal": "Ana Coordenadora",
+  "tipo": "pj",
+}
+`;
+
+exports[`DocInfo > snapshot do cabeçalho 2`] = `
+{
+  "contrato": "PS.ABA-PF-00000001",
+  "docLabel": "CPF",
+  "docNumero": "123.456.789-01",
+  "icone": "👤",
+  "principal": "Bruno Banco",
+  "principalUpper": "BRUNO BANCO",
+  "responsavelLegal": "Bruno Banco",
+  "tipo": "pf",
+}
+`;
+
+exports[`DocInfo > snapshot do cabeçalho 3`] = `
+{
+  "contrato": "PS.ABA-01-00000001",
+  "docLabel": "CNPJ",
+  "docNumero": "00.000.000/0000-00",
+  "icone": "🏢",
+  "principal": "RAZÃO SOCIAL NÃO CADASTRADA",
+  "principalUpper": "RAZÃO SOCIAL NÃO CADASTRADA",
+  "responsavelLegal": "Carla Especialista",
+  "tipo": "pj",
+}
+`;
+
+exports[`DocInfo > snapshot do cabeçalho 4`] = `
+{
+  "contrato": "PS.ABA-01-00000001",
+  "docLabel": "CNPJ",
+  "docNumero": "98.765.432/0001-10",
+  "icone": "🏢",
+  "principal": "RAZÃO SOCIAL NÃO CADASTRADA",
+  "principalUpper": "RAZÃO SOCIAL NÃO CADASTRADA",
+  "responsavelLegal": "Diego Duplicado",
+  "tipo": "pj",
+}
+`;
+
+exports[`HTML do demonstrativo (PDF/Word) — gravado antes da extração > CC com dois PAs, PEP apurada e substituição inconsistente — PDF 1`] = `
+"<!DOCTYPE html><html lang="pt-BR" ><head><meta charset="UTF-8">
+<title>Universo ABA — Ana Coordenadora</title>
+<style>
+@page{margin:1.8cm;size:A4}*{box-sizing:border-box}body{font-family:system-ui,-apple-system,sans-serif;font-size:11px;color:#222847;line-height:1.42;margin:0;background:#fff}
+.header{width:100%;border-collapse:collapse;border-bottom:3px solid #222847;margin-bottom:14px;padding-bottom:10px}.header td{vertical-align:middle;padding:0 0 10px 0}.header-icon{width:48px;font-size:32px}.doc-id{font-size:17px;font-weight:800;color:#222847;margin-bottom:5px}.meta-line{font-size:10px;color:#555;line-height:1.65}
+.banner{background:#222847;color:#fff;border-radius:8px;padding:12px 16px;margin:12px 0 10px}.banner-title{font-size:13px;font-weight:bold;margin-bottom:4px}.banner-sub{font-size:10px;opacity:.86}
+.siglas{font-size:10px;color:#444;background:#f8fafc;border-left:3px solid #2A92C0;padding:8px 12px;margin:8px 0 14px;line-height:1.55}
+.section-title{font-size:12px;font-weight:bold;color:#222847;border-left:3px solid #2A92C0;padding-left:8px;margin:15px 0 8px}
+.cards{width:100%;border-collapse:separate;border-spacing:6px;margin:0 0 6px}.card{vertical-align:top;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;padding:8px;width:33.33%}.card-ico{font-size:15px}.card-num{font-size:20px;font-weight:bold;line-height:1;color:#222847}.card-title{font-size:10px;font-weight:bold;margin:2px 0}.card.green{background:#f0fdf4;border-color:#86efac}.card.green .card-num{color:#16a34a}.card.blue{background:#eff6ff;border-color:#93c5fd}.card.blue .card-num{color:#2563eb}.card.total{background:#222847;border-color:#222847;color:#fff}.card.total .card-num{color:#86efac}
+table.fin{width:100%;border-collapse:collapse;margin-bottom:12px}table.fin th{background:#f0f4f8;text-align:left;padding:7px 10px;font-size:10px;color:#555;border-bottom:2px solid #e2e8f0}table.fin td{padding:7px 10px;font-size:10.5px;border-bottom:1px solid #f0f0f0}table.fin td span{font-size:9px;color:#666}.val{text-align:right;font-weight:bold}.total-row td{font-weight:bold;font-size:13px;background:#f0fdf4;padding:10px!important}.total-row .val{color:#3aaa5c;font-size:15px}.muted{color:#777;text-align:center}
+.pac-grid{width:100%;border-collapse:separate;border-spacing:4px}.pac-grid td{background:#f0f4f8;border-radius:4px;padding:5px 8px;font-size:9.5px;width:33.33%}
+.footer{margin-top:18px;padding-top:10px;border-top:1px solid #e2e8f0;font-size:8.5px;color:#777;text-align:center;line-height:1.55}.conf{margin-top:8px;padding:8px 10px;background:#fafafa;border:1px solid #e5e7eb;border-radius:4px;font-size:8px;color:#555}
+@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style></head><body>
+<table class="header"><tbody><tr>
+    <td class="header-icon">🏢</td>
+    <td>
+      <div class="doc-id">CNPJ 12.345.678/0001-90 – ANA SERVIÇOS TERAPÊUTICOS LTDA</div>
+      <div class="meta-line"><strong>Responsável Legal:</strong> Ana Coordenadora</div>
+      <div class="meta-line"><strong>Contrato:</strong> PS.ABA-01-00000123</div>
+    </td>
+  </tr></tbody></table>
+<div class="banner"><div class="banner-title">Demonstrativo de Faturamento – Contraprestação dos Serviços · 01/08/2026 a 31/08/2026</div><div class="banner-sub">Documento informativo e estimativo. Valores condicionados à efetiva execução dos serviços e à validação das entregas correspondentes.</div></div>
+<div class="siglas"><div><strong>PEP</strong> – Parcela por Entregas por Paciente, apurada por competência conforme as entregas registradas</div><div><strong>PA</strong> – Valor unitário por atendimento efetivamente realizado</div></div>
+<div class="section-title">Resumo das Sessões do Período</div>
+    <table class="cards"><tbody><tr>
+      <td class="card green"><div class="card-ico">✅</div><div class="card-num">5</div><div class="card-title">Evoluções próprias</div></td>
+      <td class="card blue"><div class="card-ico">🔄</div><div class="card-num">0</div><div class="card-title">Substituições</div></td>
+      <td class="card total"><div class="card-ico">💰</div><div class="card-num">5</div><div class="card-title">Total elegíveis ao PA</div></td>
+    </tr></tbody></table>
+<div class="section-title">Apuração do Faturamento · 01/08/2026 a 31/08/2026</div>
+<table class="fin"><thead><tr><th>Componente</th><th>Cálculo</th><th style="text-align:right">Total no período</th></tr></thead><tbody>
+<tr><td><strong>PA – Valor por Atendimento Realizado</strong><br><span>Coordenação Técnica ABA de Caso</span></td><td>3 sessão(ões) × R$ 50,00</td><td class="val">R$ 120,00</td></tr><tr><td><strong>PA – Valor por Atendimento Realizado</strong><br><span>Aplicador ABA (PS)</span></td><td>3 sessão(ões) × R$ 30,00</td><td class="val">R$ 90,00</td></tr><tr><td><strong>PEP – Parcela por Entregas por Paciente</strong></td><td>2 paciente(s) apurado(s)</td><td class="val">R$ 200,50</td></tr>
+<tr class="total-row"><td colspan="2">TOTAL CONFIRMADO DO PERÍODO</td><td class="val">R$ 360,50</td></tr>
+</tbody></table>
+
+    <div class="section-title">Pacientes Vinculados (CC) — 3</div>
+    <table class="pac-grid"><tbody><tr><td>João Pedro A. C.</td><td>Maria Clara S. L.</td><td>Paciente N. 6. S.</td></tr></tbody></table>
+<div class="footer">Documento elaborado em 24/09/2026 · Universo ABA · Uso exclusivo do prestador identificado acima.</div>
+<div class="conf"><strong>DOCUMENTO CONFIDENCIAL</strong> — Informações protegidas pela Lei nº 13.709/2018 (LGPD). Destinado exclusivamente ao prestador identificado. Vedado o compartilhamento sem autorização prévia da Universo ABA.</div>
+<script>window.addEventListener("load",()=>{window.print();})</script></body></html>"
+`;
+
+exports[`HTML do demonstrativo (PDF/Word) — gravado antes da extração > CC com dois PAs, PEP apurada e substituição inconsistente — Word 1`] = `
+"<!DOCTYPE html><html lang="pt-BR" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="UTF-8">
+<title>Universo ABA — Ana Coordenadora</title><!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View></w:WordDocument></xml><![endif]-->
+<style>
+@page{margin:1.8cm;size:A4}*{box-sizing:border-box}body{font-family:system-ui,-apple-system,sans-serif;font-size:11px;color:#222847;line-height:1.42;margin:0;background:#fff}
+.header{width:100%;border-collapse:collapse;border-bottom:3px solid #222847;margin-bottom:14px;padding-bottom:10px}.header td{vertical-align:middle;padding:0 0 10px 0}.header-icon{width:48px;font-size:32px}.doc-id{font-size:17px;font-weight:800;color:#222847;margin-bottom:5px}.meta-line{font-size:10px;color:#555;line-height:1.65}
+.banner{background:#222847;color:#fff;border-radius:8px;padding:12px 16px;margin:12px 0 10px}.banner-title{font-size:13px;font-weight:bold;margin-bottom:4px}.banner-sub{font-size:10px;opacity:.86}
+.siglas{font-size:10px;color:#444;background:#f8fafc;border-left:3px solid #2A92C0;padding:8px 12px;margin:8px 0 14px;line-height:1.55}
+.section-title{font-size:12px;font-weight:bold;color:#222847;border-left:3px solid #2A92C0;padding-left:8px;margin:15px 0 8px}
+.cards{width:100%;border-collapse:separate;border-spacing:6px;margin:0 0 6px}.card{vertical-align:top;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;padding:8px;width:33.33%}.card-ico{font-size:15px}.card-num{font-size:20px;font-weight:bold;line-height:1;color:#222847}.card-title{font-size:10px;font-weight:bold;margin:2px 0}.card.green{background:#f0fdf4;border-color:#86efac}.card.green .card-num{color:#16a34a}.card.blue{background:#eff6ff;border-color:#93c5fd}.card.blue .card-num{color:#2563eb}.card.total{background:#222847;border-color:#222847;color:#fff}.card.total .card-num{color:#86efac}
+table.fin{width:100%;border-collapse:collapse;margin-bottom:12px}table.fin th{background:#f0f4f8;text-align:left;padding:7px 10px;font-size:10px;color:#555;border-bottom:2px solid #e2e8f0}table.fin td{padding:7px 10px;font-size:10.5px;border-bottom:1px solid #f0f0f0}table.fin td span{font-size:9px;color:#666}.val{text-align:right;font-weight:bold}.total-row td{font-weight:bold;font-size:13px;background:#f0fdf4;padding:10px!important}.total-row .val{color:#3aaa5c;font-size:15px}.muted{color:#777;text-align:center}
+.pac-grid{width:100%;border-collapse:separate;border-spacing:4px}.pac-grid td{background:#f0f4f8;border-radius:4px;padding:5px 8px;font-size:9.5px;width:33.33%}
+.footer{margin-top:18px;padding-top:10px;border-top:1px solid #e2e8f0;font-size:8.5px;color:#777;text-align:center;line-height:1.55}.conf{margin-top:8px;padding:8px 10px;background:#fafafa;border:1px solid #e5e7eb;border-radius:4px;font-size:8px;color:#555}
+@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style></head><body>
+<table class="header"><tbody><tr>
+    <td class="header-icon">🏢</td>
+    <td>
+      <div class="doc-id">CNPJ 12.345.678/0001-90 – ANA SERVIÇOS TERAPÊUTICOS LTDA</div>
+      <div class="meta-line"><strong>Responsável Legal:</strong> Ana Coordenadora</div>
+      <div class="meta-line"><strong>Contrato:</strong> PS.ABA-01-00000123</div>
+    </td>
+  </tr></tbody></table>
+<div class="banner"><div class="banner-title">Demonstrativo de Faturamento – Contraprestação dos Serviços · 01/08/2026 a 31/08/2026</div><div class="banner-sub">Documento informativo e estimativo. Valores condicionados à efetiva execução dos serviços e à validação das entregas correspondentes.</div></div>
+<div class="siglas"><div><strong>PEP</strong> – Parcela por Entregas por Paciente, apurada por competência conforme as entregas registradas</div><div><strong>PA</strong> – Valor unitário por atendimento efetivamente realizado</div></div>
+<div class="section-title">Resumo das Sessões do Período</div>
+    <table class="cards"><tbody><tr>
+      <td class="card green"><div class="card-ico">✅</div><div class="card-num">5</div><div class="card-title">Evoluções próprias</div></td>
+      <td class="card blue"><div class="card-ico">🔄</div><div class="card-num">0</div><div class="card-title">Substituições</div></td>
+      <td class="card total"><div class="card-ico">💰</div><div class="card-num">5</div><div class="card-title">Total elegíveis ao PA</div></td>
+    </tr></tbody></table>
+<div class="section-title">Apuração do Faturamento · 01/08/2026 a 31/08/2026</div>
+<table class="fin"><thead><tr><th>Componente</th><th>Cálculo</th><th style="text-align:right">Total no período</th></tr></thead><tbody>
+<tr><td><strong>PA – Valor por Atendimento Realizado</strong><br><span>Coordenação Técnica ABA de Caso</span></td><td>3 sessão(ões) × R$ 50,00</td><td class="val">R$ 120,00</td></tr><tr><td><strong>PA – Valor por Atendimento Realizado</strong><br><span>Aplicador ABA (PS)</span></td><td>3 sessão(ões) × R$ 30,00</td><td class="val">R$ 90,00</td></tr><tr><td><strong>PEP – Parcela por Entregas por Paciente</strong></td><td>2 paciente(s) apurado(s)</td><td class="val">R$ 200,50</td></tr>
+<tr class="total-row"><td colspan="2">TOTAL CONFIRMADO DO PERÍODO</td><td class="val">R$ 360,50</td></tr>
+</tbody></table>
+
+    <div class="section-title">Pacientes Vinculados (CC) — 3</div>
+    <table class="pac-grid"><tbody><tr><td>João Pedro A. C.</td><td>Maria Clara S. L.</td><td>Paciente N. 6. S.</td></tr></tbody></table>
+<div class="footer">Documento elaborado em 24/09/2026 · Universo ABA · Uso exclusivo do prestador identificado acima.</div>
+<div class="conf"><strong>DOCUMENTO CONFIDENCIAL</strong> — Informações protegidas pela Lei nº 13.709/2018 (LGPD). Destinado exclusivamente ao prestador identificado. Vedado o compartilhamento sem autorização prévia da Universo ABA.</div>
+</body></html>"
+`;
+
+exports[`HTML do demonstrativo (PDF/Word) — gravado antes da extração > CC sem PEP e com evolução duplicada — PDF 1`] = `
+"<!DOCTYPE html><html lang="pt-BR" ><head><meta charset="UTF-8">
+<title>Universo ABA — Diego Duplicado</title>
+<style>
+@page{margin:1.8cm;size:A4}*{box-sizing:border-box}body{font-family:system-ui,-apple-system,sans-serif;font-size:11px;color:#222847;line-height:1.42;margin:0;background:#fff}
+.header{width:100%;border-collapse:collapse;border-bottom:3px solid #222847;margin-bottom:14px;padding-bottom:10px}.header td{vertical-align:middle;padding:0 0 10px 0}.header-icon{width:48px;font-size:32px}.doc-id{font-size:17px;font-weight:800;color:#222847;margin-bottom:5px}.meta-line{font-size:10px;color:#555;line-height:1.65}
+.banner{background:#222847;color:#fff;border-radius:8px;padding:12px 16px;margin:12px 0 10px}.banner-title{font-size:13px;font-weight:bold;margin-bottom:4px}.banner-sub{font-size:10px;opacity:.86}
+.siglas{font-size:10px;color:#444;background:#f8fafc;border-left:3px solid #2A92C0;padding:8px 12px;margin:8px 0 14px;line-height:1.55}
+.section-title{font-size:12px;font-weight:bold;color:#222847;border-left:3px solid #2A92C0;padding-left:8px;margin:15px 0 8px}
+.cards{width:100%;border-collapse:separate;border-spacing:6px;margin:0 0 6px}.card{vertical-align:top;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;padding:8px;width:33.33%}.card-ico{font-size:15px}.card-num{font-size:20px;font-weight:bold;line-height:1;color:#222847}.card-title{font-size:10px;font-weight:bold;margin:2px 0}.card.green{background:#f0fdf4;border-color:#86efac}.card.green .card-num{color:#16a34a}.card.blue{background:#eff6ff;border-color:#93c5fd}.card.blue .card-num{color:#2563eb}.card.total{background:#222847;border-color:#222847;color:#fff}.card.total .card-num{color:#86efac}
+table.fin{width:100%;border-collapse:collapse;margin-bottom:12px}table.fin th{background:#f0f4f8;text-align:left;padding:7px 10px;font-size:10px;color:#555;border-bottom:2px solid #e2e8f0}table.fin td{padding:7px 10px;font-size:10.5px;border-bottom:1px solid #f0f0f0}table.fin td span{font-size:9px;color:#666}.val{text-align:right;font-weight:bold}.total-row td{font-weight:bold;font-size:13px;background:#f0fdf4;padding:10px!important}.total-row .val{color:#3aaa5c;font-size:15px}.muted{color:#777;text-align:center}
+.pac-grid{width:100%;border-collapse:separate;border-spacing:4px}.pac-grid td{background:#f0f4f8;border-radius:4px;padding:5px 8px;font-size:9.5px;width:33.33%}
+.footer{margin-top:18px;padding-top:10px;border-top:1px solid #e2e8f0;font-size:8.5px;color:#777;text-align:center;line-height:1.55}.conf{margin-top:8px;padding:8px 10px;background:#fafafa;border:1px solid #e5e7eb;border-radius:4px;font-size:8px;color:#555}
+@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style></head><body>
+<table class="header"><tbody><tr>
+    <td class="header-icon">🏢</td>
+    <td>
+      <div class="doc-id">CNPJ 98.765.432/0001-10 – RAZÃO SOCIAL NÃO CADASTRADA</div>
+      <div class="meta-line"><strong>Responsável Legal:</strong> Diego Duplicado</div>
+      <div class="meta-line"><strong>Contrato:</strong> PS.ABA-01-00000001</div>
+    </td>
+  </tr></tbody></table>
+<div class="banner"><div class="banner-title">Demonstrativo de Faturamento – Contraprestação dos Serviços · 01/08/2026 a 31/08/2026</div><div class="banner-sub">Documento informativo e estimativo. Valores condicionados à efetiva execução dos serviços e à validação das entregas correspondentes.</div></div>
+<div class="siglas"><div><strong>PEP</strong> – Parcela por Entregas por Paciente, apurada por competência conforme as entregas registradas</div><div><strong>PA</strong> – Valor unitário por atendimento efetivamente realizado</div></div>
+<div class="section-title">Resumo das Sessões do Período</div>
+    <table class="cards"><tbody><tr>
+      <td class="card green"><div class="card-ico">✅</div><div class="card-num">2</div><div class="card-title">Evoluções próprias</div></td>
+      <td class="card blue"><div class="card-ico">🔄</div><div class="card-num">0</div><div class="card-title">Substituições</div></td>
+      <td class="card total"><div class="card-ico">💰</div><div class="card-num">2</div><div class="card-title">Total elegíveis ao PA</div></td>
+    </tr></tbody></table>
+<div class="section-title">Apuração do Faturamento · 01/08/2026 a 31/08/2026</div>
+<table class="fin"><thead><tr><th>Componente</th><th>Cálculo</th><th style="text-align:right">Total no período</th></tr></thead><tbody>
+<tr><td><strong>PA – Valor por Atendimento Realizado</strong><br><span>Coordenação Técnica ABA de Caso</span></td><td>1 sessão(ões) × R$ 35,00</td><td class="val">R$ 35,00</td></tr><tr><td><strong>PEP – Parcela por Entregas por Paciente</strong></td><td class="muted">Ainda não apurada nesta competência</td><td class="val">—</td></tr>
+<tr class="total-row"><td colspan="2">TOTAL CONFIRMADO DO PERÍODO</td><td class="val">R$ 70,00</td></tr>
+</tbody></table>
+
+    <div class="section-title">Pacientes Vinculados (CC) — 2</div>
+    <table class="pac-grid"><tbody><tr><td>Paciente N. 1. S.</td><td>Paciente N. 1. S.</td></tr></tbody></table>
+<div class="footer">Documento elaborado em 24/09/2026 · Universo ABA · Uso exclusivo do prestador identificado acima.</div>
+<div class="conf"><strong>DOCUMENTO CONFIDENCIAL</strong> — Informações protegidas pela Lei nº 13.709/2018 (LGPD). Destinado exclusivamente ao prestador identificado. Vedado o compartilhamento sem autorização prévia da Universo ABA.</div>
+<script>window.addEventListener("load",()=>{window.print();})</script></body></html>"
+`;
+
+exports[`HTML do demonstrativo (PDF/Word) — gravado antes da extração > CC sem PEP e com evolução duplicada — Word 1`] = `
+"<!DOCTYPE html><html lang="pt-BR" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="UTF-8">
+<title>Universo ABA — Diego Duplicado</title><!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View></w:WordDocument></xml><![endif]-->
+<style>
+@page{margin:1.8cm;size:A4}*{box-sizing:border-box}body{font-family:system-ui,-apple-system,sans-serif;font-size:11px;color:#222847;line-height:1.42;margin:0;background:#fff}
+.header{width:100%;border-collapse:collapse;border-bottom:3px solid #222847;margin-bottom:14px;padding-bottom:10px}.header td{vertical-align:middle;padding:0 0 10px 0}.header-icon{width:48px;font-size:32px}.doc-id{font-size:17px;font-weight:800;color:#222847;margin-bottom:5px}.meta-line{font-size:10px;color:#555;line-height:1.65}
+.banner{background:#222847;color:#fff;border-radius:8px;padding:12px 16px;margin:12px 0 10px}.banner-title{font-size:13px;font-weight:bold;margin-bottom:4px}.banner-sub{font-size:10px;opacity:.86}
+.siglas{font-size:10px;color:#444;background:#f8fafc;border-left:3px solid #2A92C0;padding:8px 12px;margin:8px 0 14px;line-height:1.55}
+.section-title{font-size:12px;font-weight:bold;color:#222847;border-left:3px solid #2A92C0;padding-left:8px;margin:15px 0 8px}
+.cards{width:100%;border-collapse:separate;border-spacing:6px;margin:0 0 6px}.card{vertical-align:top;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;padding:8px;width:33.33%}.card-ico{font-size:15px}.card-num{font-size:20px;font-weight:bold;line-height:1;color:#222847}.card-title{font-size:10px;font-weight:bold;margin:2px 0}.card.green{background:#f0fdf4;border-color:#86efac}.card.green .card-num{color:#16a34a}.card.blue{background:#eff6ff;border-color:#93c5fd}.card.blue .card-num{color:#2563eb}.card.total{background:#222847;border-color:#222847;color:#fff}.card.total .card-num{color:#86efac}
+table.fin{width:100%;border-collapse:collapse;margin-bottom:12px}table.fin th{background:#f0f4f8;text-align:left;padding:7px 10px;font-size:10px;color:#555;border-bottom:2px solid #e2e8f0}table.fin td{padding:7px 10px;font-size:10.5px;border-bottom:1px solid #f0f0f0}table.fin td span{font-size:9px;color:#666}.val{text-align:right;font-weight:bold}.total-row td{font-weight:bold;font-size:13px;background:#f0fdf4;padding:10px!important}.total-row .val{color:#3aaa5c;font-size:15px}.muted{color:#777;text-align:center}
+.pac-grid{width:100%;border-collapse:separate;border-spacing:4px}.pac-grid td{background:#f0f4f8;border-radius:4px;padding:5px 8px;font-size:9.5px;width:33.33%}
+.footer{margin-top:18px;padding-top:10px;border-top:1px solid #e2e8f0;font-size:8.5px;color:#777;text-align:center;line-height:1.55}.conf{margin-top:8px;padding:8px 10px;background:#fafafa;border:1px solid #e5e7eb;border-radius:4px;font-size:8px;color:#555}
+@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style></head><body>
+<table class="header"><tbody><tr>
+    <td class="header-icon">🏢</td>
+    <td>
+      <div class="doc-id">CNPJ 98.765.432/0001-10 – RAZÃO SOCIAL NÃO CADASTRADA</div>
+      <div class="meta-line"><strong>Responsável Legal:</strong> Diego Duplicado</div>
+      <div class="meta-line"><strong>Contrato:</strong> PS.ABA-01-00000001</div>
+    </td>
+  </tr></tbody></table>
+<div class="banner"><div class="banner-title">Demonstrativo de Faturamento – Contraprestação dos Serviços · 01/08/2026 a 31/08/2026</div><div class="banner-sub">Documento informativo e estimativo. Valores condicionados à efetiva execução dos serviços e à validação das entregas correspondentes.</div></div>
+<div class="siglas"><div><strong>PEP</strong> – Parcela por Entregas por Paciente, apurada por competência conforme as entregas registradas</div><div><strong>PA</strong> – Valor unitário por atendimento efetivamente realizado</div></div>
+<div class="section-title">Resumo das Sessões do Período</div>
+    <table class="cards"><tbody><tr>
+      <td class="card green"><div class="card-ico">✅</div><div class="card-num">2</div><div class="card-title">Evoluções próprias</div></td>
+      <td class="card blue"><div class="card-ico">🔄</div><div class="card-num">0</div><div class="card-title">Substituições</div></td>
+      <td class="card total"><div class="card-ico">💰</div><div class="card-num">2</div><div class="card-title">Total elegíveis ao PA</div></td>
+    </tr></tbody></table>
+<div class="section-title">Apuração do Faturamento · 01/08/2026 a 31/08/2026</div>
+<table class="fin"><thead><tr><th>Componente</th><th>Cálculo</th><th style="text-align:right">Total no período</th></tr></thead><tbody>
+<tr><td><strong>PA – Valor por Atendimento Realizado</strong><br><span>Coordenação Técnica ABA de Caso</span></td><td>1 sessão(ões) × R$ 35,00</td><td class="val">R$ 35,00</td></tr><tr><td><strong>PEP – Parcela por Entregas por Paciente</strong></td><td class="muted">Ainda não apurada nesta competência</td><td class="val">—</td></tr>
+<tr class="total-row"><td colspan="2">TOTAL CONFIRMADO DO PERÍODO</td><td class="val">R$ 70,00</td></tr>
+</tbody></table>
+
+    <div class="section-title">Pacientes Vinculados (CC) — 2</div>
+    <table class="pac-grid"><tbody><tr><td>Paciente N. 1. S.</td><td>Paciente N. 1. S.</td></tr></tbody></table>
+<div class="footer">Documento elaborado em 24/09/2026 · Universo ABA · Uso exclusivo do prestador identificado acima.</div>
+<div class="conf"><strong>DOCUMENTO CONFIDENCIAL</strong> — Informações protegidas pela Lei nº 13.709/2018 (LGPD). Destinado exclusivamente ao prestador identificado. Vedado o compartilhamento sem autorização prévia da Universo ABA.</div>
+</body></html>"
+`;
+
+exports[`HTML do demonstrativo (PDF/Word) — gravado antes da extração > ETA sem cadastro, com PPD e bônus — PDF 1`] = `
+"<!DOCTYPE html><html lang="pt-BR" ><head><meta charset="UTF-8">
+<title>Universo ABA — Carla Especialista</title>
+<style>
+@page{margin:1.8cm;size:A4}*{box-sizing:border-box}body{font-family:system-ui,-apple-system,sans-serif;font-size:11px;color:#222847;line-height:1.42;margin:0;background:#fff}
+.header{width:100%;border-collapse:collapse;border-bottom:3px solid #222847;margin-bottom:14px;padding-bottom:10px}.header td{vertical-align:middle;padding:0 0 10px 0}.header-icon{width:48px;font-size:32px}.doc-id{font-size:17px;font-weight:800;color:#222847;margin-bottom:5px}.meta-line{font-size:10px;color:#555;line-height:1.65}
+.banner{background:#222847;color:#fff;border-radius:8px;padding:12px 16px;margin:12px 0 10px}.banner-title{font-size:13px;font-weight:bold;margin-bottom:4px}.banner-sub{font-size:10px;opacity:.86}
+.siglas{font-size:10px;color:#444;background:#f8fafc;border-left:3px solid #2A92C0;padding:8px 12px;margin:8px 0 14px;line-height:1.55}
+.section-title{font-size:12px;font-weight:bold;color:#222847;border-left:3px solid #2A92C0;padding-left:8px;margin:15px 0 8px}
+.cards{width:100%;border-collapse:separate;border-spacing:6px;margin:0 0 6px}.card{vertical-align:top;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;padding:8px;width:33.33%}.card-ico{font-size:15px}.card-num{font-size:20px;font-weight:bold;line-height:1;color:#222847}.card-title{font-size:10px;font-weight:bold;margin:2px 0}.card.green{background:#f0fdf4;border-color:#86efac}.card.green .card-num{color:#16a34a}.card.blue{background:#eff6ff;border-color:#93c5fd}.card.blue .card-num{color:#2563eb}.card.total{background:#222847;border-color:#222847;color:#fff}.card.total .card-num{color:#86efac}
+table.fin{width:100%;border-collapse:collapse;margin-bottom:12px}table.fin th{background:#f0f4f8;text-align:left;padding:7px 10px;font-size:10px;color:#555;border-bottom:2px solid #e2e8f0}table.fin td{padding:7px 10px;font-size:10.5px;border-bottom:1px solid #f0f0f0}table.fin td span{font-size:9px;color:#666}.val{text-align:right;font-weight:bold}.total-row td{font-weight:bold;font-size:13px;background:#f0fdf4;padding:10px!important}.total-row .val{color:#3aaa5c;font-size:15px}.muted{color:#777;text-align:center}
+.pac-grid{width:100%;border-collapse:separate;border-spacing:4px}.pac-grid td{background:#f0f4f8;border-radius:4px;padding:5px 8px;font-size:9.5px;width:33.33%}
+.footer{margin-top:18px;padding-top:10px;border-top:1px solid #e2e8f0;font-size:8.5px;color:#777;text-align:center;line-height:1.55}.conf{margin-top:8px;padding:8px 10px;background:#fafafa;border:1px solid #e5e7eb;border-radius:4px;font-size:8px;color:#555}
+@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style></head><body>
+<table class="header"><tbody><tr>
+    <td class="header-icon">🏢</td>
+    <td>
+      <div class="doc-id">CNPJ 00.000.000/0000-00 – RAZÃO SOCIAL NÃO CADASTRADA</div>
+      <div class="meta-line"><strong>Responsável Legal:</strong> Carla Especialista</div>
+      <div class="meta-line"><strong>Contrato:</strong> PS.ABA-01-00000001</div>
+    </td>
+  </tr></tbody></table>
+<div class="banner"><div class="banner-title">Demonstrativo de Faturamento – Contraprestação dos Serviços · 01/08/2026 a 31/08/2026</div><div class="banner-sub">Documento informativo e estimativo. Valores condicionados à efetiva execução dos serviços e à validação das entregas correspondentes.</div></div>
+<div class="siglas"><div><strong>PA</strong> – Valor unitário por atendimento efetivamente realizado e aceito pela CONTRATANTE</div></div>
+<div class="section-title">Resumo das Sessões do Período</div>
+    <table class="cards"><tbody><tr>
+      <td class="card green"><div class="card-ico">✅</div><div class="card-num">2</div><div class="card-title">Evoluções próprias</div></td>
+      <td class="card blue"><div class="card-ico">🔄</div><div class="card-num">0</div><div class="card-title">Substituições</div></td>
+      <td class="card total"><div class="card-ico">💰</div><div class="card-num">2</div><div class="card-title">Total elegíveis ao PA</div></td>
+    </tr></tbody></table>
+<div class="section-title">Apuração do Faturamento · 01/08/2026 a 31/08/2026</div>
+<table class="fin"><thead><tr><th>Componente</th><th>Cálculo</th><th style="text-align:right">Total no período</th></tr></thead><tbody>
+<tr><td><strong>PA – Valor por Atendimento Realizado</strong><br><span>Especialista Técnico de Área</span></td><td>1 sessão(ões) × R$ 50,00</td><td class="val">R$ 50,00</td></tr><tr><td><strong>PPD – Pagamento por Diária</strong><br><span>Especialista Técnico de Área</span></td><td>3 dia(s) × R$ 100,00</td><td class="val">R$ 300,00</td></tr><tr><td><strong>Bônus ETA</strong></td><td>2 semana(s) × R$ 100,00</td><td class="val">R$ 200,00</td></tr>
+<tr class="total-row"><td colspan="2">TOTAL CONFIRMADO DO PERÍODO</td><td class="val">R$ 570,00</td></tr>
+</tbody></table>
+
+<div class="footer">Documento elaborado em 24/09/2026 · Universo ABA · Uso exclusivo do prestador identificado acima.</div>
+<div class="conf"><strong>DOCUMENTO CONFIDENCIAL</strong> — Informações protegidas pela Lei nº 13.709/2018 (LGPD). Destinado exclusivamente ao prestador identificado. Vedado o compartilhamento sem autorização prévia da Universo ABA.</div>
+<script>window.addEventListener("load",()=>{window.print();})</script></body></html>"
+`;
+
+exports[`HTML do demonstrativo (PDF/Word) — gravado antes da extração > ETA sem cadastro, com PPD e bônus — Word 1`] = `
+"<!DOCTYPE html><html lang="pt-BR" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="UTF-8">
+<title>Universo ABA — Carla Especialista</title><!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View></w:WordDocument></xml><![endif]-->
+<style>
+@page{margin:1.8cm;size:A4}*{box-sizing:border-box}body{font-family:system-ui,-apple-system,sans-serif;font-size:11px;color:#222847;line-height:1.42;margin:0;background:#fff}
+.header{width:100%;border-collapse:collapse;border-bottom:3px solid #222847;margin-bottom:14px;padding-bottom:10px}.header td{vertical-align:middle;padding:0 0 10px 0}.header-icon{width:48px;font-size:32px}.doc-id{font-size:17px;font-weight:800;color:#222847;margin-bottom:5px}.meta-line{font-size:10px;color:#555;line-height:1.65}
+.banner{background:#222847;color:#fff;border-radius:8px;padding:12px 16px;margin:12px 0 10px}.banner-title{font-size:13px;font-weight:bold;margin-bottom:4px}.banner-sub{font-size:10px;opacity:.86}
+.siglas{font-size:10px;color:#444;background:#f8fafc;border-left:3px solid #2A92C0;padding:8px 12px;margin:8px 0 14px;line-height:1.55}
+.section-title{font-size:12px;font-weight:bold;color:#222847;border-left:3px solid #2A92C0;padding-left:8px;margin:15px 0 8px}
+.cards{width:100%;border-collapse:separate;border-spacing:6px;margin:0 0 6px}.card{vertical-align:top;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;padding:8px;width:33.33%}.card-ico{font-size:15px}.card-num{font-size:20px;font-weight:bold;line-height:1;color:#222847}.card-title{font-size:10px;font-weight:bold;margin:2px 0}.card.green{background:#f0fdf4;border-color:#86efac}.card.green .card-num{color:#16a34a}.card.blue{background:#eff6ff;border-color:#93c5fd}.card.blue .card-num{color:#2563eb}.card.total{background:#222847;border-color:#222847;color:#fff}.card.total .card-num{color:#86efac}
+table.fin{width:100%;border-collapse:collapse;margin-bottom:12px}table.fin th{background:#f0f4f8;text-align:left;padding:7px 10px;font-size:10px;color:#555;border-bottom:2px solid #e2e8f0}table.fin td{padding:7px 10px;font-size:10.5px;border-bottom:1px solid #f0f0f0}table.fin td span{font-size:9px;color:#666}.val{text-align:right;font-weight:bold}.total-row td{font-weight:bold;font-size:13px;background:#f0fdf4;padding:10px!important}.total-row .val{color:#3aaa5c;font-size:15px}.muted{color:#777;text-align:center}
+.pac-grid{width:100%;border-collapse:separate;border-spacing:4px}.pac-grid td{background:#f0f4f8;border-radius:4px;padding:5px 8px;font-size:9.5px;width:33.33%}
+.footer{margin-top:18px;padding-top:10px;border-top:1px solid #e2e8f0;font-size:8.5px;color:#777;text-align:center;line-height:1.55}.conf{margin-top:8px;padding:8px 10px;background:#fafafa;border:1px solid #e5e7eb;border-radius:4px;font-size:8px;color:#555}
+@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style></head><body>
+<table class="header"><tbody><tr>
+    <td class="header-icon">🏢</td>
+    <td>
+      <div class="doc-id">CNPJ 00.000.000/0000-00 – RAZÃO SOCIAL NÃO CADASTRADA</div>
+      <div class="meta-line"><strong>Responsável Legal:</strong> Carla Especialista</div>
+      <div class="meta-line"><strong>Contrato:</strong> PS.ABA-01-00000001</div>
+    </td>
+  </tr></tbody></table>
+<div class="banner"><div class="banner-title">Demonstrativo de Faturamento – Contraprestação dos Serviços · 01/08/2026 a 31/08/2026</div><div class="banner-sub">Documento informativo e estimativo. Valores condicionados à efetiva execução dos serviços e à validação das entregas correspondentes.</div></div>
+<div class="siglas"><div><strong>PA</strong> – Valor unitário por atendimento efetivamente realizado e aceito pela CONTRATANTE</div></div>
+<div class="section-title">Resumo das Sessões do Período</div>
+    <table class="cards"><tbody><tr>
+      <td class="card green"><div class="card-ico">✅</div><div class="card-num">2</div><div class="card-title">Evoluções próprias</div></td>
+      <td class="card blue"><div class="card-ico">🔄</div><div class="card-num">0</div><div class="card-title">Substituições</div></td>
+      <td class="card total"><div class="card-ico">💰</div><div class="card-num">2</div><div class="card-title">Total elegíveis ao PA</div></td>
+    </tr></tbody></table>
+<div class="section-title">Apuração do Faturamento · 01/08/2026 a 31/08/2026</div>
+<table class="fin"><thead><tr><th>Componente</th><th>Cálculo</th><th style="text-align:right">Total no período</th></tr></thead><tbody>
+<tr><td><strong>PA – Valor por Atendimento Realizado</strong><br><span>Especialista Técnico de Área</span></td><td>1 sessão(ões) × R$ 50,00</td><td class="val">R$ 50,00</td></tr><tr><td><strong>PPD – Pagamento por Diária</strong><br><span>Especialista Técnico de Área</span></td><td>3 dia(s) × R$ 100,00</td><td class="val">R$ 300,00</td></tr><tr><td><strong>Bônus ETA</strong></td><td>2 semana(s) × R$ 100,00</td><td class="val">R$ 200,00</td></tr>
+<tr class="total-row"><td colspan="2">TOTAL CONFIRMADO DO PERÍODO</td><td class="val">R$ 570,00</td></tr>
+</tbody></table>
+
+<div class="footer">Documento elaborado em 24/09/2026 · Universo ABA · Uso exclusivo do prestador identificado acima.</div>
+<div class="conf"><strong>DOCUMENTO CONFIDENCIAL</strong> — Informações protegidas pela Lei nº 13.709/2018 (LGPD). Destinado exclusivamente ao prestador identificado. Vedado o compartilhamento sem autorização prévia da Universo ABA.</div>
+</body></html>"
+`;
+
+exports[`HTML do demonstrativo (PDF/Word) — gravado antes da extração > banco de horas híbrido PF — PDF 1`] = `
+"<!DOCTYPE html><html lang="pt-BR" ><head><meta charset="UTF-8">
+<title>Universo ABA — Bruno Banco</title>
+<style>
+@page{margin:1.8cm;size:A4}*{box-sizing:border-box}body{font-family:system-ui,-apple-system,sans-serif;font-size:11px;color:#222847;line-height:1.42;margin:0;background:#fff}
+.header{width:100%;border-collapse:collapse;border-bottom:3px solid #222847;margin-bottom:14px;padding-bottom:10px}.header td{vertical-align:middle;padding:0 0 10px 0}.header-icon{width:48px;font-size:32px}.doc-id{font-size:17px;font-weight:800;color:#222847;margin-bottom:5px}.meta-line{font-size:10px;color:#555;line-height:1.65}
+.banner{background:#222847;color:#fff;border-radius:8px;padding:12px 16px;margin:12px 0 10px}.banner-title{font-size:13px;font-weight:bold;margin-bottom:4px}.banner-sub{font-size:10px;opacity:.86}
+.siglas{font-size:10px;color:#444;background:#f8fafc;border-left:3px solid #2A92C0;padding:8px 12px;margin:8px 0 14px;line-height:1.55}
+.section-title{font-size:12px;font-weight:bold;color:#222847;border-left:3px solid #2A92C0;padding-left:8px;margin:15px 0 8px}
+.cards{width:100%;border-collapse:separate;border-spacing:6px;margin:0 0 6px}.card{vertical-align:top;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;padding:8px;width:33.33%}.card-ico{font-size:15px}.card-num{font-size:20px;font-weight:bold;line-height:1;color:#222847}.card-title{font-size:10px;font-weight:bold;margin:2px 0}.card.green{background:#f0fdf4;border-color:#86efac}.card.green .card-num{color:#16a34a}.card.blue{background:#eff6ff;border-color:#93c5fd}.card.blue .card-num{color:#2563eb}.card.total{background:#222847;border-color:#222847;color:#fff}.card.total .card-num{color:#86efac}
+table.fin{width:100%;border-collapse:collapse;margin-bottom:12px}table.fin th{background:#f0f4f8;text-align:left;padding:7px 10px;font-size:10px;color:#555;border-bottom:2px solid #e2e8f0}table.fin td{padding:7px 10px;font-size:10.5px;border-bottom:1px solid #f0f0f0}table.fin td span{font-size:9px;color:#666}.val{text-align:right;font-weight:bold}.total-row td{font-weight:bold;font-size:13px;background:#f0fdf4;padding:10px!important}.total-row .val{color:#3aaa5c;font-size:15px}.muted{color:#777;text-align:center}
+.pac-grid{width:100%;border-collapse:separate;border-spacing:4px}.pac-grid td{background:#f0f4f8;border-radius:4px;padding:5px 8px;font-size:9.5px;width:33.33%}
+.footer{margin-top:18px;padding-top:10px;border-top:1px solid #e2e8f0;font-size:8.5px;color:#777;text-align:center;line-height:1.55}.conf{margin-top:8px;padding:8px 10px;background:#fafafa;border:1px solid #e5e7eb;border-radius:4px;font-size:8px;color:#555}
+@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style></head><body>
+<table class="header"><tbody><tr>
+    <td class="header-icon">👤</td>
+    <td>
+      <div class="doc-id">CPF 123.456.789-01 – BRUNO BANCO</div>
+      
+      <div class="meta-line"><strong>Contrato:</strong> PS.ABA-PF-00000001</div>
+    </td>
+  </tr></tbody></table>
+<div class="banner"><div class="banner-title">Demonstrativo de Faturamento – Contraprestação dos Serviços · 01/08/2026 a 31/08/2026</div><div class="banner-sub">Documento informativo e estimativo. Valores condicionados à efetiva execução dos serviços e à validação das entregas correspondentes.</div></div>
+<div class="siglas"><div><strong>PA</strong> – Valor unitário por atendimento efetivamente realizado e aceito pela CONTRATANTE</div></div>
+<div class="section-title">Resumo das Sessões do Período</div>
+    <table class="cards"><tbody><tr>
+      <td class="card green"><div class="card-ico">✅</div><div class="card-num">4</div><div class="card-title">Evoluções próprias</div></td>
+      <td class="card blue"><div class="card-ico">🔄</div><div class="card-num">0</div><div class="card-title">Substituições</div></td>
+      <td class="card total"><div class="card-ico">💰</div><div class="card-num">4</div><div class="card-title">Total elegíveis ao PA</div></td>
+    </tr></tbody></table>
+<div class="section-title">Apuração do Faturamento · 01/08/2026 a 31/08/2026</div>
+<table class="fin"><thead><tr><th>Componente</th><th>Cálculo</th><th style="text-align:right">Total no período</th></tr></thead><tbody>
+<tr><td><strong>PA – Valor por Atendimento Realizado</strong><br><span>Psicomotricidade</span></td><td>1 sessão(ões) × R$ 45,00</td><td class="val">R$ 45,00</td></tr><tr><td><strong>Atendimento coberto pelo banco de horas</strong><br><span>Fonoaudiologia</span></td><td>2 sessão(ões)</td><td class="val">Incluído no valor fixo</td></tr><tr><td><strong>Atendimento tratado em outro contrato</strong><br><span>Psicologia</span></td><td>1 sessão(ões)</td><td class="val">Tratado em outro contrato</td></tr><tr><td><strong>Banco de Horas – valor fixo do contrato</strong><br><span>BH-001</span></td><td>valor total do período (não por sessão)</td><td class="val">R$ 3000,00</td></tr>
+<tr class="total-row"><td colspan="2">TOTAL CONFIRMADO DO PERÍODO</td><td class="val">R$ 3045,00</td></tr>
+</tbody></table>
+
+<div class="footer">Documento elaborado em 24/09/2026 · Universo ABA · Uso exclusivo do prestador identificado acima.</div>
+<div class="conf"><strong>DOCUMENTO CONFIDENCIAL</strong> — Informações protegidas pela Lei nº 13.709/2018 (LGPD). Destinado exclusivamente ao prestador identificado. Vedado o compartilhamento sem autorização prévia da Universo ABA.</div>
+<script>window.addEventListener("load",()=>{window.print();})</script></body></html>"
+`;
+
+exports[`HTML do demonstrativo (PDF/Word) — gravado antes da extração > banco de horas híbrido PF — Word 1`] = `
+"<!DOCTYPE html><html lang="pt-BR" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="UTF-8">
+<title>Universo ABA — Bruno Banco</title><!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View></w:WordDocument></xml><![endif]-->
+<style>
+@page{margin:1.8cm;size:A4}*{box-sizing:border-box}body{font-family:system-ui,-apple-system,sans-serif;font-size:11px;color:#222847;line-height:1.42;margin:0;background:#fff}
+.header{width:100%;border-collapse:collapse;border-bottom:3px solid #222847;margin-bottom:14px;padding-bottom:10px}.header td{vertical-align:middle;padding:0 0 10px 0}.header-icon{width:48px;font-size:32px}.doc-id{font-size:17px;font-weight:800;color:#222847;margin-bottom:5px}.meta-line{font-size:10px;color:#555;line-height:1.65}
+.banner{background:#222847;color:#fff;border-radius:8px;padding:12px 16px;margin:12px 0 10px}.banner-title{font-size:13px;font-weight:bold;margin-bottom:4px}.banner-sub{font-size:10px;opacity:.86}
+.siglas{font-size:10px;color:#444;background:#f8fafc;border-left:3px solid #2A92C0;padding:8px 12px;margin:8px 0 14px;line-height:1.55}
+.section-title{font-size:12px;font-weight:bold;color:#222847;border-left:3px solid #2A92C0;padding-left:8px;margin:15px 0 8px}
+.cards{width:100%;border-collapse:separate;border-spacing:6px;margin:0 0 6px}.card{vertical-align:top;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;padding:8px;width:33.33%}.card-ico{font-size:15px}.card-num{font-size:20px;font-weight:bold;line-height:1;color:#222847}.card-title{font-size:10px;font-weight:bold;margin:2px 0}.card.green{background:#f0fdf4;border-color:#86efac}.card.green .card-num{color:#16a34a}.card.blue{background:#eff6ff;border-color:#93c5fd}.card.blue .card-num{color:#2563eb}.card.total{background:#222847;border-color:#222847;color:#fff}.card.total .card-num{color:#86efac}
+table.fin{width:100%;border-collapse:collapse;margin-bottom:12px}table.fin th{background:#f0f4f8;text-align:left;padding:7px 10px;font-size:10px;color:#555;border-bottom:2px solid #e2e8f0}table.fin td{padding:7px 10px;font-size:10.5px;border-bottom:1px solid #f0f0f0}table.fin td span{font-size:9px;color:#666}.val{text-align:right;font-weight:bold}.total-row td{font-weight:bold;font-size:13px;background:#f0fdf4;padding:10px!important}.total-row .val{color:#3aaa5c;font-size:15px}.muted{color:#777;text-align:center}
+.pac-grid{width:100%;border-collapse:separate;border-spacing:4px}.pac-grid td{background:#f0f4f8;border-radius:4px;padding:5px 8px;font-size:9.5px;width:33.33%}
+.footer{margin-top:18px;padding-top:10px;border-top:1px solid #e2e8f0;font-size:8.5px;color:#777;text-align:center;line-height:1.55}.conf{margin-top:8px;padding:8px 10px;background:#fafafa;border:1px solid #e5e7eb;border-radius:4px;font-size:8px;color:#555}
+@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style></head><body>
+<table class="header"><tbody><tr>
+    <td class="header-icon">👤</td>
+    <td>
+      <div class="doc-id">CPF 123.456.789-01 – BRUNO BANCO</div>
+      
+      <div class="meta-line"><strong>Contrato:</strong> PS.ABA-PF-00000001</div>
+    </td>
+  </tr></tbody></table>
+<div class="banner"><div class="banner-title">Demonstrativo de Faturamento – Contraprestação dos Serviços · 01/08/2026 a 31/08/2026</div><div class="banner-sub">Documento informativo e estimativo. Valores condicionados à efetiva execução dos serviços e à validação das entregas correspondentes.</div></div>
+<div class="siglas"><div><strong>PA</strong> – Valor unitário por atendimento efetivamente realizado e aceito pela CONTRATANTE</div></div>
+<div class="section-title">Resumo das Sessões do Período</div>
+    <table class="cards"><tbody><tr>
+      <td class="card green"><div class="card-ico">✅</div><div class="card-num">4</div><div class="card-title">Evoluções próprias</div></td>
+      <td class="card blue"><div class="card-ico">🔄</div><div class="card-num">0</div><div class="card-title">Substituições</div></td>
+      <td class="card total"><div class="card-ico">💰</div><div class="card-num">4</div><div class="card-title">Total elegíveis ao PA</div></td>
+    </tr></tbody></table>
+<div class="section-title">Apuração do Faturamento · 01/08/2026 a 31/08/2026</div>
+<table class="fin"><thead><tr><th>Componente</th><th>Cálculo</th><th style="text-align:right">Total no período</th></tr></thead><tbody>
+<tr><td><strong>PA – Valor por Atendimento Realizado</strong><br><span>Psicomotricidade</span></td><td>1 sessão(ões) × R$ 45,00</td><td class="val">R$ 45,00</td></tr><tr><td><strong>Atendimento coberto pelo banco de horas</strong><br><span>Fonoaudiologia</span></td><td>2 sessão(ões)</td><td class="val">Incluído no valor fixo</td></tr><tr><td><strong>Atendimento tratado em outro contrato</strong><br><span>Psicologia</span></td><td>1 sessão(ões)</td><td class="val">Tratado em outro contrato</td></tr><tr><td><strong>Banco de Horas – valor fixo do contrato</strong><br><span>BH-001</span></td><td>valor total do período (não por sessão)</td><td class="val">R$ 3000,00</td></tr>
+<tr class="total-row"><td colspan="2">TOTAL CONFIRMADO DO PERÍODO</td><td class="val">R$ 3045,00</td></tr>
+</tbody></table>
+
+<div class="footer">Documento elaborado em 24/09/2026 · Universo ABA · Uso exclusivo do prestador identificado acima.</div>
+<div class="conf"><strong>DOCUMENTO CONFIDENCIAL</strong> — Informações protegidas pela Lei nº 13.709/2018 (LGPD). Destinado exclusivamente ao prestador identificado. Vedado o compartilhamento sem autorização prévia da Universo ABA.</div>
+</body></html>"
+`;
