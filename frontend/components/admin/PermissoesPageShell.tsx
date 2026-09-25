@@ -33,7 +33,6 @@ import {
   Users,
   Database,
   Wallet,
-  History,
   Handshake,
   DoorOpen,
   UserSearch,
@@ -135,7 +134,6 @@ const MODULE_ICONS: Record<string, React.ElementType> = {
   indicadores_ocupacao_unidades: Building2,
   indicadores_pacientes: UserCheck,
   indicadores_previsao_receitas: Wallet,
-  indicadores_historico_receitas: History,
   indicadores_comparativo_sessoes: ArrowRightLeft,
 }
 

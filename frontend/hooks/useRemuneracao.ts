@@ -431,11 +431,16 @@ export function useRemunRP() {
   // dependências, porque o provider vive no layout do segmento: as duas abas
   // que usam a grade montam o mesmo componente de controles e disparariam duas
   // buscas de ~19 páginas cada.
+  //
+  // `periodoInicial` deixa uma aba pedir outro mês para essa primeira carga
+  // (Entregas PEP abre no mês vigente; as demais, no último mês fechado). Só
+  // vale se esta for a primeira carga da sessão: se outra aba já carregou um
+  // mês, a grade compartilhada é respeitada.
   const jaAutoCarregou = useRef(false)
-  const carregarGradeAuto = useCallback(() => {
+  const carregarGradeAuto = useCallback((periodoInicial?: PeriodoRP) => {
     if (jaAutoCarregou.current) return
     jaAutoCarregou.current = true
-    void carregarGradeDoBanco()
+    void carregarGradeDoBanco(periodoInicial)
   }, [carregarGradeDoBanco])
 
   // Normaliza/classifica a partir das linhas cruas + feriados atuais. Reage

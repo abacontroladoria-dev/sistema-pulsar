@@ -196,7 +196,7 @@ export function AlimentarBdReceitasShell() {
   return (
     <div className="flex flex-col gap-3">
       <p className="text-[11px] text-muted-foreground">
-        Lançamento manual de pagamentos/NF recebidos dos convênios, por paciente (ID) e mês de atendimento. É a fonte do "Efetivado" real mostrado em Previsão/Histórico de Receitas — sem nenhum lançamento aqui, todo o projetado de um paciente/mês aparece como "Indefinido (Glosa ou Receita)".
+        Lançamento manual de pagamentos/NF recebidos dos convênios, por paciente (ID) e mês de atendimento. É a fonte do "Pago" real mostrado em Previsão de Receitas e no Resumo Mensal de Receitas — sem nenhum lançamento aqui, todo o projetado de um paciente/mês aparece como "Indefinido (Glosa ou Receita)".
       </p>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -268,7 +268,7 @@ export function AlimentarBdReceitasShell() {
       {drawerAberto && (
         <Drawer
           title={form.id ? "Editar receita faturada" : "Nova receita faturada"}
-          subtitle="ID do paciente, mês de atendimento, NF e pagamento — sem status: o valor pago é o que define Efetivado."
+          subtitle="ID do paciente, mês de atendimento, NF e pagamento — sem status: o valor pago é o que define Pago."
           onClose={() => setDrawerAberto(false)}
           footer={
             <>

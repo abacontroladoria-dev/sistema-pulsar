@@ -123,7 +123,6 @@ const pathIconMap: Record<string, any> = {
   "/cronograma/indicadores?tab=unidades": Building2,
   "/cronograma/indicadores?tab=pacientes": UserCheck,
   "/cronograma/indicadores?tab=previsao-receitas": Wallet,
-  "/cronograma/indicadores?tab=historico-receitas": History,
   "/cronograma/indicadores?tab=alimentar-bd": Database,
   "/cronograma/indicadores?tab=comparativo-sessoes": ArrowRightLeft,
 }
@@ -638,7 +637,6 @@ export default function Sidebar() {
             canAccess("/cronograma/indicadores?tab=unidades") ||
             canAccess("/cronograma/indicadores?tab=pacientes") ||
             canAccess("/cronograma/indicadores?tab=previsao-receitas") ||
-            canAccess("/cronograma/indicadores?tab=historico-receitas") ||
             canAccess("/cronograma/indicadores?tab=alimentar-bd") ||
             canAccess("/cronograma/indicadores?tab=comparativo-sessoes")) && (
             <SidebarGroup title="Indicadores" icon={TrendingUp} defaultOpen={pathname === "/cronograma/indicadores"}>
@@ -653,9 +651,6 @@ export default function Sidebar() {
               )}
               {canAccess("/cronograma/indicadores?tab=previsao-receitas") && (
                 <MenuItem label="Previsão de Receitas" icon={Wallet} path="/cronograma/indicadores?tab=previsao-receitas" />
-              )}
-              {canAccess("/cronograma/indicadores?tab=historico-receitas") && (
-                <MenuItem label="Histórico de Receitas" icon={History} path="/cronograma/indicadores?tab=historico-receitas" />
               )}
               {canAccess("/cronograma/indicadores?tab=alimentar-bd") && (
                 <MenuItem label="Preencher Receitas Faturadas" icon={Database} path="/cronograma/indicadores?tab=alimentar-bd" />
