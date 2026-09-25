@@ -11,6 +11,7 @@ import { comoData, formatarDia, hojeLocal, segundaDe, somarDias } from '@/compon
 import { gravarAlvoReconciliacao } from '@/components/auditoria-assim/ponteReconciliacao'
 import {
   marcarAssinatura,
+  marcarFilipetaConferida,
   marcarRecepcaoAvisada,
   salvarObservacaoConferencia,
 } from '@/services/conferencia-guias.service'
@@ -61,9 +62,10 @@ const ABAS_RESUMO: { id: 'pendentes' | 'divergencias'; rotulo: string; ativo: st
     inativo: 'border-slate-200 bg-white text-rose-700 hover:bg-rose-50',
   },
 ]
-const ABAS_CONSULTA: { id: 'recepcao' | 'conferidas'; rotulo: string }[] = [
+const ABAS_CONSULTA: { id: 'recepcao' | 'conferidas' | 'todas'; rotulo: string }[] = [
   { id: 'recepcao', rotulo: 'Com a recepção' },
   { id: 'conferidas', rotulo: 'Prontas' },
+  { id: 'todas', rotulo: 'Todos' },
 ]
 
 const VAZIO: Record<Aba, string> = {
@@ -115,10 +117,12 @@ function rotuloLinhas(lista: SessaoConferencia[]) {
 
 const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro']
 
-/** "Esta semana", "Semana passada", "Há 3 semanas" — onde ela está no tempo. */
+/** "Esta semana", "Semana passada", "Há 3 semanas", "Próxima semana" — onde ela está no tempo. */
 function semanaRelativa(segunda: string) {
   const n = Math.round((comoData(segundaDe(hojeLocal())).getTime() - comoData(segunda).getTime()) / (7 * 86_400_000))
-  if (n <= 0) return 'Esta semana'
+  if (n === 0) return 'Esta semana'
+  if (n === -1) return 'Próxima semana'
+  if (n < 0) return `Daqui a ${-n} semanas`
   if (n === 1) return 'Semana passada'
   return `Há ${n} semanas`
 }
@@ -161,6 +165,17 @@ export default function ConferenciaGuiasShell() {
   }, [])
 
   const [aba, setAba] = useState<Aba>('pendentes')
+  // Semana futura não tem nada "a conferir": a fila abre em "Todos" ao entrar
+  // nela e volta a "A conferir" ao sair.
+  const [semanaDaAba, setSemanaDaAba] = useState(segunda)
+  if (semanaDaAba !== segunda) {
+    const corrente = segundaDe(hojeLocal())
+    const futura = segunda > corrente
+    const eraFutura = semanaDaAba > corrente
+    setSemanaDaAba(segunda)
+    if (futura && !eraFutura) setAba('todas')
+    else if (!futura && eraFutura) setAba('pendentes')
+  }
   const [busca, setBusca] = useState('')
   const [selecionadaId, setSelecionadaId] = useState<string | null>(null)
   const [ocupados, setOcupados] = useState<Set<string>>(new Set())
@@ -451,6 +466,35 @@ export default function ConferenciaGuiasShell() {
     [aplicarLocal, comOcupado, restaurar, escrever]
   )
 
+  // A filipeta: o mesmo registro da Conferência de Filipetas, por bloco_id.
+  const onFilipeta = useCallback(
+    (linha: LinhaFolha) => {
+      const s = linha.sessao
+      const blocoId = s.bloco_id
+      if (!blocoId) return
+      const id = idDaSessao(s)
+      const conferir = !s.filipeta_conferida
+      const anteriores = aplicarLocal(new Set([id]), {
+        filipeta_conferida: conferir,
+        filipeta_conferida_em: conferir ? new Date().toISOString() : null,
+      })
+      void comOcupado([id], async () => {
+        try {
+          const carimbo = await escrever(() => marcarFilipetaConferida(blocoId, conferir))
+          aplicarLocal(new Set([id]), {
+            filipeta_conferida: conferir,
+            filipeta_conferida_por_nome: conferir ? carimbo.nome : null,
+            filipeta_conferida_em: conferir ? carimbo.em : null,
+          })
+        } catch {
+          restaurar(anteriores)
+          toast.error('Não foi possível salvar a filipeta. Tente de novo.')
+        }
+      })
+    },
+    [aplicarLocal, comOcupado, restaurar, escrever]
+  )
+
   const onDetalhe = useCallback((linha: LinhaFolha) => setDetalheId(idDaSessao(linha.sessao)), [])
   const fecharDetalhe = useCallback(() => setDetalheId(null), [])
 
@@ -530,15 +574,7 @@ export default function ConferenciaGuiasShell() {
             </span>
             <button
               type="button"
-              onClick={() =>
-                setSegunda((s) => {
-                  // Nunca passa da semana corrente: não há o que conferir no futuro.
-                  const alvo = somarDias(s, 7)
-                  const atual = segundaDe(hojeLocal())
-                  return alvo > atual ? atual : alvo
-                })
-              }
-              disabled={semanaAtual}
+              onClick={() => setSegunda((s) => somarDias(s, 7))}
               aria-label="Próxima semana"
               title="Próxima semana"
               className="inline-flex h-12 w-10 shrink-0 items-center justify-center rounded-xl text-slate-700 transition hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-brand focus-visible:outline-none disabled:text-slate-300 disabled:hover:bg-transparent"
@@ -717,6 +753,7 @@ export default function ConferenciaGuiasShell() {
             onAssinatura={onAssinatura}
             onCursor={onCursor}
             onAviso={onAviso}
+            onFilipeta={onFilipeta}
             onDetalhe={onDetalhe}
             hrefEvolucoes={hrefEvolucoes}
             onAbrirReconciliacao={onAbrirReconciliacao}
@@ -735,6 +772,8 @@ export default function ConferenciaGuiasShell() {
         agora={agora}
         onFechar={fecharDetalhe}
         onSalvarObservacao={salvarObservacao}
+        onFilipeta={onFilipeta}
+        ocupado={linhaDetalhe ? ocupados.has(idDaSessao(linhaDetalhe.sessao)) : false}
         hrefConferenciaAssim={hrefConferenciaAssim}
         hrefEvolucoes={hrefEvolucoes}
         onAbrirReconciliacao={onAbrirReconciliacao}

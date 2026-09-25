@@ -146,6 +146,28 @@ export async function marcarRecepcaoAvisada(chave: ChaveSessao, avisada: boolean
   return { nome, em }
 }
 
+/**
+ * Marca a filipeta da sessão como conferida — no MESMO registro da Conferência
+ * de Filipetas (Auditoria ASSIM), por bloco_id, para as duas telas dizerem a
+ * mesma coisa. Mesmas colunas que `marcarTokenConferido` grava.
+ */
+export async function marcarFilipetaConferida(blocoId: string, conferida: boolean): Promise<Carimbo> {
+  const { id, nome } = await usuarioLogado()
+  const em = new Date().toISOString()
+  const { error } = await supabase.from('auditoria_token_conferencias').upsert(
+    {
+      bloco_id: blocoId,
+      conferido: conferida,
+      conferido_em: conferida ? em : null,
+      conferido_por: conferida ? id : null,
+      conferido_por_nome: conferida ? nome : null,
+    },
+    { onConflict: 'bloco_id' }
+  )
+  if (error) throw error
+  return { nome, em }
+}
+
 export async function salvarObservacaoConferencia(chave: ChaveSessao, texto: string): Promise<void> {
   const { error } = await supabase.from(TABELA).upsert(
     { ...chave, observacao: texto.trim() || null, atualizado_em: new Date().toISOString() },
