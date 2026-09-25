@@ -86,6 +86,25 @@ console.log('\n1. contrato da ferramenta (strict mode)')
     params.properties.origem.enum,
   )
   checar(params.properties.servico_de_interesse.type === 'array', 'servico_de_interesse é array (multi)')
+
+  // Regressão de 22/09/2026: `uniqueItems` no schema fez a OpenAI recusar toda
+  // requisição (HTTP 400) e a Maia parou de responder. Palavras-chave que o
+  // modo estrito não aceita não podem aparecer em nenhum nível do schema.
+  const NAO_SUPORTADAS = [
+    'uniqueItems', 'contains', 'minContains', 'maxContains', 'unevaluatedItems',
+    'minLength', 'maxLength',
+    'patternProperties', 'unevaluatedProperties', 'propertyNames', 'minProperties', 'maxProperties',
+  ]
+  const achadas: string[] = []
+  const varrer = (no: unknown, caminho: string) => {
+    if (typeof no !== 'object' || no === null) return
+    for (const [k, v] of Object.entries(no)) {
+      if (NAO_SUPORTADAS.includes(k) && caminho.split('.').at(-1) !== 'properties') achadas.push(`${caminho}.${k}`)
+      varrer(v, `${caminho}.${k}`)
+    }
+  }
+  varrer(params, 'parameters')
+  checar(achadas.length === 0, 'schema sem palavra-chave recusada pelo strict mode', achadas)
 }
 
 // ----------------------------------------------------------------------------
