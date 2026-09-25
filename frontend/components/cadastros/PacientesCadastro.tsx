@@ -1,6 +1,6 @@
 "use client"
 
-import { memo, useMemo, useState, useEffect, useRef } from "react"
+import { memo, useCallback, useMemo, useState, useEffect, useRef } from "react"
 import Link from "next/link"
 import { useHeader } from "@/contexts/HeaderContext"
 import { getFotoUrlAssinada } from "@/services/pacientesFoto.service"
@@ -19,6 +19,8 @@ import {
   X,
   GraduationCap,
   School,
+  LayoutGrid,
+  List,
 } from "lucide-react"
 import { HistoricoCadastrosModal } from "@/components/cadastros/historico/HistoricoCadastrosModal"
 import { ICONES, getTomAvatar, indiceIconeAvatar } from "@/lib/cadastros/avatarPastel"
@@ -72,6 +74,18 @@ const ESCOLAS: { valor: EscolaFiltro; rotulo: string }[] = [
   { valor: "pendente", rotulo: "Escola pendente" },
 ]
 
+// Grade para reconhecer rosto, lista para varrer muitos nomes de uma vez. A
+// escolha é conveniência de quem está no navegador — por isso localStorage, e
+// por isso a tela funciona igual se ele falhar (aba anônima, dados bloqueados).
+type ModoExibicao = "grade" | "lista"
+
+const CHAVE_MODO = "pacientes:modoExibicao"
+
+// Mesmas colunas no cabeçalho e em cada linha — definidas uma vez para os dois
+// nunca desalinharem.
+const COLUNAS_LISTA =
+  "md:grid-cols-[minmax(0,2.4fr)_minmax(0,0.7fr)_minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,0.7fr)]"
+
 /** "há 3 dias" / "há 2 meses" — a idade da resposta importa mais que a data. */
 function tempoDecorrido(iso: string): string {
   const dias = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000)
@@ -119,11 +133,41 @@ export function PacientesCadastro() {
     () => new Set(["respondida", "pendente"])
   )
   const [pagina, setPagina] = useState(1)
+  // `null` = "Todos". É um filtro a mais, não uma busca — por isso separado de
+  // `busca`: os dois convivem (marcar "M" e digitar "aria" acha só Maria).
+  const [letra, setLetra] = useState<string | null>(null)
+
+  // Nasce em "grade" (o que o servidor renderiza) e só depois lê a preferência
+  // salva — ler o localStorage no useState quebraria a hidratação.
+  const [modo, setModo] = useState<ModoExibicao>("grade")
+  useEffect(() => {
+    try {
+      const salvo = localStorage.getItem(CHAVE_MODO)
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- lê storage externo só após hidratar; no primeiro render o servidor não tem esse valor
+      if (salvo === "grade" || salvo === "lista") setModo(salvo)
+    } catch {
+      // Sem storage, fica no default.
+    }
+  }, [])
+
+  // Estável (useCallback) porque entra no header montado por efeito.
+  const trocarModo = useCallback((novo: ModoExibicao) => {
+    setModo(novo)
+    try {
+      localStorage.setItem(CHAVE_MODO, novo)
+    } catch {
+      // Só não lembra da escolha na próxima visita.
+    }
+  }, [])
 
   // A BUSCA roda sobre a lista inteira, não sobre a página. A paginação é
   // aplicada DEPOIS do filtro — por isso digitar um nome encontra o paciente
   // esteja ele na página 1 ou na 12.
-  const filtrados = useMemo(() => {
+  //
+  // Sem a letra ainda: a barra de A-Z precisa saber quais letras têm gente
+  // ANTES de se aplicar a si mesma, senão marcar "M" some com as outras opções
+  // possíveis da tela.
+  const filtradosSemLetra = useMemo(() => {
     let lista = pacientes.filter((p) => situacoes.has(p.ficticio ? "ficticio" : p.ativo ? "ativo" : "inativo"))
 
     // Complementar como o de Situação. Nenhuma marcada devolve lista vazia — é o
@@ -149,6 +193,23 @@ export function PacientesCadastro() {
       return idExibicao(p).includes(digitos)
     })
   }, [pacientes, busca, situacoes, escolas, fichasEscolares])
+
+  // Quais letras têm ao menos um paciente sob os filtros de cima — para a
+  // barra A-Z desabilitar (não esconder: a posição de cada letra é fixa) quem não
+  // vai achar nada.
+  const letrasDisponiveis = useMemo(() => {
+    const s = new Set<string>()
+    for (const p of filtradosSemLetra) {
+      const c = norm(p.nome).charAt(0).toUpperCase()
+      if (c >= "A" && c <= "Z") s.add(c)
+    }
+    return s
+  }, [filtradosSemLetra])
+
+  const filtrados = useMemo(() => {
+    if (!letra) return filtradosSemLetra
+    return filtradosSemLetra.filter((p) => norm(p.nome).toUpperCase().startsWith(letra))
+  }, [filtradosSemLetra, letra])
 
   // Contagem sobre os pacientes REAIS e visíveis pelo filtro de Situação, não
   // sobre a base inteira: fictício (Horário Administrativo, Notificação Prévia)
@@ -241,6 +302,7 @@ export function PacientesCadastro() {
             setPagina(1)
           }}
         />
+        <SeletorModo value={modo} onChange={trocarModo} />
         <button
           type="button"
           onClick={() => setVerHistorico(true)}
@@ -262,11 +324,12 @@ export function PacientesCadastro() {
     return () => setRightContent(null)
     // `contagemEscola` entra por identidade, e isso é estável: vem de useMemo,
     // então só troca quando a contagem realmente muda.
-  }, [buscaTexto, situacoes, escolas, contagemEscola, setRightContent])
+  }, [buscaTexto, situacoes, escolas, contagemEscola, modo, trocarModo, setRightContent])
 
   return (
     // Mais largo que as outras telas de cadastro: o grid precisa de espaço para
-    // as 4–5 colunas em tela larga sem espremer o card.
+    // as 4–5 colunas em tela larga sem espremer o card — e a lista, para as
+    // sete colunas sem truncar nome.
     <div className="mx-auto w-full max-w-7xl px-4 py-6">
       {error && (
         <div
@@ -278,20 +341,58 @@ export function PacientesCadastro() {
         </div>
       )}
 
+      <BarraAlfabeto
+        value={letra}
+        disponiveis={letrasDisponiveis}
+        onChange={(v) => {
+          setLetra(v)
+          setPagina(1)
+        }}
+      />
+
       {loading ? (
-        <GridEsqueleto />
+        modo === "lista" ? <ListaEsqueleto /> : <GridEsqueleto />
       ) : filtrados.length === 0 ? (
         <p className="rounded-xl border border-border bg-card px-4 py-16 text-center text-sm text-muted-foreground">
           {busca
             ? "Nenhum paciente encontrado para essa busca."
-            : escolas.size === 0
-              ? "Marque ao menos uma opção no filtro de Escola para ver pacientes."
-              : escolas.size < ESCOLAS.length
-                ? escolas.has("pendente")
-                  ? "Todos os pacientes deste recorte já informaram a escola."
-                  : "Nenhum paciente deste recorte informou a escola ainda."
-                : "Nenhum paciente cadastrado ainda."}
+            : letra
+              ? `Nenhum paciente com o nome começando em "${letra}" neste recorte.`
+              : escolas.size === 0
+                ? "Marque ao menos uma opção no filtro de Escola para ver pacientes."
+                : escolas.size < ESCOLAS.length
+                  ? escolas.has("pendente")
+                    ? "Todos os pacientes deste recorte já informaram a escola."
+                    : "Nenhum paciente deste recorte informou a escola ainda."
+                  : "Nenhum paciente cadastrado ainda."}
         </p>
+      ) : modo === "lista" ? (
+        <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+          <div
+            className={`hidden gap-4 border-b border-border bg-muted/50 px-4 py-2.5 text-xs font-semibold text-muted-foreground md:grid ${COLUNAS_LISTA}`}
+            aria-hidden="true"
+          >
+            <span>Paciente</span>
+            <span>ID</span>
+            <span>CPF</span>
+            <span>Nascimento</span>
+            <span>Celular</span>
+            <span>Escola</span>
+            <span>Situação</span>
+          </div>
+          <ul>
+            {daPagina.map((p) => (
+              <LinhaPaciente
+                key={p.id_paciente}
+                paciente={p}
+                // Resolvidos aqui pelo mesmo motivo do card: manter o `memo`.
+                telefoneResponsavel={telefonesResponsaveis.get(p.id_paciente) ?? null}
+                fichaEscolar={fichasEscolares.get(p.id_paciente) ?? null}
+                escolaIndisponivel={fichasEscolaresIndisponivel}
+              />
+            ))}
+          </ul>
+        </div>
       ) : (
         <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
           {daPagina.map((p) => (
@@ -313,15 +414,23 @@ export function PacientesCadastro() {
       )}
 
       {!loading && filtrados.length > 0 && (
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-          <p className="text-xs text-muted-foreground" aria-live="polite">
+        // Grid de 3 colunas no desktop — a contagem fica na 1ª (à esquerda,
+        // como sempre foi) e a paginação na 2ª, centralizada em relação à
+        // LINHA INTEIRA, não ao espaço que sobra ao lado da contagem. A 3ª
+        // coluna fica vazia de propósito, só para equilibrar a 1ª. No mobile
+        // os dois empilham centralizados.
+        <div className="mt-4 flex flex-col items-center gap-3 sm:grid sm:grid-cols-3 sm:items-center">
+          <p className="text-xs text-muted-foreground sm:justify-self-start" aria-live="polite">
             Mostrando {inicio + 1}–{Math.min(inicio + PACIENTES_POR_PAGINA, filtrados.length)} de{" "}
             {filtrados.length} {filtrados.length === 1 ? "paciente" : "pacientes"}
             {busca && ` (filtrado de ${pacientes.length})`}
           </p>
 
           {totalPaginas > 1 && (
-            <nav className="flex items-center gap-2" aria-label="Paginação de pacientes">
+            <nav
+              className="flex items-center gap-2 sm:col-start-2 sm:justify-self-center"
+              aria-label="Paginação de pacientes"
+            >
               <button
                 type="button"
                 onClick={() => irPara(paginaAtual - 1)}
@@ -556,6 +665,115 @@ function FiltroEscola({
   )
 }
 
+/** Grade | lista — o "Modo de exibição" da tela, dois botões só de ícone. */
+const LETRAS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("")
+
+/**
+ * Atalho para achar pela primeira letra do nome — útil quando se conhece o
+ * paciente mas não lembra o suficiente pra digitar na busca. Fica acima da
+ * grade OU da lista, então filtra os dois do mesmo jeito.
+ *
+ * Letra sem paciente no recorte atual fica desabilitada, com o mesmo tom das
+ * outras (a barra lê como um alfabeto inteiro, não como um mapa de buracos) — não
+ * some, porque sumir moveria toda letra depois dela, e o dedo que já mirou
+ * "P" acertaria "Q" sem querer.
+ */
+function BarraAlfabeto({
+  value,
+  disponiveis,
+  onChange,
+}: {
+  value: string | null
+  disponiveis: Set<string>
+  onChange: (v: string | null) => void
+}) {
+  return (
+    <div
+      role="group"
+      aria-label="Filtrar pela primeira letra do nome"
+      // Do tamanho das letras (w-fit) e centralizada. overflow-x: no celular as
+      // 27 opções não cabem numa tela de 360px;
+      // rolar de lado é melhor do que quebrar linha e virar um bloco confuso.
+      className="mx-auto mb-4 w-fit max-w-full overflow-x-auto rounded-md border border-border bg-card"
+    >
+      <div className="flex w-max divide-x divide-border text-xs font-semibold">
+        <button
+          type="button"
+          onClick={() => onChange(null)}
+          aria-pressed={value === null}
+          className={`shrink-0 px-3 py-1.5 ${
+            value === null ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"
+          } ${foco} focus-visible:ring-inset`}
+        >
+          Todos
+        </button>
+        {LETRAS.map((l) => {
+          const tem = disponiveis.has(l)
+          const ativa = value === l
+          return (
+            <button
+              key={l}
+              type="button"
+              onClick={() => onChange(l)}
+              disabled={!tem}
+              aria-pressed={ativa}
+              className={`w-7 shrink-0 py-1.5 transition-colors motion-reduce:transition-none ${
+                ativa
+                  ? "bg-primary/10 text-primary"
+                  : tem
+                    ? "text-foreground hover:bg-muted"
+                    : "cursor-not-allowed text-foreground"
+              } ${foco} focus-visible:ring-inset`}
+            >
+              {l}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function SeletorModo({
+  value,
+  onChange,
+}: {
+  value: ModoExibicao
+  onChange: (v: ModoExibicao) => void
+}) {
+  const opcoes = [
+    { valor: "grade" as const, icone: LayoutGrid, rotulo: "Exibir em grade" },
+    { valor: "lista" as const, icone: List, rotulo: "Exibir em lista" },
+  ]
+
+  return (
+    <div
+      role="group"
+      aria-label="Modo de exibição"
+      className="inline-flex shrink-0 rounded-md border border-border p-0.5"
+    >
+      {opcoes.map(({ valor, icone: Icone, rotulo }) => {
+        const ativo = value === valor
+        return (
+          <button
+            key={valor}
+            type="button"
+            onClick={() => onChange(valor)}
+            aria-pressed={ativo}
+            aria-label={rotulo}
+            title={rotulo}
+            className={`inline-flex h-8 w-8 items-center justify-center rounded ${
+              ativo ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+            } ${foco}`}
+          >
+            <Icone className="h-4 w-4" aria-hidden="true" />
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 const CardPaciente = memo(function CardPaciente({
   paciente,
   telefoneResponsavel,
@@ -622,6 +840,99 @@ const CardPaciente = memo(function CardPaciente({
     </li>
   )
 })
+
+/**
+ * Uma linha do modo lista. A linha inteira é o link, como o card inteiro é no
+ * modo grade.
+ *
+ * No celular só cabem foto, nome, ID/nascimento e situação — CPF, celular e
+ * escola ficam para a ficha, em vez de forçar rolagem lateral na tela das
+ * atendentes.
+ */
+const LinhaPaciente = memo(function LinhaPaciente({
+  paciente,
+  telefoneResponsavel,
+  fichaEscolar,
+  escolaIndisponivel,
+}: {
+  paciente: Paciente
+  telefoneResponsavel: string | null
+  fichaEscolar: ResumoEscolar | null
+  escolaIndisponivel: boolean
+}) {
+  const tom = getTomAvatar(paciente.id_paciente)
+  const nascimento = dataBR(paciente.data_nascimento)
+
+  return (
+    <li className="border-b border-border last:border-b-0">
+      {/* ring-inset: o contêiner tem overflow-hidden e cortaria o anel de foco. */}
+      <Link
+        href={`/cadastros/pacientes/${paciente.id_paciente}`}
+        className={`group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 px-4 py-3 text-sm transition-colors hover:bg-muted/50 motion-reduce:transition-none ${COLUNAS_LISTA} ${foco} focus-visible:ring-inset`}
+      >
+        <div className="flex min-w-0 items-center gap-3">
+          <AvatarLista paciente={paciente} tom={tom} tamanho="sm" />
+          <div className="min-w-0">
+            <div className="flex min-w-0 items-center gap-2">
+              <span
+                className="truncate font-medium text-primary group-hover:underline"
+                title={paciente.nome}
+              >
+                {paciente.nome}
+              </span>
+              {paciente.ficticio && (
+                <span className="inline-flex shrink-0 rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-600 dark:text-amber-400">
+                  Fictício
+                </span>
+              )}
+            </div>
+            <p className="mt-0.5 truncate text-xs text-muted-foreground md:hidden">
+              ID {idExibicao(paciente)} · {nascimento}
+            </p>
+          </div>
+        </div>
+        <span className="hidden tabular-nums text-foreground md:block">{idExibicao(paciente)}</span>
+        <span className="hidden truncate tabular-nums text-foreground md:block">
+          {paciente.cpf ? maskCpfCnpj(paciente.cpf) : "—"}
+        </span>
+        <span className="hidden tabular-nums text-foreground md:block">{nascimento}</span>
+        <span className="hidden truncate tabular-nums text-foreground md:block">
+          {telefoneResponsavel || "—"}
+        </span>
+        <span className="hidden min-w-0 md:block">
+          <CelulaEscola
+            ficha={fichaEscolar}
+            // Mesmas regras do selo no card: fictício não tem escola a informar,
+            // e sem leitura das fichas a célula não afirma nada.
+            aplicavel={!paciente.ficticio && !escolaIndisponivel}
+          />
+        </span>
+        <span className="justify-self-end md:justify-self-start">
+          <Situacao paciente={paciente} />
+        </span>
+      </Link>
+    </li>
+  )
+})
+
+function CelulaEscola({ ficha, aplicavel }: { ficha: ResumoEscolar | null; aplicavel: boolean }) {
+  if (!aplicavel) return <span className="text-muted-foreground">—</span>
+  if (!ficha) {
+    return (
+      <span className="block truncate text-xs font-medium text-amber-600 dark:text-amber-400">
+        Não informada
+      </span>
+    )
+  }
+  return (
+    <span
+      className="block truncate text-foreground"
+      title={`${ficha.escola_nome} — informada ${tempoDecorrido(ficha.criado_em)}`}
+    >
+      {ficha.escola_nome}
+    </span>
+  )
+}
 
 /**
  * A resposta da família na própria lista: qual escola, e há quanto tempo.
@@ -736,7 +1047,41 @@ function GridEsqueleto() {
   )
 }
 
-function AvatarLista({ paciente, tom }: { paciente: Paciente, tom: { bg: string, fg: string } }) {
+// Mesmo formato da linha real: foto, nome e o selo à direita.
+function ListaEsqueleto() {
+  return (
+    <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+      <div className="hidden h-9 border-b border-border bg-muted/50 md:block" />
+      {Array.from({ length: 8 }).map((_, i) => (
+        <div
+          key={i}
+          className="flex items-center gap-3 border-b border-border px-4 py-3 last:border-b-0"
+        >
+          <div className="h-10 w-10 shrink-0 animate-pulse rounded-full bg-muted" />
+          <div className="h-3 w-48 max-w-[50%] animate-pulse rounded bg-muted" />
+          <div className="ml-auto h-5 w-14 animate-pulse rounded-full bg-muted" />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function AvatarLista({
+  paciente,
+  tom,
+  tamanho = "lg",
+}: {
+  paciente: Paciente
+  tom: { bg: string; fg: string }
+  /** "lg" no card (96px), "sm" na linha da lista (40px). */
+  tamanho?: "lg" | "sm"
+}) {
+  const caixa =
+    tamanho === "sm"
+      ? "h-10 w-10 shrink-0"
+      : "h-24 w-24 transition-transform duration-200 ease-out group-hover:scale-105 motion-reduce:transform-none motion-reduce:transition-none"
+  const icone = tamanho === "sm" ? "h-5 w-5" : "h-11 w-11"
+
   const [url, setUrl] = useState<string | null>(null)
 
   useEffect(() => {
@@ -755,7 +1100,7 @@ function AvatarLista({ paciente, tom }: { paciente: Paciente, tom: { bg: string,
 
   if (url) {
     return (
-      <div className="flex h-24 w-24 overflow-hidden rounded-full border border-border bg-muted transition-transform duration-200 ease-out group-hover:scale-105 motion-reduce:transform-none motion-reduce:transition-none">
+      <div className={`flex overflow-hidden rounded-full border border-border bg-muted ${caixa}`}>
         <img src={url} alt={`Foto de ${paciente.nome}`} className="h-full w-full object-cover" />
       </div>
     )
@@ -768,11 +1113,11 @@ function AvatarLista({ paciente, tom }: { paciente: Paciente, tom: { bg: string,
 
   return (
     <span
-      className="flex h-24 w-24 items-center justify-center rounded-full transition-transform duration-200 ease-out group-hover:scale-105 motion-reduce:transform-none motion-reduce:transition-none"
+      className={`flex items-center justify-center rounded-full ${caixa}`}
       style={{ backgroundColor: tom.bg, color: tom.fg }}
       aria-hidden="true"
     >
-      <Icone className="h-11 w-11" strokeWidth={1.75} />
+      <Icone className={icone} strokeWidth={1.75} />
     </span>
   )
 }
