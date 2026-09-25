@@ -133,6 +133,9 @@ export function PacientesCadastro() {
     () => new Set(["respondida", "pendente"])
   )
   const [pagina, setPagina] = useState(1)
+  // `null` = "Todos". É um filtro a mais, não uma busca — por isso separado de
+  // `busca`: os dois convivem (marcar "M" e digitar "aria" acha só Maria).
+  const [letra, setLetra] = useState<string | null>(null)
 
   // Nasce em "grade" (o que o servidor renderiza) e só depois lê a preferência
   // salva — ler o localStorage no useState quebraria a hidratação.
@@ -160,7 +163,11 @@ export function PacientesCadastro() {
   // A BUSCA roda sobre a lista inteira, não sobre a página. A paginação é
   // aplicada DEPOIS do filtro — por isso digitar um nome encontra o paciente
   // esteja ele na página 1 ou na 12.
-  const filtrados = useMemo(() => {
+  //
+  // Sem a letra ainda: a barra de A-Z precisa saber quais letras têm gente
+  // ANTES de se aplicar a si mesma, senão marcar "M" some com as outras opções
+  // possíveis da tela.
+  const filtradosSemLetra = useMemo(() => {
     let lista = pacientes.filter((p) => situacoes.has(p.ficticio ? "ficticio" : p.ativo ? "ativo" : "inativo"))
 
     // Complementar como o de Situação. Nenhuma marcada devolve lista vazia — é o
@@ -186,6 +193,23 @@ export function PacientesCadastro() {
       return idExibicao(p).includes(digitos)
     })
   }, [pacientes, busca, situacoes, escolas, fichasEscolares])
+
+  // Quais letras têm ao menos um paciente sob os filtros de cima — para a
+  // barra A-Z desabilitar (não esconder: a posição de cada letra é fixa) quem não
+  // vai achar nada.
+  const letrasDisponiveis = useMemo(() => {
+    const s = new Set<string>()
+    for (const p of filtradosSemLetra) {
+      const c = norm(p.nome).charAt(0).toUpperCase()
+      if (c >= "A" && c <= "Z") s.add(c)
+    }
+    return s
+  }, [filtradosSemLetra])
+
+  const filtrados = useMemo(() => {
+    if (!letra) return filtradosSemLetra
+    return filtradosSemLetra.filter((p) => norm(p.nome).toUpperCase().startsWith(letra))
+  }, [filtradosSemLetra, letra])
 
   // Contagem sobre os pacientes REAIS e visíveis pelo filtro de Situação, não
   // sobre a base inteira: fictício (Horário Administrativo, Notificação Prévia)
@@ -317,19 +341,30 @@ export function PacientesCadastro() {
         </div>
       )}
 
+      <BarraAlfabeto
+        value={letra}
+        disponiveis={letrasDisponiveis}
+        onChange={(v) => {
+          setLetra(v)
+          setPagina(1)
+        }}
+      />
+
       {loading ? (
         modo === "lista" ? <ListaEsqueleto /> : <GridEsqueleto />
       ) : filtrados.length === 0 ? (
         <p className="rounded-xl border border-border bg-card px-4 py-16 text-center text-sm text-muted-foreground">
           {busca
             ? "Nenhum paciente encontrado para essa busca."
-            : escolas.size === 0
-              ? "Marque ao menos uma opção no filtro de Escola para ver pacientes."
-              : escolas.size < ESCOLAS.length
-                ? escolas.has("pendente")
-                  ? "Todos os pacientes deste recorte já informaram a escola."
-                  : "Nenhum paciente deste recorte informou a escola ainda."
-                : "Nenhum paciente cadastrado ainda."}
+            : letra
+              ? `Nenhum paciente com o nome começando em "${letra}" neste recorte.`
+              : escolas.size === 0
+                ? "Marque ao menos uma opção no filtro de Escola para ver pacientes."
+                : escolas.size < ESCOLAS.length
+                  ? escolas.has("pendente")
+                    ? "Todos os pacientes deste recorte já informaram a escola."
+                    : "Nenhum paciente deste recorte informou a escola ainda."
+                  : "Nenhum paciente cadastrado ainda."}
         </p>
       ) : modo === "lista" ? (
         <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
@@ -379,15 +414,23 @@ export function PacientesCadastro() {
       )}
 
       {!loading && filtrados.length > 0 && (
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-          <p className="text-xs text-muted-foreground" aria-live="polite">
+        // Grid de 3 colunas no desktop — a contagem fica na 1ª (à esquerda,
+        // como sempre foi) e a paginação na 2ª, centralizada em relação à
+        // LINHA INTEIRA, não ao espaço que sobra ao lado da contagem. A 3ª
+        // coluna fica vazia de propósito, só para equilibrar a 1ª. No mobile
+        // os dois empilham centralizados.
+        <div className="mt-4 flex flex-col items-center gap-3 sm:grid sm:grid-cols-3 sm:items-center">
+          <p className="text-xs text-muted-foreground sm:justify-self-start" aria-live="polite">
             Mostrando {inicio + 1}–{Math.min(inicio + PACIENTES_POR_PAGINA, filtrados.length)} de{" "}
             {filtrados.length} {filtrados.length === 1 ? "paciente" : "pacientes"}
             {busca && ` (filtrado de ${pacientes.length})`}
           </p>
 
           {totalPaginas > 1 && (
-            <nav className="flex items-center gap-2" aria-label="Paginação de pacientes">
+            <nav
+              className="flex items-center gap-2 sm:col-start-2 sm:justify-self-center"
+              aria-label="Paginação de pacientes"
+            >
               <button
                 type="button"
                 onClick={() => irPara(paginaAtual - 1)}
@@ -623,6 +666,74 @@ function FiltroEscola({
 }
 
 /** Grade | lista — o "Modo de exibição" da tela, dois botões só de ícone. */
+const LETRAS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("")
+
+/**
+ * Atalho para achar pela primeira letra do nome — útil quando se conhece o
+ * paciente mas não lembra o suficiente pra digitar na busca. Fica acima da
+ * grade OU da lista, então filtra os dois do mesmo jeito.
+ *
+ * Letra sem paciente no recorte atual fica desabilitada, com o mesmo tom das
+ * outras (a barra lê como um alfabeto inteiro, não como um mapa de buracos) — não
+ * some, porque sumir moveria toda letra depois dela, e o dedo que já mirou
+ * "P" acertaria "Q" sem querer.
+ */
+function BarraAlfabeto({
+  value,
+  disponiveis,
+  onChange,
+}: {
+  value: string | null
+  disponiveis: Set<string>
+  onChange: (v: string | null) => void
+}) {
+  return (
+    <div
+      role="group"
+      aria-label="Filtrar pela primeira letra do nome"
+      // Do tamanho das letras (w-fit) e centralizada. overflow-x: no celular as
+      // 27 opções não cabem numa tela de 360px;
+      // rolar de lado é melhor do que quebrar linha e virar um bloco confuso.
+      className="mx-auto mb-4 w-fit max-w-full overflow-x-auto rounded-md border border-border bg-card"
+    >
+      <div className="flex w-max divide-x divide-border text-xs font-semibold">
+        <button
+          type="button"
+          onClick={() => onChange(null)}
+          aria-pressed={value === null}
+          className={`shrink-0 px-3 py-1.5 ${
+            value === null ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"
+          } ${foco} focus-visible:ring-inset`}
+        >
+          Todos
+        </button>
+        {LETRAS.map((l) => {
+          const tem = disponiveis.has(l)
+          const ativa = value === l
+          return (
+            <button
+              key={l}
+              type="button"
+              onClick={() => onChange(l)}
+              disabled={!tem}
+              aria-pressed={ativa}
+              className={`w-7 shrink-0 py-1.5 transition-colors motion-reduce:transition-none ${
+                ativa
+                  ? "bg-primary/10 text-primary"
+                  : tem
+                    ? "text-foreground hover:bg-muted"
+                    : "cursor-not-allowed text-foreground"
+              } ${foco} focus-visible:ring-inset`}
+            >
+              {l}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 function SeletorModo({
   value,
   onChange,
