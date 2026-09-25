@@ -1,5 +1,7 @@
 'use client'
 
+import { useEffect, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { CalendarDays } from 'lucide-react'
 import { useAuditoriaAssim } from '@/hooks/useAuditoriaAssim'
 import { useFeriados } from '@/hooks/useFeriados'
@@ -22,6 +24,20 @@ type Props = {
  * definido pelo Shell, não aqui.
  */
 export default function AuditoriaTab({ onAnalisarSemana }: Props) {
+  // `?data=AAAA-MM-DD` — o link de outra tela (a Conferência de Guias) abre a
+  // Conferência já no dia da sessão. Lido uma vez e tirado da URL em seguida:
+  // um F5 ou um favorito não pode prender a tela num dia antigo. Valor torto é
+  // ignorado em silêncio e a tela abre em hoje, como abria.
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const [dataDoLink] = useState(() => {
+    const d = searchParams.get('data')
+    return d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : undefined
+  })
+  useEffect(() => {
+    if (searchParams.has('data')) router.replace('/auditoria-assim?tab=auditoria')
+  }, [searchParams, router])
+
   const {
     dados,
     kpis,
@@ -36,7 +52,7 @@ export default function AuditoriaTab({ onAnalisarSemana }: Props) {
     sortDir,
     setSort,
     carregarDados,
-  } = useAuditoriaAssim()
+  } = useAuditoriaAssim(dataDoLink)
 
   // Cache compartilhado em módulo — montar aqui não custa requisição além da
   // primeira do app inteiro.

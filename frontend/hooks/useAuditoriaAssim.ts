@@ -27,7 +27,12 @@ function getHojeLocal() {
 export type SortKey = keyof AuditoriaAssimItem
 export type SortDir = 'asc' | 'desc'
 
-export function useAuditoriaAssim() {
+/**
+ * `dataInicial` só decide o dia em que a tela ABRE (o `?data=` de um link vindo
+ * de outra tela). Depois disso a data é da tela, como sempre foi; sem ele, abre
+ * em hoje — o comportamento de antes.
+ */
+export function useAuditoriaAssim(dataInicial?: string) {
   const [rawDados, setRawDados] = useState<AuditoriaAssimItem[]>([])
   const [loading, setLoading] = useState(true)
   const [pagina, setPagina] = useState(1)
@@ -41,7 +46,7 @@ export function useAuditoriaAssim() {
   const [filters, setFiltersState] = useState<AuditoriaFilters>({
     paciente: '',
     situacao: '',
-    data: getHojeLocal(),
+    data: dataInicial ?? getHojeLocal(),
     horario_bloco: '',
   })
 

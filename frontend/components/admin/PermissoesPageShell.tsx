@@ -12,6 +12,7 @@ import {
   CalendarRange,
   ChevronDown,
   ClipboardList,
+  ClipboardPenLine,
   ClipboardPlus,
   FileText,
   KeyRound,
@@ -115,6 +116,8 @@ const MODULE_ICONS: Record<string, React.ElementType> = {
   gestao: Activity,
   escala_terapeutica: UserRound,
   auditoria_assim: ClipboardList,
+  // Mesmo ícone do MenuItem em Sidebar.tsx.
+  conferencia_guias: ClipboardPenLine,
   usuarios: Users,
   permissoes: KeyRound,
   // Mesmo ícone do MenuItem em Sidebar.tsx — o módulo tem de ser reconhecível

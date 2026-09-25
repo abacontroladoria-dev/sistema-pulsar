@@ -224,6 +224,16 @@ Two constraints, same as the other axes:
 
 **"Not paired" is not a state, so it gets no hue.** In the authorizations column, amber is reserved for the guia that is genuinely in the reconciliation queue — the one `get_guias_orfas` says needs a link. A guia that merely fails to touch any session of the *displayed* week (already triaged, paired to a neighbouring week, or captured by Pulsar itself) wears a slate pill reading *fora desta semana*. The distinction is the whole point: amber promises there is work to do, and a screen that promises work where there is none stops being read.
 
+##### Conferência de Guias: cor como "onde agir" (2026-09-24)
+
+No new hue. The surface has one action repeated on every row ("Assinar"), and ten filled blue buttons made the blue stop meaning anything. The dosage rule here:
+
+- **Filled blue once.** Only the current row, the one the keyboard is on, gets the filled `blue-600` (the `--sidebar-primary` blue the app actually uses). Every other row carries the same button outlined (`border-slate-200` / `text-blue-700`), and it fills on row hover. The filled button moves down the sheet as she marks rows.
+- **Status is tint + hairline** (`-50` / `-200` / `-700`): amber means waiting to be checked, emerald means signed, rose means did not sign. Filled means decided and outlined means an action. The words are always in the badge.
+- **The line-number circle wears the row state.** Rose is an open problem, sky is with the reception desk, emerald is checked, slate is still to check, and blue is the current row. Read down the left column, it replaces the old dot strip as the sheet in miniature. It is reinforcement only: the same state is always in text on the row.
+- **The patient card is white.** The initials sit on `blue-100`. Brand hue never tints the section.
+- The summary filter cards follow the KpiCards recipe with a `-300` border, not `-400`, because `-400` has no pair in the dark shim.
+
 ### Neutral
 
 - **Ink** (`#1e293b` / slate-800): Primary text. Therapist names, patient names, any primary label.

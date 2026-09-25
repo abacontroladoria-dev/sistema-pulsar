@@ -7,6 +7,7 @@ import { useHeader } from '@/contexts/HeaderContext'
 import AuditoriaTab from './tabs/AuditoriaTab'
 import ReconciliacaoTab from './tabs/ReconciliacaoTab'
 import type { AlvoAnalise } from './types'
+import { descartarAlvoReconciliacao, lerAlvoReconciliacao } from './ponteReconciliacao'
 
 const TABS = ['auditoria', 'reconciliacao'] as const
 type TabKey = (typeof TABS)[number]
@@ -63,7 +64,13 @@ export default function AuditoriaAssimShell() {
    * sobrevive à navegação. O preço, aceito: o pulo não é bookmarkável e se perde
    * no reload.
    */
-  const [alvoAnalise, setAlvoAnalise] = useState<AlvoAnalise | null>(null)
+  // A mesma ponte pode vir de OUTRA rota (a Conferência de Guias), por
+  // sessionStorage — só vale se a chegada é na aba de destino. Apagada depois de
+  // montar, chegue ou não a ser usada: um alvo velho não pode ressuscitar.
+  const [alvoAnalise, setAlvoAnalise] = useState<AlvoAnalise | null>(() =>
+    rawTab === 'reconciliacao' ? lerAlvoReconciliacao() : null
+  )
+  useEffect(() => descartarAlvoReconciliacao(), [])
 
   const irParaAnalise = useCallback(
     (alvo: AlvoAnalise) => {

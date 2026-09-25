@@ -10,7 +10,7 @@ export const roleDefaults: Record<string, string[]> = {
     'dashboard', 'atendimentos', 'autorizacoes_avulsas', 'gestao',
     'acompanhamento_laudos',
     'escala_terapeutica',
-    'auditoria_assim', 'usuarios', 'permissoes', 'api_integracao', 'cco',
+    'auditoria_assim', 'conferencia_guias', 'usuarios', 'permissoes', 'api_integracao', 'cco',
     'tv_avisos',
     'preauditoria', 'outros_convenios',
     'cronograma_solicitacoes', 'cronograma_saida_profissional', 'cronograma_ocupacao_paciente',
@@ -70,7 +70,10 @@ export const roleDefaults: Record<string, string[]> = {
   terapeutico: ['dashboard', 'escala_terapeutica', 'analise_tratativas', 'terapeutico_auditoria_evolucoes'],
   // O setor que opera o controle de insumos, junto com admin e diretoria
   // (definido pelo usuario em 2026-08-18). Ate entao tinha so o dashboard.
-  faturamento: ['dashboard', 'insumos'],
+  // `conferencia_guias` (2026-09-24): a conferência da folha de assinaturas da
+  // recepção é trabalho do faturamento. O mesmo papel está no ramo por papel da
+  // RLS e no porteiro da RPC (20260924200000).
+  faturamento: ['dashboard', 'insumos', 'conferencia_guias'],
   rp: [
     'dashboard', 'escala_terapeutica',
     'cadastros_feriados', 'cadastros_contratos', 'cadastros_taxas',
@@ -122,6 +125,11 @@ export const CODIGO_PARA_ROTAS: Record<string, string[]> = {
   acompanhamento_laudos: ['/acompanhamento/laudos'],
   escala_terapeutica: ['/central-terapeutas'],
   auditoria_assim: ['/auditoria-assim'],
+  // Código PRÓPRIO, e não uma rota dentro de `auditoria_assim`: quem confere a
+  // folha de assinaturas é o faturamento, que não tem (nem precisa ter) a
+  // Conferência ASSIM. A RLS de conferencia_guias_assinadas e a RPC
+  // get_conferencia_guias_dia exigem este mesmo código (20260924200000).
+  conferencia_guias: ['/conferencia-guias'],
   usuarios: ['/admin'],
   permissoes: ['/admin/permissoes'],
   // Documentação da API de integração de faltas (parceiros externos). Código

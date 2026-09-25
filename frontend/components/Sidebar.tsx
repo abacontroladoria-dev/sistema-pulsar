@@ -9,6 +9,7 @@ import {
   ShieldCheck,
   ClipboardList,
   ClipboardPlus,
+  ClipboardPenLine,
   ListChecks,
   Link2,
   CalendarDays,
@@ -87,6 +88,7 @@ const pathIconMap: Record<string, any> = {
   "/auditoria-assim": ClipboardList,
   "/auditoria-assim?tab=auditoria": ClipboardList,
   "/auditoria-assim?tab=reconciliacao": Link2,
+  "/conferencia-guias": ClipboardPenLine,
   "/cco": BarChart3,
   "/admin": ShieldCheck,
   "/admin/permissoes": KeyRound,
@@ -577,11 +579,11 @@ export default function Sidebar() {
           )}
 
           {/* Autorização */}
-          {(canAccess("/auditoria-assim") || canAccess("/cco")) && (
+          {(canAccess("/auditoria-assim") || canAccess("/cco") || canAccess("/conferencia-guias")) && (
             <SidebarGroup
               title="Autorização"
               icon={BriefcaseBusiness}
-              defaultOpen={pathname === "/cco" || pathname === "/auditoria-assim"}
+              defaultOpen={pathname === "/cco" || pathname === "/auditoria-assim" || pathname === "/conferencia-guias"}
             >
               {canAccess("/cco") && (
                 <MenuItem label="Conciliação ASSIM" icon={BarChart3} path="/cco" />
@@ -597,6 +599,9 @@ export default function Sidebar() {
               )}
               {canAccess("/auditoria-assim?tab=reconciliacao") && (
                 <MenuItem label="Reconciliação ASSIM" icon={Link2} path="/auditoria-assim?tab=reconciliacao" />
+              )}
+              {canAccess("/conferencia-guias") && (
+                <MenuItem label="Conferência de Guias" icon={ClipboardPenLine} path="/conferencia-guias" />
               )}
             </SidebarGroup>
           )}
