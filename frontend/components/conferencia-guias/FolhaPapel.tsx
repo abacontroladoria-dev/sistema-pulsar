@@ -117,12 +117,14 @@ type Props = AcoesFolha & {
   - estreita: linha | horário+terapia (filipeta, guia e evolução embaixo),
     status e ação numa segunda fileira;
   - a partir de 32rem: linha | horário | terapia | assinatura | ações;
+  - a partir de 42rem (1366 com a fila aberta): filipeta e guia ganham
+    coluna; só a evolução fica embaixo da terapia;
   - a partir de 54rem: todas as colunas, na ordem em que ela bate o papel —
     horário, terapia, filipeta, guia, evolução, assinatura, ações. A filipeta
     tem coluna própria: dentro da coluna da guia o chip vazava para a do lado.
 */
 const GRADE =
-  'grid grid-cols-[1.75rem_3rem_minmax(0,1fr)] items-center gap-x-2.5 gap-y-2 @lg/lista:grid-cols-[1.75rem_3rem_minmax(0,1fr)_7rem_8rem] @min-[54rem]/lista:grid-cols-[1.75rem_3rem_minmax(7rem,1fr)_7.25rem_7rem_7rem_7rem_8rem] @6xl/lista:grid-cols-[2rem_3.5rem_minmax(9rem,1fr)_8.5rem_8rem_8rem_8rem_8.5rem] @6xl/lista:gap-x-4'
+  'grid grid-cols-[1.75rem_3rem_minmax(0,1fr)] items-center gap-x-2.5 gap-y-2 @lg/lista:grid-cols-[1.75rem_3rem_minmax(0,1fr)_7rem_8rem] @min-[42rem]/lista:grid-cols-[1.75rem_2.75rem_minmax(6rem,1fr)_6.5rem_6.75rem_6.75rem_7.25rem] @min-[42rem]/lista:gap-x-2 @min-[54rem]/lista:grid-cols-[1.75rem_3rem_minmax(7rem,1fr)_7.25rem_7rem_7rem_7rem_8rem] @min-[54rem]/lista:gap-x-2.5 @6xl/lista:grid-cols-[2rem_3.5rem_minmax(9rem,1fr)_8.5rem_8rem_8rem_8rem_8.5rem] @6xl/lista:gap-x-4'
 
 function FolhaPapelBase({
   folha,
@@ -242,8 +244,8 @@ function FolhaPapelBase({
           <span>Linha</span>
           <span>Horário</span>
           <span>Terapia</span>
-          <span className="hidden @min-[54rem]/lista:block">Token/Filipeta</span>
-          <span className="hidden @min-[54rem]/lista:block">Guia</span>
+          <span className="hidden @min-[42rem]/lista:block">Token/Filipeta</span>
+          <span className="hidden @min-[42rem]/lista:block">Guia</span>
           <span className="hidden @min-[54rem]/lista:block">Evolução</span>
           <span>Assinatura</span>
           <span>Ações</span>
@@ -445,14 +447,20 @@ function LinhaSessao({ linha, atual, ...acoes }: AcoesFolha & { linha: LinhaFolh
             {s.terapias ?? '—'}
           </span>
           <span className="flex flex-wrap items-center gap-x-4 gap-y-1 @min-[54rem]/lista:hidden">
-            {filipeta && <IndicacaoFilipeta filipeta={filipeta} />}
-            <AutorizacaoDaLinha sessao={s} futura={linha.futura} />
+            {filipeta && (
+              <span className="contents @min-[42rem]/lista:hidden">
+                <IndicacaoFilipeta filipeta={filipeta} />
+              </span>
+            )}
+            <span className="contents @min-[42rem]/lista:hidden">
+              <AutorizacaoDaLinha sessao={s} futura={linha.futura} />
+            </span>
             {!linha.futura && <EvolucaoDaLinha sessao={s} />}
           </span>
         </button>
 
-        <div className="hidden @min-[54rem]/lista:block">{filipeta && <IndicacaoFilipeta filipeta={filipeta} />}</div>
-        <div className="hidden @min-[54rem]/lista:block">
+        <div className="hidden @min-[42rem]/lista:block">{filipeta && <IndicacaoFilipeta filipeta={filipeta} />}</div>
+        <div className="hidden @min-[42rem]/lista:block">
           <AutorizacaoDaLinha sessao={s} futura={linha.futura} />
         </div>
         <div className="hidden @min-[54rem]/lista:block">{!linha.futura && <EvolucaoDaLinha sessao={s} />}</div>
@@ -535,8 +543,8 @@ function LinhaFalta({ linha, onDetalhe }: { linha: LinhaFolha; onDetalhe: (linha
         </button>
 
         {/* Falta não tem filipeta, guia nem evolução: as colunas ficam vazias. */}
-        <span className="hidden @min-[54rem]/lista:block" />
-        <span className="hidden @min-[54rem]/lista:block" />
+        <span className="hidden @min-[42rem]/lista:block" />
+        <span className="hidden @min-[42rem]/lista:block" />
         <span className="hidden @min-[54rem]/lista:block" />
 
         <div className="col-span-3 col-start-1 flex items-center justify-between gap-2 pl-[2.375rem] @lg/lista:contents @lg/lista:pl-0">
@@ -861,11 +869,11 @@ function IndicacaoFilipeta({ filipeta }: { filipeta: NonNullable<ReturnType<type
     >
       <KeySquare size={13} strokeWidth={2.25} aria-hidden="true" className="shrink-0 text-slate-600" />
       <span className="truncate tabular-nums">
-        <span className="@min-[54rem]/lista:hidden">Filipeta </span>
+        <span className="@min-[42rem]/lista:hidden">Filipeta </span>
         {filipeta.numero ?? (
           <>
-            <span className="@min-[54rem]/lista:hidden">sem token</span>
-            <span className="hidden @min-[54rem]/lista:inline">Sem token</span>
+            <span className="@min-[42rem]/lista:hidden">sem token</span>
+            <span className="hidden @min-[42rem]/lista:inline">Sem token</span>
           </>
         )}
       </span>
