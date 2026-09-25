@@ -114,12 +114,15 @@ export function montarFerramentaRegistrarTags(porGrupo: Map<string, TagDefinitio
     required.push(grupo)
   }
 
+  // Sem `uniqueItems`: o modo estrito da OpenAI recusa a palavra-chave com
+  // HTTP 400 (invalid_function_parameters) e derruba o TURNO INTEIRO — a Maia
+  // escala toda conversa para humano como falha técnica. A deduplicação fica
+  // em interpretarArgumentosTags (`new Set`).
   for (const grupo of GRUPOS_MULTI) {
     const enumValues = enumDoGrupo(porGrupo, grupo)
     properties[grupo] = {
       type: 'array',
       items: { type: 'string', enum: enumValues },
-      uniqueItems: true,
       description: `${NOMES_GRUPO[grupo]} — pode ter mais de uma. Array vazio se nenhuma apareceu.`,
     }
     required.push(grupo)
