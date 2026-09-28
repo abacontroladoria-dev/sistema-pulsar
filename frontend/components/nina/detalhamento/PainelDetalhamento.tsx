@@ -126,14 +126,19 @@ export const PainelDetalhamento: React.FC<{
 
           {/* Primeiro de todos: QUEM é o paciente se lê antes de COMO o
               responsável está. Os dois vêm antes de canal, origem e tags, que
-              descrevem o cadastro do contato e não o atendimento. */}
-          <BlocoFicha
-            ficha={dados.ficha}
-            carregando={dados.carregandoFicha}
-            erro={dados.erroFicha}
-            // Sem contato não há ficha para corrigir — a rota é por contactId.
-            aoSalvar={contato ? acoes.salvarCampoFicha : undefined}
-          />
+              descrevem o cadastro do contato e não o atendimento.
+              Nos números Evolution a Maia não participa (ai_mode travado em
+              'off'), então a ficha que ela coleta só diria "a Maia ainda não
+              perguntou" para sempre — sai do painel. */}
+          {detalhe.channel?.provider !== 'evolution' && (
+            <BlocoFicha
+              ficha={dados.ficha}
+              carregando={dados.carregandoFicha}
+              erro={dados.erroFicha}
+              // Sem contato não há ficha para corrigir — a rota é por contactId.
+              aoSalvar={contato ? acoes.salvarCampoFicha : undefined}
+            />
+          )}
 
           {/* É o que se lê ANTES de escrever uma resposta, e não mais um campo
               da ficha: descreve o estado da pessoa agora. */}

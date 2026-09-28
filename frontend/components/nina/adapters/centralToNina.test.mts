@@ -91,7 +91,7 @@ function conv(over: Partial<Conversation> = {}): Conversation {
     contact_id: 'ct1', assigned_user_id: null, status: 'open',
     priority: null, intent: null, sentiment: null, ai_mode: 'off', tags: null,
     campanha: null, objecao: null,
-    last_message_at: '2026-09-01T13:32:42Z', last_read_at: null,
+    last_message_at: '2026-09-01T13:32:42Z', last_message_preview: null, last_read_at: null,
     resolved_at: null, archived_at: null,
     created_at: '2026-09-01T13:00:00Z', updated_at: '2026-09-01T13:32:42Z',
     ...over,
@@ -148,8 +148,16 @@ eq(semContato.contactPhone, '', 'telefone ausente → string vazia')
 eq(toUIConversation(conv(), contato({ avatar_url: null }), [], 'off').contactAvatar, '',
    'avatar null → vazio (a UI decide desenhar iniciais)')
 
-eq(toUIConversation(conv(), contato(), [], 'off').lastMessage, 'Sem mensagens',
+eq(toUIConversation(conv({ last_message_at: null }), contato(), [], 'off').lastMessage, 'Sem mensagens',
    'conversa sem mensagem não mostra "undefined"')
+// A lista não carrega histórico: a prévia vem da conversa. Antes disto toda
+// conversa da lista dizia "Sem mensagens", inclusive as que tinham conversa.
+eq(toUIConversation(conv({ last_message_preview: 'Resposta' }), contato(), [], 'off').lastMessage,
+   'Resposta', 'lista sem histórico usa a prévia da conversa')
+eq(toUIConversation(conv({ last_message_preview: null }), contato(), [], 'off').lastMessage, '',
+   'com mensagem mas sem prévia (só reação) não afirma "Sem mensagens"')
+eq(toUIConversation(conv({ last_message_preview: 'antiga' }), contato(), [msg({ body: 'nova' })], 'off').lastMessage,
+   'nova', 'com histórico em mãos, a última mensagem vence a prévia')
 
 // ---------------------------------------------------------------------------
 console.log('\n3. Rascunho da IA — o teste que mais importa')
