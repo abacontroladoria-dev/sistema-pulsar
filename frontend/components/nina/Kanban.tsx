@@ -1,878 +1,551 @@
-import React, { useEffect, useState, useRef } from 'react';
-import {
-  Plus, Search, MoreHorizontal, DollarSign, Loader2, CalendarClock, Tag, X,
-  Building, User, Calendar, ArrowRight, CheckCircle2, Circle,
-  FileText, Phone, Mail, Paperclip, Send, CheckSquare, Clock, Trash2, Settings, Brain, MessageSquare, Bot
-} from 'lucide-react';
-import { Button } from './Button';
-import { api } from '@/services/api';
-import { crmApi } from '@/services/crm/client';
-// Os tipos vêm do adapter, não de @/types: aqueles eram placeholders escritos
-// para o mock (priority sem 'urgent', por exemplo) e não descrevem o que o
-// banco devolve. DealUI/KanbanColumnUI são o formato real já traduzido.
-import type { DealUI, KanbanColumnUI, DealActivityUI } from '@/services/crm/adapter';
-import { TeamMember } from '@/types';
+'use client'
 
-type Deal = DealUI & Record<string, any>;
-type KanbanColumn = KanbanColumnUI & Record<string, any>;
-type DealActivity = DealActivityUI & Record<string, any>;
-import { CreateDealModal } from './CreateDealModal';
-import { LostReasonModal } from './LostReasonModal';
-import { PipelineSettingsModal } from './PipelineSettingsModal';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { toast } from 'sonner';
-import { useCompanySettings } from '@/hooks/nina/useCompanySettings';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Plus, Search, Loader2, ChevronDown, ChevronLeft, ChevronRight, AlertTriangle, PlugZap, Archive } from 'lucide-react'
+import { toast } from 'sonner'
+
+import { Button } from './Button'
+import { crmApi } from '@/services/crm/client'
+import type { DealUI, KanbanColumnUI } from '@/services/crm/adapter'
+import type { TagDefinition } from '@/modules/atendimento/types/central.types'
+import { CardNegocio } from './funil/CardNegocio'
+import { GavetaNegocio } from './funil/GavetaNegocio'
+import { MotivoModal } from './funil/MotivoModal'
+import { NovoNegocioModal } from './funil/NovoNegocioModal'
+import {
+  type FiltroTrilha,
+  separarEstagios, estagioVisivel, negocioVisivel, podeReceber, buscaCasa, ROTULO_TRILHA,
+} from './funil/funil'
+
+// ============================================================================
+// Funil de atendimento (/connect/pipeline)
+//
+// O funil é o da diretoria (migration 20260930100000): 11 posições em
+// andamento viram colunas; as 6 que encerram o negócio (Iniciou tratamento +
+// 5 perdas) ficam numa área "Encerrados" à direita, que também é alvo de
+// soltura. 17 colunas lado a lado não caberiam em tela nenhuma, e o trabalho
+// do dia é o que está em andamento.
+//
+// Mover (arrastando o card ou escolhendo na gaveta) passa sempre por `pedirMovimento`:
+// é ali que a trilha é conferida e o motivo é pedido. Um caminho só, para as
+// duas formas de mover não divergirem — o servidor confere as mesmas regras
+// de novo (DealService.moverParaEstagio).
+//
+// Atualização por polling de 15s, não Realtime: nenhuma tabela do `crm` está
+// na publicação de Realtime (ver components/central/useCentralData.ts).
+// ============================================================================
+
+interface Usuario { id: string; nome: string }
+
+type Estado =
+  | { tipo: 'carregando' }
+  | { tipo: 'indisponivel'; mensagem: string }
+  | { tipo: 'erro'; mensagem: string }
+  | { tipo: 'pronto' }
+
+const DIAS_ENCERRADOS = 30
 
 const Kanban: React.FC = () => {
-  const { sdrName } = useCompanySettings();
-  const [deals, setDeals] = useState<Deal[]>([]);
-  const [stages, setStages] = useState<KanbanColumn[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
-  const [activeTab, setActiveTab] = useState<'note' | 'activity' | 'email'>('note');
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [isLostModalOpen, setIsLostModalOpen] = useState(false);
-  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
-  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
-  const [activities, setActivities] = useState<DealActivity[]>([]);
-  const [loadingActivities, setLoadingActivities] = useState(false);
-  const [newActivityTitle, setNewActivityTitle] = useState('');
-  const [newActivityDescription, setNewActivityDescription] = useState('');
-  const [conversationMessages, setConversationMessages] = useState<any[]>([]);
-  const [loadingMessages, setLoadingMessages] = useState(false);
+  const [estado, setEstado]       = useState<Estado>({ tipo: 'carregando' })
+  const [estagios, setEstagios]   = useState<KanbanColumnUI[]>([])
+  const [negocios, setNegocios]   = useState<DealUI[]>([])
+  const [usuarios, setUsuarios]   = useState<Usuario[]>([])
+  const [catalogoTags, setCatalogoTags] = useState<TagDefinition[]>([])
+  const [busca, setBusca]         = useState('')
+  const [trilha, setTrilha]       = useState<FiltroTrilha>('todas')
+  const [abertoId, setAbertoId]   = useState<string | null>(null)
+  const [arrastando, setArrastando] = useState<DealUI | null>(null)
+  const [alvo, setAlvo]           = useState<string | null>(null)
+  const [pendente, setPendente]   = useState<{ negocio: DealUI; estagio: KanbanColumnUI } | null>(null)
+  const [novoAberto, setNovoAberto] = useState(false)
+  const [expandidos, setExpandidos] = useState<Record<string, boolean>>({})
 
-  const dragItem = useRef<string | null>(null);
+  // --------------------------------------------------------------------------
+  // Carga
+  // --------------------------------------------------------------------------
 
-  const handleDealCreated = async () => {
-    // Reload deals after creation
-    const data = await crmApi.fetchPipeline();
-    setDeals(data);
-  };
+  const recarregarNegocios = useCallback(async () => {
+    setNegocios(await crmApi.fetchPipeline(DIAS_ENCERRADOS))
+  }, [])
 
-  useEffect(() => {
-    const loadStages = async () => {
-      try {
-        const data = await crmApi.fetchPipelineStages();
-        setStages(data);
-      } catch (error) {
-        console.error("Erro ao carregar etapas", error);
-      }
-    };
-    loadStages();
-
-    const loadPipeline = async () => {
-      try {
-        const data = await crmApi.fetchPipeline();
-        setDeals(data);
-      } catch (error) {
-        console.error("Erro ao carregar pipeline", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadPipeline();
-
-    // Load team members
-    const loadTeamMembers = async () => {
-      try {
-        const members = await api.fetchTeam();
-        setTeamMembers(members);
-      } catch (error) {
-        console.error("Erro ao carregar membros da equipe", error);
-      }
-    };
-    loadTeamMembers();
-
-    // Real-time subscription for deals and stages
-    // ------------------------------------------------------------------
-    // Atualização por polling, não por Realtime.
-    //
-    // O código anterior assinava postgres_changes em `public.deals` e
-    // `public.pipeline_stages` — tabelas que não existem: o CRM vive no
-    // schema `crm`. A assinatura nunca disparava, e como o Realtime falha
-    // em silêncio quando a tabela não está na publicação, isso passava
-    // por "tempo real funcionando".
-    //
-    // Mesmo com o schema certo não funcionaria: nenhuma tabela do CRM está
-    // na publicação de Realtime, pelo mesmo motivo documentado em
-    // components/central/useCentralData.ts para o schema central.
-    //
-    // 15s (e não os 5s da Central) porque o Kanban é uma tela de trabalho
-    // deliberado, não um inbox: cards não mudam a cada segundo.
-    // ------------------------------------------------------------------
-    const intervalo = setInterval(async () => {
-      // Silencioso de propósito: uma falha de rede no polling não deve
-      // gerar toast a cada 15s. O erro real aparece quando o usuário age.
-      try {
-        const [novosDeals, novosStages] = await Promise.all([
-          crmApi.fetchPipeline(),
-          crmApi.fetchPipelineStages(),
-        ]);
-        setDeals(novosDeals);
-        setStages(novosStages);
-      } catch {
-        // mantém a tela com os dados anteriores
-      }
-    }, 15000);
-
-    return () => clearInterval(intervalo);
-  }, []);
-
-  // Load activities when deal is selected
-  useEffect(() => {
-    if (selectedDeal) {
-      loadActivities();
-    }
-  }, [selectedDeal?.id]);
-
-  // Load conversation messages when deal is selected
-  useEffect(() => {
-    if (selectedDeal?.conversationId) {
-      loadConversationMessages();
-    } else {
-      setConversationMessages([]);
-    }
-  }, [selectedDeal?.conversationId]);
-
-  const loadConversationMessages = async () => {
-    if (!selectedDeal?.conversationId) return;
-    setLoadingMessages(true);
+  const carregar = useCallback(async (silencioso = false) => {
     try {
-      // Mensagens vêm da Central (central.messages), não do CRM — o deal só
-      // guarda o conversation_id que aponta para lá. A rota devolve
-      // created_at DESC; a UI mostra em ordem cronológica, daí o reverse.
-      const resposta = await fetch(
-        `/api/central/messages?conversationId=${selectedDeal.conversationId}&limit=15`
-      );
-      const corpo = await resposta.json();
-      if (!resposta.ok) throw new Error(corpo?.error?.message ?? 'Falha ao carregar mensagens');
-      setConversationMessages((corpo?.data ?? []).slice().reverse());
-    } catch (error) {
-      console.error("Erro ao carregar mensagens", error);
+      const [st, ng] = await Promise.all([
+        crmApi.fetchPipelineStages(),
+        crmApi.fetchPipeline(DIAS_ENCERRADOS),
+      ])
+      setEstagios(st)
+      setNegocios(ng)
+      setEstado({ tipo: 'pronto' })
+    } catch (err) {
+      // No polling a falha fica calada: a tela mantém o que tinha, e o erro
+      // real aparece quando alguém age.
+      if (silencioso) return
+      const e = err as Error & { code?: string }
+      setEstado(e.code === 'CRM_NAO_HABILITADO'
+        ? { tipo: 'indisponivel', mensagem: e.message }
+        : { tipo: 'erro', mensagem: e.message || 'Não foi possível carregar o funil.' })
+    }
+  }, [])
+
+  useEffect(() => {
+    carregar()
+    const intervalo = setInterval(() => carregar(true), 15_000)
+    return () => clearInterval(intervalo)
+  }, [carregar])
+
+  useEffect(() => {
+    // Mesmas rotas do painel de detalhamento da inbox: gente da Central, com
+    // nome, e o catálogo de tags (a taxonomia da planilha).
+    fetch('/api/central/users/')
+      .then(r => r.json())
+      .then(c => setUsuarios(c?.data ?? []))
+      .catch(() => { /* o seletor de responsável fica vazio */ })
+    fetch('/api/central/tag-definitions/')
+      .then(r => r.json())
+      .then(c => setCatalogoTags(c?.data ?? []))
+      .catch(() => { /* as tags ficam só com a chave crua */ })
+  }, [])
+
+  // --------------------------------------------------------------------------
+  // Movimento
+  // --------------------------------------------------------------------------
+
+  const mover = useCallback(async (negocio: DealUI, estagio: KanbanColumnUI, motivo: string | null) => {
+    // Otimista: o card vai já, com o status que a posição impõe.
+    setNegocios(atual => atual.map(n => n.id !== negocio.id ? n : {
+      ...n,
+      stageId:        estagio.id,
+      status:         estagio.autoWin ? 'won' : estagio.autoLose ? 'lost' : 'open',
+      motivo,
+      stageChangedAt: new Date().toISOString(),
+      trilha:         n.trilha ?? (estagio.trilha !== 'ambas' ? estagio.trilha : null),
+    }))
+    try {
+      await crmApi.moveDealStage(negocio.id, estagio.id, motivo)
+      if (estagio.autoWin)  toast.success(`${negocio.contactName ?? negocio.title}: iniciou tratamento`)
+    } catch (err) {
+      toast.error((err as Error).message || 'Não foi possível mover o card')
     } finally {
-      setLoadingMessages(false);
+      // O servidor é a verdade: a resposta do move não traz o contato
+      // embutido, então relê a lista em vez de mesclar.
+      recarregarNegocios().catch(() => {})
     }
-  };
+  }, [recarregarNegocios])
 
-  const loadActivities = async () => {
-    if (!selectedDeal) return;
-    setLoadingActivities(true);
+  const pedirMovimento = useCallback((negocio: DealUI, estagio: KanbanColumnUI) => {
+    if (negocio.stageId === estagio.id) return
+    if (!podeReceber(estagio, negocio)) {
+      toast.error(`“${estagio.title}” é da trilha ${ROTULO_TRILHA[estagio.trilha as 'particular' | 'convenio']}. Troque a trilha do negócio antes.`)
+      return
+    }
+    // Encerrar sempre abre o modal (motivo opcional nas perdas sem
+    // obrigação): fechar um negócio é decisão, não arrasto acidental.
+    if (estagio.exigeMotivo || estagio.autoLose) {
+      setPendente({ negocio, estagio })
+      return
+    }
+    mover(negocio, estagio, null)
+  }, [mover])
+
+  const atualizar = useCallback(async (id: string, patch: Record<string, unknown>) => {
+    setNegocios(atual => atual.map(n => n.id !== id ? n : {
+      ...n,
+      ...('trilha'     in patch ? { trilha:  patch.trilha as DealUI['trilha'] } : {}),
+      ...('resgate'    in patch ? { resgate: patch.resgate as boolean } : {}),
+      ...('assignedTo' in patch ? { ownerId: patch.assignedTo as string | null } : {}),
+    }))
     try {
-      const data = await crmApi.fetchDealActivities(selectedDeal.id);
-      setActivities(data);
-    } catch (error) {
-      console.error("Erro ao carregar atividades", error);
+      await crmApi.updateDeal(id, patch)
+    } catch (err) {
+      toast.error((err as Error).message || 'Não foi possível salvar')
     } finally {
-      setLoadingActivities(false);
+      recarregarNegocios().catch(() => {})
     }
-  };
+  }, [recarregarNegocios])
 
-  const handleMarkWon = async () => {
-    if (!selectedDeal) return;
-    try {
-      await crmApi.markDealWon(selectedDeal.id);
-      toast.success("Deal marcado como ganho! Parabéns pelo fechamento!");
-      setSelectedDeal(null);
-    } catch (error) {
-      console.error("Erro ao marcar deal como ganho", error);
-      toast.error("Não foi possível marcar como ganho");
+  // --------------------------------------------------------------------------
+  // Derivados
+  // --------------------------------------------------------------------------
+
+  const { andamento, encerrados } = useMemo(() => separarEstagios(estagios), [estagios])
+  const colunas   = andamento.filter(e => estagioVisivel(e, trilha))
+  const visiveis  = negocios.filter(n => negocioVisivel(n, trilha) && buscaCasa(n, busca))
+  const porEstagio = useMemo(() => {
+    const mapa = new Map<string, DealUI[]>()
+    for (const n of visiveis) {
+      const lista = mapa.get(n.stageId) ?? []
+      lista.push(n)
+      mapa.set(n.stageId, lista)
     }
-  };
-
-  const handleMarkLost = async (reason: string) => {
-    if (!selectedDeal) return;
-    try {
-      await crmApi.markDealLost(selectedDeal.id, reason);
-      toast.success("Deal marcado como perdido. Motivo registrado.");
-      setSelectedDeal(null);
-    } catch (error) {
-      console.error("Erro ao marcar deal como perdido", error);
-      toast.error("Não foi possível marcar como perdido");
+    // Mais antigo na posição primeiro: é quem está esperando há mais tempo.
+    for (const lista of mapa.values()) {
+      lista.sort((a, b) => (a.stageChangedAt ?? '').localeCompare(b.stageChangedAt ?? ''))
     }
-  };
+    return mapa
+  }, [visiveis])
 
-  const handleOwnerChange = async (ownerId: string) => {
-    if (!selectedDeal) return;
-    try {
-      await crmApi.updateDeal(selectedDeal.id, { assignedTo: ownerId });
-      const member = teamMembers.find(m => m.id === ownerId);
-      setSelectedDeal({ ...selectedDeal, ownerId, ownerName: member?.name });
-      toast.success("Proprietário atualizado");
-    } catch (error) {
-      console.error("Erro ao atualizar proprietário", error);
-      toast.error("Não foi possível atualizar proprietário");
-    }
-  };
+  // --------------------------------------------------------------------------
+  // Rolagem horizontal do board (setas nas bordas)
+  // --------------------------------------------------------------------------
 
-  const handleCreateActivity = async () => {
-    if (!selectedDeal || !newActivityTitle.trim()) return;
-    try {
-      await crmApi.createDealActivity(selectedDeal.id, {
-        type: activeTab === 'activity' ? 'call' : activeTab === 'email' ? 'email' : 'note',
-        title: newActivityTitle,
-        description: newActivityDescription,
-      });
-      setNewActivityTitle('');
-      setNewActivityDescription('');
-      loadActivities();
-      toast.success("Atividade criada");
-    } catch (error) {
-      console.error("Erro ao criar atividade", error);
-      toast.error("Não foi possível criar atividade");
-    }
-  };
+  const trilho = useRef<HTMLDivElement>(null)
+  const [podeRolar, setPodeRolar] = useState({ esquerda: false, direita: false })
 
-  // ---------------------------------------------------------------------
-  // Concluir tarefa e excluir atividade ainda não existem no backend.
-  //
-  // crm.deal_activities não tem coluna de conclusão — o `isCompleted` que a
-  // UI usava era invenção do mock. E a timeline é append-only por desenho
-  // ("appended chronologically", 20260701020100): apagar um evento apagaria
-  // auditoria.
-  //
-  // Antes estas duas chamavam mocks que retornavam sucesso sem gravar nada:
-  // a linha sumia da tela e voltava no refresh seguinte. Avisar é melhor do
-  // que fingir — quando a coluna existir, é aqui que se liga.
-  // ---------------------------------------------------------------------
-  const handleToggleActivityComplete = async (_activityId: string, _isCompleted: boolean) => {
-    toast.info("Concluir tarefa ainda não está disponível");
-  };
+  const medirRolagem = useCallback(() => {
+    const el = trilho.current
+    if (!el) return
+    // 2px de folga: zoom fracionário deixa scrollLeft em 0,5 e a seta não
+    // sumiria nunca na ponta.
+    const esquerda = el.scrollLeft > 2
+    const direita  = el.scrollLeft + el.clientWidth < el.scrollWidth - 2
+    setPodeRolar(p => (p.esquerda === esquerda && p.direita === direita) ? p : { esquerda, direita })
+  }, [])
 
-  const handleDeleteActivity = async (_activityId: string) => {
-    toast.info("A timeline do negócio é um histórico e não permite exclusão");
-  };
+  // Remede quando a janela muda de largura e quando o número de colunas muda
+  // (filtro de trilha esconde/mostra posições).
+  useEffect(() => {
+    const el = trilho.current
+    if (!el) return
+    medirRolagem()
+    const obs = new ResizeObserver(medirRolagem)
+    obs.observe(el)
+    if (el.firstElementChild) obs.observe(el.firstElementChild)
+    return () => obs.disconnect()
+  }, [medirRolagem, estado.tipo, trilha, estagios.length])
 
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
-  };
-
-  const onDragStart = (e: React.DragEvent, dealId: string) => {
-    dragItem.current = dealId;
-    e.dataTransfer.effectAllowed = "move";
-    (e.target as HTMLElement).style.opacity = '0.5';
-  };
-
-  const onDragEnd = (e: React.DragEvent) => {
-    dragItem.current = null;
-    (e.target as HTMLElement).style.opacity = '1';
-  };
-
-  const onDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-  };
-
-  const onDrop = async (e: React.DragEvent, targetStageId: string) => {
-    e.preventDefault();
-    const dealId = dragItem.current;
-    if (!dealId) return;
-
-    // Optimistic update
-    const updatedDeals = deals.map(deal => {
-      if (deal.id === dealId) {
-        return { ...deal, stageId: targetStageId };
-      }
-      return deal;
-    });
-    setDeals(updatedDeals);
-
-    // Persist to database
-    try {
-      await crmApi.moveDealStage(dealId, targetStageId);
-    } catch (error) {
-      console.error('Error moving deal:', error);
-      // Revert on error
-      const data = await crmApi.fetchPipeline();
-      setDeals(data);
-    }
-  };
-
-  const filteredDeals = deals.filter(deal =>
-    deal.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    deal.company.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  const getPriorityColor = (priority: string) => {
-      switch(priority) {
-          case 'high': return 'bg-red-500/10 text-red-400 border-red-500/20';
-          case 'medium': return 'bg-amber-500/10 text-amber-400 border-amber-500/20';
-          default: return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
-      }
-  };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-cyan-500" />
-      </div>
-    );
+  // Uma "página" = o que cabe na tela menos uma coluna, para a última coluna
+  // vista continuar à vista como referência.
+  const rolar = (sentido: 1 | -1) => {
+    const el = trilho.current
+    if (!el) return
+    const passo = Math.max(el.clientWidth - 300, 300)
+    el.scrollBy({ left: sentido * passo, behavior: 'smooth' })
   }
 
-  return (
-    <div className="h-full flex flex-col bg-background text-foreground p-6 overflow-hidden relative">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8 gap-4 flex-shrink-0">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight text-foreground">Pipeline de Vendas</h2>
-          <p className="text-sm text-muted-foreground mt-1">Gerencie oportunidades e acompanhe o fluxo de receita.</p>
-        </div>
-        <div className="flex gap-3 w-full sm:w-auto">
-          <div className="relative flex-1 sm:w-64">
-             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/70" />
-             <input
-                type="text"
-                placeholder="Buscar oportunidade..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 bg-card border border-border rounded-lg text-sm text-foreground focus:ring-1 focus:ring-cyan-500 outline-none placeholder:text-muted-foreground/70"
-             />
-          </div>
-          <Button
-            variant="outline"
-            className="border-border text-muted-foreground hover:bg-muted"
-            onClick={() => setIsSettingsModalOpen(true)}
-          >
-            <Settings className="w-4 h-4 mr-2" />
-            Configurar
-          </Button>
-          <Button className="shadow-lg shadow-cyan-500/20" onClick={() => setIsCreateModalOpen(true)}>
-            <Plus className="w-4 h-4 mr-2" />
-            Novo Deal
-          </Button>
-        </div>
+  const nomeDoUsuario = (id: string | null) => (id ? usuarios.find(u => u.id === id)?.nome ?? null : null)
+  const slugDe = (id: string) => estagios.find(e => e.id === id)?.slug ?? null
+  const aberto = abertoId ? negocios.find(n => n.id === abertoId) ?? null : null
+
+  const emAndamento = negocios.filter(n => n.status === 'open').length
+  const fechados    = negocios.length - emAndamento
+
+  // --------------------------------------------------------------------------
+  // Arrastar e soltar
+  // --------------------------------------------------------------------------
+
+  const propsDeAlvo = (estagio: KanbanColumnUI) => {
+    const recusa = arrastando !== null && !podeReceber(estagio, arrastando)
+    return {
+      recusa,
+      destacado: alvo === estagio.id && !recusa,
+      handlers: {
+        onDragOver: (e: React.DragEvent) => {
+          if (recusa) return
+          e.preventDefault()
+          e.dataTransfer.dropEffect = 'move'
+          if (alvo !== estagio.id) setAlvo(estagio.id)
+        },
+        onDragLeave: (e: React.DragEvent) => {
+          if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) setAlvo(null)
+        },
+        onDrop: (e: React.DragEvent) => {
+          e.preventDefault()
+          setAlvo(null)
+          const negocio = arrastando
+          setArrastando(null)
+          if (negocio) pedirMovimento(negocio, estagio)
+        },
+      },
+    }
+  }
+
+  const card = (n: DealUI) => (
+    <CardNegocio
+      key={n.id}
+      negocio={n}
+      slugEstagio={slugDe(n.stageId)}
+      responsavel={nomeDoUsuario(n.ownerId)}
+      arrastavel
+      aoAbrir={() => setAbertoId(n.id)}
+      aoArrastar={(e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', n.id); setArrastando(n) }}
+      aoSoltar={() => { setArrastando(null); setAlvo(null) }}
+    />
+  )
+
+  // Encerrados — alvo de soltura para fechar, e o que fechou há pouco. Função
+  // e não componente porque é desenhado em dois lugares (painel lateral no
+  // desktop, última coluna no celular) com o mesmo estado do board.
+  const painelEncerrados = (classe: string) => (
+    <aside
+      aria-label="Encerrados"
+      className={`${classe} h-full flex-col rounded-xl border border-border bg-muted/40`}
+    >
+      <div className="flex h-14 shrink-0 items-center gap-2 border-b border-border px-3">
+        <Archive className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+        <h2 className="text-sm font-semibold text-foreground">Encerrados</h2>
+        <span className="ml-auto text-[11px] text-muted-foreground">últimos {DIAS_ENCERRADOS} dias</span>
       </div>
-
-      {/* Board Scroll Container */}
-      <div className="flex-1 overflow-x-auto overflow-y-hidden pb-4">
-        <div className="flex h-full gap-4 min-w-max">
-          {stages.map((column) => {
-            const columnDeals = filteredDeals.filter(d => d.stageId === column.id);
-            const totalValue = columnDeals.reduce((acc, curr) => acc + curr.value, 0);
-            const isWonColumn = column.title === 'Ganho';
-            const isLostColumn = column.title === 'Perdido';
-
-            return (
-              <div
-                key={column.id}
-                className={`w-72 flex flex-col h-full rounded-xl border backdrop-blur-sm ${
-                  isWonColumn
-                    ? 'bg-emerald-950/40 border-emerald-700/50'
-                    : isLostColumn
-                      ? 'bg-red-950/40 border-red-700/50'
-                      : 'bg-card border-border'
-                }`}
-                onDragOver={onDragOver}
-                onDrop={(e) => onDrop(e, column.id)}
+      <div className="flex-1 space-y-1.5 overflow-y-auto p-2 custom-scrollbar">
+        {encerrados.filter(e => estagioVisivel(e, trilha)).map(estagio => {
+          const lista = porEstagio.get(estagio.id) ?? []
+          const { recusa, destacado, handlers } = propsDeAlvo(estagio)
+          const expandido = !!expandidos[estagio.id]
+          return (
+            <div
+              key={estagio.id}
+              {...handlers}
+              className={`rounded-lg border transition-colors ${
+                destacado
+                  ? estagio.autoWin ? 'border-emerald-500/60 bg-emerald-500/10' : 'border-rose-500/60 bg-rose-500/10'
+                  : 'border-border bg-card'
+              } ${recusa ? 'opacity-40' : ''} ${arrastando && !recusa ? 'border-dashed' : ''}`}
+            >
+              <button
+                type="button"
+                aria-expanded={expandido}
+                onClick={() => setExpandidos(x => ({ ...x, [estagio.id]: !x[estagio.id] }))}
+                title={estagio.description ?? undefined}
+                className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50"
               >
-                {/* Column Header */}
-                <div className={`p-3 border-b flex flex-col gap-1 rounded-t-xl ${
-                  isWonColumn
-                    ? 'bg-emerald-500/20 border-emerald-700/50 border-t-4 border-t-emerald-500'
-                    : isLostColumn
-                      ? 'bg-red-500/20 border-red-700/50 border-t-4 border-t-red-500'
-                      : `border-border border-t-2 ${column.color}`
-                }`}>
-                  <div className="flex justify-between items-center">
-                    <h3 className={`font-bold text-xs uppercase tracking-wide flex items-center gap-1.5 ${
-                      isWonColumn ? 'text-emerald-700 dark:text-emerald-200' : isLostColumn ? 'text-red-700 dark:text-red-200' : 'text-foreground'
-                    }`}>
-                      {column.isAiManaged && (
-                        <span title="Gerenciado pela IA">
-                          <Bot className="w-3 h-3 text-cyan-400" />
-                        </span>
-                      )}
-                      {column.title}
-                    </h3>
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono ${
-                      isWonColumn
-                        ? 'bg-emerald-900/50 text-emerald-400'
-                        : isLostColumn
-                          ? 'bg-red-900/50 text-red-400'
-                          : 'bg-muted text-muted-foreground'
-                    }`}>{columnDeals.length}</span>
-                  </div>
-                  <div className="text-[10px] text-muted-foreground/70 font-medium">
-                     Total: <span className={isWonColumn ? 'text-emerald-700 dark:text-emerald-200' : isLostColumn ? 'text-red-700 dark:text-red-200' : 'text-muted-foreground'}>{formatCurrency(totalValue)}</span>
-                  </div>
+                <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: estagio.color }} aria-hidden="true" />
+                <span className="min-w-0 flex-1 truncate text-sm text-foreground">{estagio.title}</span>
+                <span className="text-[11px] tabular-nums text-muted-foreground">{lista.length}</span>
+                <ChevronDown
+                  className={`h-4 w-4 shrink-0 text-muted-foreground/70 transition-transform motion-reduce:transition-none ${expandido ? 'rotate-180' : ''}`}
+                  aria-hidden="true"
+                />
+              </button>
+              {expandido && (
+                <div className="space-y-2 px-2 pb-2">
+                  {lista.length === 0
+                    ? <p className="px-1 pb-1 text-xs text-muted-foreground">Nenhum nos últimos {DIAS_ENCERRADOS} dias.</p>
+                    : lista.map(card)}
                 </div>
+              )}
+            </div>
+          )
+        })}
+        <p className="px-1 pt-2 text-[11px] leading-relaxed text-muted-foreground">
+          Solte um card aqui para encerrar. Arrastar de volta para uma coluna reabre o negócio.
+        </p>
+      </div>
+    </aside>
+  )
 
-                {/* Column Body */}
-                <div className="flex-1 overflow-y-auto p-2 space-y-2 custom-scrollbar">
-                  {columnDeals.map((deal) => (
-                    <div
-                      key={deal.id}
-                      draggable
-                      onDragStart={(e) => onDragStart(e, deal.id)}
-                      onDragEnd={onDragEnd}
-                      onClick={() => setSelectedDeal(deal)}
-                      className="bg-card border border-border rounded-lg p-3 shadow-sm cursor-grab active:cursor-grabbing hover:border-cyan-500/50 hover:shadow-cyan-500/10 transition-all group relative"
-                    >
-                      <div className="flex justify-between items-start mb-1.5">
-                        <span className={`text-[9px] px-1.5 py-0.5 rounded border font-medium ${getPriorityColor(deal.priority)}`}>
-                           {deal.priority === 'high' ? 'Alta' : deal.priority === 'medium' ? 'Média' : 'Baixa'}
-                        </span>
-                        <button className="text-muted-foreground/70 hover:text-foreground transition-colors opacity-0 group-hover:opacity-100">
-                           <MoreHorizontal className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+  // --------------------------------------------------------------------------
+  // Estados da tela
+  // --------------------------------------------------------------------------
 
-                      <h4 className="font-semibold text-foreground text-sm mb-0.5 leading-tight">{deal.title}</h4>
-                      <p className="text-[10px] text-muted-foreground mb-2">{deal.company}</p>
+  if (estado.tipo === 'carregando') {
+    return (
+      <div className="flex h-full items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-cyan-500" />
+      </div>
+    )
+  }
 
-                      <div className="flex items-center gap-1.5 mb-2 flex-wrap">
-                         {deal.tags.map(tag => (
-                             <span key={tag} className="text-[9px] text-muted-foreground/70 bg-muted px-1.5 py-0.5 rounded flex items-center gap-1">
-                                <Tag className="w-2.5 h-2.5" /> {tag}
-                             </span>
-                         ))}
-                      </div>
-
-                      <div className="flex items-center justify-between pt-2 border-t border-border">
-                         <div className="flex items-center gap-1.5 text-muted-foreground text-xs font-bold">
-                            <DollarSign className="w-3 h-3 text-emerald-500" />
-                            {formatCurrency(deal.value)}
-                         </div>
-                         <div className="flex items-center gap-2">
-                            {deal.dueDate && (
-                                <div className="text-[9px] text-muted-foreground/70 flex items-center gap-1" title="Data de previsão">
-                                    <CalendarClock className="w-3 h-3" />
-                                    {new Date(deal.dueDate).toLocaleDateString('pt-BR', {day: '2-digit', month: '2-digit'})}
-                                </div>
-                            )}
-                            <img src={deal.ownerAvatar} alt="Owner" className="w-5 h-5 rounded-full border border-border" />
-                         </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
+  if (estado.tipo === 'indisponivel' || estado.tipo === 'erro') {
+    const indisponivel = estado.tipo === 'indisponivel'
+    return (
+      <div className="flex h-full items-center justify-center bg-background p-6">
+        <div className={`max-w-md rounded-xl border p-6 text-center ${indisponivel ? 'border-amber-500/30 bg-amber-500/5' : 'border-rose-500/30 bg-rose-500/5'}`}>
+          {indisponivel
+            ? <PlugZap className="mx-auto h-8 w-8 text-amber-500" aria-hidden="true" />
+            : <AlertTriangle className="mx-auto h-8 w-8 text-rose-500" aria-hidden="true" />}
+          <h2 className="mt-3 text-lg font-semibold text-foreground">
+            {indisponivel ? 'O funil ainda não foi ligado' : 'Não foi possível carregar o funil'}
+          </h2>
+          <p className="mt-2 text-sm text-muted-foreground">{estado.mensagem}</p>
+          {!indisponivel && (
+            <Button variant="outline" size="sm" className="mt-4" onClick={() => { setEstado({ tipo: 'carregando' }); carregar() }}>
+              Tentar de novo
+            </Button>
+          )}
         </div>
       </div>
+    )
+  }
 
-      {/* Pipedrive-style Side Drawer */}
-      {/* Backdrop */}
-      {selectedDeal && (
-        <div
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 transition-opacity"
-            onClick={() => setSelectedDeal(null)}
-        />
+  if (estagios.length === 0) {
+    return (
+      <div className="flex h-full items-center justify-center bg-background p-6">
+        <p className="max-w-sm text-center text-sm text-muted-foreground">
+          Nenhuma posição de funil configurada para esta organização. Aplique a migration do funil
+          (20260930100000) e recarregue.
+        </p>
+      </div>
+    )
+  }
+
+  // --------------------------------------------------------------------------
+  // Board
+  // --------------------------------------------------------------------------
+
+  return (
+    <div className="relative flex h-full flex-col overflow-hidden bg-background text-foreground">
+      <header className="flex shrink-0 flex-col gap-4 px-4 pb-4 pt-5 sm:px-6 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Funil de atendimento</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {emAndamento} em andamento · {fechados} encerrados nos últimos {DIAS_ENCERRADOS} dias
+          </p>
+        </div>
+
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="flex rounded-lg border border-border bg-card p-0.5" role="radiogroup" aria-label="Trilha">
+            {(['todas', 'particular', 'convenio'] as FiltroTrilha[]).map(t => (
+              <button
+                key={t}
+                type="button"
+                role="radio"
+                aria-checked={trilha === t}
+                onClick={() => setTrilha(t)}
+                className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 sm:flex-none ${
+                  trilha === t ? 'bg-muted text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {t === 'todas' ? 'Todas as trilhas' : ROTULO_TRILHA[t]}
+              </button>
+            ))}
+          </div>
+
+          <div className="relative sm:w-60">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" aria-hidden="true" />
+            <input
+              type="search"
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder="Buscar nome ou telefone"
+              aria-label="Buscar no funil"
+              className="h-9 w-full rounded-lg border border-border bg-card pl-9 pr-3 text-sm text-foreground outline-none placeholder:text-muted-foreground/70 focus:ring-1 focus:ring-cyan-500"
+            />
+          </div>
+
+          <Button size="sm" className="h-9" onClick={() => setNovoAberto(true)}>
+            <Plus className="mr-1.5 h-4 w-4" /> Novo negócio
+          </Button>
+        </div>
+      </header>
+
+      {/* No desktop, "Encerrados" é um painel IRMÃO da área que rola, não uma
+          coluna fixada por cima dela: a versão sticky cobria a última coluna
+          visível e parecia solta do board. No celular ele volta a ser a última
+          coluna do carrossel (md:hidden / hidden md:flex). */}
+      <div className="flex min-h-0 flex-1 gap-3 px-4 pb-4 sm:px-6">
+      {/* Sem barra de rolagem nativa: a do Windows (com setas, ~17px) ficava
+          DENTRO desta área e encurtava só as colunas — o rodapé delas não
+          batia com o do "Encerrados". A navegação é pelas setas nas bordas
+          (que só aparecem quando há mais colunas daquele lado), trackpad,
+          shift + roda e toque. O esmaecido na borda diz que o board continua,
+          em vez de uma coluna cortada seca. */}
+      <div className="relative min-w-0 flex-1">
+      {podeRolar.esquerda && (
+        <>
+          <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-12 bg-linear-to-r from-background to-transparent" aria-hidden="true" />
+          <button
+            type="button"
+            onClick={() => rolar(-1)}
+            aria-label="Ver colunas anteriores"
+            className="absolute left-1 top-1/2 z-20 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-md transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </button>
+        </>
       )}
-
-      {/* Drawer */}
+      {podeRolar.direita && (
+        <>
+          <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-16 bg-linear-to-l from-background to-transparent" aria-hidden="true" />
+          <button
+            type="button"
+            onClick={() => rolar(1)}
+            aria-label="Ver próximas colunas"
+            className="absolute right-1 top-1/2 z-20 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-md transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50"
+          >
+            <ChevronRight className="h-5 w-5" />
+          </button>
+        </>
+      )}
       <div
-        className={`fixed top-0 right-0 h-full w-full max-w-2xl bg-background border-l border-border shadow-2xl z-50 transform transition-transform duration-300 ease-in-out flex flex-col ${selectedDeal ? 'translate-x-0' : 'translate-x-full'}`}
+        ref={trilho}
+        onScroll={medirRolagem}
+        className="h-full overflow-x-auto overflow-y-hidden snap-x snap-mandatory md:snap-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
-        {selectedDeal && (
-            <>
-                {/* 1. Header & Stage Progress */}
-                <div className="flex-shrink-0 bg-card border-b border-border">
-                    {/* Top Bar */}
-                    <div className="p-6 pb-4 flex justify-between items-start">
-                        <div>
-                            <h2 className="text-2xl font-bold text-foreground mb-1">{selectedDeal.title}</h2>
-                            <div className="flex items-center gap-2 text-muted-foreground text-sm flex-wrap">
-                                <span className="font-semibold text-emerald-400">{formatCurrency(selectedDeal.value)}</span>
-                                <span className="w-1 h-1 rounded-full bg-slate-600"></span>
-                                <span className="flex items-center gap-1"><Building className="w-3 h-3" /> {selectedDeal.company}</span>
-                                <span className="w-1 h-1 rounded-full bg-slate-600"></span>
-                                <Select value={selectedDeal.ownerId || ''} onValueChange={handleOwnerChange}>
-                                  <SelectTrigger className="w-[180px] h-7 text-xs bg-muted border-border">
-                                    <SelectValue placeholder="Selecione proprietário">
-                                      <span className="flex items-center gap-1">
-                                        <User className="w-3 h-3" />
-                                        {selectedDeal.ownerName || 'Sem proprietário'}
-                                      </span>
-                                    </SelectValue>
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {teamMembers.map(member => (
-                                      <SelectItem key={member.id} value={member.id}>
-                                        {member.name}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                            </div>
-                        </div>
-                        <div className="flex gap-2">
-                            <Button variant="secondary" onClick={handleMarkWon} className="bg-emerald-500/10 hover:bg-emerald-500/20 border-emerald-500/20 text-emerald-400">
-                              Ganho
-                            </Button>
-                            <Button variant="secondary" onClick={() => setIsLostModalOpen(true)} className="bg-red-500/10 hover:bg-red-500/20 border-red-500/20 text-red-400">
-                              Perdido
-                            </Button>
-                            <button
-                                onClick={() => setSelectedDeal(null)}
-                                className="p-2 hover:bg-muted rounded-lg text-muted-foreground hover:text-foreground transition-colors"
-                            >
-                                <X className="w-6 h-6" />
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* Pipeline Visual Progress */}
-                    <div className="px-6 pb-6 overflow-x-auto">
-                        <div className="flex items-center gap-1 w-full min-w-max">
-                            {stages.map((col, idx) => {
-                                const currentStageIndex = stages.findIndex(c => c.id === selectedDeal.stageId);
-                                const isCompleted = idx < currentStageIndex;
-                                const isActive = idx === currentStageIndex;
-
-                                return (
-                                    <div
-                                        key={col.id}
-                                        className={`flex-1 h-8 flex items-center justify-center px-2 relative cursor-pointer group transition-all first:rounded-l-md last:rounded-r-md
-                                            ${isCompleted ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30' :
-                                              isActive ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-500/20' :
-                                              'bg-muted text-muted-foreground/70 hover:bg-accent hover:text-muted-foreground'}
-                                        `}
-                                        onClick={async () => {
-                                            const isGanhoColumn = col.title === 'Ganho';
-                                            const isPerdidoColumn = col.title === 'Perdido';
-
-                                            if (isGanhoColumn) {
-                                                try {
-                                                    await crmApi.markDealWon(selectedDeal.id);
-                                                    toast.success("Deal marcado como ganho!");
-                                                    // Update local state
-                                                    setDeals(deals.map(d => d.id === selectedDeal.id ? {...d, stageId: col.id, wonAt: new Date().toISOString()} : d));
-                                                    setSelectedDeal({...selectedDeal, stageId: col.id});
-                                                } catch (error) {
-                                                    console.error('Error marking deal as won:', error);
-                                                    toast.error("Erro ao marcar como ganho");
-                                                }
-                                            } else if (isPerdidoColumn) {
-                                                setIsLostModalOpen(true);
-                                            } else {
-                                                // Optimistic update for UI feel
-                                                setDeals(deals.map(d => d.id === selectedDeal.id ? {...d, stageId: col.id} : d));
-                                                setSelectedDeal({...selectedDeal, stageId: col.id});
-
-                                                // Persist to database
-                                                try {
-                                                    await crmApi.moveDealStage(selectedDeal.id, col.id);
-                                                } catch (error) {
-                                                    console.error('Error moving deal:', error);
-                                                }
-                                            }
-                                        }}
-                                    >
-                                        <span className="text-xs font-bold whitespace-nowrap z-10">{col.title}</span>
-                                        {/* Arrow shape via clip-path could go here, simplified with simple blocks for now */}
-                                        {idx !== stages.length - 1 && (
-                                            <div className="absolute right-0 top-0 bottom-0 w-[1px] bg-background z-20"></div>
-                                        )}
-                                    </div>
-                                )
-                            })}
-                        </div>
-                    </div>
-                </div>
-
-                {/* 2. Content Area */}
-                <div className="flex-1 overflow-y-auto bg-background custom-scrollbar">
-
-                    {/* Action Composer */}
-                    <div className="p-6 border-b border-border bg-card">
-                        <div className="flex gap-4 mb-4">
-                            <button
-                                onClick={() => setActiveTab('note')}
-                                className={`flex items-center gap-2 text-sm font-medium transition-colors ${activeTab === 'note' ? 'text-cyan-400' : 'text-muted-foreground hover:text-foreground'}`}
-                            >
-                                <div className={`p-2 rounded-full ${activeTab === 'note' ? 'bg-cyan-500/10' : 'bg-muted'}`}>
-                                    <FileText className="w-4 h-4" />
-                                </div>
-                                Nota
-                            </button>
-                            <button
-                                onClick={() => setActiveTab('activity')}
-                                className={`flex items-center gap-2 text-sm font-medium transition-colors ${activeTab === 'activity' ? 'text-amber-400' : 'text-muted-foreground hover:text-foreground'}`}
-                            >
-                                <div className={`p-2 rounded-full ${activeTab === 'activity' ? 'bg-amber-500/10' : 'bg-muted'}`}>
-                                    <Calendar className="w-4 h-4" />
-                                </div>
-                                Atividade
-                            </button>
-                            <button
-                                onClick={() => setActiveTab('email')}
-                                className={`flex items-center gap-2 text-sm font-medium transition-colors ${activeTab === 'email' ? 'text-violet-400' : 'text-muted-foreground hover:text-foreground'}`}
-                            >
-                                <div className={`p-2 rounded-full ${activeTab === 'email' ? 'bg-violet-500/10' : 'bg-muted'}`}>
-                                    <Mail className="w-4 h-4" />
-                                </div>
-                                Email
-                            </button>
-                        </div>
-
-                        <div className="bg-card border border-border rounded-xl overflow-hidden focus-within:ring-1 focus-within:ring-cyan-500/50 transition-all shadow-inner">
-                            <input
-                                type="text"
-                                className="w-full bg-transparent p-3 text-sm text-foreground placeholder:text-muted-foreground/70 outline-none border-b border-border"
-                                placeholder="Título da atividade"
-                                value={newActivityTitle}
-                                onChange={(e) => setNewActivityTitle(e.target.value)}
-                            />
-                            <textarea
-                                className="w-full bg-transparent p-4 text-sm text-foreground placeholder:text-muted-foreground/70 outline-none resize-none min-h-[80px]"
-                                placeholder={
-                                    activeTab === 'note' ? "Escreva uma nota..." :
-                                    activeTab === 'activity' ? "Descreva a atividade..." :
-                                    "Escreva o corpo do email..."
-                                }
-                                value={newActivityDescription}
-                                onChange={(e) => setNewActivityDescription(e.target.value)}
-                            />
-                            <div className="px-3 py-2 bg-background border-t border-border flex justify-between items-center">
-                                <div className="flex gap-2">
-                                    <button className="p-1.5 hover:bg-muted rounded text-muted-foreground hover:text-cyan-400 transition-colors"><Paperclip className="w-4 h-4" /></button>
-                                </div>
-                                <Button size="sm" className="h-8" onClick={handleCreateActivity} disabled={!newActivityTitle.trim()}>
-                                    Salvar
-                                </Button>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Activities Timeline */}
-                    <div className="p-6">
-                        <h4 className="text-xs font-bold text-muted-foreground/70 uppercase tracking-wider mb-6 flex items-center gap-2">
-                            <Clock className="w-3.5 h-3.5" /> Atividades ({activities.length})
-                        </h4>
-
-                        {loadingActivities ? (
-                          <div className="flex justify-center py-8">
-                            <Loader2 className="w-6 h-6 animate-spin text-cyan-500" />
-                          </div>
-                        ) : activities.length === 0 ? (
-                          <div className="text-center py-8 text-muted-foreground/70 text-sm">
-                            Nenhuma atividade registrada
-                          </div>
-                        ) : (
-                          <div className="space-y-3">
-                            {activities.map(activity => {
-                              const activityIcon = activity.type === 'call' ? Phone :
-                                                   activity.type === 'email' ? Mail :
-                                                   activity.type === 'meeting' ? Calendar :
-                                                   activity.type === 'task' ? CheckSquare :
-                                                   FileText;
-                              const activityColor = activity.type === 'call' ? 'text-amber-500 bg-amber-500/10' :
-                                                    activity.type === 'email' ? 'text-violet-500 bg-violet-500/10' :
-                                                    activity.type === 'meeting' ? 'text-cyan-500 bg-cyan-500/10' :
-                                                    activity.type === 'task' ? 'text-emerald-500 bg-emerald-500/10' :
-                                                    'text-muted-foreground/70 bg-slate-500/10';
-                              const ActivityIcon = activityIcon;
-
-                              return (
-                                <div key={activity.id} className="flex items-start gap-3 p-3 rounded-xl bg-card border border-border hover:border-input transition-all group">
-                                  <button
-                                    onClick={() => handleToggleActivityComplete(activity.id, activity.isCompleted)}
-                                    className="mt-0.5 text-muted-foreground/70 hover:text-emerald-500 transition-colors"
-                                  >
-                                    {activity.isCompleted ? (
-                                      <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-                                    ) : (
-                                      <Circle className="w-5 h-5" />
-                                    )}
-                                  </button>
-                                  <div className={`p-1.5 rounded ${activityColor}`}>
-                                    <ActivityIcon className="w-3.5 h-3.5" />
-                                  </div>
-                                  <div className="flex-1">
-                                    <p className={`text-sm font-medium transition-colors ${activity.isCompleted ? 'text-muted-foreground/70 line-through' : 'text-foreground group-hover:text-foreground'}`}>
-                                      {activity.title}
-                                    </p>
-                                    {activity.description && (
-                                      <p className="text-xs text-muted-foreground/70 mt-1">{activity.description}</p>
-                                    )}
-                                    <p className="text-[10px] text-muted-foreground/70 mt-1">
-                                      {activity.createdAt
-                                        ? new Date(activity.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-                                        : '—'}
-                                      {activity.createdByName && ` • ${activity.createdByName}`}
-                                    </p>
-                                  </div>
-                                  <button
-                                    onClick={() => handleDeleteActivity(activity.id)}
-                                    className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-500/10 rounded text-muted-foreground/70 hover:text-red-500 transition-all"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </button>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                    </div>
-
-                    {/* Nina Insights Section */}
-                    {selectedDeal.clientMemory && (
-                      <div className="p-6 border-t border-border">
-                        <h4 className="text-xs font-bold text-muted-foreground/70 uppercase tracking-wider mb-4 flex items-center gap-2">
-                          <Brain className="w-4 h-4 text-violet-500" /> Insights do(a) {sdrName}
-                        </h4>
-
-                        <div className="space-y-3">
-                          {/* Qualification Score */}
-                          <div className="p-3 rounded-lg bg-card border border-border">
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="text-xs text-muted-foreground">Score de Qualificação</span>
-                              <span className="text-sm font-bold text-cyan-400">
-                                {selectedDeal.clientMemory.lead_profile.qualification_score || 0}%
-                              </span>
-                            </div>
-                            <div className="w-full bg-muted rounded-full h-1.5">
-                              <div
-                                className="bg-gradient-to-r from-cyan-500 to-violet-500 h-1.5 rounded-full transition-all"
-                                style={{ width: `${selectedDeal.clientMemory.lead_profile.qualification_score || 0}%` }}
-                              />
-                            </div>
-                          </div>
-
-                          {/* Next Best Action */}
-                          <div className="p-3 rounded-lg bg-card border border-border">
-                            <span className="text-xs text-muted-foreground">Próxima Ação Sugerida</span>
-                            <p className="text-sm text-cyan-400 mt-1 font-medium">
-                              {selectedDeal.clientMemory.sales_intelligence.next_best_action === 'qualify' ? '📋 Qualificar lead' :
-                               selectedDeal.clientMemory.sales_intelligence.next_best_action === 'demo' ? '🎯 Agendar demonstração' :
-                               selectedDeal.clientMemory.sales_intelligence.next_best_action === 'follow_up' ? '📞 Fazer follow-up' :
-                               selectedDeal.clientMemory.sales_intelligence.next_best_action}
-                            </p>
-                          </div>
-
-                          {/* Interests */}
-                          {selectedDeal.clientMemory.lead_profile.interests.length > 0 && (
-                            <div className="p-3 rounded-lg bg-card border border-border">
-                              <span className="text-xs text-muted-foreground">Interesses</span>
-                              <div className="flex flex-wrap gap-1.5 mt-2">
-                                {selectedDeal.clientMemory.lead_profile.interests.map((interest, idx) => (
-                                  <span key={idx} className="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 text-xs rounded-md border border-emerald-500/20">
-                                    {interest}
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Pain Points */}
-                          {selectedDeal.clientMemory.sales_intelligence.pain_points.length > 0 && (
-                            <div className="p-3 rounded-lg bg-card border border-border">
-                              <span className="text-xs text-muted-foreground">Dores Identificadas</span>
-                              <div className="flex flex-wrap gap-1.5 mt-2">
-                                {selectedDeal.clientMemory.sales_intelligence.pain_points.map((pain, idx) => (
-                                  <span key={idx} className="px-2 py-0.5 bg-red-500/10 text-red-400 text-xs rounded-md border border-red-500/20">
-                                    {pain}
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Budget & Timeline */}
-                          <div className="grid grid-cols-2 gap-3">
-                            <div className="p-3 rounded-lg bg-card border border-border">
-                              <span className="text-xs text-muted-foreground">Orçamento</span>
-                              <p className="text-sm text-foreground mt-1 font-medium">
-                                💰 {selectedDeal.clientMemory.sales_intelligence.budget_indication === 'unknown' ? 'Não informado' : selectedDeal.clientMemory.sales_intelligence.budget_indication}
-                              </p>
-                            </div>
-                            <div className="p-3 rounded-lg bg-card border border-border">
-                              <span className="text-xs text-muted-foreground">Timeline</span>
-                              <p className="text-sm text-foreground mt-1 font-medium">
-                                ⏰ {selectedDeal.clientMemory.sales_intelligence.decision_timeline === 'unknown' ? 'Não definido' : selectedDeal.clientMemory.sales_intelligence.decision_timeline}
-                              </p>
-                            </div>
-                          </div>
-
-                        </div>
-                      </div>
+        <div className="flex h-full min-w-max gap-3">
+          {colunas.map(estagio => {
+            const lista = porEstagio.get(estagio.id) ?? []
+            const { recusa, destacado, handlers } = propsDeAlvo(estagio)
+            return (
+              <section
+                key={estagio.id}
+                aria-label={estagio.title}
+                {...handlers}
+                className={`flex h-full w-[82vw] max-w-72 snap-start flex-col rounded-xl border bg-card/60 transition-colors sm:w-72 ${
+                  destacado ? 'border-cyan-500/60 bg-cyan-500/5' : 'border-border'
+                } ${recusa ? 'opacity-40' : ''}`}
+              >
+                <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border px-3" title={estagio.description ?? undefined}>
+                  <div className="min-w-0">
+                    <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                      <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: estagio.color }} aria-hidden="true" />
+                      <span className="truncate">{estagio.title}</span>
+                    </h2>
+                    {estagio.trilha !== 'ambas' && trilha === 'todas' && (
+                      <p className="mt-0.5 pl-4 text-[11px] text-muted-foreground">só {ROTULO_TRILHA[estagio.trilha]}</p>
                     )}
-
-                    {/* Histórico de Conversa */}
-                    {selectedDeal.conversationId && (
-                      <div className="p-6 border-t border-border">
-                        <h4 className="text-xs font-bold text-muted-foreground/70 uppercase tracking-wider mb-4 flex items-center gap-2">
-                          <MessageSquare className="w-4 h-4 text-cyan-500" />
-                          Últimas Mensagens ({conversationMessages.length})
-                        </h4>
-
-                        {loadingMessages ? (
-                          <div className="flex justify-center py-4">
-                            <Loader2 className="w-5 h-5 animate-spin text-cyan-500" />
-                          </div>
-                        ) : conversationMessages.length === 0 ? (
-                          <div className="text-center py-4 text-muted-foreground/70 text-sm">
-                            Nenhuma mensagem encontrada
-                          </div>
-                        ) : (
-                          <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
-                            {conversationMessages.map(msg => (
-                              <div
-                                key={msg.id}
-                                className={`p-2 rounded-lg text-sm ${
-                                  msg.from_type === 'user'
-                                    ? 'bg-muted text-foreground ml-0 mr-8'
-                                    : msg.from_type === 'nina'
-                                      ? 'bg-cyan-900/30 text-cyan-700 dark:text-cyan-200 ml-8 mr-0'
-                                      : 'bg-emerald-900/30 text-emerald-700 dark:text-emerald-200 ml-8 mr-0'
-                                }`}
-                              >
-                                <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/70 mb-1">
-                                  <span className="font-medium">
-                                    {msg.from_type === 'user' ? '👤 Lead' : msg.from_type === 'nina' ? `🤖 ${sdrName}` : '👨‍💼 Humano'}
-                                  </span>
-                                  <span>•</span>
-                                  <span>{new Date(msg.sent_at).toLocaleString('pt-BR', {
-                                    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
-                                  })}</span>
-                                </div>
-                                <p className="leading-relaxed line-clamp-3">{msg.content || '[mídia]'}</p>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                        <Button
-                          className="w-full mt-3 bg-violet-600 hover:bg-violet-700"
-                          onClick={() => window.location.href = `/chat?conversation=${selectedDeal.conversationId}`}
-                        >
-                          <MessageSquare className="w-4 h-4 mr-2" />
-                          Ver Conversa Completa
-                        </Button>
-                      </div>
-                    )}
+                  </div>
+                  <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium tabular-nums text-muted-foreground">
+                    {lista.length}
+                  </span>
                 </div>
-            </>
-        )}
+                <div className="flex-1 space-y-2 overflow-y-auto p-2 custom-scrollbar">
+                  {lista.map(card)}
+                  {lista.length === 0 && estagio.slug === 'novo' && negocios.length === 0 && (
+                    <p className="px-2 py-6 text-center text-xs text-muted-foreground">
+                      Quem escrever pela primeira vez no WhatsApp da Maia aparece aqui.
+                    </p>
+                  )}
+                </div>
+              </section>
+            )
+          })}
+
+          {painelEncerrados('flex w-[82vw] max-w-72 snap-start sm:w-72 md:hidden')}
+        </div>
+      </div>
+      </div>
+      {painelEncerrados('hidden w-72 shrink-0 md:flex')}
       </div>
 
-      {/* Modal para criar novo deal */}
-      <CreateDealModal
-        open={isCreateModalOpen}
-        onOpenChange={setIsCreateModalOpen}
-        onDealCreated={handleDealCreated}
+
+      <GavetaNegocio
+        negocio={aberto}
+        estagios={estagios}
+        usuarios={usuarios}
+        catalogoTags={catalogoTags}
+        aoMover={pedirMovimento}
+        aoAtualizar={atualizar}
+        aoTagsGravadas={() => { recarregarNegocios().catch(() => {}) }}
+        aoFechar={() => setAbertoId(null)}
       />
 
-      {/* Modal de motivo de perda */}
-      <LostReasonModal
-        open={isLostModalOpen}
-        onOpenChange={setIsLostModalOpen}
-        onConfirm={handleMarkLost}
-        dealTitle={selectedDeal?.title || ''}
-      />
-
-      {/* Modal de configuração de etapas */}
-      <PipelineSettingsModal
-        open={isSettingsModalOpen}
-        onClose={() => setIsSettingsModalOpen(false)}
-        onSave={async () => {
-          const data = await crmApi.fetchPipelineStages();
-          setStages(data);
+      <MotivoModal
+        estagio={pendente?.estagio ?? null}
+        negocio={pendente ? (pendente.negocio.contactName ?? pendente.negocio.title) : ''}
+        aoCancelar={() => setPendente(null)}
+        aoConfirmar={(motivo) => {
+          if (pendente) mover(pendente.negocio, pendente.estagio, motivo)
+          setPendente(null)
         }}
       />
-    </div>
-  );
-};
 
-export default Kanban;
+      <NovoNegocioModal
+        aberto={novoAberto}
+        aoFechar={() => setNovoAberto(false)}
+        aoCriar={() => { recarregarNegocios().catch(() => {}) }}
+      />
+    </div>
+  )
+}
+
+export default Kanban

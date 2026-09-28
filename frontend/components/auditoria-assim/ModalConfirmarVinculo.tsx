@@ -132,6 +132,31 @@ export default function ModalConfirmarVinculo({
    * a autorização — a falta continua falta.
    */
   const ehFalta = !ehDescarte && candidata.situacao === 'FALTA_TERAPEUTA'
+  /**
+   * A guia é de outro TUSS que a sessão (aceito desde 20260925130000). Caso real:
+   * refação de uma glosa por reincidência pedida com o TUSS de outra terapia.
+   * O vínculo passa, mas não em silêncio: a observação vira obrigatória — é o
+   * único lugar onde fica escrito POR QUE uma TO cobre uma Psicologia. O banco
+   * exige o mesmo; aqui só evita o clique que ele recusaria.
+   */
+  const tussDiverge =
+    !ehDescarte &&
+    !!guia.codigo_tuss &&
+    !!candidata.codigo_tuss &&
+    guia.codigo_tuss !== candidata.codigo_tuss
+  /**
+   * A sessão é DEPOIS da guia — remanejamento dentro da semana (20260925140100):
+   * a guia de segunda que passa a cobrir a quinta. Mesma regra: só com observação.
+   */
+  // Por DIA, como o banco (`v_efetiva > date(data_execucao)`): guia tirada minutos
+  // antes da sessão no mesmo dia é rotina do robô, não remanejamento.
+  const sessaoDepoisDaGuia =
+    !ehDescarte &&
+    !ehFalta &&
+    !!guia.data_execucao &&
+    (candidata.data_atendimento ?? '') > guia.data_execucao.slice(0, 10)
+  const exigeObservacao = tussDiverge || sessaoDepoisDaGuia
+  const faltaObservacao = exigeObservacao && observacao.trim() === ''
 
   async function confirmar() {
     setErro(null)
@@ -239,10 +264,35 @@ export default function ModalConfirmarVinculo({
           {!ehDescarte && candidata.distancia_horas != null && (
             <p className="mt-3 text-[12px] text-slate-500">
               A autorização saiu <strong className="font-semibold text-slate-700">{distancia(candidata.distancia_horas)}</strong>
-              {candidata.distancia_horas < 0 && (
+              {!sessaoDepoisDaGuia && candidata.distancia_horas < 0 && (
                 <> — confira se é mesmo esta a sessão, o normal é a autorização vir depois.</>
               )}
             </p>
+          )}
+
+          {/* Um aviso só, e ele começa pelo que a pessoa precisa FAZER. Na primeira
+              versão o motivo vinha antes e o "precisa de comentário" ficava no fim
+              da frase: a recepção clicou sem escrever e só descobriu pelo erro do
+              banco (Miguel, 25/09). */}
+          {exigeObservacao && (
+            <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-[12px] text-amber-900">
+              <p className="font-semibold">Comentário obrigatório para este vínculo.</p>
+              <ul className="mt-1 list-disc space-y-0.5 pl-4 text-amber-800">
+                {sessaoDepoisDaGuia && (
+                  <li>
+                    A sessão é de um dia <strong className="font-semibold">posterior</strong> à guia —
+                    é um remanejamento dentro da semana. Diga de onde a guia saiu.
+                  </li>
+                )}
+                {tussDiverge && (
+                  <li>
+                    A guia é do TUSS <span className="font-semibold tabular-nums">{guia.codigo_tuss}</span> e
+                    a sessão é do <span className="font-semibold tabular-nums">{candidata.codigo_tuss}</span>.
+                    Diga por que ela foi pedida com outro código.
+                  </li>
+                )}
+              </ul>
+            </div>
           )}
 
           {!ehDescarte && !ehFalta && candidata.fila_id == null && (
@@ -343,7 +393,7 @@ export default function ModalConfirmarVinculo({
 
           <label className="mt-4 block">
             <span className="text-[12px] font-medium text-slate-600">
-              Observação {ehDescarte ? '' : '(opcional)'}
+              Observação {ehDescarte ? '' : exigeObservacao ? '(obrigatória — veja o aviso acima)' : '(opcional)'}
             </span>
             <textarea
               value={observacao}
@@ -382,10 +432,12 @@ export default function ModalConfirmarVinculo({
             // sair de um clique que não passou pela pergunta. O `title` diz o
             // porquê — botão desabilitado e mudo é o que faz alguém achar que a
             // tela travou.
-            disabled={salvando || (ehFalta && houveSubstituto === null)}
+            disabled={salvando || (ehFalta && houveSubstituto === null) || faltaObservacao}
             title={ehFalta && houveSubstituto === null
               ? 'Responda se houve substituto para poder registrar'
-              : undefined}
+              : faltaObservacao
+                ? 'Comentário obrigatório: escreva a observação para poder registrar'
+                : undefined}
             className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-[13px] font-semibold text-white disabled:opacity-60 ${
               ehDescarte
                 ? 'bg-slate-700 hover:bg-slate-800'

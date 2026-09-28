@@ -1,10 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
-import { resolverPermissoes, temPermissao } from '@/lib/permissions/resolver'
+import { temPermissao } from '@/lib/permissions/resolver'
+import { carregarPermissoesEfetivas } from '@/lib/permissions/carregar'
 
 /**
- * Permissão da tela de Auditoria de Evoluções. Concedida por roleDefaults a
- * admin, diretoria e terapeutico (ver lib/permissions/routes.ts).
+ * Permissão da tela de Auditoria de Evoluções. Dada pelos grupos de permissão
+ * (Terapêutico, Diretoria…) — ver lib/permissions/carregar.ts.
  */
 export const PERMISSAO_AUDITORIA_EVOLUCOES = 'terapeutico_auditoria_evolucoes'
 
@@ -61,14 +62,8 @@ export async function exigirPermissaoAuditoria(): Promise<ContextoAuditoria> {
 
   const role = (perfil.role as string | null) ?? ''
 
-  // Mesma resolução do proxy.ts: defaults do papel + overrides individuais,
-  // com revogação vencendo.
-  const { data: overrides } = await supabase
-    .from('usuarios_permissoes')
-    .select('permissao_codigo, permitido')
-    .eq('usuario_id', user.id)
-
-  const codigos = resolverPermissoes(role, overrides ?? [])
+  // Mesma resolução do proxy.ts: grupos + ajustes individuais, pelo banco.
+  const codigos = await carregarPermissoesEfetivas(supabase)
   if (!temPermissao(role, codigos, PERMISSAO_AUDITORIA_EVOLUCOES)) {
     throw new SemPermissaoError()
   }

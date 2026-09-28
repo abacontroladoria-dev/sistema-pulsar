@@ -47,9 +47,18 @@ interface Props<Id extends string | number> {
   variant?: "padrao" | "plano"
   /** Foco programático no gatilho (ex.: item "Editar" de um menu de ações). */
   triggerRef?: React.RefObject<HTMLButtonElement | null>
+  /**
+   * `false` abre o painel dentro do próprio componente, sem portal. Obrigatório
+   * dentro de um Dialog do Radix (components/ui/dialog): o Dialog modal desliga
+   * o pointer-events de tudo fora do conteúdo dele e prende o foco lá dentro —
+   * com o painel em document.body, a lista abria mas não aceitava clique nem
+   * digitação ("+ Novo usuário", 29/09/2026). Quem usa assim precisa garantir
+   * que o container não tenha `overflow-hidden`, senão o painel é cortado.
+   */
+  portal?: boolean
 }
 
-export function MultiSearchCombobox<Id extends string | number = number>({ opcoes, selecionados, onToggle, placeholder = "Nenhuma opção selecionada", ariaLabel, nomePlural = "opções", resumoCompleto = false, className = "", disabled = false, variant = "padrao", triggerRef }: Props<Id>) {
+export function MultiSearchCombobox<Id extends string | number = number>({ opcoes, selecionados, onToggle, placeholder = "Nenhuma opção selecionada", ariaLabel, nomePlural = "opções", resumoCompleto = false, className = "", disabled = false, variant = "padrao", triggerRef, portal = true }: Props<Id>) {
   const [aberto, setAberto] = useState(false)
   const [texto, setTexto] = useState("")
   const wrapperRef = useRef<HTMLDivElement>(null)
@@ -66,13 +75,14 @@ export function MultiSearchCombobox<Id extends string | number = number>({ opcoe
   }
 
   useLayoutEffect(() => {
+    if (!portal) return
     if (aberto) reposicionar()
     else setPos(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aberto])
+  }, [aberto, portal])
 
   useEffect(() => {
-    if (!aberto) return
+    if (!aberto || !portal) return
     // `capture: true` pega scroll de QUALQUER container intermediário (a lista
     // de contratos, o card do profissional), não só o da window.
     window.addEventListener("scroll", reposicionar, true)
@@ -81,7 +91,7 @@ export function MultiSearchCombobox<Id extends string | number = number>({ opcoe
       window.removeEventListener("scroll", reposicionar, true)
       window.removeEventListener("resize", reposicionar)
     }
-  }, [aberto])
+  }, [aberto, portal])
 
   useEffect(() => {
     if (!aberto) return
@@ -120,6 +130,52 @@ export function MultiSearchCombobox<Id extends string | number = number>({ opcoe
     ? "flex w-full items-center justify-between gap-2 text-left text-[13px] focus:outline-none focus:ring-2 focus:ring-brand/30"
     : `flex w-full items-center justify-between gap-2 rounded-lg border border-border bg-card px-2.5 py-2 text-left text-[13px] focus:outline-none focus:ring-2 focus:ring-ring ${nomesSelecionados.length ? "text-foreground" : "text-muted-foreground"}`
 
+  // Com portal: fixo na viewport, em document.body. Sem portal: logo abaixo do
+  // gatilho, dentro do próprio componente (ver a prop `portal`).
+  const painel = aberto && (!portal || pos) ? (
+    <div
+      ref={dropdownRef}
+      role="listbox"
+      aria-label={ariaLabel}
+      aria-multiselectable="true"
+      // Marca lida pelo Dialog que hospeda o combobox: o Esc da busca fecha
+      // só a lista, não o formulário inteiro (ver CreateUserModal).
+      data-multisearch-aberto=""
+      style={portal && pos ? { position: "fixed", top: pos.top, left: pos.left, width: pos.width } : undefined}
+      className={`z-[100] flex max-h-72 flex-col overflow-hidden rounded-lg border border-border bg-popover shadow-lg ${portal ? "" : "absolute left-0 right-0 top-full mt-0.5"}`}
+    >
+      <input
+        ref={inputRef}
+        type="text"
+        autoComplete="off"
+        aria-label={`Buscar em ${ariaLabel}`}
+        value={texto}
+        onChange={e => setTexto(e.target.value)}
+        onKeyDown={e => { if (e.key === "Escape") setAberto(false) }}
+        placeholder="Digite para buscar..."
+        className="shrink-0 border-b border-border bg-transparent px-3 py-2 text-[13px] text-foreground placeholder:text-muted-foreground focus:outline-none"
+      />
+      <div className="overflow-y-auto p-1">
+        {!filtradas.length ? (
+          <div className="px-3 py-2 text-[12px] text-muted-foreground">Nenhuma opção encontrada.</div>
+        ) : filtradas.map(o => {
+          const marcada = selecionados.has(o.id)
+          return (
+            <label
+              key={o.id}
+              role="option"
+              aria-selected={marcada}
+              className="flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-[13px] text-foreground hover:bg-muted/60"
+            >
+              <input type="checkbox" checked={marcada} onChange={() => onToggle(o.id)} className="shrink-0" />
+              <span className="truncate">{o.nome}</span>
+            </label>
+          )
+        })}
+      </div>
+    </div>
+  ) : null
+
   return (
     <div ref={wrapperRef} className="relative">
       <button
@@ -137,47 +193,7 @@ export function MultiSearchCombobox<Id extends string | number = number>({ opcoe
         <ChevronDown size={14} className={`shrink-0 transition-transform ${plano ? "opacity-60" : "text-muted-foreground"} ${aberto ? "rotate-180" : ""}`} />
       </button>
 
-      {aberto && pos && createPortal(
-        <div
-          ref={dropdownRef}
-          role="listbox"
-          aria-label={ariaLabel}
-          aria-multiselectable="true"
-          style={{ position: "fixed", top: pos.top, left: pos.left, width: pos.width }}
-          className="z-[100] flex max-h-72 flex-col overflow-hidden rounded-lg border border-border bg-popover shadow-lg"
-        >
-          <input
-            ref={inputRef}
-            type="text"
-            autoComplete="off"
-            aria-label={`Buscar em ${ariaLabel}`}
-            value={texto}
-            onChange={e => setTexto(e.target.value)}
-            onKeyDown={e => { if (e.key === "Escape") setAberto(false) }}
-            placeholder="Digite para buscar..."
-            className="shrink-0 border-b border-border bg-transparent px-3 py-2 text-[13px] text-foreground placeholder:text-muted-foreground focus:outline-none"
-          />
-          <div className="overflow-y-auto p-1">
-            {!filtradas.length ? (
-              <div className="px-3 py-2 text-[12px] text-muted-foreground">Nenhuma opção encontrada.</div>
-            ) : filtradas.map(o => {
-              const marcada = selecionados.has(o.id)
-              return (
-                <label
-                  key={o.id}
-                  role="option"
-                  aria-selected={marcada}
-                  className="flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-[13px] text-foreground hover:bg-muted/60"
-                >
-                  <input type="checkbox" checked={marcada} onChange={() => onToggle(o.id)} className="shrink-0" />
-                  <span className="truncate">{o.nome}</span>
-                </label>
-              )
-            })}
-          </div>
-        </div>,
-        document.body
-      )}
+      {painel && (portal ? createPortal(painel, document.body) : painel)}
     </div>
   )
 }

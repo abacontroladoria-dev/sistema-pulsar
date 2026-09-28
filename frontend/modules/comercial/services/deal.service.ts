@@ -14,6 +14,8 @@ import type {
 import {
   DealNotFoundError,
   PipelineStageNotFoundError,
+  MotivoObrigatorioError,
+  TrilhaIncompativelError,
 } from '../types/errors.types'
 
 // ============================================================================
@@ -107,44 +109,85 @@ export class DealService {
   //
   // Ordem das operações:
   //   1. valida que o estágio destino existe NA MESMA org
-  //   2. move o deal
-  //   3. aplica auto_win / auto_lose se o estágio destino as tiver
-  //   4. registra a atividade na timeline
+  //   2. aplica as regras do funil da diretoria: motivo obrigatório e trilha
+  //   3. reabre, se o negócio estava fechado e o destino é uma posição em
+  //      andamento
+  //   4. move o deal (com o motivo, e a trilha quando o destino a define)
+  //   5. aplica auto_win / auto_lose se o estágio destino as tiver
+  //   6. registra a atividade na timeline
   //
   // O passo 1 não é paranoia: sem ele, um stage_id de outra organização passa
   // pela FK (a constraint é só para crm.pipeline_stages, não filtra org) e o
   // deal desaparece do Kanban de todo mundo — some do board de origem e não
   // aparece no de destino, porque a listagem filtra por org.
   //
-  // O passo 4 é deliberadamente não-fatal: o movimento já foi persistido, e
+  // O passo 3 vem ANTES do movimento porque pode falhar: reabrir colide com
+  // uq_open_deal_per_contact quando o contato já tem outro negócio aberto. Se
+  // o movimento viesse primeiro, a falha deixaria um card perdido parado numa
+  // coluna em andamento — exatamente a divergência que auto_win/auto_lose
+  // existe para impedir, só que do lado oposto.
+  //
+  // O passo 6 é deliberadamente não-fatal: o movimento já foi persistido, e
   // falhar aqui faria a UI acusar erro numa operação que deu certo.
   // --------------------------------------------------------------------------
   async moverParaEstagio(
     id: string,
     orgId: string,
     stageId: string,
-    autorId: string | null
+    autorId: string | null,
+    motivo?: string | null
   ): Promise<DealRow> {
     const estagio = await this.stages.findById(stageId, orgId)
     if (!estagio) throw new PipelineStageNotFoundError(stageId)
 
-    const movido = await this.deals.update(id, orgId, { stage_id: stageId })
+    const motivoLimpo = motivo?.trim() || null
+    if (estagio.exige_motivo && !motivoLimpo) {
+      throw new MotivoObrigatorioError(estagio.title)
+    }
+
+    const atual = await this.deals.findById(id, orgId)
+    if (!atual) throw new DealNotFoundError(id)
+
+    // Trilha: posição de uma trilha só não recebe negócio da outra. Negócio
+    // SEM trilha entra, e passa a tê-la — pôr em "Aguardando elegibilidade"
+    // é afirmar que é convênio.
+    const trilhaDoEstagio = estagio.trilha ?? 'ambas'
+    if (trilhaDoEstagio !== 'ambas' && atual.trilha && atual.trilha !== trilhaDoEstagio) {
+      throw new TrilhaIncompativelError(estagio.title, trilhaDoEstagio, atual.trilha)
+    }
+
+    const emAndamento = !estagio.auto_win && !estagio.auto_lose
+    if (emAndamento && atual.status !== 'open') {
+      await this.deals.updateStatus(id, orgId, 'open')
+    }
+
+    // `motivo` é o da posição ATUAL: mover sem motivo limpa o anterior, senão
+    // o card em "Qualificado" continuaria exibindo a objeção de quando esteve
+    // em "Perdido / Objeção".
+    const patch: UpdateDealInput = { stage_id: stageId, motivo: motivoLimpo }
+    if (trilhaDoEstagio !== 'ambas' && !atual.trilha) patch.trilha = trilhaDoEstagio
+
+    const movido = await this.deals.update(id, orgId, patch)
     if (!movido) throw new DealNotFoundError(id)
 
     // auto_win / auto_lose: a flag do estágio decide o status do deal.
-    // Sem isto o card fica em "Ganho" com status 'open' e o funil mente.
+    // Sem isto o card fica em "Iniciou tratamento" com status 'open' e o funil
+    // mente. Perda passa SEMPRE por updateStatus — mesmo já estando perdido —
+    // porque trocar "Sem interesse" por "Nunca respondeu" muda o motivo.
     let resultado = movido
     if (estagio.auto_win && movido.status !== 'won') {
       resultado = (await this.deals.updateStatus(id, orgId, 'won')) ?? movido
-    } else if (estagio.auto_lose && movido.status !== 'lost') {
-      resultado = (await this.deals.updateStatus(id, orgId, 'lost')) ?? movido
+    } else if (estagio.auto_lose) {
+      resultado = (await this.deals.updateStatus(id, orgId, 'lost', motivoLimpo ?? estagio.title)) ?? movido
     }
 
     const sufixo = estagio.auto_win  ? ' (ganho)'
                  : estagio.auto_lose ? ' (perdido)'
+                 : atual.status !== 'open' ? ' (reaberto)'
                  : ''
+    const comMotivo = motivoLimpo ? ` — motivo: ${motivoLimpo}` : ''
     await this.registrarAtividadeSemQuebrar(
-      orgId, id, `Movido para "${estagio.title}"${sufixo}`, autorId
+      orgId, id, `Movido para "${estagio.title}"${sufixo}${comMotivo}`, autorId
     )
 
     return resultado

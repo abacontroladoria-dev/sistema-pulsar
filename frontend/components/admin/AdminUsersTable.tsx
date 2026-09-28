@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react'
 import {
   Ban,
+  ChevronDown,
   CircleCheck,
   KeyRound,
   MoreVertical,
@@ -18,10 +19,13 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { MultiSearchCombobox } from '@/components/cronograma/ui/MultiSearchCombobox'
+import type { Grupo } from '@/services/grupos.service'
 
 export type GrupoOption = { id: string; nome: string }
 
@@ -33,18 +37,14 @@ const UNIDADE_STYLES: Record<string, string> = {
   'Padre Miguel': 'bg-amber-100 text-amber-900 ring-amber-300',
 }
 
-const roleOptions = [
-  { value: 'admin', label: 'Admin' },
-  { value: 'autorizacao', label: 'Autorização' },
-  { value: 'cronograma', label: 'Cronograma' },
-  { value: 'disponibilidade_terapeuta', label: 'Disponib. Terapeuta' },
-  { value: 'diretoria', label: 'Diretoria' },
-  { value: 'faturamento', label: 'Faturamento' },
-  { value: 'marketing', label: 'Marketing' },
-  { value: 'recepcao', label: 'Recepção' },
-  { value: 'rp', label: 'RP' },
-  { value: 'terapeutico', label: 'Terapêutico' },
-]
+// Valor do filtro para quem não está em grupo nenhum.
+export const FILTRO_SEM_GRUPO = '__sem_grupo__'
+
+// Ações que passam por rotas/funções que só aceitam admin (create-user*,
+// admin-toggle-user, user/delete, user/reset-password, admin-resend-invite,
+// user/update). Para os outros níveis ficam desabilitadas, com o motivo — antes
+// apareciam e falhavam com erro.
+const SO_ADMIN = 'Só administradores'
 
 // Uma cor por grupo — nunca as cores de status (emerald/rose/amber/sky/slate já
 // têm significado fixo em Status; grupo usa uma paleta própria pra não colidir).
@@ -86,6 +86,9 @@ function mesmoConjunto(a: string[], b: string[]) {
 export default function AdminUsersTable({
   users,
   grupos,
+  gruposCompletos,
+  podeAdministrar,
+  onUsuarioCriado,
   gruposPorUsuario,
   onToggleActive,
   onSaveUser,
@@ -95,13 +98,16 @@ export default function AdminUsersTable({
   loadingId,
   searchUser,
   onSearchUserChange,
-  roleFilter,
-  onRoleFilterChange,
+  grupoFilter,
+  onGrupoFilterChange,
   searchMachine,
   onSearchMachineChange,
 }: {
   users: AdminUser[]
   grupos: GrupoOption[]
+  gruposCompletos: Grupo[]
+  podeAdministrar: boolean
+  onUsuarioCriado: () => void
   gruposPorUsuario: Record<string, string[]>
   onToggleActive: (userId: string, active: boolean) => Promise<void>
   onSaveUser: (
@@ -116,12 +122,17 @@ export default function AdminUsersTable({
   loadingId: string | null
   searchUser: string
   onSearchUserChange: (value: string) => void
-  roleFilter: string
-  onRoleFilterChange: (value: string) => void
+  grupoFilter: string
+  onGrupoFilterChange: (value: string) => void
   searchMachine: string
   onSearchMachineChange: (value: string) => void
 }) {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+
+  const rotuloFiltroGrupo =
+    grupoFilter === FILTRO_SEM_GRUPO
+      ? 'Sem grupo'
+      : grupos.find((g) => g.id === grupoFilter)?.nome ?? 'Todos os grupos'
 
   return (
     <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -137,7 +148,7 @@ export default function AdminUsersTable({
           </p>
         </div>
 
-        <CreateUserModal />
+        <CreateUserModal grupos={gruposCompletos} podeCriar={podeAdministrar} onCriado={onUsuarioCriado} />
       </div>
 
       {/*FILTROS*/}
@@ -152,21 +163,38 @@ export default function AdminUsersTable({
           />
         </label>
 
-        <label>
-          <span className="sr-only">Filtrar por setor</span>
-          <select
-            value={roleFilter}
-            onChange={(e) => onRoleFilterChange(e.target.value)}
-            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-5 py-3 text-sm outline-none transition focus:border-brand focus:ring-4 focus:ring-brand/10"
+        {/* Filtra pelo que o card mostra (grupos), não pelo nível técnico —
+            filtrar "Diretoria" pelo nível mostrava gente com pill de outro grupo
+            e escondia quem estava no grupo Diretoria.
+            Menu do tema (o mesmo do "⋯" de cada usuário), e não <select>: a lista
+            do <select> nativo é desenhada pelo sistema operacional e ignora o
+            tema do Pulsar. O gatilho copia os dois campos vizinhos. */}
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            aria-label={`Filtrar por grupo: ${rotuloFiltroGrupo}`}
+            className="flex w-full items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-5 py-3 text-left text-sm text-slate-700 outline-none transition focus-visible:border-brand focus-visible:ring-4 focus-visible:ring-brand/10 data-open:border-brand data-open:ring-4 data-open:ring-brand/10"
           >
-            <option value="">Todos os setores</option>
-            {roleOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
+            <span className="truncate">{rotuloFiltroGrupo}</span>
+            <ChevronDown size={16} aria-hidden="true" className="shrink-0 text-slate-500" />
+          </DropdownMenuTrigger>
+
+          <DropdownMenuContent
+            align="start"
+            className="max-h-[min(24rem,var(--radix-dropdown-menu-content-available-height))] w-(--radix-dropdown-menu-trigger-width) overflow-y-auto"
+          >
+            <DropdownMenuRadioGroup value={grupoFilter} onValueChange={onGrupoFilterChange}>
+              <DropdownMenuRadioItem value="">Todos os grupos</DropdownMenuRadioItem>
+              <DropdownMenuSeparator />
+              {grupos.map((grupo) => (
+                <DropdownMenuRadioItem key={grupo.id} value={grupo.id}>
+                  <span className="truncate">{grupo.nome}</span>
+                </DropdownMenuRadioItem>
+              ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuRadioItem value={FILTRO_SEM_GRUPO}>Sem grupo</DropdownMenuRadioItem>
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         <label>
           <span className="sr-only">Buscar máquina</span>
@@ -194,6 +222,7 @@ export default function AdminUsersTable({
                 user={user}
                 grupos={grupos}
                 grupoIds={gruposPorUsuario[user.id] ?? []}
+                podeAdministrar={podeAdministrar}
                 isLoading={loadingId === user.id}
                 onToggleActive={onToggleActive}
                 onSaveUser={onSaveUser}
@@ -219,6 +248,7 @@ function UserRow({
   user,
   grupos,
   grupoIds,
+  podeAdministrar,
   isLoading,
   onToggleActive,
   onSaveUser,
@@ -232,6 +262,7 @@ function UserRow({
   user: AdminUser
   grupos: GrupoOption[]
   grupoIds: string[]
+  podeAdministrar: boolean
   isLoading: boolean
   onToggleActive: (userId: string, active: boolean) => Promise<void>
   onSaveUser: (
@@ -364,7 +395,8 @@ function UserRow({
               <button
                 key={unidade}
                 type="button"
-                disabled={disabled}
+                disabled={disabled || !podeAdministrar}
+                title={podeAdministrar ? undefined : SO_ADMIN}
                 aria-pressed={ativa}
                 onClick={() => toggleUnidade(unidade)}
                 className={`w-32 rounded-full px-3 py-1.5 text-center text-xs font-semibold ring-1 ring-inset transition disabled:opacity-50 ${
@@ -426,6 +458,7 @@ function UserRow({
 
               {!user.username ? (
                 <DropdownMenuItem
+                  disabled={!podeAdministrar}
                   onSelect={() =>
                     onResendInvite(user.id, user.email ?? '', user.nome ?? '', user.role ?? '')
                   }
@@ -436,6 +469,7 @@ function UserRow({
               ) : (
                 <>
                   <DropdownMenuItem
+                    disabled={!podeAdministrar}
                     onSelect={() =>
                       onResetPassword(
                         user.id,
@@ -449,7 +483,7 @@ function UserRow({
                     Redefinir senha
                   </DropdownMenuItem>
 
-                  <DropdownMenuItem onSelect={() => onToggleActive(user.id, !!user.ativo)}>
+                  <DropdownMenuItem disabled={!podeAdministrar} onSelect={() => onToggleActive(user.id, !!user.ativo)}>
                     {user.ativo ? <Ban aria-hidden="true" /> : <CircleCheck aria-hidden="true" />}
                     {user.ativo ? 'Desativar' : 'Ativar'}
                   </DropdownMenuItem>
@@ -458,10 +492,16 @@ function UserRow({
 
               <DropdownMenuSeparator />
 
-              <DropdownMenuItem variant="destructive" onSelect={onRequestDelete}>
+              <DropdownMenuItem variant="destructive" disabled={!podeAdministrar} onSelect={onRequestDelete}>
                 <Trash2 aria-hidden="true" />
                 Excluir
               </DropdownMenuItem>
+
+              {!podeAdministrar && (
+                <p className="px-2 py-1.5 text-xs text-slate-500">
+                  Convite, senha, ativação e exclusão: {SO_ADMIN.toLowerCase()}.
+                </p>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

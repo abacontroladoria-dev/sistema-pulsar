@@ -66,42 +66,60 @@ export async function getAllUsuariosPermissoes(): Promise<UsuarioPermissao[]> {
   return data || []
 }
 
-export async function salvarPermissoesUsuario(
+// Grava o que a pessoa deve ter, código a código, como AJUSTE em relação aos
+// grupos dela (grupos ao vivo, 20260929140000): onde o desejado é igual ao que os
+// grupos já dão, a linha é APAGADA; onde difere, fica gravado o ajuste. Assim
+// usuarios_permissoes nunca guarda cópia do grupo — uma cópia congelaria a tela e
+// sair do grupo não a tiraria mais.
+//
+// `uniaoDosGrupos`: códigos que os grupos da pessoa liberam (resolver.ts).
+export async function salvarAjustes(
   usuarioId: string,
-  permissoes: Record<string, boolean>
+  desejado: Record<string, boolean>,
+  uniaoDosGrupos: Set<string>
 ): Promise<boolean> {
   const supabase = getSupabaseClient()
 
-  const upserts = Object.entries(permissoes).map(([codigo, permitido]) => ({
-    usuario_id: usuarioId,
-    permissao_codigo: codigo,
-    permitido,
-  }))
+  const gravar = Object.entries(desejado)
+    .filter(([codigo, permitido]) => permitido !== uniaoDosGrupos.has(codigo))
+    .map(([codigo, permitido]) => ({ usuario_id: usuarioId, permissao_codigo: codigo, permitido }))
+  const apagar = Object.entries(desejado)
+    .filter(([codigo, permitido]) => permitido === uniaoDosGrupos.has(codigo))
+    .map(([codigo]) => codigo)
 
-  const { error } = await supabase
-    .from('usuarios_permissoes')
-    .upsert(upserts, { onConflict: 'usuario_id,permissao_codigo' })
+  if (gravar.length > 0) {
+    const { error } = await supabase
+      .from('usuarios_permissoes')
+      .upsert(gravar, { onConflict: 'usuario_id,permissao_codigo' })
+    if (error) {
+      console.error('Erro ao salvar ajustes de permissão:', error)
+      return false
+    }
+  }
 
-  if (error) {
-    console.error('Erro ao salvar permissões:', error)
-    return false
+  if (apagar.length > 0) {
+    const { error } = await supabase
+      .from('usuarios_permissoes')
+      .delete()
+      .eq('usuario_id', usuarioId)
+      .in('permissao_codigo', apagar)
+    if (error) {
+      console.error('Erro ao remover ajustes de permissão:', error)
+      return false
+    }
   }
 
   return true
 }
 
-export async function restaurarPermissoesDoPerfil(usuarioId: string): Promise<boolean> {
+// "Voltar ao modelo": apaga todos os ajustes individuais — a pessoa fica só com
+// o que os grupos dela dão.
+export async function removerAjustes(usuarioId: string): Promise<boolean> {
   const supabase = getSupabaseClient()
-
-  const { error } = await supabase
-    .from('usuarios_permissoes')
-    .delete()
-    .eq('usuario_id', usuarioId)
-
+  const { error } = await supabase.from('usuarios_permissoes').delete().eq('usuario_id', usuarioId)
   if (error) {
-    console.error('Erro ao restaurar permissões:', error)
+    console.error('Erro ao remover ajustes de permissão:', error)
     return false
   }
-
   return true
 }

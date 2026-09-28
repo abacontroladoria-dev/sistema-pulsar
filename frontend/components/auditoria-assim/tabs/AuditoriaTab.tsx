@@ -11,8 +11,9 @@ import TabelaAuditoria from '@/components/auditoria-assim/TabelaAuditoria'
 import type { AlvoAnalise } from '@/components/auditoria-assim/types'
 
 type Props = {
-  /** Leva para a aba Reconciliação, posicionada na semana daquele atendimento. */
-  onAnalisarSemana: (alvo: AlvoAnalise) => void
+  /** Leva para a aba Reconciliação, posicionada na semana daquele atendimento.
+   *  Ausente para quem não tem `reconciliacao_assim` — aí o botão não aparece. */
+  onAnalisarSemana?: (alvo: AlvoAnalise) => void
 }
 
 /**
@@ -112,12 +113,12 @@ export default function AuditoriaTab({ onAnalisarSemana }: Props) {
           onSort={setSort}
           onPaginaChange={setPagina}
           onRefresh={() => carregarDados(true)}
-          onAnalisarSemana={(item) =>
+          onAnalisarSemana={onAnalisarSemana && ((item) =>
             onAnalisarSemana({
               pacienteNome: item.paciente_nome,
               carteirinha: item.carteirinha,
               data: item.data_atendimento ?? filters.data,
-            })
+            }))
           }
         />
 

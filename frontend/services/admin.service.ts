@@ -59,16 +59,6 @@ export async function toggleUserActive(userId: string, active: boolean) {
   return response.ok
 }
 
-export async function changeUserRole(userId: string, role: string) {
-  const response = await fetch(getFunctionUrl('admin-change-role'), {
-    method: 'POST',
-    headers: await getFunctionHeaders(),
-    body: JSON.stringify({ userId, role }),
-  })
-
-  return response.ok
-}
-
 export async function updateUserRoleUnidades(
   userId: string,
   role: string,

@@ -1,7 +1,6 @@
 'use client'
 
 import { useImpersonation } from '@/contexts/ImpersonationContext'
-import { ROLE_LABELS } from '@/constants/roleLabels'
 import { ArrowLeft } from 'lucide-react'
 
 export function ImpersonationBar() {
@@ -11,14 +10,12 @@ export function ImpersonationBar() {
     return null
   }
 
-  const roleLabel = ROLE_LABELS[impersonatedTarget.role] || impersonatedTarget.role
-
   return (
     <div className="fixed top-0 left-0 right-0 flex items-center justify-between gap-4 bg-amber-100 border-b border-amber-300 px-4 py-3 text-amber-900 font-medium z-60">
       <div className="flex items-center gap-2">
         <div className="w-2 h-2 bg-amber-600 rounded-full" />
         <span>
-          Visualizando como: <strong>{impersonatedTarget.nome}</strong> ({roleLabel})
+          Visualizando como: <strong>{impersonatedTarget.nome}</strong>
         </span>
       </div>
 

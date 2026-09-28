@@ -5,6 +5,8 @@ import { getSupabaseClient } from '@/lib/supabase/client'
 
 export interface ImpersonationTarget {
   id?: string
+  /** "Visualizar como grupo": o menu que o modelo do grupo dá, sem pessoa. */
+  grupoId?: string
   nome: string
   role: string
 }

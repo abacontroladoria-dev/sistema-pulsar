@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { CheckIcon } from "lucide-react"
 import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
@@ -71,6 +72,40 @@ function DropdownMenuItem({
   )
 }
 
+// Seleção única dentro do menu (ex.: filtro "Todos os grupos" em /admin). Mesma
+// anatomia do DropdownMenuItem — altura de toque, destaque em bg-muted — com o
+// check à direita marcando a opção escolhida, em vez do <select> nativo, cuja
+// lista é desenhada pelo sistema operacional e ignora o tema.
+function DropdownMenuRadioGroup({
+  ...props
+}: React.ComponentProps<typeof DropdownMenuPrimitive.RadioGroup>) {
+  return <DropdownMenuPrimitive.RadioGroup data-slot="dropdown-menu-radio-group" {...props} />
+}
+
+function DropdownMenuRadioItem({
+  className,
+  children,
+  ...props
+}: React.ComponentProps<typeof DropdownMenuPrimitive.RadioItem>) {
+  return (
+    <DropdownMenuPrimitive.RadioItem
+      data-slot="dropdown-menu-radio-item"
+      className={cn(
+        "relative flex min-h-11 cursor-pointer items-center gap-2.5 rounded-lg py-2 pl-3 pr-9 text-sm outline-none transition-colors select-none data-disabled:pointer-events-none data-disabled:opacity-50 data-highlighted:bg-muted data-[state=checked]:font-semibold",
+        className
+      )}
+      {...props}
+    >
+      {children}
+      <span className="pointer-events-none absolute right-3 flex size-4 items-center justify-center">
+        <DropdownMenuPrimitive.ItemIndicator>
+          <CheckIcon className="size-4 text-brand-fg" aria-hidden="true" />
+        </DropdownMenuPrimitive.ItemIndicator>
+      </span>
+    </DropdownMenuPrimitive.RadioItem>
+  )
+}
+
 function DropdownMenuLabel({
   className,
   ...props
@@ -103,6 +138,8 @@ export {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 }

@@ -11,6 +11,7 @@ import {
   sessaoNaoSolicitada,
   sessaoSemCobertura,
   situacaoComVinculo,
+  triagemCobre,
 } from './cobertura'
 
 /**
@@ -200,6 +201,33 @@ export function contarPendencias(
 }
 
 /**
+ * guia → TUSS da sessão que ela COBRE, para as triagens que cobrem.
+ *
+ * O vínculo aceita guia de TUSS diferente do da sessão (20260925130000). O caso
+ * que exigiu: Miguel Rodrigues De Queiroz, 24/09 — a Coordenação de Caso das
+ * 14:20 (22070384) foi glosada por reincidência e a refação saiu como Terapia
+ * Ocupacional (22070427). Contada no TUSS dela, a guia sobrava como "autorização
+ * a mais" em TO e faltava uma liberação em Psicologia, mesmo depois do vínculo.
+ * A cota é da SESSÃO: a guia conta onde cobre.
+ *
+ * O TUSS sai do `bloco_id`, que é montado pelo banco:
+ * `paciente_data_TUSS_hora` na sessão e `falta_paciente_data_hora_TUSS` no bloco
+ * sintético da falta (substituição).
+ */
+export function tussDasGuiasVinculadas(
+  vinculosPorBloco: ReadonlyMap<string, VinculoAutorizacao>
+): Map<string, string> {
+  const mapa = new Map<string, string>()
+  for (const v of vinculosPorBloco.values()) {
+    if (!triagemCobre(v) || !v.bloco_id) continue
+    const partes = v.bloco_id.split('_')
+    const tuss = partes[0] === 'falta' ? partes[partes.length - 1] : partes[2]
+    if (tuss) mapa.set(v.guia, tuss)
+  }
+  return mapa
+}
+
+/**
  * O placar de um conjunto de sessões contra um conjunto de autorizações.
  *
  * Pura de propósito: a listagem chama isto uma vez por paciente do período e o
@@ -297,8 +325,9 @@ export function calcularPlacar(
     if (sessaoNaoSolicitada(s, cutoff, vinculosPorBloco)) item.naoSolicitada += 1
   }
 
+  const tussCoberto = tussDasGuiasVinculadas(vinculosPorBloco)
   for (const a of autorizacoes) {
-    const item = entrada(a.codigo_tuss)
+    const item = entrada(tussCoberto.get(a.guia) ?? a.codigo_tuss)
     item.autorizadas += 1
     if (autorizacaoLiberada(a.status)) item.liberadas += 1
     else if (autorizacaoCancelada(a.status)) item.canceladas += 1

@@ -2,7 +2,8 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit'
-import { isSuperRole, podeAcessarRota, resolverPermissoes } from '@/lib/permissions/resolver'
+import { abaPadraoLiberada, isSuperRole, podeAcessarRota } from '@/lib/permissions/resolver'
+import { carregarPermissoesEfetivas } from '@/lib/permissions/carregar'
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next()
@@ -115,18 +116,17 @@ export async function proxy(request: NextRequest) {
     return response
   }
 
-  // Deriva as rotas permitidas do mesmo modelo do Sidebar:
-  // defaults do role + overrides individuais (usuarios_permissoes).
-  // A RLS permite o usuário ler as próprias linhas.
-  const { data: overrides } = await supabase
-    .from('usuarios_permissoes')
-    .select('permissao_codigo, permitido')
-    .eq('usuario_id', user.id)
+  // Telas efetivas calculadas pelo banco (grupos ao vivo + ajustes individuais) —
+  // o mesmo carregador do Sidebar e das rotas de API. O matcher deste proxy exclui
+  // /api, então route handler checa por conta própria, pela mesma função.
+  const codigos = await carregarPermissoesEfetivas(supabase)
 
-  // resolverPermissoes é compartilhado com as rotas de API (lib/insumos/auth.ts).
-  // O matcher deste proxy exclui /api, então route handler precisa checar
-  // permissão por conta própria — e as duas checagens têm de sair da mesma regra.
-  const codigos = resolverPermissoes(role, overrides ?? [])
+  // /auditoria-assim sem ?tab= não bate com código nenhum (cada aba tem o seu).
+  // Leva à primeira aba liberada em vez de negar o endereço inteiro.
+  const abaPadrao = abaPadraoLiberada(role, codigos, pathname, request.nextUrl.search)
+  if (abaPadrao) {
+    return NextResponse.redirect(new URL(abaPadrao, request.url))
+  }
 
   // `podeAcessarRota` é a mesma função que o Sidebar usa para decidir se mostra o
   // item — inclusive a comparação de rota+querystring, necessária para as

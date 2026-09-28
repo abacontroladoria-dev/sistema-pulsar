@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from "react"
 import { useUsuarioAtual } from "@/hooks/useUsuarioAtual"
-import { getUsuarioPermissoes } from "@/services/permissoes.service"
-import { resolverPermissoes, temPermissao } from "@/lib/permissions/resolver"
+import { getSupabaseClient } from "@/lib/supabase/client"
+import { carregarPermissoesEfetivas } from "@/lib/permissions/carregar"
+import { temPermissao } from "@/lib/permissions/resolver"
 
 // Se o usuário logado tem UM código de permissão específico — mesma regra
-// (defaults do papel + overrides, "admin acessa tudo") que o Sidebar usa pra
+// (grupos + ajustes individuais, "admin acessa tudo") que o Sidebar usa pra
 // decidir o que mostrar no menu, mas exposta como hook pra telas que precisam
 // de um botão/link condicional sem duplicar a leitura de role + overrides.
 //
@@ -25,8 +26,8 @@ export function useTemPermissao(codigo: string): { tem: boolean; carregando: boo
       setCarregandoPermissoes(false)
       return
     }
-    getUsuarioPermissoes(userId)
-      .then((overrides) => { if (ativo) setCodigos(resolverPermissoes(role, overrides)) })
+    carregarPermissoesEfetivas(getSupabaseClient())
+      .then((c) => { if (ativo) setCodigos(c) })
       .finally(() => { if (ativo) setCarregandoPermissoes(false) })
     return () => { ativo = false }
   }, [userId, role, perfilLido, carregandoUsuario])

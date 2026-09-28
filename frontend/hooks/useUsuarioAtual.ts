@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { getSupabaseClient } from '@/lib/supabase/client'
-import { ROLE_LABELS } from '@/constants/roleLabels'
+import { carregarGruposDoUsuario, rotuloDosGrupos } from '@/lib/permissions/carregar'
 
 // ============================================================================
 // useUsuarioAtual
@@ -36,7 +36,10 @@ export type UsuarioAtual = {
   // concordar sobre como a pessoa se chama.
   primeiroNome:     string
   role:             string | null
-  roleLabel:        string | null
+  // Os grupos de permissão da pessoa ("Recepção, Suprimentos") — é o que se
+  // mostra dela. O `role` é nível técnico do banco e não aparece em tela.
+  // `null` enquanto/quando não deu para ler.
+  gruposLabel:      string | null
   centralRole:      string | null
   // Só é conclusão quando o perfil foi realmente lido. Se a leitura falhar,
   // `false` significaria "não tem acesso" quando o certo é "não sei" — e quem
@@ -54,7 +57,7 @@ const VAZIO: UsuarioAtual = {
   nomeCompleto:     '',
   primeiroNome:     'Usuário',
   role:             null,
-  roleLabel:        null,
+  gruposLabel:      null,
   centralRole:      null,
   temAcessoCentral: false,
   perfilLido:       false,
@@ -103,6 +106,9 @@ export function useUsuarioAtual(): UsuarioAtual {
         return
       }
 
+      const grupos = await carregarGruposDoUsuario(supabase)
+      if (!ativo) return
+
       const nomeCompleto = (perfil?.nome as string | undefined)?.trim() ?? ''
       const role         = (perfil?.role as string | undefined) ?? null
       const centralRole  = (perfil?.central_role as string | undefined) ?? null
@@ -113,7 +119,7 @@ export function useUsuarioAtual(): UsuarioAtual {
         nomeCompleto,
         primeiroNome:     nomeCompleto.split(' ')[0] || email.split('@')[0] || 'Usuário',
         role,
-        roleLabel:        role ? (ROLE_LABELS[role] ?? role) : null,
+        gruposLabel:      rotuloDosGrupos(grupos),
         centralRole,
         temAcessoCentral: !!centralRole,
         perfilLido:       true,

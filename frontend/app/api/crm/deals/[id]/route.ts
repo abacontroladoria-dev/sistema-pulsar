@@ -3,9 +3,10 @@ import { extractUser }       from '@/lib/central/auth'
 import { mapComercialError } from '@/lib/comercial/errors'
 import { ok, noContent, badRequest } from '@/lib/central/response'
 import { createDealService } from '@/modules/comercial/services'
-import type { DealPriority } from '@/modules/comercial/types/crm.types'
+import type { DealPriority, TrilhaNegocio } from '@/modules/comercial/types/crm.types'
 
 const PRIORIDADES: DealPriority[] = ['low', 'medium', 'high', 'urgent']
+const TRILHAS: TrilhaNegocio[]    = ['particular', 'convenio']
 
 // No Next 16 os params de rota dinâmica são assíncronos — precisam de await.
 type Ctx = { params: Promise<{ id: string }> }
@@ -58,6 +59,25 @@ export async function PATCH(request: NextRequest, ctx: Ctx) {
     if (body.tags        !== undefined && Array.isArray(body.tags)) patch.tags = body.tags
     if (body.assignedTo  !== undefined) patch.assigned_to  = body.assignedTo
     if (body.assigned_to !== undefined) patch.assigned_to  = body.assigned_to
+
+    // Funil da diretoria: trilha (null = ainda não se sabe), marcação de
+    // resgate e o motivo da posição atual.
+    if (body.trilha !== undefined) {
+      if (body.trilha !== null && !TRILHAS.includes(body.trilha)) {
+        return badRequest(`trilha inválida: ${body.trilha}`, 'trilha')
+      }
+      patch.trilha = body.trilha
+    }
+    if (body.resgate !== undefined) {
+      if (typeof body.resgate !== 'boolean') return badRequest('resgate deve ser true/false', 'resgate')
+      patch.resgate = body.resgate
+    }
+    if (body.motivo !== undefined) {
+      if (body.motivo !== null && typeof body.motivo !== 'string') {
+        return badRequest('motivo deve ser texto', 'motivo')
+      }
+      patch.motivo = typeof body.motivo === 'string' ? (body.motivo.trim() || null) : null
+    }
 
     if (body.expectedCloseDate  !== undefined) patch.expected_close_date = body.expectedCloseDate
     if (body.expected_close_date !== undefined) patch.expected_close_date = body.expected_close_date

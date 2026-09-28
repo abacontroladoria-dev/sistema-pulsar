@@ -91,6 +91,8 @@ export type AcoesFolha = {
   /** Clique ou foco na linha: ela vira a linha atual. */
   onCursor: (linha: LinhaFolha) => void
   onAviso: (linha: LinhaFolha) => void
+  /** Liga/desliga "filipeta conferida" (o mesmo registro da Conferência de Filipetas). */
+  onFilipeta: (linha: LinhaFolha) => void
   onDetalhe: (linha: LinhaFolha) => void
   hrefEvolucoes: ((s: SessaoConferencia) => string) | null
   onAbrirReconciliacao: ((s: SessaoConferencia) => void) | null
@@ -459,7 +461,19 @@ function LinhaSessao({ linha, atual, ...acoes }: AcoesFolha & { linha: LinhaFolh
           </span>
         </button>
 
-        <div className="hidden @min-[42rem]/lista:block">{filipeta && <IndicacaoFilipeta filipeta={filipeta} />}</div>
+        <div className="hidden @min-[42rem]/lista:block">
+          {filipeta &&
+            (linha.futura || !s.bloco_id ? (
+              <IndicacaoFilipeta filipeta={filipeta} />
+            ) : (
+              <BotaoFilipeta
+                filipeta={filipeta}
+                ocupado={ocupado}
+                contexto={contexto}
+                onClick={() => acoes.onFilipeta(linha)}
+              />
+            ))}
+        </div>
         <div className="hidden @min-[42rem]/lista:block">
           <AutorizacaoDaLinha sessao={s} futura={linha.futura} />
         </div>
@@ -855,6 +869,61 @@ function AutorizacaoDaLinha({ sessao: s, futura }: { sessao: SessaoConferencia; 
  * conferir". "Sem token" é o caso que mais escapa: dispositivo indisponível ou
  * erro no reconhecimento facial também pedem filipeta, só que sem número.
  */
+/**
+ * A filipeta como caixa de marcar: um clique diz "achei o papel e bate". Grava
+ * no mesmo registro da Conferência de Filipetas, então o check dado lá aparece
+ * aqui, e vice-versa. Verde só quando conferida.
+ */
+function BotaoFilipeta({
+  filipeta,
+  ocupado,
+  contexto,
+  onClick,
+}: {
+  filipeta: NonNullable<ReturnType<typeof filipetaDaSessao>>
+  ocupado: boolean
+  contexto: string
+  onClick: () => void
+}) {
+  const nome = filipeta.numero ? `Token ${filipeta.numero}` : 'Filipeta sem token'
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={filipeta.conferida}
+      disabled={ocupado}
+      onClick={onClick}
+      aria-label={`${nome} conferida: ${contexto}`}
+      title={filipeta.conferida ? `${nome}: conferida. Clique para desmarcar.` : `${nome}: clique quando conferir o papel.`}
+      className={`inline-flex h-8 max-w-full items-center gap-1.5 rounded-lg border pr-2.5 pl-1.5 text-xs font-medium whitespace-nowrap transition focus-visible:ring-2 focus-visible:ring-brand focus-visible:outline-none disabled:opacity-60 ${
+        filipeta.conferida
+          ? 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+          : 'border-amber-200 bg-white text-amber-700 hover:border-amber-300 hover:bg-amber-50'
+      }`}
+    >
+      <span
+        aria-hidden="true"
+        className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+          filipeta.conferida ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-amber-400 bg-white'
+        }`}
+      >
+        {ocupado ? (
+          <Loader2 size={10} className="animate-spin text-slate-500" />
+        ) : (
+          filipeta.conferida && <Check size={11} strokeWidth={3} />
+        )}
+      </span>
+      <KeySquare
+        size={13}
+        strokeWidth={2.25}
+        aria-hidden="true"
+        className={`shrink-0 ${filipeta.conferida ? 'text-emerald-700' : 'text-amber-500'}`}
+      />
+      <span className="truncate tabular-nums">{filipeta.numero ?? 'Sem token'}</span>
+    </button>
+  )
+}
+
 function IndicacaoFilipeta({ filipeta }: { filipeta: NonNullable<ReturnType<typeof filipetaDaSessao>> }) {
   const porque =
     filipeta.motivo === 'erro_facial'

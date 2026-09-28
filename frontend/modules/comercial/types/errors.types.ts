@@ -60,6 +60,33 @@ export class EstagioComNegociosError extends CentralError {
 }
 
 // ----------------------------------------------------------------------------
+// Funil da diretoria (20260930100000): algumas posições só fazem sentido com
+// motivo ("Encaminhado para humano", "Perdido / Objeção"…), e algumas só valem
+// numa trilha ("Aguardando elegibilidade" é de convênio). Os dois viram 422:
+// a requisição está bem formada, o que falta é o dado que a regra pede.
+// ----------------------------------------------------------------------------
+export class MotivoObrigatorioError extends CentralError {
+  constructor(estagio: string) {
+    super(
+      `Informe o motivo para mover para "${estagio}".`,
+      'STAGE_REQUIRES_REASON',
+      { estagio }
+    )
+  }
+}
+
+export class TrilhaIncompativelError extends CentralError {
+  constructor(estagio: string, trilhaEstagio: string, trilhaNegocio: string) {
+    const nome = (t: string) => (t === 'convenio' ? 'Convênio' : 'Particular')
+    super(
+      `"${estagio}" é uma posição da trilha ${nome(trilhaEstagio)}, e este negócio está na trilha ${nome(trilhaNegocio)}. Troque a trilha do negócio antes de mover.`,
+      'STAGE_WRONG_TRACK',
+      { estagio, trilhaEstagio, trilhaNegocio }
+    )
+  }
+}
+
+// ----------------------------------------------------------------------------
 // As policies de crm exigem ca_current_role() in ('admin','director') para
 // operar, e apenas 'admin' para deletar. Quando a policy barra, o PostgREST
 // devolve 0 linhas afetadas em vez de erro — o service transforma isso neste

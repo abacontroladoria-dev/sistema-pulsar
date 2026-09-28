@@ -2,26 +2,22 @@
 
 import { useImpersonation } from '@/contexts/ImpersonationContext'
 import { getSupabaseClient } from '@/lib/supabase/client'
-import { ROLE_LABELS } from '@/constants/roleLabels'
 import { ChevronDown, Eye } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
-const AVAILABLE_ROLES = [
-  'diretoria',
-  'recepcao',
-  'terapeutico',
-  'faturamento',
-  'autorizacao',
-  'rp',
-  'cronograma',
-  'marketing',
-  'disponibilidade_terapeuta',
-]
-
+// "Por Grupo" no lugar do antigo "Por Função" (29/09/2026): quem dá as telas são
+// os grupos de permissão, não o nível técnico (`role`). Simular um grupo mostra o
+// menu que o modelo dele dá, sem pessoa por trás.
 interface Usuario {
   id: string
   nome: string
   role: string
+}
+
+interface GrupoOpcao {
+  id: string
+  nome: string
+  nivel_tecnico: string | null
 }
 
 export function ImpersonationSelector() {
@@ -31,6 +27,9 @@ export function ImpersonationSelector() {
 
   const [isOpen, setIsOpen] = useState(false)
   const [usuarios, setUsuarios] = useState<Usuario[]>([])
+  const [grupos, setGrupos] = useState<GrupoOpcao[]>([])
+  // usuário → nomes dos grupos, para a linha de baixo de cada pessoa.
+  const [gruposDoUsuario, setGruposDoUsuario] = useState<Record<string, string[]>>({})
   const [isLoadingUsers, setIsLoadingUsers] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
@@ -42,13 +41,23 @@ export function ImpersonationSelector() {
     const loadUsuarios = async () => {
       setIsLoadingUsers(true)
       try {
-        const { data } = await supabase
-          .from('usuarios')
-          .select('id, nome, role')
-          .eq('ativo', true)
-          .order('nome')
+        const [{ data }, { data: gruposData }, { data: membros }] = await Promise.all([
+          supabase.from('usuarios').select('id, nome, role').eq('ativo', true).order('nome'),
+          supabase.from('grupos_permissoes').select('id, nome, nivel_tecnico').order('nome'),
+          supabase.from('grupos_permissoes_membros').select('grupo_id, usuario_id'),
+        ])
+
+        const nomePorGrupo = Object.fromEntries((gruposData || []).map((g) => [g.id, g.nome]))
+        const porUsuario: Record<string, string[]> = {}
+        for (const m of membros || []) {
+          const nome = nomePorGrupo[m.grupo_id]
+          if (nome) (porUsuario[m.usuario_id] ??= []).push(nome)
+        }
+        for (const nomes of Object.values(porUsuario)) nomes.sort((a, b) => a.localeCompare(b))
 
         setUsuarios(data || [])
+        setGrupos(gruposData || [])
+        setGruposDoUsuario(porUsuario)
       } catch (error) {
         console.error('Erro ao carregar usuários:', error)
       } finally {
@@ -72,10 +81,13 @@ export function ImpersonationSelector() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  const handleSelectRole = (role: string) => {
+  const handleSelectGrupo = (grupo: GrupoOpcao) => {
     startImpersonation({
-      role,
-      nome: `Função: ${ROLE_LABELS[role] || role}`,
+      grupoId: grupo.id,
+      // Só decide o "admin vê tudo" (grupo Administrador). Grupo sem nível
+      // simula alguém comum.
+      role: grupo.nivel_tecnico ?? 'recepcao',
+      nome: `Grupo: ${grupo.nome}`,
     })
     setIsOpen(false)
   }
@@ -116,26 +128,28 @@ export function ImpersonationSelector() {
       {isOpen && (
         <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg">
           <div className="max-h-96 overflow-y-auto">
-            {/* Por Função */}
+            {/* Por Grupo */}
             <div className="border-b border-gray-200 dark:border-gray-700 last:border-b-0">
               <div className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider bg-gray-50 dark:bg-gray-800">
-                Por Função
+                Por Grupo
               </div>
               <div className="py-1">
-                {AVAILABLE_ROLES.map((role) => {
-                  const isSelected =
-                    isImpersonating && !impersonatedTarget?.id && impersonatedTarget?.role === role
+                {isLoadingUsers && grupos.length === 0 && (
+                  <div className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">Carregando...</div>
+                )}
+                {grupos.map((grupo) => {
+                  const isSelected = isImpersonating && impersonatedTarget?.grupoId === grupo.id
                   return (
                     <button
-                      key={role}
-                      onClick={() => handleSelectRole(role)}
+                      key={grupo.id}
+                      onClick={() => handleSelectGrupo(grupo)}
                       className={`w-full text-left px-3 py-2 text-sm transition-colors ${
                         isSelected
                           ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-medium'
                           : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
                       }`}
                     >
-                      {ROLE_LABELS[role] || role}
+                      {grupo.nome}
                       {isSelected && ' ✓'}
                     </button>
                   )
@@ -170,7 +184,7 @@ export function ImpersonationSelector() {
                             {isSelected && ' ✓'}
                           </div>
                           <div className="text-xs text-gray-500 dark:text-gray-400">
-                            {ROLE_LABELS[usuario.role] || usuario.role}
+                            {(gruposDoUsuario[usuario.id] || []).join(', ') || 'Sem grupo'}
                           </div>
                         </button>
                       )

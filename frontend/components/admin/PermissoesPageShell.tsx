@@ -2,65 +2,38 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import {
-  Activity,
   AlertTriangle,
-  ArrowRightLeft,
-  BarChart3,
-  BriefcaseBusiness,
-  Building2,
-  CalendarDays,
-  CalendarRange,
   ChevronDown,
-  ClipboardList,
-  ClipboardPenLine,
-  ClipboardPlus,
-  FileText,
   KeyRound,
-  LayoutDashboard,
-  LogOut,
-  Megaphone,
-  Monitor,
+  MinusCircle,
   Pencil,
-  Plug,
   PlusCircle,
   RotateCcw,
   Save,
   Search,
   ShieldCheck,
-  Stethoscope,
-  TrendingUp,
-  UserCheck,
   UserRound,
   Users,
-  Database,
-  Wallet,
-  Handshake,
-  DoorOpen,
-  UserSearch,
-  UserPlus,
-  Package,
   UsersRound,
   Trash2,
   X,
-  XCircle,
   Lock,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useHeader } from '@/contexts/HeaderContext'
 import { getSupabaseClient } from '@/lib/supabase/client'
-import { changeUserRole, getAdminUsers } from '@/services/admin.service'
+import { getAdminUsers } from '@/services/admin.service'
 import type { AdminUser } from '@/services/admin.service'
 import {
   getAllUsuariosPermissoes,
   getPermissoes,
   getUsuarioPermissoes,
-  restaurarPermissoesDoPerfil,
-  salvarPermissoesUsuario,
+  removerAjustes,
+  salvarAjustes,
 } from '@/services/permissoes.service'
 import type { Permissao } from '@/services/permissoes.service'
 import {
   adicionarMembro,
-  aplicarModelosAosUsuarios,
   criarGrupo,
   excluirGrupo,
   getAllMembrosPorGrupo,
@@ -68,11 +41,15 @@ import {
   removerMembro,
   renomearGrupo,
   salvarModeloGrupo,
-  unirModelos,
+  sincronizarGruposDoUsuario,
 } from '@/services/grupos.service'
 import type { Grupo } from '@/services/grupos.service'
-import { getRoleDefaultPermissions, hasPermission } from '@/lib/permissions/hasPermission'
+import { podeAcessarRota, resolverPermissoes, uniaoDosModelos } from '@/lib/permissions/resolver'
+import type { OverridePermissao } from '@/lib/permissions/resolver'
+import { carregarPermissoesEfetivas } from '@/lib/permissions/carregar'
+import { MENU_ICONE_GRUPO, MENU_ORDEM_GRUPOS, MENU_ORDEM_ITEM, MENU_POR_CODIGO } from '@/lib/permissions/menu'
 import { getAvatarColor } from '@/lib/admin/avatar-color'
+import { MultiSearchCombobox } from '@/components/cronograma/ui/MultiSearchCombobox'
 import {
   Dialog,
   DialogContent,
@@ -84,98 +61,136 @@ const supabase = getSupabaseClient()
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
-const ROLE_LABELS: Record<string, string> = {
-  admin: 'Administrador',
-  diretoria: 'Diretoria',
-  recepcao: 'Recepção',
-  autorizacao: 'Autorização',
-  terapeutico: 'Terapêutico',
-  faturamento: 'Faturamento',
-  rp: 'RP',
-  cronograma: 'Cronograma',
-  marketing: 'Marketing',
-  // Mesmo rótulo do roleOptions em AdminUsersTable — sem ele o valor cru do
-  // banco ("disponibilidade_terapeuta") vazava pra tela e estourava a linha.
-  disponibilidade_terapeuta: 'Disponib. Terapeuta',
+// Nome, grupo, ícone e ordem vêm do menu (lib/permissions/menu.ts), a mesma
+// fonte do Sidebar — a tela nunca mostra uma tela com nome diferente do menu.
+const INITIAL_OPEN = new Set(MENU_ORDEM_GRUPOS)
+
+function iconeDoModulo(codigo: string): React.ElementType {
+  return MENU_POR_CODIGO[codigo]?.icon || ShieldCheck
 }
 
-const ROLES = Object.entries(ROLE_LABELS).map(([value, label]) => ({ value, label }))
-
-function labelSetor(role?: string) {
-  return ROLE_LABELS[role || ''] || role || '—'
+// O catálogo do banco, alinhado ao menu: só entram códigos que têm item no
+// Sidebar (o que sobra no banco é tela que não existe), com rótulo e grupo do
+// menu e na ordem dele. Não depende da coluna `ordem` do banco, então a tela já
+// sai certa mesmo antes da migration 20260929120000 ser aplicada.
+function alinharAoMenu(permissoes: Permissao[]): Permissao[] {
+  return permissoes
+    .filter(p => MENU_POR_CODIGO[p.codigo])
+    .map(p => ({ ...p, nome: MENU_POR_CODIGO[p.codigo].label, grupo: MENU_POR_CODIGO[p.codigo].grupo }))
+    .sort((a, b) => MENU_ORDEM_ITEM[a.codigo] - MENU_ORDEM_ITEM[b.codigo])
 }
-
-const MODULE_ICONS: Record<string, React.ElementType> = {
-  dashboard: LayoutDashboard,
-  atendimentos: PlusCircle,
-  // Mesmo ícone do MenuItem em Sidebar.tsx:514 — não ClipboardList (auditoria_assim)
-  // nem PlusCircle (atendimentos), pra não confundir com os dois vizinhos do
-  // grupo 'Pacientes'.
-  autorizacoes_avulsas: ClipboardPlus,
-  gestao: Activity,
-  escala_terapeutica: UserRound,
-  auditoria_assim: ClipboardList,
-  // Mesmo ícone do MenuItem em Sidebar.tsx.
-  conferencia_guias: ClipboardPenLine,
-  usuarios: Users,
-  permissoes: KeyRound,
-  // Mesmo ícone do MenuItem em Sidebar.tsx — o módulo tem de ser reconhecível
-  // como a mesma tela nas duas listas.
-  api_integracao: Plug,
-  // Mesmo ícone do MenuItem em Sidebar.tsx — o módulo tem de ser reconhecível
-  // como a mesma tela nas duas listas.
-  tv_avisos: Monitor,
-  cronograma_solicitacoes: UserPlus,
-  cronograma_saida_profissional: LogOut,
-  cronograma_ocupacao_paciente: UserCheck,
-  cronograma_ocupacao_salas: DoorOpen,
-  cronograma_disponibilidade_interna: UserSearch,
-  ocupacao_clinica: XCircle,
-  ocupacao_clinica_gaps: BarChart3,
-  ocupacao_clinica_inconsistencias: AlertTriangle,
-  ocupacao_profissionais: BarChart3,
-  indicadores_ocupacao_unidades: Building2,
-  indicadores_pacientes: UserCheck,
-  indicadores_previsao_receitas: Wallet,
-  indicadores_comparativo_sessoes: ArrowRightLeft,
-}
-
-const GROUP_ICONS: Record<string, React.ElementType> = {
-  Sistema: LayoutDashboard,
-  Geral: LayoutDashboard,
-  Pacientes: Users,
-  Terapêutico: Stethoscope,
-  Operações: BriefcaseBusiness,
-  Insumos: Package,
-  Cronograma: CalendarRange,
-  Indicadores: TrendingUp,
-  Cadastros: Database,
-  'Relacionamento Prestador': Handshake,
-  Marketing: Megaphone,
-  Administração: ShieldCheck,
-}
-
-// Marketing vem imediatamente antes de Administração — a mesma posição que o
-// grupo ocupa no Sidebar. Duas telas que listam os mesmos módulos em ordens
-// diferentes obrigam quem procura um acesso a reaprender o mapa em cada uma.
-const GROUP_ORDER = ['Pacientes', 'Terapêutico', 'Operações', 'Insumos', 'Cronograma', 'Indicadores', 'Cadastros', 'Relacionamento Prestador', 'Marketing', 'Administração', 'Sistema', 'Geral']
-
-const INITIAL_OPEN = new Set(GROUP_ORDER)
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+// Telas efetivas: grupos ao vivo + ajustes individuais — a mesma regra que o
+// banco aplica em permissoes_efetivas() (resolver.ts). `ajustes` são as linhas de
+// usuarios_permissoes da pessoa; `modelos`, os dos grupos dela.
 function computeEffectivePerms(
-  overrideMap: Record<string, boolean>,
-  role: string,
+  ajustes: Record<string, boolean>,
+  modelos: Record<string, boolean>[],
   allPermissoes: Permissao[]
 ): Record<string, boolean> {
-  const defaults = getRoleDefaultPermissions(role)
+  const lista: OverridePermissao[] = Object.entries(ajustes).map(
+    ([permissao_codigo, permitido]) => ({ permissao_codigo, permitido })
+  )
+  const codigos = resolverPermissoes(lista, modelos)
   const effective: Record<string, boolean> = {}
-  for (const p of allPermissoes) {
-    effective[p.codigo] =
-      p.codigo in overrideMap ? overrideMap[p.codigo] : defaults.includes(p.codigo)
-  }
+  for (const p of allPermissoes) effective[p.codigo] = codigos.has(p.codigo)
   return effective
+}
+
+// Códigos em que as telas da pessoa diferem do que os grupos dela dão — o
+// "fora do modelo". Por VALOR, e não por existir linha gravada: uma linha que só
+// repete o grupo não é ajuste.
+function codigosAjustados(
+  efetivo: Record<string, boolean>,
+  uniao: Set<string>,
+  allPermissoes: Permissao[]
+): Set<string> {
+  const ajustados = new Set<string>()
+  for (const p of allPermissoes) if ((efetivo[p.codigo] ?? false) !== uniao.has(p.codigo)) ajustados.add(p.codigo)
+  return ajustados
+}
+
+// Modelos dos grupos de `userId`. `troca` substitui o modelo de um grupo (o
+// modelo em edição, ainda não salvo) e `semGrupoId` tira um grupo — é assim que
+// as confirmações mostram o que muda ANTES de gravar.
+function modelosDoUsuario(
+  gruposDoUsuario: Record<string, Grupo[]>,
+  userId: string,
+  opcoes?: { troca?: { grupoId: string; modelo: Record<string, boolean> }; semGrupoId?: string }
+): Record<string, boolean>[] {
+  return (gruposDoUsuario[userId] || [])
+    .filter(g => g.id !== opcoes?.semGrupoId)
+    .map(g => (opcoes?.troca && g.id === opcoes.troca.grupoId ? opcoes.troca.modelo : g.modelo_permissoes))
+}
+
+// Detalhe do "fora do modelo", comparando a pessoa com a SOMA dos grupos dela:
+//   * faltam: telas que algum grupo dá e a pessoa não tem (retiradas só dela) —
+//     com os grupos que as dão, porque com dois grupos importa saber de onde vem;
+//   * aMais: telas que a pessoa tem e nenhum grupo dá (liberadas só para ela).
+// Uma tela que um grupo dá e o outro não dá NÃO é ajuste: a soma já a inclui.
+function detalheDoAjuste(
+  ajustes: Record<string, boolean>,
+  grupos: Grupo[],
+  allPermissoes: Permissao[]
+): { faltam: { permissao: Permissao; grupos: string[] }[]; aMais: Permissao[] } {
+  const efetivo = computeEffectivePerms(ajustes, grupos.map(g => g.modelo_permissoes), allPermissoes)
+  const faltam: { permissao: Permissao; grupos: string[] }[] = []
+  const aMais: Permissao[] = []
+  for (const p of allPermissoes) {
+    const deQuais = grupos.filter(g => g.modelo_permissoes[p.codigo]).map(g => g.nome)
+    const tem = efetivo[p.codigo] ?? false
+    if (deQuais.length > 0 && !tem) faltam.push({ permissao: p, grupos: deQuais })
+    if (deQuais.length === 0 && tem) aMais.push(p)
+  }
+  return { faltam, aMais }
+}
+
+// "O grupo passa a condizer com o usuário": os modelos que resultam de levar o
+// ajuste individual da pessoa para os grupos dela.
+//   * o que ela tem a mais entra no grupo escolhido (`destinoId`);
+//   * o que falta nela sai de TODOS os grupos dela que dão a tela — se saísse de
+//     um só, o outro continuaria dando, e ela continuaria fora do modelo.
+// Devolve só os grupos que mudam, com o modelo completo de cada um.
+function modelosLevandoAjusteAosGrupos(
+  gruposDela: Grupo[],
+  detalhe: { faltam: { permissao: Permissao; grupos: string[] }[]; aMais: Permissao[] },
+  destinoId: string | null
+): Record<string, Record<string, boolean>> {
+  const novos: Record<string, Record<string, boolean>> = {}
+  const modeloDe = (g: Grupo) => (novos[g.id] ??= { ...g.modelo_permissoes })
+  if (destinoId) {
+    const destino = gruposDela.find(g => g.id === destinoId)
+    if (destino) for (const p of detalhe.aMais) modeloDe(destino)[p.codigo] = true
+  }
+  for (const { permissao, grupos: deQuais } of detalhe.faltam) {
+    for (const g of gruposDela) if (deQuais.includes(g.nome)) modeloDe(g)[permissao.codigo] = false
+  }
+  return novos
+}
+
+// O que muda para uma pessoa entre dois estados: telas que ela passa a ter e
+// telas que perde. Mostrado ANTES de gravar — nada retira acesso às cegas.
+function diferencaDoModelo(
+  efetivo: Record<string, boolean>,
+  modelo: Record<string, boolean>,
+  allPermissoes: Permissao[]
+): { ganha: Permissao[]; perde: Permissao[] } {
+  const ganha: Permissao[] = []
+  const perde: Permissao[] = []
+  for (const p of allPermissoes) {
+    const tem = efetivo[p.codigo] ?? false
+    const vai = modelo[p.codigo] ?? false
+    if (vai && !tem) ganha.push(p)
+    if (tem && !vai) perde.push(p)
+  }
+  return { ganha, perde }
+}
+
+function listarNomes(nomes: string[]): string {
+  if (nomes.length <= 1) return nomes[0] ?? ''
+  return `${nomes.slice(0, -1).join(', ')} e ${nomes[nomes.length - 1]}`
 }
 
 // ─── Subcomponentes ───────────────────────────────────────────────────────────
@@ -198,37 +213,77 @@ function Avatar({ name, userId, size = 'md' }: {
   )
 }
 
-// Setor + grupos numa única linha nas listas de usuário das três visões.
-//
-// O seed criou um grupo por role (ver 20260819120000_create_grupos_permissoes),
-// então na maioria dos casos o setor e o grupo têm o mesmo nome — repetir os
-// dois viraria "RP / RP". Quando o setor está entre os grupos, o nome aparece
-// uma vez só, sob o ícone de grupo, e os demais grupos vêm depois:
-// "Cronograma, Autorização". Quando não está (ou não há grupo nenhum), o setor
-// vem separado, pra nunca dar a entender que existe um grupo com o nome dele.
-function SetorEGrupos({ setor, grupos }: { setor: string; grupos: string[] }) {
-  const setorEhGrupo = grupos.includes(setor)
-  const listados = setorEhGrupo ? [setor, ...grupos.filter(g => g !== setor)] : grupos
-
+// Grupos da pessoa numa única linha nas listas das três visões. O nível técnico
+// (`role`) não aparece aqui de propósito: quem organiza o acesso é o grupo; o
+// nível só é mostrado no detalhe da pessoa.
+function GruposDaPessoa({ grupos }: { grupos: string[] }) {
   return (
     <p className="mt-0.5 flex items-center gap-1 text-xs text-slate-500 leading-tight">
-      {!setorEhGrupo && (
-        <>
-          <span className="truncate">{setor}</span>
-          <span aria-hidden="true" className="shrink-0 text-slate-300">·</span>
-        </>
-      )}
-      {listados.length > 0 ? (
+      {grupos.length > 0 ? (
         <>
           <UsersRound size={11} aria-hidden="true" className="shrink-0" />
-          <span className="truncate">{listados.join(', ')}</span>
+          <span className="truncate">{grupos.join(', ')}</span>
         </>
       ) : (
-        // shrink-0: "Sem grupo" nunca é a parte que encolhe — quem trunca é o
-        // nome do setor, que é o pedaço adivinhável.
         <span className="shrink-0 whitespace-nowrap text-slate-500 italic">Sem grupo</span>
       )}
     </p>
+  )
+}
+
+// Uma tela na lista do "fora do modelo": o ícone e a seção do menu (os mesmos do
+// Sidebar) para a pessoa reconhecer a tela de relance; o tom diz se ela está a
+// mais ou a menos. `grupos`: de onde a tela vem, só quando falta na pessoa.
+function LinhaAjuste({ permissao, tom, grupos }: {
+  permissao: Permissao
+  tom: 'falta' | 'aMais'
+  grupos?: string[]
+}) {
+  const Icon = MENU_POR_CODIGO[permissao.codigo]?.icon ?? ShieldCheck
+  return (
+    <li className="flex items-center gap-3 px-3 py-2.5">
+      <span
+        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+          tom === 'falta' ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'
+        }`}
+      >
+        <Icon size={15} aria-hidden="true" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-semibold text-slate-800">{permissao.nome}</span>
+        <span className="block truncate text-xs text-slate-500">Menu: {permissao.grupo}</span>
+      </span>
+      {grupos && grupos.length > 0 && (
+        <span className="flex shrink-0 flex-wrap justify-end gap-1">
+          {grupos.map(g => (
+            <span key={g} className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
+              <UsersRound size={11} aria-hidden="true" />
+              {g}
+            </span>
+          ))}
+        </span>
+      )}
+    </li>
+  )
+}
+
+// Lista de telas que um "Aplicar" vai liberar ou retirar.
+function ListaDiferenca({ titulo, itens, tom }: { titulo: string; itens: Permissao[]; tom: 'ganha' | 'perde' }) {
+  if (itens.length === 0) return null
+  return (
+    <div>
+      <p className={`text-xs font-semibold mb-1 ${tom === 'ganha' ? 'text-emerald-700' : 'text-rose-700'}`}>
+        {titulo} ({itens.length})
+      </p>
+      <ul className="max-h-40 overflow-y-auto rounded-xl border border-slate-100 divide-y divide-slate-50">
+        {itens.map(p => (
+          <li key={p.codigo} className="flex items-center justify-between gap-3 px-3 py-1.5 text-sm text-slate-700">
+            <span className="truncate">{p.nome}</span>
+            <span className="shrink-0 text-xs text-slate-500">{p.grupo}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
   )
 }
 
@@ -265,19 +320,21 @@ function Checkbox({ checked, indeterminate, onChange, label }: {
   )
 }
 
-function GroupCard({ grupo, items, perms, isOpen, onToggleOpen, onToggle }: {
+function GroupCard({ grupo, items, perms, isOpen, onToggleOpen, onToggle, ajustados }: {
   grupo: string
   items: Permissao[]
   perms: Record<string, boolean>
   isOpen: boolean
   onToggleOpen: () => void
   onToggle: (codigo: string, value: boolean) => void
+  /** "Por usuário": telas em que a pessoa difere dos grupos dela. */
+  ajustados?: Set<string>
 }) {
   const checkedCount = items.filter(p => perms[p.codigo] ?? false).length
   const allChecked = checkedCount === items.length && items.length > 0
   const someChecked = checkedCount > 0 && !allChecked
 
-  const GroupIcon = GROUP_ICONS[grupo] || ShieldCheck
+  const GroupIcon = MENU_ICONE_GRUPO[grupo] || ShieldCheck
 
   function handleGroupCheck() {
     const newValue = !allChecked
@@ -323,7 +380,7 @@ function GroupCard({ grupo, items, perms, isOpen, onToggleOpen, onToggle }: {
       {isOpen && (
         <div className="border-t border-slate-100">
           {items.map((p, idx) => {
-            const Icon = MODULE_ICONS[p.codigo] || ShieldCheck
+            const Icon = iconeDoModulo(p.codigo)
             const permitted = perms[p.codigo] ?? false
             return (
               <div
@@ -344,6 +401,14 @@ function GroupCard({ grupo, items, perms, isOpen, onToggleOpen, onToggle }: {
                   <span className={`text-sm transition-colors ${permitted ? 'text-slate-700' : 'text-slate-500'}`}>
                     {p.nome}
                   </span>
+                  {ajustados?.has(p.codigo) && (
+                    <span
+                      className="ml-auto shrink-0 rounded-md bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-800"
+                      title={permitted ? 'Liberada só para esta pessoa — os grupos dela não dão' : 'Retirada só desta pessoa — os grupos dela dão'}
+                    >
+                      Ajuste individual
+                    </span>
+                  )}
                 </button>
               </div>
             )
@@ -360,6 +425,7 @@ export default function PermissoesPageShell() {
   const { setHeader } = useHeader()
 
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null)
+  const [motivoBloqueio, setMotivoBloqueio] = useState<'codigo' | 'nivel' | null>(null)
   const [users, setUsers] = useState<AdminUser[]>([])
   const [permissoes, setPermissoes] = useState<Permissao[]>([])
   const [search, setSearch] = useState('')
@@ -369,9 +435,6 @@ export default function PermissoesPageShell() {
   const [loadingUser, setLoadingUser] = useState(false)
   const [saving, setSaving] = useState(false)
   const [restoring, setRestoring] = useState(false)
-  const [showEditRole, setShowEditRole] = useState(false)
-  const [newRole, setNewRole] = useState('')
-  const [savingRole, setSavingRole] = useState(false)
   const [openGroups, setOpenGroups] = useState<Set<string>>(INITIAL_OPEN)
 
   // ─── View "por permissão" (quem tem acesso a X) ──────────────────────────
@@ -395,7 +458,8 @@ export default function PermissoesPageShell() {
   const [openGroupsGrupoView, setOpenGroupsGrupoView] = useState<Set<string>>(INITIAL_OPEN)
   const [addMemberSearch, setAddMemberSearch] = useState('')
   const [memberActionId, setMemberActionId] = useState<string | null>(null)
-  const [applyingModelo, setApplyingModelo] = useState(false)
+  const [savingModelo, setSavingModelo] = useState(false)
+  const [showSalvarModeloConfirm, setShowSalvarModeloConfirm] = useState(false)
   const [showNovoGrupoModal, setShowNovoGrupoModal] = useState(false)
   const [novoGrupoNome, setNovoGrupoNome] = useState('')
   const [creatingGrupo, setCreatingGrupo] = useState(false)
@@ -406,7 +470,15 @@ export default function PermissoesPageShell() {
   const [showDeleteGrupoConfirm, setShowDeleteGrupoConfirm] = useState(false)
   const [deletingGrupo, setDeletingGrupo] = useState(false)
   const [memberToRemove, setMemberToRemove] = useState<AdminUser | null>(null)
-  const [memberToSync, setMemberToSync] = useState<AdminUser | null>(null)
+  const [usuarioDetalhe, setUsuarioDetalhe] = useState<AdminUser | null>(null)
+  // Terceira saída do "fora do modelo": o grupo passa a seguir a pessoa.
+  const [levandoAoGrupo, setLevandoAoGrupo] = useState(false)
+  const [grupoDestinoId, setGrupoDestinoId] = useState<string | null>(null)
+  // "Editar grupos" da pessoa selecionada em "Por usuário".
+  const [showEditGruposUsuario, setShowEditGruposUsuario] = useState(false)
+  const [gruposDraftUsuario, setGruposDraftUsuario] = useState<Set<string>>(new Set())
+  const [salvandoGruposUsuario, setSalvandoGruposUsuario] = useState(false)
+  const [showRestoreConfirm, setShowRestoreConfirm] = useState(false)
 
   useEffect(() => {
     setHeader('Permissões', 'Gerencie as permissões de acesso dos usuários aos módulos do sistema.')
@@ -415,17 +487,27 @@ export default function PermissoesPageShell() {
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data }) => {
       if (!data.user) { setIsAdmin(false); return }
-      const { data: perfil } = await supabase
-        .from('usuarios').select('role').eq('id', data.user.id).single()
-      // 'diretoria' já tem RLS própria pra gerenciar usuarios/usuarios_permissoes
-      // (ver migration 20260713140000_diretoria_gerencia_permissoes.sql,
-      // função is_diretoria()) — só a tela nunca tinha sido atualizada pra
-      // deixar entrar, ficava restrita a 'admin' aqui mesmo com o banco já
-      // liberando escrita.
-      if (perfil?.role === 'admin' || perfil?.role === 'diretoria') { setIsAdmin(true); return }
-      // Qualquer outro papel só entra com o override individual do código
-      // "permissoes" (ver usuarios_permissoes / hasPermission.ts).
-      setIsAdmin(await hasPermission(data.user.id, 'permissoes'))
+      const [{ data: perfil }, codigos] = await Promise.all([
+        supabase.from('usuarios').select('role').eq('id', data.user.id).single(),
+        carregarPermissoesEfetivas(supabase),
+      ])
+      const role = perfil?.role ?? ''
+      // 1. A tela: mesma regra do proxy e do Sidebar (código `permissoes`).
+      if (!podeAcessarRota(role, codigos, '/admin/permissoes')) {
+        setMotivoBloqueio('codigo')
+        setIsAdmin(false)
+        return
+      }
+      // 2. O banco: as policies de usuarios_permissoes e grupos_permissoes só
+      // aceitam escrita de admin e diretoria (is_admin/is_diretoria,
+      // 20260713140000 e 20260819120000). Deixar outro nível entrar mostraria
+      // uma lista de grupos vazia e salvamentos que falham.
+      if (role !== 'admin' && role !== 'diretoria') {
+        setMotivoBloqueio('nivel')
+        setIsAdmin(false)
+        return
+      }
+      setIsAdmin(true)
     })
   }, [])
 
@@ -433,12 +515,13 @@ export default function PermissoesPageShell() {
     if (isAdmin !== true) return
     Promise.all([getAdminUsers(), getPermissoes()]).then(([u, p]) => {
       setUsers(u)
-      setPermissoes(p)
+      setPermissoes(alinharAoMenu(p))
     })
   }, [isAdmin])
 
   useEffect(() => {
-    if ((viewMode !== 'permissao' && viewMode !== 'grupo') || isAdmin !== true) return
+    // Todas as visões usam: "Por usuário" marca quem está fora do modelo na lista.
+    if (isAdmin !== true) return
     if (Object.keys(allOverrides).length > 0) return
     setLoadingOverrides(true)
     getAllUsuariosPermissoes().then(overrides => {
@@ -450,7 +533,7 @@ export default function PermissoesPageShell() {
       setAllOverrides(map)
       setLoadingOverrides(false)
     })
-  }, [viewMode, isAdmin, allOverrides])
+  }, [isAdmin, allOverrides])
 
   // Grupos entram no carregamento inicial (e não só na aba "Por grupo") porque
   // as três visões mostram os grupos de cada usuário separados por vírgula.
@@ -489,10 +572,10 @@ export default function PermissoesPageShell() {
       if (!map.has(g)) map.set(g, [])
       map.get(g)!.push(p)
     }
-    const ordered = GROUP_ORDER
+    const ordered = MENU_ORDEM_GRUPOS
       .filter(g => map.has(g))
       .map(g => [g, map.get(g)!] as [string, Permissao[]])
-    const rest = Array.from(map.entries()).filter(([g]) => !GROUP_ORDER.includes(g))
+    const rest = Array.from(map.entries()).filter(([g]) => !MENU_ORDEM_GRUPOS.includes(g))
     return [...ordered, ...rest]
   }, [permissoes])
 
@@ -507,37 +590,6 @@ export default function PermissoesPageShell() {
   const selectedPermissao = useMemo(
     () => permissoes.find(p => p.codigo === selectedCodigo) || null,
     [permissoes, selectedCodigo]
-  )
-
-  const usersForSelectedCodigo = useMemo(() => {
-    if (!selectedCodigo) return []
-    return users.map(u => {
-      const overrideMap = allOverrides[u.id] || {}
-      const hasOverride = selectedCodigo in overrideMap
-      const roleDefault = getRoleDefaultPermissions(u.role || '').includes(selectedCodigo)
-      const granted = hasOverride ? overrideMap[selectedCodigo] : roleDefault
-      const origem: 'perfil' | 'override_liberado' | 'override_negado' = !hasOverride
-        ? 'perfil'
-        : overrideMap[selectedCodigo]
-          ? 'override_liberado'
-          : 'override_negado'
-      return { user: u, granted, origem }
-    })
-  }, [users, allOverrides, selectedCodigo])
-
-  const filteredUsersForSelectedCodigo = useMemo(() => {
-    let list = usersForSelectedCodigo
-    if (onlyGranted) list = list.filter(x => x.granted)
-    if (userSearchByPerm) {
-      const q = userSearchByPerm.toLowerCase()
-      list = list.filter(x => (x.user.nome || x.user.email || '').toLowerCase().includes(q))
-    }
-    return list
-  }, [usersForSelectedCodigo, onlyGranted, userSearchByPerm])
-
-  const grantedCountForSelectedCodigo = useMemo(
-    () => usersForSelectedCodigo.filter(x => x.granted).length,
-    [usersForSelectedCodigo]
   )
 
   const filteredGrupos = useMemo(() => {
@@ -559,15 +611,43 @@ export default function PermissoesPageShell() {
     return map
   }, [grupos, membrosPorGrupo])
 
-  // Modelo efetivo de cada usuário: união dos modelos de todos os grupos dele —
-  // as permissões dos grupos não se excluem, se complementam.
-  const modelosResolvidos = useMemo(() => {
-    const map: Record<string, Record<string, boolean>> = {}
-    for (const [uid, gs] of Object.entries(gruposDoUsuario)) {
-      map[uid] = unirModelos(gs.map(g => g.modelo_permissoes))
+  function modelosDe(
+    userId: string,
+    opcoes?: { troca?: { grupoId: string; modelo: Record<string, boolean> }; semGrupoId?: string }
+  ) {
+    return modelosDoUsuario(gruposDoUsuario, userId, opcoes)
+  }
+
+  // O que os grupos de `userId` dão, com todos os códigos do catálogo.
+  function modeloCompletoDe(userId: string) {
+    const uniao = uniaoDosModelos(modelosDe(userId))
+    const completo: Record<string, boolean> = {}
+    for (const p of permissoes) completo[p.codigo] = uniao.has(p.codigo)
+    return completo
+  }
+
+  const usersForSelectedCodigo = useMemo(() => {
+    if (!selectedCodigo) return []
+    return users.map(u => {
+      const efetivo = computeEffectivePerms(allOverrides[u.id] || {}, modelosDoUsuario(gruposDoUsuario, u.id), permissoes)
+      return { user: u, granted: efetivo[selectedCodigo] ?? false }
+    })
+  }, [users, allOverrides, selectedCodigo, permissoes, gruposDoUsuario])
+
+  const filteredUsersForSelectedCodigo = useMemo(() => {
+    let list = usersForSelectedCodigo
+    if (onlyGranted) list = list.filter(x => x.granted)
+    if (userSearchByPerm) {
+      const q = userSearchByPerm.toLowerCase()
+      list = list.filter(x => (x.user.nome || x.user.email || '').toLowerCase().includes(q))
     }
-    return map
-  }, [gruposDoUsuario])
+    return list
+  }, [usersForSelectedCodigo, onlyGranted, userSearchByPerm])
+
+  const grantedCountForSelectedCodigo = useMemo(
+    () => usersForSelectedCodigo.filter(x => x.granted).length,
+    [usersForSelectedCodigo]
+  )
 
   function nomesGrupos(userId: string) {
     return (gruposDoUsuario[userId] || []).map(g => g.nome)
@@ -603,24 +683,32 @@ export default function PermissoesPageShell() {
     [grupoModeloPerms]
   )
 
-  // Membros cujas permissões efetivas (padrão do role + overrides individuais)
-  // não batem mais com o modelo resolvido — ficaram assim porque alguém editou
-  // "Por usuário"/"Por permissão" depois da última aplicação do modelo, porque
-  // o modelo foi alterado depois, ou porque o membro entrou/saiu de outro grupo
-  // (a comparação é contra a UNIÃO dos modelos dos grupos dele, não só o deste).
-  const driftedMemberIds = useMemo(() => {
-    if (!selectedGrupo || loadingOverrides) return new Set<string>()
-    const drifted = new Set<string>()
-    for (const uid of selectedGrupoMembroIds) {
-      const user = users.find(u => u.id === uid)
-      if (!user) continue
-      const modelo = modelosResolvidos[uid] || {}
-      const effective = computeEffectivePerms(allOverrides[uid] || {}, user.role || '', permissoes)
-      const isDrifted = permissoes.some(p => (effective[p.codigo] ?? false) !== (modelo[p.codigo] ?? false))
-      if (isDrifted) drifted.add(uid)
+  // "Fora do modelo": membro com ajuste individual — uma tela a mais ou a menos
+  // do que os grupos dele dão, liberada/retirada em "Por usuário" ou "Por
+  // permissão". Com os grupos ao vivo, é o ÚNICO jeito de alguém divergir: mudar
+  // o modelo ou os grupos da pessoa já muda as telas dela.
+  const usuariosForaDoModelo = useMemo(() => {
+    const fora = new Set<string>()
+    if (loadingOverrides) return fora
+    for (const u of users) {
+      const modelos = modelosDoUsuario(gruposDoUsuario, u.id)
+      const efetivo = computeEffectivePerms(allOverrides[u.id] || {}, modelos, permissoes)
+      if (codigosAjustados(efetivo, uniaoDosModelos(modelos), permissoes).size > 0) fora.add(u.id)
     }
-    return drifted
-  }, [selectedGrupo, selectedGrupoMembroIds, users, allOverrides, permissoes, loadingOverrides, modelosResolvidos])
+    return fora
+  }, [users, allOverrides, permissoes, loadingOverrides, gruposDoUsuario])
+
+  const driftedMemberIds = useMemo(
+    () => new Set(selectedGrupo ? selectedGrupoMembroIds.filter(uid => usuariosForaDoModelo.has(uid)) : []),
+    [selectedGrupo, selectedGrupoMembroIds, usuariosForaDoModelo]
+  )
+
+  // "Por usuário": telas em que a pessoa selecionada difere dos grupos dela,
+  // já contando o que foi marcado/desmarcado e ainda não salvo.
+  const ajustadosDoSelecionado = useMemo(() => {
+    if (!selectedUser) return new Set<string>()
+    return codigosAjustados(perms, uniaoDosModelos(modelosDoUsuario(gruposDoUsuario, selectedUser.id)), permissoes)
+  }, [selectedUser, perms, permissoes, gruposDoUsuario])
 
   // ─── Handlers (lógica de negócio inalterada) ─────────────────────────────
 
@@ -629,18 +717,37 @@ export default function PermissoesPageShell() {
     setLoadingUser(true)
     const overrides = await getUsuarioPermissoes(user.id)
     const overrideMap = Object.fromEntries(overrides.map(o => [o.permissao_codigo, o.permitido]))
-    const effective = computeEffectivePerms(overrideMap, user.role || '', permissoes)
+    const effective = computeEffectivePerms(overrideMap, modelosDe(user.id), permissoes)
     setPerms(effective)
     setOriginalPerms({ ...effective })
     setLoadingUser(false)
   }
 
+  // Espelha localmente o que salvarAjustes gravou: só ficam os códigos que
+  // diferem dos grupos. Só mexe em allOverrides se ele já foi carregado (as
+  // visões "Por permissão"/"Por grupo" o carregam na primeira abertura).
+  function atualizarAjustesLocais(userId: string, desejado: Record<string, boolean>, uniao: Set<string>) {
+    setAllOverrides(prev => {
+      if (Object.keys(prev).length === 0) return prev
+      const atual = { ...(prev[userId] || {}) }
+      for (const [codigo, valor] of Object.entries(desejado)) {
+        if (valor === uniao.has(codigo)) delete atual[codigo]
+        else atual[codigo] = valor
+      }
+      return { ...prev, [userId]: atual }
+    })
+  }
+
   async function handleSave() {
     if (!selectedUser) return
     setSaving(true)
-    const ok = await salvarPermissoesUsuario(selectedUser.id, perms)
+    // Grava só o que difere dos grupos (ajuste individual); o que voltou a ser
+    // igual ao grupo deixa de ser ajuste.
+    const uniao = uniaoDosModelos(modelosDe(selectedUser.id))
+    const ok = await salvarAjustes(selectedUser.id, perms, uniao)
     if (ok) {
       setOriginalPerms({ ...perms })
+      atualizarAjustesLocais(selectedUser.id, perms, uniao)
       toast.success('Permissões salvas com sucesso')
     } else {
       toast.error('Erro ao salvar permissões')
@@ -648,40 +755,23 @@ export default function PermissoesPageShell() {
     setSaving(false)
   }
 
+  // "Restaurar modelo dos grupos": apaga os ajustes individuais — a pessoa fica
+  // exatamente com o que os grupos dela dão (e acompanha qualquer mudança neles).
   async function handleRestore() {
     if (!selectedUser) return
     setRestoring(true)
-    const ok = await restaurarPermissoesDoPerfil(selectedUser.id)
+    const ok = await removerAjustes(selectedUser.id)
     if (ok) {
-      const effective = computeEffectivePerms({}, selectedUser.role || '', permissoes)
+      const effective = modeloCompletoDe(selectedUser.id)
       setPerms(effective)
       setOriginalPerms({ ...effective })
-      toast.success('Permissões restauradas para o perfil padrão')
+      setAllOverrides(prev => (Object.keys(prev).length > 0 ? { ...prev, [selectedUser.id]: {} } : prev))
+      toast.success('Permissões restauradas para o modelo dos grupos')
+      setShowRestoreConfirm(false)
     } else {
       toast.error('Erro ao restaurar permissões')
     }
     setRestoring(false)
-  }
-
-  async function handleSaveRole() {
-    if (!selectedUser || !newRole) return
-    setSavingRole(true)
-    const ok = await changeUserRole(selectedUser.id, newRole)
-    if (ok) {
-      const updated = { ...selectedUser, role: newRole }
-      setSelectedUser(updated)
-      setUsers(prev => prev.map(u => (u.id === selectedUser.id ? updated : u)))
-      const overrides = await getUsuarioPermissoes(selectedUser.id)
-      const overrideMap = Object.fromEntries(overrides.map(o => [o.permissao_codigo, o.permitido]))
-      const effective = computeEffectivePerms(overrideMap, newRole, permissoes)
-      setPerms(effective)
-      setOriginalPerms({ ...effective })
-      toast.success('Perfil atualizado com sucesso')
-      setShowEditRole(false)
-    } else {
-      toast.error('Erro ao atualizar perfil')
-    }
-    setSavingRole(false)
   }
 
   function handleToggle(codigo: string, value: boolean) {
@@ -691,12 +781,10 @@ export default function PermissoesPageShell() {
   async function handleGrantAccessToCodigo(userId: string) {
     if (!selectedCodigo) return
     setGrantingUserId(userId)
-    const ok = await salvarPermissoesUsuario(userId, { [selectedCodigo]: true })
+    const uniao = uniaoDosModelos(modelosDe(userId))
+    const ok = await salvarAjustes(userId, { [selectedCodigo]: true }, uniao)
     if (ok) {
-      setAllOverrides(prev => ({
-        ...prev,
-        [userId]: { ...prev[userId], [selectedCodigo]: true },
-      }))
+      atualizarAjustesLocais(userId, { [selectedCodigo]: true }, uniao)
       toast.success('Acesso liberado com sucesso')
     } else {
       toast.error('Erro ao liberar acesso')
@@ -707,12 +795,10 @@ export default function PermissoesPageShell() {
   async function handleRevokeAccessToCodigo(userId: string) {
     if (!selectedCodigo) return
     setGrantingUserId(userId)
-    const ok = await salvarPermissoesUsuario(userId, { [selectedCodigo]: false })
+    const uniao = uniaoDosModelos(modelosDe(userId))
+    const ok = await salvarAjustes(userId, { [selectedCodigo]: false }, uniao)
     if (ok) {
-      setAllOverrides(prev => ({
-        ...prev,
-        [userId]: { ...prev[userId], [selectedCodigo]: false },
-      }))
+      atualizarAjustesLocais(userId, { [selectedCodigo]: false }, uniao)
       toast.success('Acesso retirado com sucesso')
     } else {
       toast.error('Erro ao retirar acesso')
@@ -827,6 +913,9 @@ export default function PermissoesPageShell() {
         ...prev,
         [selectedGrupo.id]: [...(prev[selectedGrupo.id] || []), userId],
       }))
+      // O nível técnico pode ter mudado no banco (gatilho de grupos) — relê.
+      setUsers(await getAdminUsers())
+      toast.success(`Adicionado — já tem as telas de ${selectedGrupo.nome}`)
     } else {
       toast.error('Erro ao adicionar membro ao grupo')
     }
@@ -842,6 +931,7 @@ export default function PermissoesPageShell() {
         ...prev,
         [selectedGrupo.id]: (prev[selectedGrupo.id] || []).filter(id => id !== userId),
       }))
+      setUsers(await getAdminUsers())
     } else {
       toast.error('Erro ao remover membro do grupo')
     }
@@ -858,69 +948,162 @@ export default function PermissoesPageShell() {
     setGrupoModeloPerms(prev => ({ ...prev, [codigo]: value }))
   }
 
-  // Salva o modelo (com o valor de todos os códigos, não só os marcados) e
-  // aplica como override explícito aos usuarioIds informados. Usada tanto por
-  // "Aplicar a todos os membros" quanto por "Aplicar somente a este usuário".
-  //
-  // O que cada membro recebe não é o modelo deste grupo, e sim a UNIÃO dos
-  // modelos de todos os grupos dele — quem está em "Cronograma, Autorização"
-  // fica com as permissões dos dois. Sem isso, aplicar um grupo apagaria as
-  // permissões que vêm do outro (o upsert escreve `false` explícito em tudo que
-  // o modelo não libera).
-  async function aplicarModeloAUsuarios(usuarioIds: string[]) {
-    if (!selectedGrupo || usuarioIds.length === 0) return
-    setApplyingModelo(true)
-
-    const todosOsCodigos = permissoes.map(p => p.codigo)
-    const modeloCompleto: Record<string, boolean> = {}
-    for (const codigo of todosOsCodigos) modeloCompleto[codigo] = grupoModeloPerms[codigo] ?? false
-
-    const savedModelo = await salvarModeloGrupo(selectedGrupo.id, modeloCompleto)
-    if (!savedModelo) {
-      toast.error('Erro ao salvar modelo de permissões do grupo')
-      setApplyingModelo(false)
-      return
-    }
-    const updated = { ...selectedGrupo, modelo_permissoes: modeloCompleto }
-    setSelectedGrupo(updated)
-    setGrupos(prev => prev.map(g => (g.id === updated.id ? updated : g)))
-
-    // `gruposDoUsuario` ainda carrega o modelo antigo deste grupo (o setGrupos
-    // acima só vale no próximo render), então o modelo recém-salvo entra na
-    // união por substituição explícita.
-    const modelosPorUsuario: Record<string, Record<string, boolean>> = {}
-    for (const uid of usuarioIds) {
-      const uniao = unirModelos(
-        (gruposDoUsuario[uid] || []).map(g =>
-          g.id === selectedGrupo.id ? modeloCompleto : g.modelo_permissoes
+  // O que salvar o modelo em edição muda para cada membro — mostrado na
+  // confirmação. Compara as telas de hoje com as telas com o modelo novo, já
+  // contando os outros grupos e os ajustes individuais de cada um.
+  function impactoDoModeloEmEdicao() {
+    if (!selectedGrupo) return []
+    return selectedGrupoMembros
+      .map(user => {
+        const ajustes = allOverrides[user.id] || {}
+        const antes = computeEffectivePerms(ajustes, modelosDe(user.id), permissoes)
+        const depois = computeEffectivePerms(
+          ajustes,
+          modelosDe(user.id, { troca: { grupoId: selectedGrupo.id, modelo: grupoModeloPerms } }),
+          permissoes
         )
-      )
-      const completo: Record<string, boolean> = {}
-      for (const codigo of todosOsCodigos) completo[codigo] = uniao[codigo] ?? false
-      modelosPorUsuario[uid] = completo
-    }
-
-    const ok = await aplicarModelosAosUsuarios(modelosPorUsuario, todosOsCodigos)
-    if (ok) {
-      setAllOverrides(prev => {
-        const next = { ...prev }
-        for (const uid of usuarioIds) next[uid] = { ...modelosPorUsuario[uid] }
-        return next
+        return { user, ...diferencaDoModelo(antes, depois, permissoes) }
       })
-      toast.success(`Modelo aplicado a ${usuarioIds.length} membro${usuarioIds.length !== 1 ? 's' : ''}`)
-    } else {
-      toast.error('Erro ao aplicar modelo aos membros do grupo')
-    }
-    setApplyingModelo(false)
+      .filter(x => x.ganha.length > 0 || x.perde.length > 0)
   }
 
-  function handleAplicarModelo() {
+  // Salva o modelo — e é só isso: com os grupos ao vivo, o modelo salvo JÁ é o
+  // que os membros têm (o banco calcula na hora, permissoes_efetivas). Grava o
+  // valor de todos os códigos do catálogo, não só os marcados, para o modelo
+  // nunca ter código "não decidido".
+  async function handleSalvarModelo() {
     if (!selectedGrupo) return
-    return aplicarModeloAUsuarios(membrosPorGrupo[selectedGrupo.id] || [])
+    setSavingModelo(true)
+    const modeloCompleto: Record<string, boolean> = {}
+    for (const p of permissoes) modeloCompleto[p.codigo] = grupoModeloPerms[p.codigo] ?? false
+
+    const ok = await salvarModeloGrupo(selectedGrupo.id, modeloCompleto)
+    if (ok) {
+      const updated = { ...selectedGrupo, modelo_permissoes: modeloCompleto }
+      setSelectedGrupo(updated)
+      setGrupoModeloPerms({ ...modeloCompleto })
+      setGrupos(prev => prev.map(g => (g.id === updated.id ? updated : g)))
+      const n = selectedGrupoMembros.length
+      toast.success(`Modelo salvo — já vale para ${n} membro${n !== 1 ? 's' : ''}`)
+      setShowSalvarModeloConfirm(false)
+    } else {
+      toast.error('Erro ao salvar modelo de permissões do grupo')
+    }
+    setSavingModelo(false)
   }
 
-  function handleAplicarModeloAUsuario(userId: string) {
-    return aplicarModeloAUsuarios([userId])
+  // "Editar grupos" da pessoa selecionada. Grava só o vínculo: as telas mudam
+  // sozinhas (grupos ao vivo) e o nível técnico é acertado pelo gatilho do banco.
+  // Os ajustes individuais dela continuam valendo.
+  function handleAbrirEditGruposUsuario() {
+    if (!selectedUser) return
+    setGruposDraftUsuario(new Set((gruposDoUsuario[selectedUser.id] || []).map(g => g.id)))
+    setShowEditGruposUsuario(true)
+  }
+
+  function toggleGrupoDraftUsuario(grupoId: string) {
+    setGruposDraftUsuario(prev => {
+      const next = new Set(prev)
+      if (next.has(grupoId)) next.delete(grupoId)
+      else next.add(grupoId)
+      return next
+    })
+  }
+
+  async function handleSalvarGruposUsuario() {
+    if (!selectedUser) return
+    setSalvandoGruposUsuario(true)
+    const atuais = (gruposDoUsuario[selectedUser.id] || []).map(g => g.id)
+    const alvo = [...gruposDraftUsuario]
+    const ok = await sincronizarGruposDoUsuario(selectedUser.id, alvo, atuais)
+    if (ok) {
+      const uid = selectedUser.id
+      const alvoSet = new Set(alvo)
+      const novoMembros: Record<string, string[]> = {}
+      for (const g of grupos) {
+        const semEle = (membrosPorGrupo[g.id] || []).filter(id => id !== uid)
+        novoMembros[g.id] = alvoSet.has(g.id) ? [...semEle, uid] : semEle
+      }
+      setMembrosPorGrupo(novoMembros)
+      // As telas da pessoa com os grupos novos (os ajustes dela continuam).
+      const modelosNovos = grupos.filter(g => alvoSet.has(g.id)).map(g => g.modelo_permissoes)
+      const efetivo = computeEffectivePerms(allOverrides[uid] || {}, modelosNovos, permissoes)
+      setPerms(efetivo)
+      setOriginalPerms({ ...efetivo })
+      // O nível técnico pode ter mudado no banco (gatilho de grupos) — relê.
+      const lista = await getAdminUsers()
+      setUsers(lista)
+      setSelectedUser(lista.find(u => u.id === uid) ?? selectedUser)
+      toast.success('Grupos atualizados — as telas já seguem os grupos novos')
+      setShowEditGruposUsuario(false)
+    } else {
+      toast.error('Erro ao salvar os grupos')
+    }
+    setSalvandoGruposUsuario(false)
+  }
+
+  function fecharDetalhe() {
+    setUsuarioDetalhe(null)
+    setLevandoAoGrupo(false)
+    setGrupoDestinoId(null)
+  }
+
+  // "O grupo passa a condizer com o usuário": grava os modelos novos e apaga os
+  // ajustes da pessoa — que viraram redundantes, porque agora o grupo dá (ou
+  // deixa de dar) exatamente o que ela tinha. As telas DELA não mudam; as dos
+  // outros membros mudam como mostrado na confirmação.
+  async function handleLevarAjusteAoGrupo(
+    userId: string,
+    novos: Record<string, Record<string, boolean>>
+  ) {
+    setSavingModelo(true)
+    const completos: Record<string, Record<string, boolean>> = {}
+    for (const [grupoId, modelo] of Object.entries(novos)) {
+      const completo: Record<string, boolean> = {}
+      for (const p of permissoes) completo[p.codigo] = modelo[p.codigo] ?? false
+      completos[grupoId] = completo
+    }
+
+    for (const [grupoId, completo] of Object.entries(completos)) {
+      if (!(await salvarModeloGrupo(grupoId, completo))) {
+        toast.error('Erro ao salvar o modelo do grupo — nada mais foi alterado')
+        setSavingModelo(false)
+        return
+      }
+    }
+    setGrupos(prev => prev.map(g => (completos[g.id] ? { ...g, modelo_permissoes: completos[g.id] } : g)))
+    if (selectedGrupo && completos[selectedGrupo.id]) {
+      setSelectedGrupo({ ...selectedGrupo, modelo_permissoes: completos[selectedGrupo.id] })
+      setGrupoModeloPerms({ ...completos[selectedGrupo.id] })
+    }
+
+    const ok = await removerAjustes(userId)
+    if (ok) {
+      setAllOverrides(prev => ({ ...prev, [userId]: {} }))
+      toast.success('Grupo atualizado — agora condiz com a pessoa')
+    } else {
+      toast.error('O grupo foi atualizado, mas os ajustes da pessoa não foram removidos')
+    }
+    setSavingModelo(false)
+  }
+
+  // "Voltar ao modelo" de um membro fora do modelo: apaga os ajustes individuais
+  // dele — passa a ter só o que os grupos dele dão.
+  async function handleVoltarAoModelo(userId: string) {
+    setSavingModelo(true)
+    const ok = await removerAjustes(userId)
+    if (ok) {
+      setAllOverrides(prev => ({ ...prev, [userId]: {} }))
+      if (selectedUser?.id === userId) {
+        const efetivo = modeloCompletoDe(userId)
+        setPerms(efetivo)
+        setOriginalPerms({ ...efetivo })
+      }
+      toast.success('Ajustes individuais removidos')
+    } else {
+      toast.error('Erro ao remover os ajustes individuais')
+    }
+    setSavingModelo(false)
   }
 
   // ─── Guards ───────────────────────────────────────────────────────────────
@@ -942,7 +1125,9 @@ export default function PermissoesPageShell() {
           </div>
           <h2 className="text-lg font-bold text-slate-800 mb-2">Acesso não autorizado</h2>
           <p className="text-sm text-slate-500">
-            Apenas administradores podem gerenciar permissões.
+            {motivoBloqueio === 'nivel'
+              ? 'Gerenciar acessos é exclusivo dos grupos Administrador e Diretoria.'
+              : 'Apenas administradores podem gerenciar permissões.'}
           </p>
         </div>
       </div>
@@ -1119,15 +1304,15 @@ export default function PermissoesPageShell() {
                           <p className="text-sm font-medium truncate leading-tight text-slate-700">
                             {user.nome || user.email}
                           </p>
-                          <SetorEGrupos setor={labelSetor(user.role)} grupos={nomesGrupos(user.id)} />
+                          <GruposDaPessoa grupos={nomesGrupos(user.id)} />
                         </div>
                         {driftedMemberIds.has(user.id) && (
                           <button
                             type="button"
-                            onClick={() => setMemberToSync(user)}
+                            onClick={() => setUsuarioDetalhe(user)}
                             className="shrink-0 w-7 h-7 flex items-center justify-center text-amber-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors duration-150"
-                            aria-label={`${user.nome || user.email} tem permissões fora do modelo do grupo`}
-                            title="Permissões fora do modelo do grupo — clique para sincronizar"
+                            aria-label={`${user.nome || user.email} está fora do modelo: tem ajuste individual`}
+                            title="Tem ajuste individual — clique para ver"
                           >
                             <AlertTriangle size={14} />
                           </button>
@@ -1211,20 +1396,31 @@ export default function PermissoesPageShell() {
                   ))}
                 </div>
 
-                <div className="flex items-center justify-between bg-white rounded-2xl border border-slate-200 shadow-sm px-5 py-3.5">
+                <div className="flex flex-wrap items-center justify-between gap-3 bg-white rounded-2xl border border-slate-200 shadow-sm px-5 py-3.5">
                   <span className="text-xs text-slate-500">
-                    Aplicar substitui as permissões individuais dos {selectedGrupoMembros.length} membro
-                    {selectedGrupoMembros.length !== 1 ? 's' : ''} pela união deste modelo com os dos
-                    outros grupos de cada um
+                    {isModeloDirty
+                      ? 'Alterações não salvas no modelo.'
+                      : `O modelo vale na hora para os ${selectedGrupoMembros.length} membro${selectedGrupoMembros.length !== 1 ? 's' : ''} do grupo.`}
                   </span>
-                  <button
-                    onClick={handleAplicarModelo}
-                    disabled={applyingModelo || selectedGrupoMembros.length === 0}
-                    className="flex items-center gap-2 px-5 py-3 text-sm font-semibold text-white bg-brand-fg rounded-2xl transition-all duration-150 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <Save size={13} />
-                    {applyingModelo ? 'Aplicando...' : 'Aplicar a todos os membros'}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {isModeloDirty && (
+                      <button
+                        onClick={() => setGrupoModeloPerms({ ...selectedGrupo.modelo_permissoes })}
+                        disabled={savingModelo}
+                        className="px-4 py-3 text-sm font-medium text-slate-600 border border-slate-200 rounded-2xl hover:bg-slate-50 transition-all duration-150 disabled:opacity-50"
+                      >
+                        Descartar
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setShowSalvarModeloConfirm(true)}
+                      disabled={savingModelo || !isModeloDirty}
+                      className="flex items-center gap-2 px-5 py-3 text-sm font-semibold text-white bg-brand-fg rounded-2xl transition-all duration-150 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Save size={13} />
+                      {savingModelo ? 'Salvando...' : 'Salvar modelo'}
+                    </button>
+                  </div>
                 </div>
               </>
             )}
@@ -1251,7 +1447,7 @@ export default function PermissoesPageShell() {
 
               <div className="space-y-2 max-h-[calc(100vh-260px)] overflow-y-auto">
                 {permissaoGroupsFiltered.map(([grupo, items]) => {
-                  const GroupIcon = GROUP_ICONS[grupo] || ShieldCheck
+                  const GroupIcon = MENU_ICONE_GRUPO[grupo] || ShieldCheck
                   const isOpen = openGroupsPermView.has(grupo)
                   return (
                     <div key={grupo} className="rounded-xl border border-slate-100 overflow-hidden">
@@ -1272,7 +1468,7 @@ export default function PermissoesPageShell() {
                       {isOpen && (
                         <div className="border-t border-slate-50">
                           {items.map(p => {
-                            const Icon = MODULE_ICONS[p.codigo] || ShieldCheck
+                            const Icon = iconeDoModulo(p.codigo)
                             const active = selectedCodigo === p.codigo
                             return (
                               <button
@@ -1324,7 +1520,7 @@ export default function PermissoesPageShell() {
                     <div className="flex items-center gap-3">
                       <div className="w-11 h-11 rounded-2xl bg-brand-surface flex items-center justify-center shrink-0">
                         {(() => {
-                          const Icon = MODULE_ICONS[selectedPermissao.codigo] || ShieldCheck
+                          const Icon = iconeDoModulo(selectedPermissao.codigo)
                           return <Icon size={18} aria-hidden="true" className="text-brand" />
                         })()}
                       </div>
@@ -1375,7 +1571,7 @@ export default function PermissoesPageShell() {
                             <p className="text-sm font-medium truncate leading-tight text-slate-700">
                               {user.nome || user.email}
                             </p>
-                            <SetorEGrupos setor={labelSetor(user.role)} grupos={nomesGrupos(user.id)} />
+                            <GruposDaPessoa grupos={nomesGrupos(user.id)} />
                           </div>
                           <span
                             className={`shrink-0 w-24 text-center px-2.5 py-1 rounded-lg text-xs font-semibold ${
@@ -1439,23 +1635,38 @@ export default function PermissoesPageShell() {
               {filteredUsers.map(user => {
                 const active = selectedUser?.id === user.id
                 return (
-                  <button
+                  <div
                     key={user.id}
-                    onClick={() => handleSelectUser(user)}
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-colors duration-150 ${
+                    className={`flex items-center gap-1 rounded-xl transition-colors duration-150 ${
                       active
                         ? 'bg-brand-surface border border-brand/20'
                         : 'hover:bg-slate-50 border border-transparent'
                     }`}
                   >
-                    <Avatar name={user.nome} userId={user.id} size="sm" />
-                    <div className="min-w-0">
-                      <p className={`text-sm font-medium truncate leading-tight ${active ? 'text-brand-fg' : 'text-slate-700'}`}>
-                        {user.nome || user.email}
-                      </p>
-                      <SetorEGrupos setor={labelSetor(user.role)} grupos={nomesGrupos(user.id)} />
-                    </div>
-                  </button>
+                    <button
+                      onClick={() => handleSelectUser(user)}
+                      className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5 text-left"
+                    >
+                      <Avatar name={user.nome} userId={user.id} size="sm" />
+                      <div className="min-w-0">
+                        <p className={`text-sm font-medium truncate leading-tight ${active ? 'text-brand-fg' : 'text-slate-700'}`}>
+                          {user.nome || user.email}
+                        </p>
+                        <GruposDaPessoa grupos={nomesGrupos(user.id)} />
+                      </div>
+                    </button>
+                    {usuariosForaDoModelo.has(user.id) && (
+                      <button
+                        type="button"
+                        onClick={() => setUsuarioDetalhe(user)}
+                        className="mr-2 shrink-0 w-7 h-7 flex items-center justify-center text-amber-600 hover:bg-amber-50 rounded-lg transition-colors duration-150"
+                        aria-label={`${user.nome || user.email} está fora do modelo: ver detalhes`}
+                        title="Fora do modelo — ver detalhes"
+                      >
+                        <AlertTriangle size={14} />
+                      </button>
+                    )}
+                  </div>
                 )
               })}
               {filteredUsers.length === 0 && (
@@ -1484,45 +1695,47 @@ export default function PermissoesPageShell() {
                 <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-3">
                   Usuário selecionado
                 </p>
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-center gap-4">
-                    <Avatar name={selectedUser.nome} userId={selectedUser.id} size="lg" />
-                    <div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h2 className="text-lg font-bold text-slate-800">
-                          {selectedUser.nome || selectedUser.email}
-                        </h2>
-                        <span className="px-2 py-0.5 rounded-lg text-xs font-semibold bg-brand-surface text-brand-fg">
-                          {ROLE_LABELS[selectedUser.role || ''] || selectedUser.role}
-                        </span>
-                      </div>
-                      {selectedUser.email && (
-                        <p className="text-sm text-slate-500 mt-0.5">E-mail: {selectedUser.email}</p>
-                      )}
-                      <p className="text-sm text-slate-500 mt-1">
-                        Perfil padrão:{' '}
-                        <button
-                          onClick={() => { setNewRole(selectedUser.role || ''); setShowEditRole(true) }}
-                          className="text-brand-fg font-medium hover:underline"
-                        >
-                          {ROLE_LABELS[selectedUser.role || ''] || selectedUser.role}
-                        </button>
-                      </p>
-                      <p className="text-sm text-slate-500 mt-1">
+                {/* Só grupos: é o que decide as telas. O nível técnico (`role`)
+                    que as regras do banco respeitam é mantido pelo próprio banco
+                    a partir dos grupos (migration 20260929130000) e não aparece. */}
+                <div className="flex items-center gap-4 min-w-0">
+                  <Avatar name={selectedUser.nome} userId={selectedUser.id} size="lg" />
+                  <div className="min-w-0">
+                    <h2 className="text-lg font-bold text-slate-800 truncate">
+                      {selectedUser.nome || selectedUser.email}
+                    </h2>
+                    {selectedUser.email && (
+                      <p className="text-sm text-slate-500 mt-0.5 break-all">E-mail: {selectedUser.email}</p>
+                    )}
+                    <p className="text-sm text-slate-500 mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span>
                         Grupos:{' '}
                         <span className="text-slate-700 font-medium">
                           {nomesGrupos(selectedUser.id).join(', ') || 'Sem grupo'}
                         </span>
-                      </p>
-                    </div>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleAbrirEditGruposUsuario}
+                        disabled={isDirty}
+                        title={isDirty ? 'Salve ou descarte as alterações das telas antes de mudar os grupos' : undefined}
+                        className="inline-flex items-center gap-1 text-sm font-medium text-brand-fg hover:underline disabled:cursor-not-allowed disabled:opacity-50 disabled:no-underline"
+                      >
+                        <Pencil size={12} aria-hidden="true" />
+                        Editar grupos
+                      </button>
+                    </p>
+                    {usuariosForaDoModelo.has(selectedUser.id) && (
+                      <button
+                        type="button"
+                        onClick={() => setUsuarioDetalhe(selectedUser)}
+                        className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-100 transition-colors"
+                      >
+                        <AlertTriangle size={12} aria-hidden="true" />
+                        Fora do modelo · ver detalhes
+                      </button>
+                    )}
                   </div>
-                  <button
-                    onClick={() => { setNewRole(selectedUser.role || ''); setShowEditRole(true) }}
-                    className="flex items-center gap-2 px-4 py-3 text-sm font-medium text-slate-600 border border-slate-200 rounded-2xl hover:bg-slate-50 hover:border-slate-300 transition-all duration-150 shrink-0"
-                  >
-                    <Pencil size={13} />
-                    Editar perfil
-                  </button>
                 </div>
               </div>
 
@@ -1558,6 +1771,7 @@ export default function PermissoesPageShell() {
                           isOpen={openGroups.has(grupo)}
                           onToggleOpen={() => toggleGroup(grupo)}
                           onToggle={handleToggle}
+                          ajustados={ajustadosDoSelecionado}
                         />
                       ))}
                     </div>
@@ -1570,12 +1784,13 @@ export default function PermissoesPageShell() {
                     </span>
                     <div className="flex items-center gap-3">
                       <button
-                        onClick={handleRestore}
-                        disabled={restoring}
-                        className="flex items-center gap-2 px-4 py-3 text-sm font-medium text-slate-600 border border-slate-200 rounded-2xl hover:bg-slate-50 transition-all duration-150 disabled:opacity-50"
+                        onClick={() => setShowRestoreConfirm(true)}
+                        disabled={restoring || nomesGrupos(selectedUser.id).length === 0}
+                        title={nomesGrupos(selectedUser.id).length === 0 ? 'A pessoa não está em nenhum grupo' : undefined}
+                        className="flex items-center gap-2 px-4 py-3 text-sm font-medium text-slate-600 border border-slate-200 rounded-2xl hover:bg-slate-50 transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <RotateCcw size={13} className={restoring ? 'animate-spin' : ''} />
-                        {restoring ? 'Restaurando...' : 'Restaurar padrão do perfil'}
+                        {restoring ? 'Restaurando...' : 'Restaurar modelo dos grupos'}
                       </button>
                       <button
                         onClick={handleSave}
@@ -1595,49 +1810,117 @@ export default function PermissoesPageShell() {
       </div>
       )}
 
-      {/* ── Modal: Editar perfil ── */}
-      {selectedUser && (
-        <Dialog open={showEditRole} onOpenChange={setShowEditRole}>
-          <DialogContent className="max-w-sm">
-            <DialogHeader>
-              <DialogTitle>Editar perfil</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <p className="text-sm text-slate-500">
-                Alterar o perfil de{' '}
-                <strong className="text-slate-700">{selectedUser.nome || selectedUser.email}</strong>
-              </p>
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1.5">Perfil</label>
-                <select
-                  value={newRole}
-                  onChange={e => setNewRole(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl bg-white focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/10"
-                >
-                  {ROLES.map(r => (
-                    <option key={r.value} value={r.value}>{r.label}</option>
-                  ))}
-                </select>
+      {/* ── Modal: Editar grupos da pessoa ── */}
+      {selectedUser && showEditGruposUsuario && (() => {
+        const ajustes = allOverrides[selectedUser.id] || {}
+        const antes = computeEffectivePerms(ajustes, modelosDe(selectedUser.id), permissoes)
+        const depois = computeEffectivePerms(
+          ajustes,
+          grupos.filter(g => gruposDraftUsuario.has(g.id)).map(g => g.modelo_permissoes),
+          permissoes
+        )
+        const { ganha, perde } = diferencaDoModelo(antes, depois, permissoes)
+        const mudou =
+          gruposDraftUsuario.size !== (gruposDoUsuario[selectedUser.id] || []).length ||
+          (gruposDoUsuario[selectedUser.id] || []).some(g => !gruposDraftUsuario.has(g.id))
+        return (
+          <Dialog open={showEditGruposUsuario} onOpenChange={setShowEditGruposUsuario}>
+            {/* Sem overflow-hidden: a lista de grupos abre dentro do Dialog. */}
+            <DialogContent
+              className="max-w-md"
+              onEscapeKeyDown={(e) => {
+                if ((e.target as HTMLElement | null)?.closest?.('[data-multisearch-aberto]')) e.preventDefault()
+              }}
+            >
+              <DialogHeader>
+                <DialogTitle>Grupos de {selectedUser.nome || selectedUser.email}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <MultiSearchCombobox<string>
+                  opcoes={grupos.map(g => ({ id: g.id, nome: g.nome }))}
+                  selecionados={gruposDraftUsuario}
+                  onToggle={toggleGrupoDraftUsuario}
+                  placeholder="Sem grupo"
+                  nomePlural="grupos"
+                  resumoCompleto
+                  portal={false}
+                  ariaLabel={`Grupos de ${selectedUser.nome || selectedUser.email}`}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm"
+                />
+                {mudou && (ganha.length > 0 || perde.length > 0) ? (
+                  <div className="space-y-3">
+                    <p className="text-xs text-slate-500">Vale na hora ao salvar:</p>
+                    <ListaDiferenca titulo="Passa a ter" itens={ganha} tom="ganha" />
+                    <ListaDiferenca titulo="Deixa de ter" itens={perde} tom="perde" />
+                  </div>
+                ) : mudou ? (
+                  <p className="text-xs text-slate-500">Nenhuma tela muda com essa troca.</p>
+                ) : null}
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    onClick={() => setShowEditGruposUsuario(false)}
+                    className="flex-1 py-3 text-sm font-medium text-slate-600 border border-slate-200 rounded-2xl hover:bg-slate-50 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleSalvarGruposUsuario}
+                    disabled={salvandoGruposUsuario || !mudou}
+                    className="flex-1 py-3 text-sm font-semibold text-white bg-brand-fg rounded-2xl hover:opacity-90 transition-colors disabled:opacity-50"
+                  >
+                    {salvandoGruposUsuario ? 'Salvando...' : 'Salvar'}
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center gap-2 pt-1">
-                <button
-                  onClick={() => setShowEditRole(false)}
-                  className="flex-1 py-3 text-sm font-medium text-slate-600 border border-slate-200 rounded-2xl hover:bg-slate-50 transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={handleSaveRole}
-                  disabled={savingRole || newRole === selectedUser.role}
-                  className="flex-1 py-3 text-sm font-semibold text-white bg-brand-fg rounded-2xl hover:opacity-90 transition-colors disabled:opacity-50"
-                >
-                  {savingRole ? 'Salvando...' : 'Salvar'}
-                </button>
+            </DialogContent>
+          </Dialog>
+        )
+      })()}
+
+      {/* ── Modal: Restaurar modelo dos grupos ── */}
+      {selectedUser && showRestoreConfirm && (() => {
+        const { ganha, perde } = diferencaDoModelo(originalPerms, modeloCompletoDe(selectedUser.id), permissoes)
+        return (
+          <Dialog open={showRestoreConfirm} onOpenChange={setShowRestoreConfirm}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Restaurar modelo dos grupos</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <p className="text-sm text-slate-500">
+                  <strong className="text-slate-700">{selectedUser.nome || selectedUser.email}</strong> passa a
+                  ter exatamente a união dos modelos de{' '}
+                  <strong className="text-slate-700">{nomesGrupos(selectedUser.id).join(', ')}</strong>. As
+                  permissões individuais fora desses modelos são desfeitas.
+                </p>
+                {ganha.length === 0 && perde.length === 0 ? (
+                  <p className="text-sm text-slate-600">Nada muda — as permissões já seguem os grupos.</p>
+                ) : (
+                  <div className="space-y-3">
+                    <ListaDiferenca titulo="Passa a ter" itens={ganha} tom="ganha" />
+                    <ListaDiferenca titulo="Deixa de ter" itens={perde} tom="perde" />
+                  </div>
+                )}
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    onClick={() => setShowRestoreConfirm(false)}
+                    className="flex-1 py-3 text-sm font-medium text-slate-600 border border-slate-200 rounded-2xl hover:bg-slate-50 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleRestore}
+                    disabled={restoring || (ganha.length === 0 && perde.length === 0)}
+                    className="flex-1 py-3 text-sm font-semibold text-white bg-brand-fg rounded-2xl hover:opacity-90 transition-colors disabled:opacity-50"
+                  >
+                    {restoring ? 'Restaurando...' : 'Restaurar'}
+                  </button>
+                </div>
               </div>
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
+            </DialogContent>
+          </Dialog>
+        )
+      })()}
 
       {/* ── Modal: Novo grupo ── */}
       <Dialog open={showNovoGrupoModal} onOpenChange={setShowNovoGrupoModal}>
@@ -1735,9 +2018,9 @@ export default function PermissoesPageShell() {
               <p className="text-sm text-slate-500">
                 Tem certeza que deseja excluir o grupo{' '}
                 <strong className="text-slate-700">{selectedGrupo.nome}</strong>? Os{' '}
-                {selectedGrupoMembros.length} membro{selectedGrupoMembros.length !== 1 ? 's' : ''} deixam de
-                fazer parte do grupo, mas as permissões já aplicadas a cada um continuam valendo — só o
-                agrupamento é removido.
+                {selectedGrupoMembros.length} membro{selectedGrupoMembros.length !== 1 ? 's' : ''} perdem, na
+                hora, as telas que só este grupo dava. O que vem de outros grupos deles e os ajustes
+                individuais continuam.
               </p>
               <div className="flex items-center gap-2 pt-1">
                 <button
@@ -1760,20 +2043,31 @@ export default function PermissoesPageShell() {
       )}
 
       {/* ── Modal: Confirmar remoção de membro ── */}
-      {memberToRemove && (
+      {memberToRemove && selectedGrupo && (() => {
+        // O que a pessoa perde ao sair: telas que só este grupo dava (os outros
+        // grupos dela e os ajustes individuais continuam valendo).
+        const ajustes = allOverrides[memberToRemove.id] || {}
+        const { perde } = diferencaDoModelo(
+          computeEffectivePerms(ajustes, modelosDe(memberToRemove.id), permissoes),
+          computeEffectivePerms(ajustes, modelosDe(memberToRemove.id, { semGrupoId: selectedGrupo.id }), permissoes),
+          permissoes
+        )
+        return (
         <Dialog open={!!memberToRemove} onOpenChange={open => { if (!open) setMemberToRemove(null) }}>
-          <DialogContent className="max-w-sm">
+          <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle>Remover membro do grupo</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
               <p className="text-sm text-slate-500">
-                Tem certeza que deseja remover{' '}
+                Remover{' '}
                 <strong className="text-slate-700">{memberToRemove.nome || memberToRemove.email}</strong> do
-                grupo <strong className="text-slate-700">{selectedGrupo?.nome}</strong>? As permissões
-                individuais já aplicadas a essa pessoa continuam valendo — só o vínculo com o grupo é
-                removido.
+                grupo <strong className="text-slate-700">{selectedGrupo.nome}</strong>?{' '}
+                {perde.length > 0
+                  ? 'A pessoa perde, na hora, as telas abaixo — os outros grupos dela não as dão.'
+                  : 'Nenhuma tela muda: os outros grupos dela já dão as mesmas.'}
               </p>
+              <ListaDiferenca titulo="Deixa de ter" itens={perde} tom="perde" />
               <div className="flex items-center gap-2 pt-1">
                 <button
                   onClick={() => setMemberToRemove(null)}
@@ -1792,50 +2086,317 @@ export default function PermissoesPageShell() {
             </div>
           </DialogContent>
         </Dialog>
-      )}
+        )
+      })()}
 
-      {/* ── Modal: Sincronizar membro fora do modelo ── */}
-      {memberToSync && (
-        <Dialog open={!!memberToSync} onOpenChange={open => { if (!open) setMemberToSync(null) }}>
-          <DialogContent className="max-w-sm">
+      {/* ── Modal: Salvar modelo do grupo ── */}
+      {selectedGrupo && showSalvarModeloConfirm && (() => {
+        const impacto = impactoDoModeloEmEdicao()
+        return (
+          <Dialog open={showSalvarModeloConfirm} onOpenChange={setShowSalvarModeloConfirm}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Salvar modelo de {selectedGrupo.nome}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <p className="text-sm text-slate-500">
+                  {impacto.length === 0
+                    ? 'Nenhum membro muda de tela — os outros grupos e os ajustes individuais deles já cobrem a mudança.'
+                    : `Vale na hora. ${impacto.length} pessoa${impacto.length !== 1 ? 's mudam' : ' muda'} de tela:`}
+                </p>
+                {impacto.length > 0 && (
+                  <ul className="max-h-72 space-y-3 overflow-y-auto">
+                    {impacto.map(({ user, ganha, perde }) => (
+                      <li key={user.id} className="rounded-xl border border-slate-100 p-3">
+                        <p className="mb-2 text-sm font-medium text-slate-700">{user.nome || user.email}</p>
+                        <div className="space-y-2">
+                          <ListaDiferenca titulo="Passa a ter" itens={ganha} tom="ganha" />
+                          <ListaDiferenca titulo="Deixa de ter" itens={perde} tom="perde" />
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    onClick={() => setShowSalvarModeloConfirm(false)}
+                    className="flex-1 py-3 text-sm font-medium text-slate-600 border border-slate-200 rounded-2xl hover:bg-slate-50 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleSalvarModelo}
+                    disabled={savingModelo}
+                    className="flex-1 py-3 text-sm font-semibold text-white bg-brand-fg rounded-2xl hover:opacity-90 transition-colors disabled:opacity-50"
+                  >
+                    {savingModelo ? 'Salvando...' : 'Salvar'}
+                  </button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+        )
+      })()}
+
+      {/* ── Modal: Membro fora do modelo ── */}
+      {usuarioDetalhe && (() => {
+        // O ajuste individual, contra a SOMA dos grupos da pessoa.
+        const gruposDela = gruposDoUsuario[usuarioDetalhe.id] || []
+        const detalhe = detalheDoAjuste(allOverrides[usuarioDetalhe.id] || {}, gruposDela, permissoes)
+        const { faltam, aMais } = detalhe
+        const primeiroNome = (usuarioDetalhe.nome || usuarioDetalhe.email || 'A pessoa').split(' ')[0]
+
+        // "Ajustar o grupo": com um grupo só, o destino é ele; com mais, é preciso
+        // escolher — mas só se houver tela a MAIS para levar.
+        const destinoId = gruposDela.length === 1 ? gruposDela[0].id : grupoDestinoId
+        const precisaEscolher = aMais.length > 0 && gruposDela.length > 1 && !destinoId
+        const novosModelos = precisaEscolher ? {} : modelosLevandoAjusteAosGrupos(gruposDela, detalhe, destinoId)
+        const gruposAlterados = gruposDela.filter(g => novosModelos[g.id])
+        // Os OUTROS membros dos grupos alterados: o que muda para cada um.
+        const impactoOutros = users
+          .filter(u => u.id !== usuarioDetalhe.id && gruposAlterados.some(g => (membrosPorGrupo[g.id] || []).includes(u.id)))
+          .map(u => {
+            const ajustes = allOverrides[u.id] || {}
+            const seus = gruposDoUsuario[u.id] || []
+            const antes = computeEffectivePerms(ajustes, seus.map(g => g.modelo_permissoes), permissoes)
+            const depois = computeEffectivePerms(ajustes, seus.map(g => novosModelos[g.id] ?? g.modelo_permissoes), permissoes)
+            return { user: u, ...diferencaDoModelo(antes, depois, permissoes) }
+          })
+          .filter(x => x.ganha.length > 0 || x.perde.length > 0)
+
+        // Frases das consequências, com os nomes reais.
+        const mudancasDoGrupo = gruposAlterados.map(g => {
+          const entra = g.id === destinoId ? aMais.map(p => p.nome) : []
+          const sai = faltam.filter(x => x.grupos.includes(g.nome)).map(x => x.permissao.nome)
+          const partes = [
+            entra.length > 0 ? `passa a dar ${listarNomes(entra)}` : null,
+            sai.length > 0 ? `deixa de dar ${listarNomes(sai)}` : null,
+          ].filter(Boolean)
+          return { grupo: g, frase: partes.join(' e ') }
+        })
+        const consequenciaPessoa = [
+          faltam.length > 0 ? `passa a ter ${listarNomes(faltam.map(x => x.permissao.nome))}` : null,
+          aMais.length > 0 ? `deixa de ter ${listarNomes(aMais.map(p => p.nome))}` : null,
+        ].filter(Boolean).join(' e ')
+        const consequenciaGrupo = precisaEscolher
+          ? `Você escolhe em qual grupo entra ${listarNomes(aMais.map(p => p.nome))}.`
+          : `${mudancasDoGrupo.map(m => `${m.grupo.nome} ${m.frase}`).join('; ')}. ${
+              impactoOutros.length === 0
+                ? 'Nenhum outro membro muda de tela.'
+                : `Muda também para ${impactoOutros.length} outra${impactoOutros.length !== 1 ? 's pessoas' : ' pessoa'}.`
+            }`
+
+        const cartaoAcao =
+          'group flex w-full items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-left transition-colors duration-150 hover:border-brand/40 hover:bg-brand-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50'
+
+        return (
+        <Dialog open={!!usuarioDetalhe} onOpenChange={open => { if (!open) fecharDetalhe() }}>
+          <DialogContent className="max-w-md gap-5">
             <DialogHeader>
-              <DialogTitle>Fora do modelo do grupo</DialogTitle>
+              <DialogTitle className="text-base font-bold text-slate-900">
+                {levandoAoGrupo ? 'Ajustar o grupo' : 'Fora do modelo'}
+              </DialogTitle>
             </DialogHeader>
-            <div className="space-y-4">
-              <p className="text-sm text-slate-500">
-                <strong className="text-slate-700">{memberToSync.nome || memberToSync.email}</strong> tem
-                permissões liberadas que não seguem exatamente a união dos modelos dos grupos dela (
-                <strong className="text-slate-700">{nomesGrupos(memberToSync.id).join(', ')}</strong>) —
-                alguém deve ter ajustado as permissões dessa pessoa individualmente depois da última
-                aplicação, ou os modelos mudaram desde então. Você pode sincronizar só ela, ou aplicar o
-                modelo a todos os membros de uma vez.
-              </p>
-              <div className="flex flex-col gap-2 pt-1">
-                <button
-                  onClick={async () => { await handleAplicarModeloAUsuario(memberToSync.id); setMemberToSync(null) }}
-                  disabled={applyingModelo}
-                  className="w-full py-3 text-sm font-semibold text-white bg-brand-fg rounded-2xl hover:opacity-90 transition-colors disabled:opacity-50"
-                >
-                  {applyingModelo ? 'Aplicando...' : 'Aplicar somente a este usuário'}
-                </button>
-                <button
-                  onClick={async () => { await handleAplicarModelo(); setMemberToSync(null) }}
-                  disabled={applyingModelo}
-                  className="w-full py-3 text-sm font-medium text-slate-600 border border-slate-200 rounded-2xl hover:bg-slate-50 transition-colors disabled:opacity-50"
-                >
-                  Aplicar a todos os membros
-                </button>
-                <button
-                  onClick={() => setMemberToSync(null)}
-                  className="w-full py-2 text-xs font-medium text-slate-400 hover:text-slate-600 transition-colors"
-                >
-                  Cancelar
-                </button>
+
+            {/* Quem, e em quais grupos */}
+            <div className="flex items-center gap-3">
+              <Avatar name={usuarioDetalhe.nome} userId={usuarioDetalhe.id} size="md" />
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-slate-800">
+                  {usuarioDetalhe.nome || usuarioDetalhe.email}
+                </p>
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {gruposDela.length > 0 ? gruposDela.map(g => (
+                    <span key={g.id} className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
+                      <UsersRound size={11} aria-hidden="true" />
+                      {g.nome}
+                    </span>
+                  )) : (
+                    <span className="text-xs italic text-slate-500">Sem grupo</span>
+                  )}
+                </div>
               </div>
             </div>
+
+            {!levandoAoGrupo ? (
+              <>
+                {/* As diferenças */}
+                <div className="space-y-3">
+                  {gruposDela.length > 1 && (
+                    <p className="text-xs text-slate-500">Comparado com a soma dos {gruposDela.length} grupos.</p>
+                  )}
+                  {faltam.length > 0 && (
+                    <section aria-label="Telas que o grupo dá e a pessoa não tem">
+                      <h3 className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-rose-700">
+                        <MinusCircle size={13} aria-hidden="true" />
+                        No grupo, mas não em {primeiroNome}
+                        <span className="rounded-full bg-rose-50 px-1.5 text-[11px] font-semibold text-rose-700">{faltam.length}</span>
+                      </h3>
+                      <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200">
+                        {faltam.map(({ permissao, grupos: deQuais }) => (
+                          <LinhaAjuste key={permissao.codigo} permissao={permissao} tom="falta" grupos={deQuais} />
+                        ))}
+                      </ul>
+                    </section>
+                  )}
+                  {aMais.length > 0 && (
+                    <section aria-label="Telas que só a pessoa tem">
+                      <h3 className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-emerald-700">
+                        <PlusCircle size={13} aria-hidden="true" />
+                        Em {primeiroNome}, mas em nenhum de seus grupos
+                        <span className="rounded-full bg-emerald-50 px-1.5 text-[11px] font-semibold text-emerald-700">{aMais.length}</span>
+                      </h3>
+                      <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200">
+                        {aMais.map(p => (
+                          <LinhaAjuste key={p.codigo} permissao={p} tom="aMais" />
+                        ))}
+                      </ul>
+                    </section>
+                  )}
+                </div>
+
+                {/* O que fazer — cada escolha diz o que muda */}
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={async () => { await handleVoltarAoModelo(usuarioDetalhe.id); fecharDetalhe() }}
+                    disabled={savingModelo}
+                    className={cartaoAcao}
+                  >
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-surface text-brand-fg">
+                      <UserRound size={16} aria-hidden="true" />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-semibold text-slate-800">
+                        {savingModelo ? 'Salvando...' : `${primeiroNome} segue o grupo`}
+                      </span>
+                      <span className="mt-0.5 block text-xs text-slate-600">
+                        {primeiroNome} {consequenciaPessoa}. O grupo não muda.
+                      </span>
+                    </span>
+                  </button>
+
+                  {gruposDela.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setLevandoAoGrupo(true)}
+                      disabled={savingModelo}
+                      className={cartaoAcao}
+                    >
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-surface text-brand-fg">
+                        <UsersRound size={16} aria-hidden="true" />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block text-sm font-semibold text-slate-800">
+                          O grupo segue {primeiroNome}
+                        </span>
+                        <span className="mt-0.5 block text-xs text-slate-600">{consequenciaGrupo}</span>
+                      </span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex justify-center">
+                  <button
+                    type="button"
+                    onClick={fecharDetalhe}
+                    className="min-h-11 rounded-xl px-4 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-800"
+                  >
+                    Manter como está
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                {aMais.length > 0 && gruposDela.length > 1 && (
+                  <fieldset>
+                    <legend className="mb-2 text-sm text-slate-700">
+                      Em qual grupo entra <strong>{listarNomes(aMais.map(p => p.nome))}</strong>?
+                    </legend>
+                    <div className="space-y-2">
+                      {gruposDela.map(g => {
+                        const n = (membrosPorGrupo[g.id] || []).length
+                        const escolhido = grupoDestinoId === g.id
+                        return (
+                          <label
+                            key={g.id}
+                            className={`flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border px-3 py-2 text-sm transition-colors ${
+                              escolhido ? 'border-brand bg-brand-surface' : 'border-slate-200 hover:bg-slate-50'
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="grupo-destino"
+                              checked={escolhido}
+                              onChange={() => setGrupoDestinoId(g.id)}
+                              className="accent-(--color-brand)"
+                            />
+                            <span className="flex-1 font-medium text-slate-800">{g.nome}</span>
+                            <span className="text-xs text-slate-600">{n} membro{n !== 1 ? 's' : ''}</span>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  </fieldset>
+                )}
+
+                {!precisaEscolher && (
+                  <div className="space-y-4">
+                    <ul className="space-y-1.5">
+                      {mudancasDoGrupo.map(({ grupo, frase }) => (
+                        <li key={grupo.id} className="flex items-start gap-2 text-sm text-slate-700">
+                          <UsersRound size={14} className="mt-0.5 shrink-0 text-brand-fg" aria-hidden="true" />
+                          <span><strong className="font-semibold text-slate-800">{grupo.nome}</strong> {frase}.</span>
+                        </li>
+                      ))}
+                    </ul>
+
+                    <p className="text-xs text-slate-600">
+                      As telas de {primeiroNome} não mudam.{' '}
+                      {impactoOutros.length === 0
+                        ? 'Nenhum outro membro muda de tela.'
+                        : `Vale na hora para ${impactoOutros.length} outra${impactoOutros.length !== 1 ? 's pessoas' : ' pessoa'}:`}
+                    </p>
+
+                    {impactoOutros.length > 0 && (
+                      <ul className="max-h-56 space-y-2 overflow-y-auto">
+                        {impactoOutros.map(({ user, ganha, perde }) => (
+                          <li key={user.id} className="rounded-xl border border-slate-200 p-3">
+                            <p className="mb-2 text-sm font-semibold text-slate-800">{user.nome || user.email}</p>
+                            <div className="space-y-2">
+                              <ListaDiferenca titulo="Passa a ter" itens={ganha} tom="ganha" />
+                              <ListaDiferenca titulo="Deixa de ter" itens={perde} tom="perde" />
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setLevandoAoGrupo(false); setGrupoDestinoId(null) }}
+                    className="min-h-11 flex-1 rounded-2xl border border-slate-200 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
+                  >
+                    Voltar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => { await handleLevarAjusteAoGrupo(usuarioDetalhe.id, novosModelos); fecharDetalhe() }}
+                    disabled={savingModelo || precisaEscolher || gruposAlterados.length === 0}
+                    className="min-h-11 flex-1 rounded-2xl bg-brand-fg text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {savingModelo ? 'Salvando...' : 'Confirmar'}
+                  </button>
+                </div>
+              </>
+            )}
           </DialogContent>
         </Dialog>
-      )}
+        )
+      })()}
     </div>
   )
 }
