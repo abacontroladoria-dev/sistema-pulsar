@@ -157,6 +157,10 @@ export interface Conversation {
   campanha:         string | null
   objecao:          string | null
   last_message_at:  string | null
+  // Prévia da última mensagem com fala, mantida por gatilho em central.messages
+  // (20260928120000). É o que a LISTA mostra, já que ela não carrega histórico.
+  // NULL = nenhuma mensagem com prévia (só reaction/system/rascunho da IA).
+  last_message_preview: string | null
   // Marca d'água de leitura pela EQUIPE, não por usuário (20260921140000).
   // Não-lido é uma COMPARAÇÃO, não um contador: existe mensagem inbound com
   // sent_at > last_read_at. NULL = ninguém abriu ainda.

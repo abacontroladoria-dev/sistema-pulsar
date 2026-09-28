@@ -349,7 +349,12 @@ export function toUIConversation(
     // em lugar nenhum — preenchê-las aqui seria carregar dado para ninguém.
     tags:         [],
     messages:     uiMensagens,
-    lastMessage:  ultima?.content || 'Sem mensagens',
+    // Na lista `mensagens` vem vazio: vale a prévia que o banco guarda na
+    // conversa. "Sem mensagens" só quando é verdade — nem prévia nem
+    // last_message_at; com mensagem mas sem prévia (só reação), fica vazio.
+    lastMessage:  ultima?.content
+      || c.last_message_preview
+      || (c.last_message_at ? '' : 'Sem mensagens'),
     lastMessageTime: horaCurta(c.last_message_at ?? c.created_at),
     lastMessageAt:   c.last_message_at ?? c.created_at,
     assignedUserId:  c.assigned_user_id,

@@ -48,12 +48,24 @@ export async function GET(request: NextRequest) {
       return badRequest('offset deve ser >= 0', 'offset')
     }
 
+    // fechadosDesde: abertos + fechados a partir da data (recorte do Kanban).
+    // Validado como data para nunca chegar texto arbitrário ao .or() do
+    // PostgREST, que é montado por interpolação.
+    const fechadosDesdeBruto = params.get('fechadosDesde')
+    let fechadosDesde: string | undefined
+    if (fechadosDesdeBruto) {
+      const d = new Date(fechadosDesdeBruto)
+      if (Number.isNaN(d.getTime())) return badRequest('fechadosDesde deve ser uma data', 'fechadosDesde')
+      fechadosDesde = d.toISOString()
+    }
+
     const service = createDealService(supabase)
     const result  = await service.list({
       orgId:   user.orgId,
       status:  statusBruto.length ? (statusBruto as DealStatus[]) : undefined,
       stageId: params.get('stageId') ?? undefined,
       search:  params.get('search')  ?? undefined,
+      fechadosDesde,
       limit:   limitBruto,
       offset:  offsetBruto,
     })
@@ -103,6 +115,11 @@ export async function POST(request: NextRequest) {
       value = n
     }
 
+    const trilha = body.trilha ?? null
+    if (trilha !== null && trilha !== 'particular' && trilha !== 'convenio') {
+      return badRequest(`trilha inválida: ${trilha}`, 'trilha')
+    }
+
     const service = createDealService(supabase)
     const deal    = await service.criar(
       {
@@ -119,6 +136,7 @@ export async function POST(request: NextRequest) {
         source:              body.source ?? 'manual',
         source_campaign:     body.sourceCampaign ?? body.source_campaign ?? null,
         tags:                Array.isArray(body.tags) ? body.tags : undefined,
+        trilha,
       },
       user.id
     )

@@ -2,64 +2,28 @@ import type {
   DealWithContactRow,
   PipelineStageRow,
   DealActivityRow,
+  TrilhaEstagio,
+  TrilhaNegocio,
 } from '@/modules/comercial/types/crm.types'
 
 // ============================================================================
-// Adapter — linha do banco → formato que a UI do Nina espera
+// Adapter — linha do banco → formato da tela do funil
 //
-// A UI foi escrita para um backend anterior (Nina como SPA Vite) e usa
-// camelCase com nomes próprios: `stageId`, `company`, `dueDate`, `ownerAvatar`.
-// O banco devolve snake_case. Traduzir aqui, num lugar só, evita reescrever
-// ~900 linhas de Kanban e mantém o repositório fiel ao schema.
-//
-// Quando a UI for reescrita no padrão do Pulsar, este arquivo é o que se
-// apaga — nada mais depende do formato antigo.
+// camelCase e só o que a tela usa. Os campos do port do Nina que não existem
+// numa clínica (valor em R$, "empresa", avatar sorteado) saíram junto com o
+// Kanban antigo — ver components/nina/funil/.
 // ============================================================================
-
-// Cores fixas por posição do funil, usadas quando o estágio não define a sua.
-// A UI espera classes Tailwind de borda, não hex — a coluna `color` do banco
-// guarda hex (#64748b), que não serve como classe.
-const CORES_POR_POSICAO = [
-  'border-slate-500',
-  'border-yellow-500',
-  'border-cyan-500',
-  'border-blue-500',
-  'border-emerald-500',
-  'border-red-500',
-]
-
-function corDaColuna(stage: PipelineStageRow): string {
-  // auto_win/auto_lose têm significado visual próprio e devem ser
-  // reconhecíveis à primeira vista, independentemente da posição.
-  if (stage.auto_win)  return 'border-emerald-500'
-  if (stage.auto_lose) return 'border-red-500'
-  return CORES_POR_POSICAO[stage.position % CORES_POR_POSICAO.length]
-}
-
-// Avatar por iniciais — evita <img src=""> quebrado quando não há foto.
-// A UI faz <img src={deal.ownerAvatar}>, então precisa de uma URL válida.
-function avatarDeIniciais(nome: string | null): string {
-  const iniciais = (nome ?? '?')
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map(p => p[0] ?? '')
-    .join('')
-    .toUpperCase() || '?'
-  // DiceBear via URL determinística: mesmo nome, mesmo avatar, sem requisição
-  // ao nosso backend e sem estado.
-  return `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(iniciais)}`
-}
 
 export interface KanbanColumnUI {
   id:          string
+  slug:        string | null
   title:       string
-  name:        string
+  description: string | null
+  // Hex do banco (#64748b). Vai em `style`, nunca em classe Tailwind.
   color:       string
-  isLocked:    boolean
-  isAiManaged: boolean
   order:       number
-  deals:       DealUI[]
+  trilha:      TrilhaEstagio
+  exigeMotivo: boolean
   autoWin:     boolean
   autoLose:    boolean
   isSystem:    boolean
@@ -68,89 +32,63 @@ export interface KanbanColumnUI {
 export interface DealUI {
   id:             string
   title:          string
-  company:        string
-  value:          number
-  priority:       string
   status:         string
   stageId:        string
-  tags:           string[]
-  dueDate:        string | null
-  ownerAvatar:    string
+  trilha:         TrilhaNegocio | null
+  resgate:        boolean
+  motivo:         string | null
+  stageChangedAt: string | null
   ownerId:        string | null
   contactId:      string | null
   contactName:    string | null
   contactPhone:   string | null
   conversationId: string | null
-  aiScore:        number | null
+  closedReason:   string | null
+  closedAt:       string | null
+  createdByAi:    boolean
+  source:         string | null
   createdAt:      string | null
   updatedAt:      string | null
-  closedReason:   string | null
-  source:         string | null
 }
 
 export function adaptarDeal(row: DealWithContactRow): DealUI {
-  const nomeContato = row.contact?.name ?? null
-
   return {
-    id:      row.id,
-    title:   row.title,
-    // A UI mostra `company` como subtítulo do card e o usa na busca. Aqui não
-    // há empresa (clínica, não B2B): o nome do contato é a informação útil
-    // nesse lugar. String vazia — nunca null — porque o Kanban chama
-    // .toLowerCase() nesse campo ao filtrar e quebraria com null.
-    company:        nomeContato ?? '',
-    value:          row.value ?? 0,
-    priority:       row.priority,
+    id:             row.id,
+    title:          row.title,
     status:         row.status,
     stageId:        row.stage_id,
-    tags:           row.tags ?? [],
-    dueDate:        row.expected_close_date,
-    ownerAvatar:    avatarDeIniciais(nomeContato),
+    trilha:         row.trilha ?? null,
+    resgate:        row.resgate ?? false,
+    motivo:         row.motivo ?? null,
+    stageChangedAt: row.stage_changed_at ?? row.updated_at ?? null,
     ownerId:        row.assigned_to,
     contactId:      row.contact_id,
-    contactName:    nomeContato,
-    contactPhone:   row.contact?.phone_number ?? null,
+    contactName:    row.contact?.name ?? null,
+    contactPhone:   row.contact?.display_phone ?? null,
     conversationId: row.conversation_id,
-    aiScore:        row.ai_score,
+    closedReason:   row.closed_reason,
+    closedAt:       row.closed_at,
+    createdByAi:    row.created_by_ai,
+    source:         row.source,
     createdAt:      row.created_at,
     updatedAt:      row.updated_at,
-    closedReason:   row.closed_reason,
-    source:         row.source,
   }
 }
 
-export function adaptarColuna(stage: PipelineStageRow, deals: DealUI[] = []): KanbanColumnUI {
+export function adaptarColuna(stage: PipelineStageRow): KanbanColumnUI {
   return {
-    id:    stage.id,
-    title: stage.title,
-    name:  stage.title,
-    color: corDaColuna(stage),
-    // `isLocked` na UI original desabilitava o delete da coluna. Mapeia para
-    // is_system, que é a flag equivalente no banco.
-    isLocked:    stage.is_system,
-    // Nenhum estágio é gerido por IA hoje. O campo existe na UI (mostra um
-    // ícone de robô) e fica false até haver essa funcionalidade.
-    isAiManaged: false,
+    id:          stage.id,
+    slug:        stage.slug ?? null,
+    title:       stage.title,
+    description: stage.description,
+    color:       stage.color,
     order:       stage.position,
-    deals,
+    trilha:      stage.trilha ?? 'ambas',
+    exigeMotivo: stage.exige_motivo ?? false,
     autoWin:     stage.auto_win,
     autoLose:    stage.auto_lose,
     isSystem:    stage.is_system,
   }
-}
-
-// Monta o board completo: cada coluna já com seus deals.
-// Deals cujo stage_id não corresponde a nenhuma coluna ativa são DESCARTADOS
-// aqui — isso acontece quando um estágio é desativado com deals dentro. Some
-// da tela, mas não do banco; a correção é reativar o estágio ou mover os deals.
-export function montarBoard(
-  stages: PipelineStageRow[],
-  deals:  DealWithContactRow[]
-): KanbanColumnUI[] {
-  const adaptados = deals.map(adaptarDeal)
-  return stages.map(stage =>
-    adaptarColuna(stage, adaptados.filter(d => d.stageId === stage.id))
-  )
 }
 
 export interface DealActivityUI {

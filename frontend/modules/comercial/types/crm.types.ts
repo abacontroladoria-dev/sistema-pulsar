@@ -20,6 +20,11 @@ export type DealSource =
   | 'whatsapp' | 'instagram' | 'facebook' | 'google_ads'
   | 'site'     | 'indicacao' | 'convenio' | 'importacao' | 'manual'
 
+// Trilha do funil da diretoria (20260930100000). No estágio, 'ambas' diz que a
+// posição vale para as duas; no negócio, null diz que ainda não se sabe.
+export type TrilhaEstagio = 'ambas' | 'particular' | 'convenio'
+export type TrilhaNegocio = 'particular' | 'convenio'
+
 export type DealActivityType =
   | 'note' | 'call' | 'email' | 'meeting'
   | 'task' | 'status_change' | 'ai_analysis'
@@ -45,6 +50,11 @@ export interface PipelineStageRow {
   is_active:       boolean
   auto_win:        boolean
   auto_lose:       boolean
+  // Código estável da posição (ex.: 'aguardando_elegibilidade'). Null nos
+  // estágios antigos, desativados pela migration do funil da diretoria.
+  slug:            string | null
+  trilha:          TrilhaEstagio
+  exige_motivo:    boolean
   created_at:      string | null
   updated_at:      string | null
 }
@@ -82,6 +92,11 @@ export interface DealRow {
   ai_score_notes:      string | null
   ai_scored_at:        string | null
   tags:                string[] | null
+  trilha:              TrilhaNegocio | null
+  resgate:             boolean
+  // O "campo lateral" da planilha: motivo do encaminhamento, objeção ou perda.
+  motivo:              string | null
+  stage_changed_at:    string
   created_at:          string | null
   updated_at:          string | null
 }
@@ -91,10 +106,10 @@ export interface DealRow {
 // permite o embed porque o PostgREST resolve por constraint, não por schema.
 export interface DealWithContactRow extends DealRow {
   contact: {
-    id:           string
-    name:         string | null
-    phone_number: string | null
-    email:        string | null
+    id:            string
+    name:          string | null
+    display_phone: string | null
+    display_email: string | null
   } | null
 }
 
@@ -139,6 +154,7 @@ export interface CreateDealInput {
   source?:              string | null
   source_campaign?:     string | null
   tags?:                string[]
+  trilha?:              TrilhaNegocio | null
 }
 
 export interface UpdateDealInput {
@@ -150,6 +166,9 @@ export interface UpdateDealInput {
   expected_close_date?: string | null
   assigned_to?:         string | null
   tags?:                string[]
+  trilha?:              TrilhaNegocio | null
+  resgate?:             boolean
+  motivo?:              string | null
 }
 
 export interface ListDealsFilters {
@@ -158,6 +177,12 @@ export interface ListDealsFilters {
   stageId?: string
   /** Busca por título do deal (ilike). Não busca no nome do contato. */
   search?:  string
+  /**
+   * Abertos + fechados a partir desta data (ISO). É o recorte do Kanban: a
+   * área "Encerrados" mostra o que fechou recentemente, e sem corte os
+   * perdidos acumulariam até o board bater no teto de linhas.
+   */
+  fechadosDesde?: string
   limit?:   number
   offset?:  number
 }

@@ -34,8 +34,18 @@ export async function POST(request: NextRequest, ctx: Ctx) {
       return badRequest('stageId é obrigatório', 'stageId')
     }
 
+    // Motivo: obrigatório nas posições com exige_motivo (o service confere e
+    // responde 422 dizendo qual); opcional nas demais.
+    const motivo = body?.motivo
+    if (motivo !== undefined && motivo !== null && typeof motivo !== 'string') {
+      return badRequest('motivo deve ser texto', 'motivo')
+    }
+    if (typeof motivo === 'string' && motivo.length > 500) {
+      return badRequest('motivo deve ter até 500 caracteres', 'motivo')
+    }
+
     const deal = await createDealService(supabase)
-      .moverParaEstagio(id, user.orgId, stageId, user.id)
+      .moverParaEstagio(id, user.orgId, stageId, user.id, motivo ?? null)
 
     return ok(deal)
   } catch (err) {

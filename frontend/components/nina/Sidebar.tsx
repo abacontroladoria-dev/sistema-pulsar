@@ -14,7 +14,7 @@ const menuItems = [
   { id: 'inbox',     label: 'Inbox',         icon: MessageSquare },
   { id: 'atendimentos', label: 'Atendimentos', icon: InboxIcon },
   { id: 'contacts',  label: 'Contatos',      icon: Users },
-  { id: 'pipeline',  label: 'Pipeline',      icon: Kanban },
+  { id: 'pipeline',  label: 'Funil',         icon: Kanban },
   { id: 'analytics', label: 'Agendamentos',  icon: Calendar },
   { id: 'settings',  label: 'Configurações', icon: SettingsIcon },
 ]

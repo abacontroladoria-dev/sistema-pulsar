@@ -1,5 +1,4 @@
 import {
-  montarBoard,
   adaptarDeal,
   adaptarColuna,
   adaptarAtividade,
@@ -72,24 +71,15 @@ async function req<T>(url: string, init?: RequestInit): Promise<T> {
 
 export const crmApi = {
   // --------------------------------------------------------------------------
-  // Board completo do Kanban.
-  //
-  // Estágios e deals são buscados EM PARALELO — são independentes, e sequenciar
-  // dobraria o tempo de abertura da tela.
-  //
-  // Sem limite explícito o backend usa 500. Acima disso o board precisaria de
-  // paginação por coluna, o que a UI atual não suporta.
+  // Negócios do board: todos os abertos + os fechados nos últimos
+  // `diasEncerrados` dias (a área "Encerrados"). Sem o corte os perdidos se
+  // acumulariam para sempre até o board bater no teto de 500 linhas.
   // --------------------------------------------------------------------------
-  async fetchBoard(): Promise<KanbanColumnUI[]> {
-    const [stages, deals] = await Promise.all([
-      req<PipelineStageRow[]>('/api/crm/stages'),
-      req<DealWithContactRow[]>('/api/crm/deals'),
-    ])
-    return montarBoard(stages, deals)
-  },
-
-  async fetchPipeline(): Promise<DealUI[]> {
-    const deals = await req<DealWithContactRow[]>('/api/crm/deals')
+  async fetchPipeline(diasEncerrados = 30): Promise<DealUI[]> {
+    const desde = new Date(Date.now() - diasEncerrados * 86_400_000).toISOString()
+    const deals = await req<DealWithContactRow[]>(
+      `/api/crm/deals?fechadosDesde=${encodeURIComponent(desde)}`
+    )
     return deals.map(adaptarDeal)
   },
 
@@ -108,6 +98,7 @@ export const crmApi = {
     expectedCloseDate?: string | null
     tags?:          string[]
     source?:        string
+    trilha?:        'particular' | 'convenio' | null
   }): Promise<DealUI> {
     const row = await req<DealWithContactRow>('/api/crm/deals', {
       method: 'POST',
@@ -124,12 +115,12 @@ export const crmApi = {
     return adaptarDeal(row)
   },
 
-  // Mover de coluna tem rota própria: dispara auto_win/auto_lose e grava a
-  // timeline. Um PATCH com stage_id pularia as duas coisas.
-  async moveDealStage(id: string, stageId: string): Promise<DealUI> {
+  // Mover de coluna tem rota própria: dispara auto_win/auto_lose, confere
+  // motivo e trilha, e grava a timeline. Um PATCH com stage_id pularia tudo.
+  async moveDealStage(id: string, stageId: string, motivo?: string | null): Promise<DealUI> {
     const row = await req<DealWithContactRow>(`/api/crm/deals/${id}/move`, {
       method: 'POST',
-      body:   JSON.stringify({ stageId }),
+      body:   JSON.stringify({ stageId, motivo: motivo ?? null }),
     })
     return adaptarDeal(row)
   },

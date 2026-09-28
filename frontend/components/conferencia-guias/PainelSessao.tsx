@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
-import { ExternalLink, KeySquare, Link2, Loader2, UserX, X } from 'lucide-react'
+import { Check, ExternalLink, KeySquare, Link2, Loader2, UserX, X } from 'lucide-react'
 import SituacaoBadge from '@/components/auditoria-assim/SituacaoBadge'
 import { formatarDiaComNome } from '@/components/auditoria-assim/reconciliacao/datas'
 import { useModalDialog } from '@/hooks/useModalDialog'
@@ -22,6 +22,9 @@ type Props = {
   agora: Date
   onFechar: () => void
   onSalvarObservacao: (sessao: SessaoConferencia, texto: string) => Promise<void>
+  onFilipeta: (linha: LinhaFolha) => void
+  /** Uma gravação desta sessão em curso. */
+  ocupado: boolean
   /** Links para as telas onde cada divergência se resolve; nulos sem permissão. */
   hrefConferenciaAssim: ((s: SessaoConferencia) => string) | null
   hrefEvolucoes: ((s: SessaoConferencia) => string) | null
@@ -53,6 +56,8 @@ export default function PainelSessao({
   agora,
   onFechar,
   onSalvarObservacao,
+  onFilipeta,
+  ocupado,
   hrefConferenciaAssim,
   hrefEvolucoes,
   onAbrirReconciliacao,
@@ -172,7 +177,12 @@ export default function PainelSessao({
                   )}
                 </div>
                 {s.observacao && <p className="text-xs text-slate-600">{s.observacao}</p>}
-                <LinhaFilipeta sessao={s} />
+                <LinhaFilipeta
+                  sessao={s}
+                  futura={linha.futura}
+                  ocupado={ocupado}
+                  onFilipeta={() => onFilipeta(linha)}
+                />
               </Secao>
 
               <Secao titulo="Evolução">
@@ -243,8 +253,18 @@ export default function PainelSessao({
   )
 }
 
-/** Quando a sessão deixou papel: qual, e se a Conferência de Filipetas já o viu. */
-function LinhaFilipeta({ sessao: s }: { sessao: SessaoConferencia }) {
+/** Quando a sessão deixou papel: qual, se já foi conferida, e o check para conferir. */
+function LinhaFilipeta({
+  sessao: s,
+  futura,
+  ocupado,
+  onFilipeta,
+}: {
+  sessao: SessaoConferencia
+  futura: boolean
+  ocupado: boolean
+  onFilipeta: () => void
+}) {
   const f = filipetaDaSessao(s)
   if (!f) return null
   const papel = f.numero
@@ -253,15 +273,36 @@ function LinhaFilipeta({ sessao: s }: { sessao: SessaoConferencia }) {
       ? 'Filipeta sem token (dispositivo indisponível)'
       : 'Filipeta sem token (erro no reconhecimento facial)'
   return (
-    <p className="flex items-start gap-1.5 text-xs text-slate-600">
-      <KeySquare size={13} aria-hidden="true" className="mt-px shrink-0 text-slate-500" />
-      <span>
-        {papel}.{' '}
-        {f.conferida
-          ? `Conferida na Conferência de Filipetas — ${formatarCarimbo(s.filipeta_conferida_por_nome ?? null, s.filipeta_conferida_em ?? null)}.`
-          : 'Ainda não conferida na Conferência de Filipetas.'}
-      </span>
-    </p>
+    <div className="flex flex-col gap-2">
+      <p className="flex items-start gap-1.5 text-xs text-slate-600">
+        <KeySquare size={13} aria-hidden="true" className="mt-px shrink-0 text-slate-500" />
+        <span>
+          {papel}.{' '}
+          {f.conferida
+            ? `Conferida — ${formatarCarimbo(s.filipeta_conferida_por_nome ?? null, s.filipeta_conferida_em ?? null)}.`
+            : 'Ainda não conferida.'}
+        </span>
+      </p>
+      {!futura && s.bloco_id && (
+        <button
+          type="button"
+          onClick={onFilipeta}
+          disabled={ocupado}
+          className={`inline-flex min-h-10 items-center gap-2 self-start rounded-lg border px-3 text-[13px] font-semibold transition focus-visible:ring-2 focus-visible:ring-brand focus-visible:outline-none disabled:opacity-60 ${
+            f.conferida
+              ? 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+              : 'border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700'
+          }`}
+        >
+          {ocupado ? (
+            <Loader2 size={14} className="animate-spin" aria-hidden="true" />
+          ) : (
+            !f.conferida && <Check size={14} strokeWidth={2.75} aria-hidden="true" />
+          )}
+          {f.conferida ? 'Desmarcar filipeta' : 'Filipeta conferida'}
+        </button>
+      )}
+    </div>
   )
 }
 

@@ -32,18 +32,43 @@ import {
 // Índices (20260701020200_crm_indexes.sql) + uq_open_deal_per_contact.
 // ============================================================================
 
-// O embed de central.contacts atravessa schemas. O PostgREST resolve pela FK
-// deals.contact_id → central.contacts(id), não pelo nome do schema — mas isso
-// só funciona se AMBOS os schemas estiverem expostos. `central` já está.
-const SELECT_COM_CONTATO = `
-  *,
-  contact:contact_id (
-    id,
-    name,
-    phone_number,
-    email
-  )
-`
+// ----------------------------------------------------------------------------
+// O contato vem numa SEGUNDA consulta, não por embed.
+//
+// O PostgREST só procura relacionamento dentro do schema da requisição: com o
+// perfil `crm`, a FK deals.contact_id → central.contacts não existe para ele,
+// mesmo com os dois schemas expostos. Medido em produção em 28/09/2026, no dia
+// em que `crm` foi exposto:
+//
+//   select=id,contact:contact_id(name)  →  PGRST200 "Could not find a
+//   relationship between 'deals' and 'contact_id' in the schema cache"
+//
+// (O embed original ainda pedia phone_number/email, colunas que não existem —
+// display_phone/display_email são as reais.)
+//
+// Contato que a policy de central.contacts não deixa ver volta como null, sem
+// erro: o card usa o título do negócio, que nasce com o nome do contato.
+// ----------------------------------------------------------------------------
+type ContatoEmbutido = NonNullable<DealWithContactRow['contact']>
+
+async function comContatos(supabase: SupabaseClient, deals: DealRow[]): Promise<DealWithContactRow[]> {
+  const ids = [...new Set(deals.map(d => d.contact_id).filter((id): id is string => !!id))]
+  const porId = new Map<string, ContatoEmbutido>()
+
+  // Fatias de 200: a lista vai na URL (`in.(...)`), e 500 uuids passariam do
+  // limite de tamanho de URL de alguns proxies.
+  for (let i = 0; i < ids.length; i += 200) {
+    const { data, error } = await (supabase as any)
+      .schema('central')
+      .from('contacts')
+      .select('id, name, display_phone, display_email')
+      .in('id', ids.slice(i, i + 200))
+    if (error) throw error
+    for (const c of (data ?? []) as ContatoEmbutido[]) porId.set(c.id, c)
+  }
+
+  return deals.map(d => ({ ...d, contact: d.contact_id ? porId.get(d.contact_id) ?? null : null }))
+}
 
 // ----------------------------------------------------------------------------
 // O erro de contagem chega MUDO, e isto é uma armadilha do supabase-js.
@@ -101,13 +126,15 @@ export class DealRepository {
 
   async findById(id: string, orgId: string): Promise<DealWithContactRow | null> {
     const { data, error } = await this.table
-      .select(SELECT_COM_CONTATO)
+      .select('*')
       .eq('id', id)
       .eq('organization_id', orgId)
       .maybeSingle()
 
     if (error) throw error
-    return (data ?? null) as DealWithContactRow | null
+    if (!data) return null
+    const [comContato] = await comContatos(this.supabase, [data as DealRow])
+    return comContato
   }
 
   // Usado pelo Kanban: traz o board inteiro de uma vez.
@@ -118,7 +145,7 @@ export class DealRepository {
     const offset = filters.offset ?? 0
 
     let query = this.table
-      .select(SELECT_COM_CONTATO, { count: 'exact' })
+      .select('*', { count: 'exact' })
       .eq('organization_id', filters.orgId)
 
     if (filters.status) {
@@ -127,6 +154,9 @@ export class DealRepository {
         : query.eq('status', filters.status)
     }
     if (filters.stageId) query = query.eq('stage_id', filters.stageId)
+    if (filters.fechadosDesde) {
+      query = query.or(`status.eq.open,closed_at.gte.${filters.fechadosDesde}`)
+    }
     // Busca só no título. Buscar também no nome do contato exigiria filtrar
     // sobre a tabela embutida, o que o PostgREST só faz com !inner — e isso
     // descartaria deals sem contato (contact_id é nullable por LGPD).
@@ -137,7 +167,7 @@ export class DealRepository {
       .range(offset, offset + limit - 1)
 
     if (error) throw error
-    return { data: (data ?? []) as DealWithContactRow[], count: count ?? 0 }
+    return { data: await comContatos(this.supabase, (data ?? []) as DealRow[]), count: count ?? 0 }
   }
 
   async create(input: CreateDealInput): Promise<DealRow> {

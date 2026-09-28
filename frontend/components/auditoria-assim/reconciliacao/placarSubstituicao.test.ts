@@ -114,3 +114,46 @@ describe('a falta com substituto consome cota', () => {
     expect([...excedentesDoPlacar(semTriagem, autorizacoes)]).toEqual(['321907'])
   })
 })
+
+/**
+ * Guia de TUSS diferente cobrindo a sessão (20260925130000).
+ *
+ * Miguel Rodrigues De Queiroz, 24/09: a Coordenação de Caso das 14:20 (22070384)
+ * foi glosada por reincidência e a refação saiu como TO (22070427). Vinculada,
+ * a guia tem de contar na cota da SESSÃO — senão sobra "1 a mais" em TO e falta
+ * uma liberação em Psicologia, com o par já reconciliado.
+ */
+describe('guia de outro TUSS conta no TUSS da sessão que cobre', () => {
+  const PSICO = '22070384'
+  const TO = '22070427'
+  const BLOCO_GLOSA = `11692_2026-09-24_${PSICO}_14:20:00`
+  const sessoes = [
+    falta({ bloco_id: `11692_2026-09-24_${PSICO}_13:00:00`, data_atendimento: '2026-09-24', hora_inicial: '13:00:00', codigo_tuss: PSICO, situacao: 'LIBERADA', guia: '406228' }),
+    falta({ bloco_id: BLOCO_GLOSA, data_atendimento: '2026-09-24', hora_inicial: '14:20:00', codigo_tuss: PSICO, situacao: 'GLOSA', guia: '411906' }),
+  ]
+  const autorizacoes = [
+    { ...autorizacao('406228'), codigo_tuss: PSICO },
+    { ...autorizacao('411906'), codigo_tuss: PSICO, status: '1601-REINCIDENCIA NO ATENDIMENTO' },
+    { ...autorizacao('422932'), codigo_tuss: TO },
+  ]
+  const vinculo: VinculoAutorizacao = {
+    ...triagem('vinculo'), guia: '422932', bloco_id: BLOCO_GLOSA,
+    observacao: 'refação da glosa por reincidência, pedida como TO',
+  }
+
+  it('sem vínculo, a TO sobra e a Psicologia fica devendo', () => {
+    const placar = calcularPlacar(sessoes, autorizacoes, CUTOFF)
+    expect(placar.find((p) => p.codigo_tuss === TO)?.excedente).toBe(1)
+    expect([...excedentesDoPlacar(placar, autorizacoes)]).toEqual(['422932'])
+  })
+
+  it('vinculada, a guia de TO fecha a cota da Psicologia e nada sobra', () => {
+    const placar = calcularPlacar(sessoes, autorizacoes, CUTOFF, new Map([[BLOCO_GLOSA, vinculo]]))
+    expect(placar.find((p) => p.codigo_tuss === TO)).toBeUndefined()
+    const psico = placar.find((p) => p.codigo_tuss === PSICO)!
+    expect(psico.liberadas).toBe(2)
+    expect(psico.excedente).toBe(0)
+    expect(psico.faltante).toBe(0)
+    expect(excedentesDoPlacar(placar, autorizacoes).size).toBe(0)
+  })
+})

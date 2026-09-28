@@ -235,7 +235,13 @@ function SidePanel({ atendimento, onReverterFalta }: Props) {
           </p>
         )}
 
-        {atendimento.status_operacional === 'falta_paciente' && onReverterFalta && (
+        {/* 'falta' é a falta gravada SEM `tipo_falta`: a view não a classifica
+            como 'falta_paciente', mas o badge (severity.ts) já a mostra como
+            "Falta do paciente" — sem este ramo o card dizia falta do paciente e
+            não oferecia como desfazê-la (Benjamim, 09/09 10:40). */}
+        {(atendimento.status_operacional === 'falta_paciente' ||
+          atendimento.status_operacional === 'falta') &&
+          onReverterFalta && (
           <Button
             size="sm"
             onClick={() => setModalReverterAberto(true)}

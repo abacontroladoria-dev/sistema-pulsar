@@ -341,6 +341,11 @@ export default function CentralTerapeuticaPage() {
       // o motivo do fechamento e o vínculo com um lote que não vale mais.
       motivo_falta: null,
       falta_lote_id: null,
+      // A falta também é gravada em `status_assim`, e é ELE que a Conferência e a
+      // Reconciliação leem (`agenda_sem_falta`). Sobrando 'falta' ali, a sessão
+      // revertida e depois autorizada continuava escondida e a guia dela virava
+      // "autorização a mais" (John Lucas, 14/09, guia 211303).
+      status_assim: null,
       falta_revertida_por_nome: nomeUsuario,
       falta_revertida_em: agora,
       // O selo de 'cancelado' na /solicitar lê `cancelado_por_nome`
