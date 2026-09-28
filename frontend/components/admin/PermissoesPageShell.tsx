@@ -80,6 +80,22 @@ function alinharAoMenu(permissoes: Permissao[]): Permissao[] {
     .sort((a, b) => MENU_ORDEM_ITEM[a.codigo] - MENU_ORDEM_ITEM[b.codigo])
 }
 
+// O catálogo do banco (public.permissoes) não se auto-atualiza quando o menu
+// muda — um código novo em menu.ts só vira concedível depois de uma migration
+// (o FK de usuarios_permissoes.permissao_codigo exige a linha existir). Sem
+// isso, um item novo do Sidebar simplesmente não aparece aqui, e ninguém
+// percebe até alguém pedir a tela por engano — foi assim que o catálogo e o
+// menu divergiram por meses antes de 29/09/2026. Este aviso torna a divergência
+// visível sozinha, sem depender de alguém lembrar de conferir.
+function calcularDriftCatalogo(banco: Permissao[]): { faltamNoBanco: string[]; sobramNoBanco: string[] } {
+  const codigosBanco = new Set(banco.map(p => p.codigo))
+  const codigosMenu = new Set(Object.keys(MENU_POR_CODIGO))
+  return {
+    faltamNoBanco: Object.keys(MENU_POR_CODIGO).filter(c => !codigosBanco.has(c)),
+    sobramNoBanco: banco.map(p => p.codigo).filter(c => !codigosMenu.has(c)),
+  }
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 // Telas efetivas: grupos ao vivo + ajustes individuais — a mesma regra que o
@@ -428,6 +444,7 @@ export default function PermissoesPageShell() {
   const [motivoBloqueio, setMotivoBloqueio] = useState<'codigo' | 'nivel' | null>(null)
   const [users, setUsers] = useState<AdminUser[]>([])
   const [permissoes, setPermissoes] = useState<Permissao[]>([])
+  const [driftCatalogo, setDriftCatalogo] = useState<{ faltamNoBanco: string[]; sobramNoBanco: string[] } | null>(null)
   const [search, setSearch] = useState('')
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null)
   const [perms, setPerms] = useState<Record<string, boolean>>({})
@@ -516,6 +533,7 @@ export default function PermissoesPageShell() {
     Promise.all([getAdminUsers(), getPermissoes()]).then(([u, p]) => {
       setUsers(u)
       setPermissoes(alinharAoMenu(p))
+      setDriftCatalogo(calcularDriftCatalogo(p))
     })
   }, [isAdmin])
 
@@ -1138,6 +1156,32 @@ export default function PermissoesPageShell() {
 
   return (
     <div>
+      {/* ── Aviso: catálogo do banco divergente do menu ── */}
+      {driftCatalogo && (driftCatalogo.faltamNoBanco.length > 0 || driftCatalogo.sobramNoBanco.length > 0) && (
+        <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <p className="flex items-center gap-2 font-semibold">
+            <AlertTriangle size={15} aria-hidden="true" />
+            O catálogo de permissões do banco está desatualizado em relação ao menu
+          </p>
+          {driftCatalogo.faltamNoBanco.length > 0 && (
+            <p className="mt-1.5">
+              <strong>Sem linha no banco</strong> (não podem ser concedidas a ninguém):{' '}
+              {driftCatalogo.faltamNoBanco.join(', ')}
+            </p>
+          )}
+          {driftCatalogo.sobramNoBanco.length > 0 && (
+            <p className="mt-1.5">
+              <strong>No banco, mas sem item no menu</strong> (tela que não existe mais):{' '}
+              {driftCatalogo.sobramNoBanco.join(', ')}
+            </p>
+          )}
+          <p className="mt-1.5 text-amber-800">
+            Gere a migration com <code className="rounded bg-amber-100 px-1 py-0.5">npm run permissoes:gerar-catalogo</code>{' '}
+            em frontend/ e aplique-a.
+          </p>
+        </div>
+      )}
+
       {/* ── Alternador de visão ── */}
       <div className="inline-flex items-center gap-1 bg-slate-100 rounded-2xl p-1 mb-4">
         <button
