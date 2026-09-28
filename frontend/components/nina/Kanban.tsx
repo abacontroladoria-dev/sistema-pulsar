@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { Button } from './Button'
 import { crmApi } from '@/services/crm/client'
 import type { DealUI, KanbanColumnUI } from '@/services/crm/adapter'
+import type { TagDefinition } from '@/modules/atendimento/types/central.types'
 import { CardNegocio } from './funil/CardNegocio'
 import { GavetaNegocio } from './funil/GavetaNegocio'
 import { MotivoModal } from './funil/MotivoModal'
@@ -49,6 +50,7 @@ const Kanban: React.FC = () => {
   const [estagios, setEstagios]   = useState<KanbanColumnUI[]>([])
   const [negocios, setNegocios]   = useState<DealUI[]>([])
   const [usuarios, setUsuarios]   = useState<Usuario[]>([])
+  const [catalogoTags, setCatalogoTags] = useState<TagDefinition[]>([])
   const [busca, setBusca]         = useState('')
   const [trilha, setTrilha]       = useState<FiltroTrilha>('todas')
   const [abertoId, setAbertoId]   = useState<string | null>(null)
@@ -93,11 +95,16 @@ const Kanban: React.FC = () => {
   }, [carregar])
 
   useEffect(() => {
-    // Mesma rota do painel de detalhamento da inbox: gente da Central, com nome.
+    // Mesmas rotas do painel de detalhamento da inbox: gente da Central, com
+    // nome, e o catálogo de tags (a taxonomia da planilha).
     fetch('/api/central/users/')
       .then(r => r.json())
       .then(c => setUsuarios(c?.data ?? []))
       .catch(() => { /* o seletor de responsável fica vazio */ })
+    fetch('/api/central/tag-definitions/')
+      .then(r => r.json())
+      .then(c => setCatalogoTags(c?.data ?? []))
+      .catch(() => { /* as tags ficam só com a chave crua */ })
   }, [])
 
   // --------------------------------------------------------------------------
@@ -228,6 +235,66 @@ const Kanban: React.FC = () => {
     />
   )
 
+  // Encerrados — alvo de soltura para fechar, e o que fechou há pouco. Função
+  // e não componente porque é desenhado em dois lugares (painel lateral no
+  // desktop, última coluna no celular) com o mesmo estado do board.
+  const painelEncerrados = (classe: string) => (
+    <aside
+      aria-label="Encerrados"
+      className={`${classe} h-full flex-col rounded-xl border border-border bg-muted/40`}
+    >
+      <div className="flex h-14 shrink-0 items-center gap-2 border-b border-border px-3">
+        <Archive className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+        <h2 className="text-sm font-semibold text-foreground">Encerrados</h2>
+        <span className="ml-auto text-[11px] text-muted-foreground">últimos {DIAS_ENCERRADOS} dias</span>
+      </div>
+      <div className="flex-1 space-y-1.5 overflow-y-auto p-2 custom-scrollbar">
+        {encerrados.filter(e => estagioVisivel(e, trilha)).map(estagio => {
+          const lista = porEstagio.get(estagio.id) ?? []
+          const { recusa, destacado, handlers } = propsDeAlvo(estagio)
+          const expandido = !!expandidos[estagio.id]
+          return (
+            <div
+              key={estagio.id}
+              {...handlers}
+              className={`rounded-lg border transition-colors ${
+                destacado
+                  ? estagio.autoWin ? 'border-emerald-500/60 bg-emerald-500/10' : 'border-rose-500/60 bg-rose-500/10'
+                  : 'border-border bg-card'
+              } ${recusa ? 'opacity-40' : ''} ${arrastando && !recusa ? 'border-dashed' : ''}`}
+            >
+              <button
+                type="button"
+                aria-expanded={expandido}
+                onClick={() => setExpandidos(x => ({ ...x, [estagio.id]: !x[estagio.id] }))}
+                title={estagio.description ?? undefined}
+                className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50"
+              >
+                <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: estagio.color }} aria-hidden="true" />
+                <span className="min-w-0 flex-1 truncate text-sm text-foreground">{estagio.title}</span>
+                <span className="text-[11px] tabular-nums text-muted-foreground">{lista.length}</span>
+                <ChevronDown
+                  className={`h-4 w-4 shrink-0 text-muted-foreground/70 transition-transform motion-reduce:transition-none ${expandido ? 'rotate-180' : ''}`}
+                  aria-hidden="true"
+                />
+              </button>
+              {expandido && (
+                <div className="space-y-2 px-2 pb-2">
+                  {lista.length === 0
+                    ? <p className="px-1 pb-1 text-xs text-muted-foreground">Nenhum nos últimos {DIAS_ENCERRADOS} dias.</p>
+                    : lista.map(card)}
+                </div>
+              )}
+            </div>
+          )
+        })}
+        <p className="px-1 pt-2 text-[11px] leading-relaxed text-muted-foreground">
+          Solte um card aqui para encerrar. Arrastar de volta para uma coluna reabre o negócio.
+        </p>
+      </div>
+    </aside>
+  )
+
   // --------------------------------------------------------------------------
   // Estados da tela
   // --------------------------------------------------------------------------
@@ -323,7 +390,12 @@ const Kanban: React.FC = () => {
         </div>
       </header>
 
-      <div className="flex-1 overflow-x-auto overflow-y-hidden px-4 pb-4 sm:px-6 snap-x snap-mandatory md:snap-none">
+      {/* No desktop, "Encerrados" é um painel IRMÃO da área que rola, não uma
+          coluna fixada por cima dela: a versão sticky cobria a última coluna
+          visível e parecia solta do board. No celular ele volta a ser a última
+          coluna do carrossel (md:hidden / hidden md:flex). */}
+      <div className="flex min-h-0 flex-1 gap-3 px-4 pb-4 sm:px-6">
+      <div className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden snap-x snap-mandatory md:snap-none custom-scrollbar">
         <div className="flex h-full min-w-max gap-3">
           {colunas.map(estagio => {
             const lista = porEstagio.get(estagio.id) ?? []
@@ -337,7 +409,7 @@ const Kanban: React.FC = () => {
                   destacado ? 'border-cyan-500/60 bg-cyan-500/5' : 'border-border'
                 } ${recusa ? 'opacity-40' : ''}`}
               >
-                <div className="flex items-start justify-between gap-2 border-b border-border px-3 py-2.5" title={estagio.description ?? undefined}>
+                <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border px-3" title={estagio.description ?? undefined}>
                   <div className="min-w-0">
                     <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
                       <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: estagio.color }} aria-hidden="true" />
@@ -363,70 +435,21 @@ const Kanban: React.FC = () => {
             )
           })}
 
-          {/* Encerrados — alvo de soltura para fechar, e o que fechou há pouco. */}
-          <aside
-            aria-label="Encerrados"
-            className="z-10 flex h-full w-[82vw] max-w-72 snap-start flex-col rounded-xl border border-border bg-background sm:w-72 md:sticky md:right-0 md:shadow-[-16px_0_16px_-12px_rgba(0,0,0,0.18)]"
-          >
-            <div className="flex items-center gap-2 border-b border-border px-3 py-2.5">
-              <Archive className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-              <h2 className="text-sm font-semibold text-foreground">Encerrados</h2>
-              <span className="ml-auto text-[11px] text-muted-foreground">{DIAS_ENCERRADOS} dias</span>
-            </div>
-            <div className="flex-1 space-y-1.5 overflow-y-auto p-2 custom-scrollbar">
-              {encerrados.filter(e => estagioVisivel(e, trilha)).map(estagio => {
-                const lista = porEstagio.get(estagio.id) ?? []
-                const { recusa, destacado, handlers } = propsDeAlvo(estagio)
-                const expandido = !!expandidos[estagio.id]
-                return (
-                  <div
-                    key={estagio.id}
-                    {...handlers}
-                    className={`rounded-lg border transition-colors ${
-                      destacado
-                        ? estagio.autoWin ? 'border-emerald-500/60 bg-emerald-500/10' : 'border-rose-500/60 bg-rose-500/10'
-                        : 'border-border bg-card'
-                    } ${recusa ? 'opacity-40' : ''} ${arrastando && !recusa ? 'border-dashed' : ''}`}
-                  >
-                    <button
-                      type="button"
-                      aria-expanded={expandido}
-                      onClick={() => setExpandidos(x => ({ ...x, [estagio.id]: !x[estagio.id] }))}
-                      title={estagio.description ?? undefined}
-                      className="flex w-full items-center gap-2 px-3 py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 rounded-lg"
-                    >
-                      <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: estagio.color }} aria-hidden="true" />
-                      <span className="min-w-0 flex-1 truncate text-sm text-foreground">{estagio.title}</span>
-                      <span className="text-[11px] tabular-nums text-muted-foreground">{lista.length}</span>
-                      <ChevronDown
-                        className={`h-4 w-4 shrink-0 text-muted-foreground/70 transition-transform motion-reduce:transition-none ${expandido ? 'rotate-180' : ''}`}
-                        aria-hidden="true"
-                      />
-                    </button>
-                    {expandido && (
-                      <div className="space-y-2 px-2 pb-2">
-                        {lista.length === 0
-                          ? <p className="px-1 pb-1 text-xs text-muted-foreground">Nenhum nos últimos {DIAS_ENCERRADOS} dias.</p>
-                          : lista.map(card)}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-              <p className="px-1 pt-2 text-[11px] leading-relaxed text-muted-foreground">
-                Solte um card aqui para encerrar. Arrastar de volta para uma coluna reabre o negócio.
-              </p>
-            </div>
-          </aside>
+          {painelEncerrados('flex w-[82vw] max-w-72 snap-start sm:w-72 md:hidden')}
         </div>
       </div>
+      {painelEncerrados('hidden w-72 shrink-0 md:flex')}
+      </div>
+
 
       <GavetaNegocio
         negocio={aberto}
         estagios={estagios}
         usuarios={usuarios}
+        catalogoTags={catalogoTags}
         aoMover={pedirMovimento}
         aoAtualizar={atualizar}
+        aoTagsGravadas={() => { recarregarNegocios().catch(() => {}) }}
         aoFechar={() => setAbertoId(null)}
       />
 

@@ -8,7 +8,10 @@ import { toast } from 'sonner'
 import { crmApi } from '@/services/crm/client'
 import type { DealUI, DealActivityUI, KanbanColumnUI } from '@/services/crm/adapter'
 import type { TrilhaNegocio } from '@/modules/comercial/types/crm.types'
+import type { TagDefinition } from '@/modules/atendimento/types/central.types'
 import { Button } from '@/components/nina/Button'
+import { BlocoTags } from '@/components/nina/detalhamento/BlocoTags'
+import { TagChip } from '@/components/central/shared/TagChip'
 import { ROTULO_TRILHA, podeReceber, separarEstagios, tempoNaPosicao } from './funil'
 
 // ============================================================================
@@ -32,23 +35,39 @@ interface MensagemCentral {
   created_at: string
 }
 
+// O que a gaveta lê da Central sobre a pessoa. As tags moram em DOIS lugares:
+// no contato (as que a equipe marca — editáveis aqui, as mesmas do painel da
+// inbox) e na conversa (as que a Maia aplica — só leitura aqui, porque a Maia
+// reescreve as dela a cada turno). O funil lê as duas
+// (20260930110000_crm_funil_tags_do_contato).
+interface DadosCentral {
+  tagsContato:  string[]
+  tagsMaia:     string[]
+  mensagens:    MensagemCentral[]
+}
+
 export const GavetaNegocio: React.FC<{
   negocio:    DealUI | null
   estagios:   KanbanColumnUI[]
   usuarios:   Usuario[]
+  catalogoTags: TagDefinition[]
   aoMover:    (negocio: DealUI, estagio: KanbanColumnUI) => void
   aoAtualizar: (id: string, patch: Record<string, unknown>) => Promise<void>
+  // As tags podem mudar a trilha e a posição (gatilho no banco): o board
+  // precisa reler os negócios depois de gravar.
+  aoTagsGravadas: () => void
   aoFechar:   () => void
-}> = ({ negocio, estagios, usuarios, aoMover, aoAtualizar, aoFechar }) => {
+}> = ({ negocio, estagios, usuarios, catalogoTags, aoMover, aoAtualizar, aoTagsGravadas, aoFechar }) => {
   const [atividades, setAtividades] = useState<DealActivityUI[]>([])
   const [carregandoAtividades, setCarregandoAtividades] = useState(false)
-  const [mensagens, setMensagens] = useState<MensagemCentral[]>([])
-  const [carregandoMensagens, setCarregandoMensagens] = useState(false)
+  const [central, setCentral] = useState<DadosCentral | null>(null)
+  const [carregandoCentral, setCarregandoCentral] = useState(false)
   const [nota, setNota] = useState('')
   const [salvandoNota, setSalvandoNota] = useState(false)
 
   const id = negocio?.id ?? null
   const conversa = negocio?.conversationId ?? null
+  const contato = negocio?.contactId ?? null
 
   const carregarAtividades = useCallback(async (dealId: string) => {
     setCarregandoAtividades(true)
@@ -67,25 +86,63 @@ export const GavetaNegocio: React.FC<{
     if (id) carregarAtividades(id)
   }, [id, negocio?.stageId, negocio?.status, carregarAtividades])
 
-  useEffect(() => {
-    if (!conversa) { setMensagens([]); return }
-    const controller = new AbortController()
-    setCarregandoMensagens(true)
-    ;(async () => {
-      try {
-        const r = await fetch(`/api/central/messages/?conversationId=${conversa}&limit=15`, { signal: controller.signal })
+  // Uma chamada traz as duas listas de tags e as mensagens: a rota da conversa
+  // já devolve o contato embutido. Sem conversa (negócio cadastrado à mão),
+  // lê só o contato.
+  const carregarCentral = useCallback(async (signal?: AbortSignal) => {
+    if (!conversa && !contato) { setCentral(null); return }
+    setCarregandoCentral(true)
+    try {
+      if (conversa) {
+        const r = await fetch(`/api/central/conversations/${conversa}/`, { signal })
         const corpo = await r.json()
         if (!r.ok) throw new Error(corpo?.error?.message)
-        // A rota devolve created_at DESC; a leitura é cronológica.
-        setMensagens(((corpo?.data ?? []) as MensagemCentral[]).slice().reverse())
-      } catch {
-        if (!controller.signal.aborted) setMensagens([])
-      } finally {
-        if (!controller.signal.aborted) setCarregandoMensagens(false)
+        const d = corpo?.data ?? {}
+        const mensagens = ((d.recentMessages ?? []) as MensagemCentral[])
+          .slice()
+          .sort((a, b) => a.created_at.localeCompare(b.created_at))
+          .slice(-15)
+        setCentral({ tagsContato: d.contact?.tags ?? [], tagsMaia: d.tags ?? [], mensagens })
+      } else {
+        const r = await fetch(`/api/central/contacts/${contato}/`, { signal })
+        const corpo = await r.json()
+        if (!r.ok) throw new Error(corpo?.error?.message)
+        setCentral({ tagsContato: corpo?.data?.tags ?? [], tagsMaia: [], mensagens: [] })
       }
-    })()
+    } catch {
+      if (!signal?.aborted) setCentral(null)
+    } finally {
+      if (!signal?.aborted) setCarregandoCentral(false)
+    }
+  }, [conversa, contato])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    carregarCentral(controller.signal)
     return () => controller.abort()
-  }, [conversa])
+  }, [carregarCentral])
+
+  const salvarTags = async (chaves: string[]) => {
+    if (!contato) return
+    try {
+      const r = await fetch(`/api/central/contacts/${contato}/`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ tags: chaves }),
+      })
+      if (!r.ok) {
+        const corpo = await r.json().catch(() => null)
+        throw new Error(corpo?.error?.message ?? `A gravação falhou com ${r.status}.`)
+      }
+      await carregarCentral()
+      aoTagsGravadas()
+    } catch (err) {
+      toast.error((err as Error).message)
+    }
+  }
+
+  const mensagens = central?.mensagens ?? []
+  const carregandoMensagens = carregandoCentral && !central
 
   useEffect(() => { setNota('') }, [id])
 
@@ -248,6 +305,41 @@ export const GavetaNegocio: React.FC<{
                 </a>
               )}
             </section>
+
+            {/* Tags — a taxonomia da planilha (13 grupos). As da equipe são
+                as mesmas do painel da inbox; as da Maia, só leitura. */}
+            {contato && (
+              <section className="space-y-4 border-b border-border px-6 py-5">
+                {carregandoCentral && !central ? (
+                  <div className="flex justify-center py-2"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground/70" /></div>
+                ) : (
+                  <>
+                    <BlocoTags
+                      tags={central?.tagsContato ?? []}
+                      catalogo={catalogoTags}
+                      aoSalvar={central ? salvarTags : undefined}
+                    />
+                    {(() => {
+                      const soDaMaia = (central?.tagsMaia ?? []).filter(t => !(central?.tagsContato ?? []).includes(t))
+                      if (soDaMaia.length === 0) return null
+                      const porChave = new Map(catalogoTags.map(t => [t.key, t]))
+                      return (
+                        <div>
+                          <p className="mb-1.5 flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+                            <Bot className="h-3.5 w-3.5" aria-hidden="true" /> Classificação da Maia nesta conversa
+                          </p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {soDaMaia.map(chave => (
+                              <TagChip key={chave} rotulo={porChave.get(chave)?.label ?? chave} cor={porChave.get(chave)?.color ?? null} />
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    })()}
+                  </>
+                )}
+              </section>
+            )}
 
             {/* Anotação + histórico */}
             <section className="border-b border-border px-6 py-5">
