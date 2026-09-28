@@ -1,7 +1,7 @@
 'use client'
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { Plus, Search, Loader2, ChevronDown, AlertTriangle, PlugZap, Archive } from 'lucide-react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Plus, Search, Loader2, ChevronDown, ChevronLeft, ChevronRight, AlertTriangle, PlugZap, Archive } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Button } from './Button'
@@ -184,6 +184,44 @@ const Kanban: React.FC = () => {
     }
     return mapa
   }, [visiveis])
+
+  // --------------------------------------------------------------------------
+  // Rolagem horizontal do board (setas nas bordas)
+  // --------------------------------------------------------------------------
+
+  const trilho = useRef<HTMLDivElement>(null)
+  const [podeRolar, setPodeRolar] = useState({ esquerda: false, direita: false })
+
+  const medirRolagem = useCallback(() => {
+    const el = trilho.current
+    if (!el) return
+    // 2px de folga: zoom fracionário deixa scrollLeft em 0,5 e a seta não
+    // sumiria nunca na ponta.
+    const esquerda = el.scrollLeft > 2
+    const direita  = el.scrollLeft + el.clientWidth < el.scrollWidth - 2
+    setPodeRolar(p => (p.esquerda === esquerda && p.direita === direita) ? p : { esquerda, direita })
+  }, [])
+
+  // Remede quando a janela muda de largura e quando o número de colunas muda
+  // (filtro de trilha esconde/mostra posições).
+  useEffect(() => {
+    const el = trilho.current
+    if (!el) return
+    medirRolagem()
+    const obs = new ResizeObserver(medirRolagem)
+    obs.observe(el)
+    if (el.firstElementChild) obs.observe(el.firstElementChild)
+    return () => obs.disconnect()
+  }, [medirRolagem, estado.tipo, trilha, estagios.length])
+
+  // Uma "página" = o que cabe na tela menos uma coluna, para a última coluna
+  // vista continuar à vista como referência.
+  const rolar = (sentido: 1 | -1) => {
+    const el = trilho.current
+    if (!el) return
+    const passo = Math.max(el.clientWidth - 300, 300)
+    el.scrollBy({ left: sentido * passo, behavior: 'smooth' })
+  }
 
   const nomeDoUsuario = (id: string | null) => (id ? usuarios.find(u => u.id === id)?.nome ?? null : null)
   const slugDe = (id: string) => estagios.find(e => e.id === id)?.slug ?? null
@@ -395,7 +433,44 @@ const Kanban: React.FC = () => {
           visível e parecia solta do board. No celular ele volta a ser a última
           coluna do carrossel (md:hidden / hidden md:flex). */}
       <div className="flex min-h-0 flex-1 gap-3 px-4 pb-4 sm:px-6">
-      <div className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden snap-x snap-mandatory md:snap-none custom-scrollbar">
+      {/* Sem barra de rolagem nativa: a do Windows (com setas, ~17px) ficava
+          DENTRO desta área e encurtava só as colunas — o rodapé delas não
+          batia com o do "Encerrados". A navegação é pelas setas nas bordas
+          (que só aparecem quando há mais colunas daquele lado), trackpad,
+          shift + roda e toque. O esmaecido na borda diz que o board continua,
+          em vez de uma coluna cortada seca. */}
+      <div className="relative min-w-0 flex-1">
+      {podeRolar.esquerda && (
+        <>
+          <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-12 bg-linear-to-r from-background to-transparent" aria-hidden="true" />
+          <button
+            type="button"
+            onClick={() => rolar(-1)}
+            aria-label="Ver colunas anteriores"
+            className="absolute left-1 top-1/2 z-20 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-md transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </button>
+        </>
+      )}
+      {podeRolar.direita && (
+        <>
+          <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-16 bg-linear-to-l from-background to-transparent" aria-hidden="true" />
+          <button
+            type="button"
+            onClick={() => rolar(1)}
+            aria-label="Ver próximas colunas"
+            className="absolute right-1 top-1/2 z-20 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-md transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50"
+          >
+            <ChevronRight className="h-5 w-5" />
+          </button>
+        </>
+      )}
+      <div
+        ref={trilho}
+        onScroll={medirRolagem}
+        className="h-full overflow-x-auto overflow-y-hidden snap-x snap-mandatory md:snap-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
         <div className="flex h-full min-w-max gap-3">
           {colunas.map(estagio => {
             const lista = porEstagio.get(estagio.id) ?? []
@@ -437,6 +512,7 @@ const Kanban: React.FC = () => {
 
           {painelEncerrados('flex w-[82vw] max-w-72 snap-start sm:w-72 md:hidden')}
         </div>
+      </div>
       </div>
       {painelEncerrados('hidden w-72 shrink-0 md:flex')}
       </div>
