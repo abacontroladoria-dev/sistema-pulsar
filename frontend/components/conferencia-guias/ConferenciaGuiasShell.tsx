@@ -470,6 +470,9 @@ export default function ConferenciaGuiasShell() {
   // Atalhos só para quem pode abrir a tela de destino — um link que leva ao
   // /sem-permissao é pior que link nenhum.
   const { tem: podeAssim } = useTemPermissao('auditoria_assim')
+  // A Reconciliação tem código próprio desde 29/09/2026 — ter a Conferência
+  // ASSIM não garante mais a outra aba.
+  const { tem: podeReconciliacao } = useTemPermissao('reconciliacao_assim')
   const { tem: podeEvolucoes } = useTemPermissao('terapeutico_auditoria_evolucoes')
 
   const hrefConferenciaAssim = useMemo(
@@ -487,7 +490,7 @@ export default function ConferenciaGuiasShell() {
   )
   const onAbrirReconciliacao = useMemo(
     () =>
-      podeAssim
+      podeReconciliacao
         ? (s: SessaoConferencia) => {
             gravarAlvoReconciliacao({
               pacienteNome: s.paciente_nome,
@@ -497,7 +500,7 @@ export default function ConferenciaGuiasShell() {
             router.push('/auditoria-assim?tab=reconciliacao')
           }
         : null,
-    [podeAssim, router]
+    [podeReconciliacao, router]
   )
 
   // No celular é uma tela de cada vez: a fila, ou a folha escolhida.

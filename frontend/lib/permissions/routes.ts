@@ -2,110 +2,11 @@
 // IMPORTANTE: este módulo é puro (sem import do supabase) para poder ser
 // importado tanto no client (Sidebar) quanto no proxy server-side.
 
-// Permissões padrão por setor (role). O role `cronograma` é um setor novo
-// que ainda não tem módulos próprios — por ora recebe apenas o dashboard.
-// `disponibilidade_terapeuta` não entra aqui: tem fluxo dedicado e rota pública.
-export const roleDefaults: Record<string, string[]> = {
-  admin: [
-    'dashboard', 'atendimentos', 'autorizacoes_avulsas', 'gestao',
-    'acompanhamento_laudos',
-    'escala_terapeutica',
-    'auditoria_assim', 'conferencia_guias', 'usuarios', 'permissoes', 'api_integracao', 'cco',
-    'tv_avisos',
-    'preauditoria', 'outros_convenios',
-    'cronograma_solicitacoes', 'cronograma_saida_profissional', 'cronograma_ocupacao_paciente',
-    'cronograma_disponibilidade_interna',
-    'ocupacao_clinica', 'ocupacao_clinica_gaps', 'ocupacao_clinica_inconsistencias',
-    'ocupacao_profissionais', 'indicadores_ocupacao_unidades',
-    'indicadores_pacientes', 'indicadores_previsao_receitas',
-    'indicadores_alimentar_bd',
-    'indicadores_comparativo_sessoes',
-    'reposicao_faltas', 'cronograma_ocupacao_salas',
-    'cronograma_valores_convenio', 'cadastros_feriados', 'cadastros_contratos', 'cadastros_taxas',
-    'cadastros_convenios',
-    'analise_tratativas',
-    'relacionamento_prestador_analise', 'relacionamento_prestador_rp',
-    'relacionamento_prestador_individual',
-    'connect',
-    'cadastros_pacientes', 'cadastros_profissionais',
-    'cronograma_por_paciente', 'cronograma_por_profissional',
-    'insumos',
-    'terapeutico_pdi', 'terapeutico_pdi_painel', 'terapeutico_auditoria_evolucoes',
-  ],
-  diretoria: [
-    'dashboard', 'atendimentos', 'gestao',
-    'acompanhamento_laudos',
-    'escala_terapeutica', 'auditoria_assim',
-    'preauditoria', 'outros_convenios',
-    'cronograma_solicitacoes', 'cronograma_saida_profissional', 'cronograma_ocupacao_paciente',
-    'cronograma_disponibilidade_interna',
-    'ocupacao_clinica', 'ocupacao_clinica_gaps', 'ocupacao_clinica_inconsistencias',
-    'ocupacao_profissionais', 'indicadores_ocupacao_unidades',
-    'indicadores_pacientes', 'indicadores_previsao_receitas',
-    'indicadores_alimentar_bd',
-    'indicadores_comparativo_sessoes',
-    'reposicao_faltas', 'cronograma_ocupacao_salas',
-    'cronograma_valores_convenio', 'cadastros_feriados', 'cadastros_contratos', 'cadastros_taxas',
-    'cadastros_convenios',
-    'analise_tratativas',
-    'relacionamento_prestador_analise', 'relacionamento_prestador_rp',
-    'relacionamento_prestador_individual',
-    'cadastros_pacientes', 'cadastros_profissionais',
-    'cronograma_por_paciente', 'cronograma_por_profissional',
-    'insumos',
-    'terapeutico_pdi', 'terapeutico_pdi_painel', 'terapeutico_auditoria_evolucoes',
-  ],
-  recepcao: [
-    'dashboard', 'atendimentos', 'autorizacoes_avulsas', 'gestao', 'auditoria_assim',
-    'outros_convenios',
-    // A recepção é quem cobra a renovação do laudo vencido — é a dona da tela,
-    // não uma convidada. Os mesmos três papéis estão no ramo por papel da RLS
-    // (20260828150000), senão quem tem a tela pelo papel não conseguiria gravar.
-    'acompanhamento_laudos',
-  ],
-  autorizacao: [
-    'dashboard', 'auditoria_assim',
-    'preauditoria',
-  ],
-  terapeutico: ['dashboard', 'escala_terapeutica', 'analise_tratativas', 'terapeutico_auditoria_evolucoes'],
-  // O setor que opera o controle de insumos, junto com admin e diretoria
-  // (definido pelo usuario em 2026-08-18). Ate entao tinha so o dashboard.
-  // `conferencia_guias` (2026-09-24): a conferência da folha de assinaturas da
-  // recepção é trabalho do faturamento. O mesmo papel está no ramo por papel da
-  // RLS e no porteiro da RPC (20260924200000).
-  faturamento: ['dashboard', 'insumos', 'conferencia_guias'],
-  rp: [
-    'dashboard', 'escala_terapeutica',
-    'cadastros_feriados', 'cadastros_contratos', 'cadastros_taxas',
-    'relacionamento_prestador_analise', 'relacionamento_prestador_rp',
-    'relacionamento_prestador_individual',
-  ],
-  // O setor que publica os cartazes da TV da recepção, e NADA mais. É o primeiro
-  // papel cujo trabalho não toca em dado de paciente — reaproveitar `recepcao`
-  // para "resolver o acesso" daria a fila de autorizações inteira a quem só troca
-  // uma imagem de parede. `dashboard` entra porque toda a base o tem e '/' é
-  // forçada em codigosToRotas de qualquer forma: sem ele o login cairia numa home
-  // vazia. Os mesmos papéis estão no ramo por papel da RLS de tv_avisos e das
-  // policies do bucket (20260910120100), senão a tela abriria e o upload falharia
-  // em silêncio.
-  marketing: ['dashboard', 'tv_avisos'],
-  // Ocupação de Salas, Cadastro de Valores de Convênio e Reposição de Faltas
-  // foram retiradas deste papel em 2026-07-24 a pedido do usuário — ficam
-  // restritas a admin/diretoria (a RLS das tabelas por trás também foi
-  // restringida junto, ver 20260724200000_restringir_cronograma_role_admin_diretoria.sql).
-  cronograma: [
-    'dashboard', 'cronograma_solicitacoes',
-    'cronograma_saida_profissional', 'cronograma_ocupacao_paciente',
-    'cronograma_disponibilidade_interna',
-    'ocupacao_clinica', 'ocupacao_clinica_gaps', 'ocupacao_clinica_inconsistencias',
-    'cadastros_pacientes', 'cadastros_profissionais',
-    'cronograma_por_paciente', 'cronograma_por_profissional',
-  ],
-}
-
-export function getRoleDefaultPermissions(role: string): string[] {
-  return roleDefaults[role] ?? []
-}
+// Sem "permissões padrão por setor" desde 29/09/2026: quem dá as telas são os
+// grupos de permissão (ao vivo) mais os ajustes individuais — ver resolver.ts e a
+// função do banco permissoes_efetivas() (20260929140000). O `roleDefaults` que
+// morava aqui foi gravado explicitamente para cada pessoa antes de sair
+// (snippet 20260929_materializar_permissoes_APLICAR.sql).
 
 // Mapeamento código de permissão → rota(s) da aplicação.
 export const CODIGO_PARA_ROTAS: Record<string, string[]> = {
@@ -124,7 +25,14 @@ export const CODIGO_PARA_ROTAS: Record<string, string[]> = {
   // public.laudos_acompanhamento exige este mesmo código (20260828150000).
   acompanhamento_laudos: ['/acompanhamento/laudos'],
   escala_terapeutica: ['/central-terapeutas'],
-  auditoria_assim: ['/auditoria-assim'],
+  // As duas abas de /auditoria-assim têm código próprio (29/09/2026: "cada item
+  // do sidebar precisa de uma permissão própria"). A URL pura, sem ?tab=, não
+  // bate com nenhuma das duas — rotaPadraoDeAbas() abaixo a manda para a
+  // primeira aba liberada, no proxy, antes da checagem.
+  // As RPCs da Reconciliação (vincular/reclassificar…) continuam decidindo quem
+  // ESCREVE pelo papel; este código só decide quem ABRE a aba.
+  auditoria_assim: ['/auditoria-assim?tab=auditoria'],
+  reconciliacao_assim: ['/auditoria-assim?tab=reconciliacao'],
   // Código PRÓPRIO, e não uma rota dentro de `auditoria_assim`: quem confere a
   // folha de assinaturas é o faturamento, que não tem (nem precisa ter) a
   // Conferência ASSIM. A RLS de conferencia_guias_assinadas e a RPC
@@ -149,7 +57,9 @@ export const CODIGO_PARA_ROTAS: Record<string, string[]> = {
   // `autorizacoes` (a rota /autorizacoes) saiu em 2026-08-26: a tela foi
   // descontinuada e quem chama o responsável agora é a /solicitar. O código
   // pode continuar existindo em permissões já gravadas de usuários — sem
-  // entrada aqui, `codigosToRotas` simplesmente o ignora (`?? []`).
+  // entrada aqui, `codigosToRotas` simplesmente o ignora (`?? []`). Saiu também
+  // do catálogo em 29/09/2026, junto com `indicadores_historico_receitas` (aba
+  // que não existe mais).
   preauditoria: ['/preauditoria'],
   outros_convenios: ['/outros-convenios'],
   cronograma_solicitacoes: ['/relacionamento-prestador/solicitacoes'],
@@ -201,17 +111,16 @@ export const CODIGO_PARA_ROTAS: Record<string, string[]> = {
   // paciente ("Filiação e responsáveis"), e a RLS de public.responsaveis já é
   // gated por esta mesma permissão (20260826100200).
   cadastros_pacientes: ['/cadastros/pacientes'],
-  cadastros_profissionais: ['/cadastros/profissionais'],
-  cronograma_por_paciente: ['/cronograma/por-paciente'],
-  cronograma_por_profissional: ['/cronograma/por-profissional'],
+  // `cadastros_profissionais`, `cronograma_por_paciente` e
+  // `cronograma_por_profissional` saíram em 29/09/2026: as rotas nunca ganharam
+  // página e o catálogo passou a espelhar o Sidebar. Voltam junto com a tela.
   // Controle de insumos (porte do AXIUM). Um código só, não os 8 granulares do
   // AXIUM (compras.ver/aprovar/comprar/…): o acesso definido pelo usuário é por
   // setor — faturamento, admin e diretoria. Granularizar depois, se aparecer o
   // caso de quem cota mas não aprova.
   insumos: ['/insumos'],
   // Controle de Prazos do PDI (tela /terapeutico/prazos-pdi) — Amanda/Gracielle
-  // recebem por concessão individual em /admin (fora deste código), não pelo
-  // roleDefaults de um setor genérico; admin/diretoria têm o código aqui.
+  // recebem pelo grupo Especialista Téc. ABA; diretoria, pelo grupo Diretoria.
   terapeutico_pdi: ['/terapeutico/prazos-pdi'],
   // "PDI - Painel por Analista" (/terapeutico/pdi-painel-analista) — CÓDIGO
   // PRÓPRIO, separado do Controle de Prazos acima (pedido do usuário,
@@ -224,6 +133,14 @@ export const CODIGO_PARA_ROTAS: Record<string, string[]> = {
   // a pessoa não tiver `terapeutico_pdi` também.
   terapeutico_pdi_painel: ['/terapeutico/pdi-painel-analista'],
   terapeutico_auditoria_evolucoes: ['/terapeutico/auditoria-evolucoes'],
+}
+
+// Rotas cujas abas têm, TODAS, código próprio por ?tab= — a URL pura não bate
+// com código nenhum. Em vez de mandar para /sem-permissao quem abre o endereço
+// sem a aba (link antigo, favorito, digitado), o proxy redireciona para a
+// primeira aba desta lista que a pessoa tem. A ordem é a do Sidebar.
+export const ABAS_POR_ROTA: Record<string, string[]> = {
+  '/auditoria-assim': ['auditoria', 'reconciliacao'],
 }
 
 // Converte um conjunto de códigos de permissão em rotas permitidas,
@@ -253,7 +170,29 @@ export function routeMatches(pathname: string, search: string, route: string): b
   return true
 }
 
+const CAMINHOS_DO_CATALOGO = [
+  ...new Set(Object.values(CODIGO_PARA_ROTAS).flat().map((r) => r.split('?')[0])),
+]
+
+// O caminho mais específico do catálogo que cobre `pathname`. Sem isso, o prefixo
+// de '/admin' (código `usuarios`) abria também /admin/permissoes e /admin/api,
+// que têm código próprio — desmarcar "Permissões" de alguém não valia nada se
+// "Usuários" estivesse marcado.
+function caminhoMaisEspecifico(pathname: string): string | undefined {
+  let melhor: string | undefined
+  for (const p of CAMINHOS_DO_CATALOGO) {
+    const cobre = pathname === p || pathname.startsWith(p + '/')
+    if (cobre && (!melhor || p.length > melhor.length)) melhor = p
+  }
+  return melhor
+}
+
 // Mesma checagem, mas contra uma lista de rotas permitidas (basta uma bater).
+// Só conta a rota do caminho mais específico do catálogo — quem decide uma
+// subpágina com código próprio é o código dela, não o da página-mãe.
 export function hasRouteAccess(pathname: string, search: string, allowedRoutes: string[]): boolean {
-  return allowedRoutes.some((route) => routeMatches(pathname, search, route))
+  const alvo = caminhoMaisEspecifico(pathname)
+  return allowedRoutes.some(
+    (route) => routeMatches(pathname, search, route) && (!alvo || route.split('?')[0] === alvo)
+  )
 }

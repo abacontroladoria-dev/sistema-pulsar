@@ -40,8 +40,10 @@ type Props = {
   open: boolean
   onClose: () => void
   onSalvo: () => void
-  /** Leva para a aba Reconciliação, na semana deste paciente. */
-  onAnalisarSemana: (item: AuditoriaAssimItem) => void
+  /** Leva para a aba Reconciliação, na semana deste paciente. Ausente para quem
+   *  não tem `reconciliacao_assim`: um botão que leva ao /sem-permissao é pior
+   *  que botão nenhum. */
+  onAnalisarSemana?: (item: AuditoriaAssimItem) => void
 }
 
 function formatarData(data: string | null) {
@@ -655,14 +657,14 @@ export default function ModalDetalhamentoAtendimento({ item, open, onClose, onSa
                     Aparece em toda glosa, não só na 1601: a cota da semana é o
                     contexto que qualquer contestação usa. Quando o código É o da
                     reincidência, o rótulo diz por quê. */}
-                <button
+                {onAnalisarSemana && <button
                   type="button"
                   onClick={() => onAnalisarSemana(item)}
                   className="mb-3 flex w-full items-center justify-center gap-2 rounded-xl border border-brand bg-white px-4 py-2 text-sm font-semibold text-brand-fg transition hover:bg-brand-hover focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:outline-none"
                 >
                   <CalendarSearch size={15} />
                   {ehReincidencia ? 'Conferir a cota da semana' : 'Analisar cota da semana'}
-                </button>
+                </button>}
 
                 {soLeituraGlosa ? (
                   <p className="text-sm whitespace-pre-wrap text-violet-900">{item.motivo_glosa}</p>

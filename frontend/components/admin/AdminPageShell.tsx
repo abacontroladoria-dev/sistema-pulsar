@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { useHeader } from '@/contexts/HeaderContext'
 import AdminSummaryCards from './AdminSummaryCards'
-import AdminUsersTable from './AdminUsersTable'
+import AdminUsersTable, { FILTRO_SEM_GRUPO } from './AdminUsersTable'
+import { useUsuarioAtual } from '@/hooks/useUsuarioAtual'
 import AdminMachinesTable, { isMachineOnline } from './AdminMachinesTable'
 import {
   deleteUser,
@@ -23,6 +24,7 @@ import {
 import type { Grupo } from '@/services/grupos.service'
 import ResetPasswordModal from './ResetPasswordModal'
 import { getFunctionHeaders, getFunctionUrl } from '@/lib/supabase/functions'
+import { UNIDADES_DISPONIVEIS } from '@/lib/admin/unidades'
 
 export type AdminUser = {
   id: string
@@ -54,6 +56,7 @@ export default function AdminPageShell({
   initialMachines: AdminMachine[]
 }) {
   const { setHeader } = useHeader()
+  const { role: meuNivel } = useUsuarioAtual()
 
   const [users, setUsers] = useState(initialUsers)
   const [machines, setMachines] = useState(initialMachines)
@@ -62,7 +65,7 @@ export default function AdminPageShell({
   const [membrosPorGrupo, setMembrosPorGrupo] = useState<Record<string, string[]>>({})
   const [searchUser, setSearchUser] = useState('')
   const [searchMachine, setSearchMachine] = useState('')
-  const [roleFilter, setRoleFilter] = useState('')
+  const [grupoFilter, setGrupoFilter] = useState('')
   const [busyId, setBusyId] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState('')
   const [resetPasswordResult, setResetPasswordResult] = useState<{
@@ -78,6 +81,17 @@ export default function AdminPageShell({
       'Gestão de usuários, máquinas e regras do sistema'
     )
   }, [setHeader])
+
+  async function recarregarUsuariosEGrupos() {
+    const [loadedUsers, loadedGrupos, loadedMembros] = await Promise.all([
+      getAdminUsers(),
+      getGrupos(),
+      getAllMembrosPorGrupo(),
+    ])
+    setUsers(loadedUsers)
+    setGrupos(loadedGrupos)
+    setMembrosPorGrupo(loadedMembros)
+  }
 
   useEffect(() => {
     async function load() {
@@ -146,13 +160,15 @@ export default function AdminPageShell({
         }
       }
 
-      if (roleFilter && user.role !== roleFilter) {
+      if (grupoFilter === FILTRO_SEM_GRUPO) {
+        if ((gruposPorUsuario[user.id] || []).length > 0) return false
+      } else if (grupoFilter && !(gruposPorUsuario[user.id] || []).includes(grupoFilter)) {
         return false
       }
 
       return true
     })
-  }, [users, roleFilter, searchUser])
+  }, [users, grupoFilter, searchUser, gruposPorUsuario])
 
   const filteredMachines = useMemo(() => {
     return machines.filter((machine) => {
@@ -190,21 +206,33 @@ export default function AdminPageShell({
     setBusyId(userId)
     setErrorMessage('')
 
-    const result = await updateUserRoleUnidades(userId, role, unidades)
+    // Unidades passam por /api/admin/user/update, que só aceita admin. Só chama
+    // quando elas mudaram — senão a diretoria, que pode mexer em grupos (a RLS
+    // de grupos_permissoes_membros aceita is_diretoria), nunca conseguia salvar
+    // um grupo: a primeira chamada falhava e a segunda não acontecia.
+    const atual = users.find((u) => u.id === userId)
+    const unidadesAtuais = atual?.unidades && atual.unidades.length > 0 ? atual.unidades : []
+    const unidadesMudaram =
+      unidadesAtuais.length !== unidades.length || unidadesAtuais.some((u) => !unidades.includes(u))
+    const todasMarcadas = unidadesAtuais.length === 0 && unidades.length === UNIDADES_DISPONIVEIS.length
 
-    if (!result.ok) {
-      setErrorMessage(result.error ?? 'Não foi possível salvar as alterações do usuário.')
-      setBusyId(null)
-      return false
-    }
+    if (unidadesMudaram && !todasMarcadas) {
+      const result = await updateUserRoleUnidades(userId, role, unidades)
 
-    setUsers((current) =>
-      current.map((user) =>
-        user.id === userId
-          ? { ...user, role, unidades: unidades.length > 0 ? unidades : null }
-          : user
+      if (!result.ok) {
+        setErrorMessage(result.error ?? 'Não foi possível salvar as alterações do usuário.')
+        setBusyId(null)
+        return false
+      }
+
+      setUsers((current) =>
+        current.map((user) =>
+          user.id === userId
+            ? { ...user, role, unidades: unidades.length > 0 ? unidades : null }
+            : user
+        )
       )
-    )
+    }
 
     // Grupo é vínculo puramente organizacional (tabela própria) — muda quem está
     // no grupo, não as permissões já aplicadas a cada um. Quem aplica as
@@ -227,6 +255,11 @@ export default function AdminPageShell({
       }
       return next
     })
+
+    // Entrar/sair de grupo pode mudar o nível técnico no banco (gatilho da
+    // migration 20260929130000). Relê a lista: o próximo "Salvar" de unidades
+    // manda o `role` da tela e, com o valor velho, desfaria o que o banco acertou.
+    setUsers(await getAdminUsers())
 
     setBusyId(null)
     return true
@@ -322,6 +355,9 @@ export default function AdminPageShell({
             <AdminUsersTable
               users={filteredUsers}
               grupos={grupoOptions}
+              gruposCompletos={grupos}
+              podeAdministrar={meuNivel === 'admin'}
+              onUsuarioCriado={recarregarUsuariosEGrupos}
               gruposPorUsuario={gruposPorUsuario}
               onToggleActive={handleToggleActive}
               onSaveUser={handleSaveUser}
@@ -331,8 +367,8 @@ export default function AdminPageShell({
               loadingId={busyId}
               searchUser={searchUser}
               onSearchUserChange={setSearchUser}
-              roleFilter={roleFilter}
-              onRoleFilterChange={setRoleFilter}
+              grupoFilter={grupoFilter}
+              onGrupoFilterChange={setGrupoFilter}
               searchMachine={searchMachine}
               onSearchMachineChange={setSearchMachine}
             />

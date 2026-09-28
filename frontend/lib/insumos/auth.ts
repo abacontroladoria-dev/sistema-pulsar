@@ -1,13 +1,14 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { NextRequest } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { resolverPermissoes, temPermissao } from "@/lib/permissions/resolver"
+import { temPermissao } from "@/lib/permissions/resolver"
+import { carregarPermissoesEfetivas } from "@/lib/permissions/carregar"
 import { NaoAutenticadoError, SemEmpresaError, SemPermissaoError } from "./erros"
 
 /**
  * Código de permissão do módulo. Acesso definido pelo usuário em 2026-08-18:
- * setor `faturamento`, mais `admin` e `diretoria` (ver roleDefaults em
- * lib/permissions/routes.ts).
+ * setor `faturamento`, mais `admin` e `diretoria`. Desde 29/09/2026 quem dá o
+ * código são os grupos de permissão (ver lib/permissions/carregar.ts).
  *
  * Atenção ao nome: o `role` no banco é **`faturamento`**, não "financeiro" — o
  * CHECK de `usuarios.role` não tem esse valor.
@@ -89,14 +90,8 @@ export async function extrairAtor(request?: NextRequest): Promise<ContextoInsumo
 
   const role = (perfil.role as string | null) ?? ""
 
-  // Mesma resolução do proxy.ts: defaults do papel + concessões/revogações
-  // individuais, revogação vencendo.
-  const { data: overrides } = await supabase
-    .from("usuarios_permissoes")
-    .select("permissao_codigo, permitido")
-    .eq("usuario_id", user.id)
-
-  const codigos = resolverPermissoes(role, overrides ?? [])
+  // Mesma resolução do proxy.ts: grupos + ajustes individuais, pelo banco.
+  const codigos = await carregarPermissoesEfetivas(supabase)
   if (!temPermissao(role, codigos, PERMISSAO_INSUMOS)) throw new SemPermissaoError()
 
   // Sob RLS este SELECT já devolve só os vínculos do próprio usuário.

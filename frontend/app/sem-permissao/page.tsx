@@ -4,11 +4,13 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { getSupabaseClient } from '@/lib/supabase/client'
 import { Home, LogOut } from 'lucide-react'
-import { ROLE_LABELS } from '@/constants/roleLabels'
+import { carregarGruposDoUsuario, rotuloDosGrupos } from '@/lib/permissions/carregar'
 
 interface Perfil {
   nome: string
-  role: string
+  // Os grupos de permissão da pessoa — é o que decide o acesso e o que ela
+  // reconhece. `null` quando não deu para ler: a frase sai sem o parêntese.
+  grupos: string | null
 }
 
 export default function SemPermissaoPage() {
@@ -19,14 +21,12 @@ export default function SemPermissaoPage() {
     const supabase = getSupabaseClient()
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) return
-      supabase
-        .from('usuarios')
-        .select('nome, role')
-        .eq('id', user.id)
-        .single()
-        .then(({ data }) => {
-          if (data) setPerfil(data)
-        })
+      Promise.all([
+        supabase.from('usuarios').select('nome').eq('id', user.id).single(),
+        carregarGruposDoUsuario(supabase),
+      ]).then(([{ data }, grupos]) => {
+        if (data) setPerfil({ nome: data.nome, grupos: rotuloDosGrupos(grupos) })
+      })
     })
   }, [])
 
@@ -103,8 +103,8 @@ export default function SemPermissaoPage() {
               {perfil ? (
                 <>
                   Você está acessando como{' '}
-                  <strong style={{ color: '#1e5a7d' }}>{perfil.nome}</strong>{' '}
-                  ({ROLE_LABELS[perfil.role] ?? perfil.role}) e não tem permissão para esta seção.
+                  <strong style={{ color: '#1e5a7d' }}>{perfil.nome}</strong>
+                  {perfil.grupos ? ` (${perfil.grupos})` : ''} e não tem permissão para esta seção.
                 </>
               ) : (
                 'Sua conta não tem permissão para acessar esta seção do sistema.'

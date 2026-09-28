@@ -1,32 +1,43 @@
-import { codigosToRotas, getRoleDefaultPermissions, hasRouteAccess } from "./routes"
+import { ABAS_POR_ROTA, codigosToRotas, hasRouteAccess } from "./routes"
 
-// Resolução da permissão efetiva de um usuário: defaults do papel, mais as
-// concessões e revogações individuais de `usuarios_permissoes`.
+// Resolução da permissão efetiva de um usuário (29/09/2026, grupos ao vivo):
 //
-// Extraído de proxy.ts para ser usado nos dois lugares. O motivo de existir como
-// arquivo próprio: o `proxy.ts` só protege PÁGINA — o matcher dele exclui `/api`
-// explicitamente. Route handler precisa checar permissão por conta própria, e uma
-// segunda implementação dessa mesma regra divergiria com o tempo (é o que já
-// aconteceu neste projeto com o CASE do TUSS e com a normalização de nome).
+//   telas = união dos modelos dos grupos dele
+//           + ajustes individuais liberados − ajustes individuais retirados
 //
-// Puro de propósito: recebe os overrides já lidos, não fala com o Supabase. Assim
-// serve ao proxy (client do middleware) e à API (client do route handler) sem
-// arrastar dependência.
+// O perfil padrão (`role`) não entra mais no cálculo de telas. O runtime (proxy,
+// menu, rotas de API) lê o resultado pronto do banco, pela função
+// permissoes_efetivas() (ver ./carregar.ts) — é a mesma regra que as policies
+// aplicam em usuario_tem_permissao() (20260929140000). Esta versão em TS existe
+// para a tela de Permissões, que calcula várias pessoas de uma vez com os dados
+// que já tem na mão; resolver.test.ts trava as duas no mesmo comportamento.
+//
+// Puro de propósito: recebe os dados já lidos, não fala com o Supabase.
 
 export type OverridePermissao = { permissao_codigo: string; permitido: boolean }
 
-/**
- * Revogação vence: um código revogado sai do conjunto mesmo que o papel o
- * conceda por padrão. Mesma semântica do `UsuarioPermissaoExcecao` do AXIUM.
- */
-export function resolverPermissoes(role: string, overrides: OverridePermissao[]): Set<string> {
-  const codigos = new Set(getRoleDefaultPermissions(role))
+/** União dos modelos: um código entra se QUALQUER grupo o libera. */
+export function uniaoDosModelos(modelos: Record<string, boolean>[]): Set<string> {
+  const uniao = new Set<string>()
+  for (const modelo of modelos) {
+    for (const [codigo, permitido] of Object.entries(modelo)) if (permitido) uniao.add(codigo)
+  }
+  return uniao
+}
 
-  for (const o of overrides) {
+/**
+ * Ajuste individual vence o grupo: um código retirado sai mesmo que um grupo o
+ * libere, e um liberado entra mesmo que nenhum grupo o dê.
+ */
+export function resolverPermissoes(
+  ajustes: OverridePermissao[],
+  modelosDosGrupos: Record<string, boolean>[]
+): Set<string> {
+  const codigos = uniaoDosModelos(modelosDosGrupos)
+  for (const o of ajustes) {
     if (o.permitido) codigos.add(o.permissao_codigo)
     else codigos.delete(o.permissao_codigo)
   }
-
   return codigos
 }
 
@@ -52,8 +63,8 @@ export function temPermissao(role: string, codigos: Set<string>, codigo: string)
  *
  * Existe porque os dois já divergiram na prática: o proxy retornava cedo para
  * `admin` e o `canAccess` do Sidebar não, então um admin abria
- * /autorizacoes-avulsas pelo link e não via o item no menu — o código só está no
- * roleDefaults de `admin` e `recepcao`. Menu e navegação discordando é sempre
+ * /autorizacoes-avulsas pelo link e não via o item no menu — o código não estava
+ * no conjunto dele. Menu e navegação discordando é sempre
  * bug: ou a tela é inalcançável, ou aparece um item que a navegação recusa.
  *
  * `search` importa: há permissões por aba (ex:
@@ -68,4 +79,25 @@ export function podeAcessarRota(
 ): boolean {
   if (isSuperRole(role)) return true
   return hasRouteAccess(pathname, search, codigosToRotas(codigos))
+}
+
+/**
+ * Para uma rota de ABAS_POR_ROTA aberta sem `?tab=`: o endereço da primeira aba
+ * liberada. `null` quando a rota não é dessas, quando o `?tab=` já veio, ou
+ * quando nenhuma aba está liberada (aí a checagem normal manda para
+ * /sem-permissao).
+ */
+export function abaPadraoLiberada(
+  role: string,
+  codigos: Set<string>,
+  pathname: string,
+  search = ""
+): string | null {
+  const abas = ABAS_POR_ROTA[pathname]
+  if (!abas || new URLSearchParams(search).has("tab")) return null
+  for (const aba of abas) {
+    const alvo = `?tab=${aba}`
+    if (podeAcessarRota(role, codigos, pathname, alvo)) return `${pathname}${alvo}`
+  }
+  return null
 }

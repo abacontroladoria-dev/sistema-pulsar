@@ -9,15 +9,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { getSupabaseClient } from '@/lib/supabase/client'
-
-const roleLabels: Record<string, string> = {
-  admin: 'Administrador',
-  diretoria: 'Diretoria',
-  recepcao: 'Recepção',
-  autorizacao: 'Autorização',
-  terapeutico: 'Terapêutico',
-  faturamento: 'Faturamento',
-}
+import { carregarGruposDoUsuario, rotuloDosGrupos } from '@/lib/permissions/carregar'
 
 interface Props {
   open: boolean
@@ -29,7 +21,8 @@ export default function ModalPerfil({ open, onClose, userId }: Props) {
   const supabase = getSupabaseClient()
   const [nome, setNome] = useState('')
   const [email, setEmail] = useState('')
-  const [role, setRole] = useState('')
+  // Os grupos de permissão — no lugar do nível técnico, que é só do banco.
+  const [grupos, setGrupos] = useState<string | null>(null)
   const [username, setUsername] = useState('')
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -38,17 +31,16 @@ export default function ModalPerfil({ open, onClose, userId }: Props) {
     if (!open || !userId) return
     async function loadPerfil() {
       setLoading(true)
-      const { data, error } = await supabase
-        .from('usuarios')
-        .select('nome, email, role, username')
-        .eq('id', userId)
-        .single()
+      const [{ data, error }, gruposLidos] = await Promise.all([
+        supabase.from('usuarios').select('nome, email, username').eq('id', userId).single(),
+        carregarGruposDoUsuario(supabase),
+      ])
+      setGrupos(rotuloDosGrupos(gruposLidos))
       if (error) {
         toast.error('Erro ao carregar perfil')
       } else if (data) {
         setNome(data.nome ?? '')
         setEmail(data.email ?? '')
-        setRole(data.role ?? '')
         setUsername(data.username ?? '')
       }
       setLoading(false)
@@ -121,11 +113,11 @@ export default function ModalPerfil({ open, onClose, userId }: Props) {
               )}
 
               <div>
-                <label className="text-xs text-slate-500 mb-1 block">Perfil de acesso</label>
+                <label className="text-xs text-slate-500 mb-1 block">Grupos de permissão</label>
                 <input
                   disabled
                   className="w-full rounded-2xl border border-slate-200 bg-slate-100 px-4 py-3 text-sm text-slate-400 cursor-not-allowed"
-                  value={roleLabels[role] ?? role}
+                  value={grupos ?? '—'}
                 />
               </div>
 

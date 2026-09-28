@@ -181,49 +181,8 @@ export async function sincronizarGruposDoUsuario(
   return true
 }
 
-// Os grupos de um usuário não se excluem, se complementam: quem está em
-// "Cronograma" e "Autorização" fica com a UNIÃO das permissões dos dois
-// modelos. Um código só é negado se nenhum dos grupos o libera.
-export function unirModelos(modelos: Record<string, boolean>[]): Record<string, boolean> {
-  const uniao: Record<string, boolean> = {}
-  for (const modelo of modelos) {
-    for (const [codigo, permitido] of Object.entries(modelo)) {
-      if (permitido) uniao[codigo] = true
-    }
-  }
-  return uniao
-}
-
-// Aplica o modelo resolvido de cada usuário (já unido entre os grupos dele)
-// como override explícito (true ou false) em usuarios_permissoes — mesma tabela
-// usada pelas telas "por usuário"/"por permissão", só que em lote. Escreve um
-// override para TODOS os códigos de permissão existentes (não só os marcados
-// como true), pra garantir que o membro fique exatamente igual à união dos
-// modelos — sem sobras de um override individual anterior que ela não prevê.
-export async function aplicarModelosAosUsuarios(
-  modelosPorUsuario: Record<string, Record<string, boolean>>,
-  todosOsCodigos: string[]
-): Promise<boolean> {
-  const usuarioIds = Object.keys(modelosPorUsuario)
-  if (usuarioIds.length === 0 || todosOsCodigos.length === 0) return true
-
-  const supabase = getSupabaseClient()
-  const upserts = usuarioIds.flatMap(usuario_id =>
-    todosOsCodigos.map(permissao_codigo => ({
-      usuario_id,
-      permissao_codigo,
-      permitido: modelosPorUsuario[usuario_id][permissao_codigo] ?? false,
-    }))
-  )
-
-  const { error } = await supabase
-    .from('usuarios_permissoes')
-    .upsert(upserts, { onConflict: 'usuario_id,permissao_codigo' })
-
-  if (error) {
-    console.error('Erro ao aplicar modelo de permissões ao grupo:', error)
-    return false
-  }
-
-  return true
-}
+// Sem "aplicar modelo" desde 29/09/2026: os grupos valem ao vivo (a pessoa tem a
+// união dos modelos dos grupos dela, calculada pelo banco — permissoes_efetivas,
+// 20260929140000). Salvar o modelo com salvarModeloGrupo já muda as telas de
+// todos os membros; entrar/sair do grupo, as da pessoa. A regra em TS, para a
+// tela de Permissões, está em lib/permissions/resolver.ts (uniaoDosModelos).

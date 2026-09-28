@@ -89,7 +89,7 @@ const SidebarContent = ({ collapsed }: { collapsed: boolean }) => {
         <ThemeSwitcher />
         <div
           className="flex items-center gap-3 p-2 rounded-xl hover:bg-sidebar-accent/60 transition-colors group"
-          title={collapsed ? `${usuario.primeiroNome} — ${usuario.roleLabel ?? 'sem papel'}` : usuario.email}
+          title={collapsed ? (usuario.gruposLabel ? `${usuario.primeiroNome} — ${usuario.gruposLabel}` : usuario.primeiroNome) : usuario.email}
         >
           <div className="w-9 h-9 rounded-full bg-sidebar-accent flex items-center justify-center text-sm font-semibold text-sidebar-accent-foreground border border-sidebar-border shrink-0">
             {inicial}
@@ -99,9 +99,9 @@ const SidebarContent = ({ collapsed }: { collapsed: boolean }) => {
               <p className="text-sm font-medium text-sidebar-foreground truncate">
                 {usuario.primeiroNome}
               </p>
-              {usuario.roleLabel && (
+              {usuario.gruposLabel && (
                 <p className="text-xs text-sidebar-foreground/60 truncate">
-                  {usuario.roleLabel}
+                  {usuario.gruposLabel}
                 </p>
               )}
               {/* Sem central_role toda chamada a /api/central/* responde 401.

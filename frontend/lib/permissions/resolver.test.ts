@@ -1,11 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { isSuperRole, podeAcessarRota, resolverPermissoes, temPermissao } from './resolver'
+import { abaPadraoLiberada, isSuperRole, podeAcessarRota, resolverPermissoes, temPermissao, uniaoDosModelos } from './resolver'
 
 // O bug que originou `podeAcessarRota`: o proxy.ts retornava cedo para `admin`
 // (liberava a rota sem olhar código nenhum) e o `canAccess` do Sidebar não tinha
-// esse atalho — exigia o código em codigosToRotas. Como `autorizacoes_avulsas` só
-// está no roleDefaults de `admin` e `recepcao`, o admin abria a página pelo link
-// direto e não via o item no menu.
+// esse atalho — exigia o código em codigosToRotas. Sem `autorizacoes_avulsas` no
+// conjunto, o admin abria a página pelo link direto e não via o item no menu.
 //
 // Estes testes travam a propriedade que importa: menu e navegação decidem igual,
 // porque agora são a MESMA função.
@@ -21,36 +20,48 @@ describe('podeAcessarRota — admin', () => {
   })
 })
 
-describe('podeAcessarRota — papéis comuns', () => {
-  it('recepcao tem a avulsa por default', () => {
-    const codigos = resolverPermissoes('recepcao', [])
-    expect(podeAcessarRota('recepcao', codigos, '/autorizacoes-avulsas')).toBe(true)
-  })
+// Grupos ao vivo (29/09/2026): telas = união dos modelos dos grupos + ajustes
+// individuais. A MESMA regra está no banco (permissoes_efetivas e
+// usuario_tem_permissao, 20260929140000) — estes casos são o contrato das duas.
+const RECEPCAO = { atendimentos: true, gestao: true, autorizacoes_avulsas: false }
+const FATURAMENTO = { insumos: true, conferencia_guias: true, gestao: false }
 
-  it('diretoria NÃO tem a avulsa por default', () => {
-    // Não é bug: a RLS de fila_autorizacoes só dá INSERT a admin e recepcao
-    // (20260817120000). Se algum dia diretoria ganhar a tela, a migration tem de
-    // vir junto — este teste falha e obriga a decisão a ser consciente.
-    const codigos = resolverPermissoes('diretoria', [])
-    expect(podeAcessarRota('diretoria', codigos, '/autorizacoes-avulsas')).toBe(false)
-  })
-
-  it('papel desconhecido não acessa nada além do que o conjunto disser', () => {
-    expect(podeAcessarRota('inexistente', new Set(), '/autorizacoes-avulsas')).toBe(false)
-  })
-
-  it('revogação individual vence o default do papel', () => {
-    const codigos = resolverPermissoes('recepcao', [
-      { permissao_codigo: 'autorizacoes_avulsas', permitido: false },
-    ])
+describe('resolverPermissoes — grupos ao vivo + ajustes', () => {
+  it('o grupo dá as telas do modelo, e só elas', () => {
+    const codigos = resolverPermissoes([], [RECEPCAO])
+    expect(podeAcessarRota('recepcao', codigos, '/solicitar')).toBe(true)
     expect(podeAcessarRota('recepcao', codigos, '/autorizacoes-avulsas')).toBe(false)
   })
 
-  it('concessão individual dá rota que o papel não tem', () => {
-    const codigos = resolverPermissoes('terapeutico', [
-      { permissao_codigo: 'autorizacoes_avulsas', permitido: true },
-    ])
-    expect(podeAcessarRota('terapeutico', codigos, '/autorizacoes-avulsas')).toBe(true)
+  it('sem grupo e sem ajuste, nada (o nível técnico não dá tela)', () => {
+    expect(resolverPermissoes([], []).size).toBe(0)
+    expect(podeAcessarRota('diretoria', resolverPermissoes([], []), '/solicitar')).toBe(false)
+  })
+
+  it('dois grupos somam; um false num modelo não tira o que o outro dá', () => {
+    // gestao: true em Recepção, false em Faturamento → fica.
+    const codigos = resolverPermissoes([], [RECEPCAO, FATURAMENTO])
+    expect([...codigos].sort()).toEqual(['atendimentos', 'conferencia_guias', 'gestao', 'insumos'])
+  })
+
+  it('ajuste liberado dá tela que nenhum grupo dá ("modelo + 1")', () => {
+    const codigos = resolverPermissoes([{ permissao_codigo: 'autorizacoes_avulsas', permitido: true }], [RECEPCAO])
+    expect(podeAcessarRota('recepcao', codigos, '/autorizacoes-avulsas')).toBe(true)
+  })
+
+  it('ajuste retirado vence o grupo ("modelo − 1")', () => {
+    const codigos = resolverPermissoes([{ permissao_codigo: 'gestao', permitido: false }], [RECEPCAO, FATURAMENTO])
+    expect(codigos.has('gestao')).toBe(false)
+  })
+
+  it('uniaoDosModelos ignora os false', () => {
+    expect([...uniaoDosModelos([RECEPCAO])].sort()).toEqual(['atendimentos', 'gestao'])
+  })
+})
+
+describe('podeAcessarRota — conjunto vazio', () => {
+  it('papel desconhecido não acessa nada além do que o conjunto disser', () => {
+    expect(podeAcessarRota('inexistente', new Set(), '/autorizacoes-avulsas')).toBe(false)
   })
 })
 
@@ -91,11 +102,57 @@ describe('isSuperRole / temPermissao', () => {
     expect(podeAcessarRota('admin', new Set(), '/insumos')).toBe(true)
   })
 
-  it('revogação individual não derruba o admin (o papel vence)', () => {
-    const codigos = resolverPermissoes('admin', [
-      { permissao_codigo: 'insumos', permitido: false },
-    ])
+  it('ajuste retirado não derruba o admin (o papel vence)', () => {
+    const codigos = resolverPermissoes([{ permissao_codigo: 'insumos', permitido: false }], [{ insumos: true }])
     expect(codigos.has('insumos')).toBe(false)
     expect(temPermissao('admin', codigos, 'insumos')).toBe(true)
+  })
+})
+
+describe('ASSIM — uma permissão por aba', () => {
+  // 29/09/2026: Conferência e Reconciliação ASSIM viraram itens independentes.
+  it('quem só tem a Conferência não abre a Reconciliação', () => {
+    const so = new Set(['auditoria_assim'])
+    expect(podeAcessarRota('recepcao', so, '/auditoria-assim', '?tab=auditoria')).toBe(true)
+    expect(podeAcessarRota('recepcao', so, '/auditoria-assim', '?tab=reconciliacao')).toBe(false)
+  })
+
+  it('quem só tem a Reconciliação não abre a Conferência', () => {
+    const so = new Set(['reconciliacao_assim'])
+    expect(podeAcessarRota('recepcao', so, '/auditoria-assim', '?tab=reconciliacao')).toBe(true)
+    expect(podeAcessarRota('recepcao', so, '/auditoria-assim', '?tab=auditoria')).toBe(false)
+  })
+
+  it('URL pura vai para a primeira aba liberada', () => {
+    expect(abaPadraoLiberada('recepcao', new Set(['auditoria_assim', 'reconciliacao_assim']), '/auditoria-assim'))
+      .toBe('/auditoria-assim?tab=auditoria')
+    expect(abaPadraoLiberada('recepcao', new Set(['reconciliacao_assim']), '/auditoria-assim'))
+      .toBe('/auditoria-assim?tab=reconciliacao')
+  })
+
+  it('URL pura sem aba liberada, ou com ?tab= já presente, não redireciona', () => {
+    expect(abaPadraoLiberada('recepcao', new Set(), '/auditoria-assim')).toBeNull()
+    expect(abaPadraoLiberada('recepcao', new Set(['auditoria_assim']), '/auditoria-assim', '?tab=auditoria')).toBeNull()
+    expect(abaPadraoLiberada('recepcao', new Set(['auditoria_assim']), '/cco')).toBeNull()
+  })
+})
+
+describe('subpágina com código próprio', () => {
+  // O prefixo de '/admin' (usuarios) abria /admin/permissoes e /admin/api.
+  it('Usuários não abre Permissões nem API', () => {
+    const so = new Set(['usuarios'])
+    expect(podeAcessarRota('diretoria', so, '/admin')).toBe(true)
+    expect(podeAcessarRota('diretoria', so, '/admin/permissoes')).toBe(false)
+    expect(podeAcessarRota('diretoria', so, '/admin/api')).toBe(false)
+    expect(podeAcessarRota('diretoria', so, '/admin/api/documentacao')).toBe(false)
+  })
+
+  it('Permissões abre sem precisar de Usuários', () => {
+    expect(podeAcessarRota('diretoria', new Set(['permissoes']), '/admin/permissoes')).toBe(true)
+  })
+
+  it('subpágina sem código próprio continua seguindo a mãe', () => {
+    expect(podeAcessarRota('diretoria', new Set(['api_integracao']), '/admin/api/documentacao')).toBe(true)
+    expect(podeAcessarRota('diretoria', new Set(['cadastros_pacientes']), '/cadastros/pacientes/123')).toBe(true)
   })
 })

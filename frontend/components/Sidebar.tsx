@@ -3,7 +3,6 @@
 import {
   LayoutDashboard,
   PlusCircle,
-  Users,
   Activity,
   FileText,
   ShieldCheck,
@@ -15,13 +14,10 @@ import {
   CalendarDays,
   UserRound,
   Building2,
-  Stethoscope,
-  BriefcaseBusiness,
   Star,
   KeyRound,
   Plug,
   Monitor,
-  Megaphone,
   BarChart3,
   CalendarPlus,
   Database,
@@ -35,11 +31,8 @@ import {
   CalendarOff,
   BookOpen,
   Settings,
-  CalendarRange,
   ClipboardCheck,
-  Handshake,
   Wallet,
-  RotateCcw,
   DoorOpen,
   ArrowRightLeft,
   Tag,
@@ -49,11 +42,11 @@ import {
   History,
   UserSearch,
   Zap,
-  Package,
   FileClock,
   CalendarClock,
   Gauge,
   FileSearch,
+  type LucideIcon,
 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
@@ -69,13 +62,16 @@ import { ThemeSwitcher } from "@/components/sidebar/ThemeSwitcher"
 import { useTheme } from "@/contexts/ThemeContext"
 import { useImpersonation } from "@/contexts/ImpersonationContext"
 import { ImpersonationSelector } from "@/components/admin/ImpersonationSelector"
-import { ROLE_LABELS } from "@/constants/roleLabels"
-import { podeAcessarRota, resolverPermissoes } from "@/lib/permissions/resolver"
-import { getUsuarioPermissoes } from "@/services/permissoes.service"
+import { podeAcessarRota, uniaoDosModelos } from "@/lib/permissions/resolver"
+import { carregarGruposDoUsuario, carregarPermissoesEfetivas, rotuloDosGrupos } from "@/lib/permissions/carregar"
+import { MENU_GRUPOS as GRUPO, MENU_ITENS, MENU_POR_CODIGO } from "@/lib/permissions/menu"
 
 type Favorito = { label: string; path: string }
 
-const pathIconMap: Record<string, any> = {
+// Ícone dos favoritos. Os itens do menu entram por último (vencem): o favorito
+// mostra o mesmo ícone do item. O que sobra aqui são rotas antigas que ainda
+// podem estar gravadas no localStorage de alguém.
+const pathIconLegado: Record<string, LucideIcon> = {
   "/": LayoutDashboard,
   "/solicitar": PlusCircle,
   "/autorizacoes-avulsas": ClipboardPlus,
@@ -129,6 +125,11 @@ const pathIconMap: Record<string, any> = {
   "/cronograma/indicadores?tab=comparativo-sessoes": ArrowRightLeft,
 }
 
+const pathIconMap: Record<string, LucideIcon> = {
+  ...pathIconLegado,
+  ...Object.fromEntries(MENU_ITENS.map((item) => [item.path, item.icon])),
+}
+
 export default function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
@@ -160,6 +161,9 @@ export default function Sidebar() {
   // proxy.ts) faz a conversão por dentro, e é o que mantém menu e navegação com
   // uma implementação só.
   const [codigos, setCodigos] = useState<Set<string>>(new Set())
+  // Os grupos de permissão mostrados no rodapé, embaixo do nome — no lugar do
+  // nível técnico (`role`), que é só do banco. `null`: rótulo vazio.
+  const [gruposRotulo, setGruposRotulo] = useState<string | null>(null)
 
   useEffect(() => {
     try {
@@ -202,8 +206,7 @@ export default function Sidebar() {
     if (!role) return false
     // `podeAcessarRota` é a MESMA função do proxy.ts, o gate real da navegação —
     // inclusive o "admin acessa tudo". Enquanto eram duas implementações, o admin
-    // abria /autorizacoes-avulsas pelo link e não via o item no menu (o código só
-    // está no roleDefaults de `admin` e `recepcao`).
+    // abria /autorizacoes-avulsas pelo link e não via o item no menu.
     const [barePath, query] = path.split("?")
     return podeAcessarRota(role, codigos, barePath, query ? `?${query}` : "")
   }
@@ -213,10 +216,12 @@ export default function Sidebar() {
 
     async function loadRole() {
       let targetId: string | undefined
+      let targetGrupoId: string | undefined
       let targetRole: string | null
 
       if (isImpersonating && impersonatedTarget) {
         targetId = impersonatedTarget.id
+        targetGrupoId = impersonatedTarget.grupoId
         targetRole = impersonatedTarget.role
       } else {
         const { data: { user } } = await supabase.auth.getUser()
@@ -243,21 +248,36 @@ export default function Sidebar() {
         return
       }
 
-      // resolverPermissoes é a mesma função usada pelo proxy.ts (gate real das
-      // páginas) e pelas rotas de API — regra "defaults do papel + concessões −
-      // revogações, revogação vencendo". A conversão para rotas e o "admin acessa
-      // tudo" agora também são compartilhados, dentro de `podeAcessarRota`.
-      let overrides: { permissao_codigo: string; permitido: boolean }[] = []
-      if (targetId) {
-        try {
-          overrides = await getUsuarioPermissoes(targetId)
-        } catch (error) {
-          console.error("Erro ao carregar permissões do usuário:", error)
+      // Telas efetivas pelo banco (grupos ao vivo + ajustes individuais) — o
+      // mesmo carregador do proxy.ts e das rotas de API. "Visualizar como grupo"
+      // mostra o modelo daquele grupo sozinho, sem pessoa por trás.
+      let resolvidos = new Set<string>()
+      let rotulo: string | null = null
+      try {
+        if (targetGrupoId) {
+          const { data } = await supabase
+            .from("grupos_permissoes")
+            .select("nome, modelo_permissoes")
+            .eq("id", targetGrupoId)
+            .maybeSingle()
+          resolvidos = uniaoDosModelos([(data?.modelo_permissoes as Record<string, boolean>) ?? {}])
+          rotulo = (data?.nome as string | undefined) ?? null
+        } else {
+          const alvo = isImpersonating ? targetId : undefined
+          const [c, g] = await Promise.all([
+            carregarPermissoesEfetivas(supabase, alvo),
+            carregarGruposDoUsuario(supabase, alvo),
+          ])
+          resolvidos = c
+          rotulo = rotuloDosGrupos(g)
         }
+      } catch (error) {
+        console.error("Erro ao carregar permissões do usuário:", error)
       }
 
       if (isMounted) {
-        setCodigos(resolverPermissoes(targetRole, overrides))
+        setCodigos(resolvidos)
+        setGruposRotulo(rotulo)
         setLoadingRole(false)
       }
     }
@@ -457,6 +477,13 @@ export default function Sidebar() {
     )
   }
 
+  // Rótulo, ícone e href vêm de lib/permissions/menu.ts — a mesma lista que
+  // /admin/permissoes usa. É o que mantém o nome da tela igual nas duas.
+  function Item({ codigo }: { codigo: string }) {
+    const item = MENU_POR_CODIGO[codigo]
+    return <MenuItem label={item.label} icon={item.icon} path={item.path} />
+  }
+
   const isDark = theme === 'dark'
 
   return (
@@ -508,7 +535,7 @@ export default function Sidebar() {
         <nav className="flex-1 px-3 py-3 overflow-y-auto space-y-0.5">
 
           {/* Dashboard */}
-          <MenuItem label="Dashboard" icon={LayoutDashboard} path="/" />
+          <Item codigo="dashboard" />
 
           {/* Favoritos */}
           <div className="pt-2">
@@ -526,20 +553,20 @@ export default function Sidebar() {
 
           {/* Pacientes */}
           {(canAccess("/solicitar") || canAccess("/autorizacoes-avulsas") || canAccess("/central-pacientes") ||
-            canAccess("/acompanhamento/laudos")) && (
+            canAccess("/acompanhamento/laudos") || canAccess("/outros-convenios")) && (
             <SidebarGroup
-              title="Pacientes"
-              icon={Users}
-              defaultOpen={["/solicitar", "/autorizacoes-avulsas", "/central-pacientes", "/acompanhamento/laudos"].some(p => pathname === p)}
+              title={GRUPO.pacientes.nome}
+              icon={GRUPO.pacientes.icon}
+              defaultOpen={["/solicitar", "/autorizacoes-avulsas", "/central-pacientes", "/acompanhamento/laudos", "/outros-convenios"].some(p => pathname === p)}
             >
               {canAccess("/solicitar") && (
-                <MenuItem label="Atendimentos" icon={PlusCircle} path="/solicitar" />
+                <Item codigo="atendimentos" />
               )}
               {canAccess("/central-pacientes") && (
-                <MenuItem label="Gestão Recepção" icon={Activity} path="/central-pacientes" />
+                <Item codigo="gestao" />
               )}
               {canAccess("/autorizacoes-avulsas") && (
-                <MenuItem label="Autorizações Avulsas" icon={ClipboardPlus} path="/autorizacoes-avulsas" />
+                <Item codigo="autorizacoes_avulsas" />
               )}
               {/* Fila de laudos vencidos + registro do aviso ao responsável.
                   Neste grupo, e não em Autorização (ao lado da Reconciliação) nem
@@ -547,7 +574,13 @@ export default function Sidebar() {
                   Pacientes é onde as outras telas dela já estão. Decisão do
                   usuário em 28/08/2026. */}
               {canAccess("/acompanhamento/laudos") && (
-                <MenuItem label="Status dos Laudos" icon={FileClock} path="/acompanhamento/laudos" />
+                <Item codigo="acompanhamento_laudos" />
+              )}
+              {/* A tela existia sem item no menu (só abria pela URL). Entrou em
+                  29/09/2026, quando o catálogo de permissões passou a espelhar
+                  o Sidebar — decisão do usuário. */}
+              {canAccess("/outros-convenios") && (
+                <Item codigo="outros_convenios" />
               )}
             </SidebarGroup>
           )}
@@ -555,52 +588,57 @@ export default function Sidebar() {
           {/* Terapêutico */}
           {(canAccess("/central-terapeutas") || canAccess("/analise-tratativas") || canAccess("/terapeutico/auditoria-evolucoes") || canAccess("/terapeutico/prazos-pdi") || canAccess("/terapeutico/pdi-painel-analista")) && (
             <SidebarGroup
-              title="Terapêutico"
-              icon={Stethoscope}
+              title={GRUPO.terapeutico.nome}
+              icon={GRUPO.terapeutico.icon}
               defaultOpen={["/central-terapeutas", "/analise-tratativas", "/terapeutico/auditoria-evolucoes", "/terapeutico/prazos-pdi", "/terapeutico/pdi-painel-analista"].some(p => pathname === p)}
             >
               {canAccess("/central-terapeutas") && (
-                <MenuItem label="Gestão" icon={UserRound} path="/central-terapeutas" />
+                <Item codigo="escala_terapeutica" />
               )}
               {canAccess("/analise-tratativas") && (
-                <MenuItem label="Análise de Evolução" icon={ClipboardCheck} path="/analise-tratativas" />
+                <Item codigo="analise_tratativas" />
               )}
               {canAccess("/terapeutico/auditoria-evolucoes") && (
-                <MenuItem label="Auditoria de Evoluções" icon={FileSearch} path="/terapeutico/auditoria-evolucoes" />
+                <Item codigo="terapeutico_auditoria_evolucoes" />
               )}
               {canAccess("/terapeutico/prazos-pdi") && (
-                <MenuItem label="PDI - Controle" icon={CalendarClock} path="/terapeutico/prazos-pdi" />
+                <Item codigo="terapeutico_pdi" />
               )}
               {canAccess("/terapeutico/pdi-painel-analista") && (
-                <MenuItem label="PDI - Painel" icon={Gauge} path="/terapeutico/pdi-painel-analista" />
+                <Item codigo="terapeutico_pdi_painel" />
               )}
             </SidebarGroup>
           )}
 
           {/* Autorização */}
-          {(canAccess("/auditoria-assim") || canAccess("/cco") || canAccess("/conferencia-guias")) && (
+          {(canAccess("/auditoria-assim?tab=auditoria") || canAccess("/auditoria-assim?tab=reconciliacao") ||
+            canAccess("/cco") || canAccess("/conferencia-guias") || canAccess("/preauditoria")) && (
             <SidebarGroup
-              title="Autorização"
-              icon={BriefcaseBusiness}
-              defaultOpen={pathname === "/cco" || pathname === "/auditoria-assim" || pathname === "/conferencia-guias"}
+              title={GRUPO.autorizacao.nome}
+              icon={GRUPO.autorizacao.icon}
+              defaultOpen={["/cco", "/auditoria-assim", "/conferencia-guias", "/preauditoria"].some(p => pathname === p)}
             >
               {canAccess("/cco") && (
-                <MenuItem label="Conciliação ASSIM" icon={BarChart3} path="/cco" />
+                <Item codigo="cco" />
               )}
-              {/* Duas visões da mesma rota. canAccess("/auditoria-assim?tab=…")
-                  resolve para o bare path '/auditoria-assim' de CODIGO_PARA_ROTAS,
-                  então nenhum código de permissão novo foi necessário.
-                  Reconciliação: quem vê a Conferência vê a aba; quem pode VINCULAR
-                  é decidido pelas RPCs (admin/autorizacao/recepcao), não aqui —
-                  diretoria consulta sem escrever. */}
+              {/* Duas abas da mesma rota, cada uma com código próprio desde
+                  29/09/2026 (auditoria_assim / reconciliacao_assim). Quem pode
+                  VINCULAR na Reconciliação continua decidido pelas RPCs
+                  (admin/autorizacao/recepcao), não aqui — diretoria consulta sem
+                  escrever. */}
               {canAccess("/auditoria-assim?tab=auditoria") && (
-                <MenuItem label="Conferência ASSIM" icon={ClipboardList} path="/auditoria-assim?tab=auditoria" />
+                <Item codigo="auditoria_assim" />
               )}
               {canAccess("/auditoria-assim?tab=reconciliacao") && (
-                <MenuItem label="Reconciliação ASSIM" icon={Link2} path="/auditoria-assim?tab=reconciliacao" />
+                <Item codigo="reconciliacao_assim" />
               )}
               {canAccess("/conferencia-guias") && (
-                <MenuItem label="Conferência de Guias" icon={ClipboardPenLine} path="/conferencia-guias" />
+                <Item codigo="conferencia_guias" />
+              )}
+              {/* Mesma origem de Outros Convênios: tela sem item no menu até
+                  29/09/2026. */}
+              {canAccess("/preauditoria") && (
+                <Item codigo="preauditoria" />
               )}
             </SidebarGroup>
           )}
@@ -609,8 +647,8 @@ export default function Sidebar() {
               dentro de Faturamento: aquele grupo é faturamento de convênio
               (ASSIM), este é compra de insumo. Vai crescer com Estoque. */}
           {canAccess("/insumos") && (
-            <SidebarGroup title="Suprimentos" icon={Package} defaultOpen={pathname === "/insumos"}>
-              <MenuItem label="Solicitações" icon={Package} path="/insumos" />
+            <SidebarGroup title={GRUPO.suprimentos.nome} icon={GRUPO.suprimentos.icon} defaultOpen={pathname === "/insumos"}>
+              <Item codigo="insumos" />
             </SidebarGroup>
           )}
 
@@ -620,20 +658,20 @@ export default function Sidebar() {
             canAccess("/cronograma/ocupacao?tab=inconsistencias") ||
             canAccess("/cronograma/reposicao")) && (
             <SidebarGroup
-              title="Cronograma"
-              icon={CalendarRange}
+              title={GRUPO.cronograma.nome}
+              icon={GRUPO.cronograma.icon}
               defaultOpen={[
                 "/cronograma/saida-profissional",
                 "/cronograma/ocupacao-paciente",
                 "/cronograma/reposicao",
               ].includes(pathname) || pathname === "/cronograma/ocupacao"}
             >
-              {canAccess("/cronograma/saida-profissional") && <MenuItem label="Saída Profissional" icon={LogOut} path="/cronograma/saida-profissional" />}
-              {canAccess("/cronograma/ocupacao-paciente") && <MenuItem label="Ocupação Paciente" icon={UserCheck} path="/cronograma/ocupacao-paciente" />}
-              {canAccess("/cronograma/reposicao") && <MenuItem label="Reposição de Faltas" icon={RotateCcw} path="/cronograma/reposicao" />}
-              {canAccess("/cronograma/ocupacao?tab=oportunidades-recusadas") && <MenuItem label="Oportunidades recusadas" icon={XCircle} path="/cronograma/ocupacao?tab=oportunidades-recusadas" />}
-              {canAccess("/cronograma/ocupacao?tab=gaps") && <MenuItem label="Diferença: Laudo e Oferta" icon={BarChart3} path="/cronograma/ocupacao?tab=gaps" />}
-              {canAccess("/cronograma/ocupacao?tab=inconsistencias") && <MenuItem label="Inconsistências e Exceções" icon={AlertTriangle} path="/cronograma/ocupacao?tab=inconsistencias" />}
+              {canAccess("/cronograma/saida-profissional") && <Item codigo="cronograma_saida_profissional" />}
+              {canAccess("/cronograma/ocupacao-paciente") && <Item codigo="cronograma_ocupacao_paciente" />}
+              {canAccess("/cronograma/reposicao") && <Item codigo="reposicao_faltas" />}
+              {canAccess("/cronograma/ocupacao?tab=oportunidades-recusadas") && <Item codigo="ocupacao_clinica" />}
+              {canAccess("/cronograma/ocupacao?tab=gaps") && <Item codigo="ocupacao_clinica_gaps" />}
+              {canAccess("/cronograma/ocupacao?tab=inconsistencias") && <Item codigo="ocupacao_clinica_inconsistencias" />}
             </SidebarGroup>
           )}
 
@@ -644,24 +682,24 @@ export default function Sidebar() {
             canAccess("/cronograma/indicadores?tab=previsao-receitas") ||
             canAccess("/cronograma/indicadores?tab=alimentar-bd") ||
             canAccess("/cronograma/indicadores?tab=comparativo-sessoes")) && (
-            <SidebarGroup title="Indicadores" icon={TrendingUp} defaultOpen={pathname === "/cronograma/indicadores"}>
+            <SidebarGroup title={GRUPO.indicadores.nome} icon={GRUPO.indicadores.icon} defaultOpen={pathname === "/cronograma/indicadores"}>
               {canAccess("/cronograma/indicadores?tab=profissionais") && (
-                <MenuItem label="Ocupação de Profissionais" icon={BarChart3} path="/cronograma/indicadores?tab=profissionais" />
+                <Item codigo="ocupacao_profissionais" />
               )}
               {canAccess("/cronograma/indicadores?tab=unidades") && (
-                <MenuItem label="Ocupação Clínica" icon={Building2} path="/cronograma/indicadores?tab=unidades" />
+                <Item codigo="indicadores_ocupacao_unidades" />
               )}
               {canAccess("/cronograma/indicadores?tab=pacientes") && (
-                <MenuItem label="Dashboard de Pacientes" icon={UserCheck} path="/cronograma/indicadores?tab=pacientes" />
+                <Item codigo="indicadores_pacientes" />
               )}
               {canAccess("/cronograma/indicadores?tab=previsao-receitas") && (
-                <MenuItem label="Previsão de Receitas" icon={Wallet} path="/cronograma/indicadores?tab=previsao-receitas" />
+                <Item codigo="indicadores_previsao_receitas" />
               )}
               {canAccess("/cronograma/indicadores?tab=alimentar-bd") && (
-                <MenuItem label="Preencher Receitas Faturadas" icon={Database} path="/cronograma/indicadores?tab=alimentar-bd" />
+                <Item codigo="indicadores_alimentar_bd" />
               )}
               {canAccess("/cronograma/indicadores?tab=comparativo-sessoes") && (
-                <MenuItem label="Comparativo de Sessões" icon={ArrowRightLeft} path="/cronograma/indicadores?tab=comparativo-sessoes" />
+                <Item codigo="indicadores_comparativo_sessoes" />
               )}
             </SidebarGroup>
           )}
@@ -671,16 +709,16 @@ export default function Sidebar() {
             canAccess("/cadastros/contratos") || canAccess("/cadastros/taxas-e-parametros") ||
             canAccess("/cadastros/pacientes") || canAccess("/cadastros/convenios")) && (
             <SidebarGroup
-              title="Cadastros"
-              icon={Database}
+              title={GRUPO.cadastros.nome}
+              icon={GRUPO.cadastros.icon}
               defaultOpen={pathname.startsWith("/cadastros")}
             >
-              {canAccess("/cadastros/pacientes") && <MenuItem label="Pacientes" icon={UserRound} path="/cadastros/pacientes" />}
-              {canAccess("/cadastros/convenios") && <MenuItem label="Convênios" icon={Building2} path="/cadastros/convenios" />}
-              {canAccess("/cadastros/cadastro-valores") && <MenuItem label="Cadastro de Valores" icon={Tag} path="/cadastros/cadastro-valores" />}
-              {canAccess("/cadastros/feriados") && <MenuItem label="Feriados" icon={Calendar} path="/cadastros/feriados" />}
-              {canAccess("/cadastros/taxas-e-parametros") && <MenuItem label="Variáveis & Taxas" icon={Percent} path="/cadastros/taxas-e-parametros" />}
-              {canAccess("/cadastros/contratos") && <MenuItem label="Contratos" icon={FileSignature} path="/cadastros/contratos" />}
+              {canAccess("/cadastros/pacientes") && <Item codigo="cadastros_pacientes" />}
+              {canAccess("/cadastros/convenios") && <Item codigo="cadastros_convenios" />}
+              {canAccess("/cadastros/cadastro-valores") && <Item codigo="cronograma_valores_convenio" />}
+              {canAccess("/cadastros/feriados") && <Item codigo="cadastros_feriados" />}
+              {canAccess("/cadastros/taxas-e-parametros") && <Item codigo="cadastros_taxas" />}
+              {canAccess("/cadastros/contratos") && <Item codigo="cadastros_contratos" />}
             </SidebarGroup>
           )}
 
@@ -692,33 +730,33 @@ export default function Sidebar() {
             canAccess("/relacionamento-prestador/solicitacoes") ||
             canAccess("/relacionamento-prestador/ocupar-profissionais-disponiveis")) && (
             <SidebarGroup
-              title="Relacionamento Prestador"
-              icon={Handshake}
+              title={GRUPO.relacionamentoPrestador.nome}
+              icon={GRUPO.relacionamentoPrestador.icon}
               defaultOpen={pathname.startsWith("/relacionamento-prestador")}
             >
               {canAccess("/relacionamento-prestador/ocupacao-salas") && (
-                <MenuItem label="Ocupação de Salas" icon={DoorOpen} path="/relacionamento-prestador/ocupacao-salas" />
+                <Item codigo="cronograma_ocupacao_salas" />
               )}
               {canAccess("/relacionamento-prestador/solicitacoes") && (
-                <MenuItem label="Simulação de Novo Prestador" icon={UserPlus} path="/relacionamento-prestador/solicitacoes?tab=simulacao" />
+                <Item codigo="cronograma_solicitacoes" />
               )}
               {canAccess("/relacionamento-prestador/ocupar-profissionais-disponiveis") && (
-                <MenuItem label="Ocupar Profissionais Disponíveis" icon={UserSearch} path="/relacionamento-prestador/ocupar-profissionais-disponiveis" />
+                <Item codigo="cronograma_disponibilidade_interna" />
               )}
               {canAccess("/relacionamento-prestador/analise") && (
-                <MenuItem label="Rem. Mês - Previsão" icon={TrendingUp} path="/relacionamento-prestador/analise" />
+                <Item codigo="relacionamento_prestador_analise" />
               )}
               {canAccess("/relacionamento-prestador/rp") && (
-                <MenuItem label="Remuneração Total" icon={Wallet} path="/relacionamento-prestador/rp" />
+                <Item codigo="relacionamento_prestador_rp" />
               )}
               {canAccess("/relacionamento-prestador/individual") && (
-                <MenuItem label="Remuneração Individual" icon={UserRound} path="/relacionamento-prestador/individual" />
+                <Item codigo="relacionamento_prestador_individual" />
               )}
               {canAccess("/relacionamento-prestador/pep") && (
-                <MenuItem label="Entregas PEP" icon={ListChecks} path="/relacionamento-prestador/pep" />
+                <Item codigo="relacionamento_prestador_pep" />
               )}
               {canAccess("/relacionamento-prestador/pep-historico") && (
-                <MenuItem label="PEP - Histórico" icon={History} path="/relacionamento-prestador/pep-historico" />
+                <Item codigo="relacionamento_prestador_pep_historico" />
               )}
             </SidebarGroup>
           )}
@@ -732,31 +770,33 @@ export default function Sidebar() {
               aparecer. */}
           {canAccess("/tv-avisos") && (
             <SidebarGroup
-              title="Marketing"
-              icon={Megaphone}
+              title={GRUPO.marketing.nome}
+              icon={GRUPO.marketing.icon}
               defaultOpen={pathname === "/tv-avisos"}
             >
-              <MenuItem label="TV da Recepção" icon={Monitor} path="/tv-avisos" />
+              <Item codigo="tv_avisos" />
             </SidebarGroup>
           )}
 
           {/* Administração */}
           {/* "Usuários" é condicional, e não incondicional como já foi: sem isso
-              apareceria para quem não tem /admin. */}
-          {canAccess("/admin") && (
+              apareceria para quem não tem /admin. O grupo aparece com qualquer
+              um dos três — cada item tem código próprio, e quem só tem a API
+              não pode ficar sem caminho até ela. */}
+          {(canAccess("/admin") || canAccess("/admin/permissoes") || canAccess("/admin/api")) && (
             <SidebarGroup
-              title="Administração"
-              icon={ShieldCheck}
+              title={GRUPO.administracao.nome}
+              icon={GRUPO.administracao.icon}
               defaultOpen={["/admin", "/admin/permissoes", "/admin/api"].some(p => pathname === p)}
             >
               {canAccess("/admin") && (
-                <MenuItem label="Usuários" icon={Users} path="/admin" />
+                <Item codigo="usuarios" />
               )}
               {canAccess("/admin/permissoes") && (
-                <MenuItem label="Permissões" icon={KeyRound} path="/admin/permissoes" />
+                <Item codigo="permissoes" />
               )}
               {canAccess("/admin/api") && (
-                <MenuItem label="API" icon={Plug} path="/admin/api" />
+                <Item codigo="api_integracao" />
               )}
             </SidebarGroup>
           )}
@@ -767,7 +807,7 @@ export default function Sidebar() {
           {canAccess("/connect") && (
             <>
               <hr className="my-2 border-sidebar-border" />
-              <MenuItem label="Pulsar Connect" icon={Zap} path="/connect" />
+              <Item codigo="connect" />
             </>
           )}
 
@@ -791,10 +831,10 @@ export default function Sidebar() {
               </div>
               <div className="flex-1 text-left min-w-0">
                 <p className="text-sm font-semibold text-sidebar-foreground truncate leading-tight">{nome}</p>
-                {role && (
-                  <p className={`text-xs capitalize leading-tight ${isImpersonating ? 'text-amber-600 dark:text-amber-400 font-semibold' : 'text-sidebar-foreground/50'}`}>
+                {gruposRotulo && (
+                  <p className={`text-xs leading-tight truncate ${isImpersonating ? 'text-amber-600 dark:text-amber-400 font-semibold' : 'text-sidebar-foreground/50'}`}>
                     {isImpersonating ? '👁️ ' : ''}
-                    {ROLE_LABELS[role] ?? role}
+                    {gruposRotulo}
                   </p>
                 )}
               </div>
