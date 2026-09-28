@@ -44,6 +44,47 @@ View oficial para cobertura
 - Desktop + Mobile compatíveis
 - Tela mobile será usada pelas atendentes
 
+## Componentes padrão (obrigatório)
+
+Toda tela nova usa estes componentes. Não criar implementação própria, não usar
+o campo nativo do navegador, não trazer outra biblioteca. O ESLint
+(`frontend/eslint.config.mjs`) acusa erro nos casos que consegue detectar.
+
+### Calendário
+
+- **Data única:** `DatePicker` — `@/components/ui/date-picker`.
+  Valor em `"AAAA-MM-DD"`; exibição `dd/mm/aaaa`; fim de semana em vermelho;
+  rodapé "Limpar" / "Hoje". Referência viva: "Data da alta *" em
+  `/cadastros/pacientes/[id]` → aba Altas → Nova Alta.
+- **Intervalo:** `DateRangePicker` — `@/components/ui/date-range-picker`, mesma
+  aparência do `DatePicker`.
+- Para encaixar numa barra de filtros, use a prop `classeGatilho` (troca só a
+  moldura do botão; o calendário é o mesmo).
+- **Proibido:** `<input type="date">` (e `datetime-local`, `month`, `week`),
+  `@/components/ui/calendar` (esqueleto vazio) e `react-day-picker` direto.
+
+### Lista suspensa com várias seleções
+
+- `MultiSearchCombobox` — `@/components/cronograma/ui/MultiSearchCombobox`:
+  campo "Digite para buscar...", caixa de seleção por item, continua aberta
+  entre marcações, fecha com clique fora ou Esc. Referência viva: "Exclusividade
+  de salas com terapias" em `/relacionamento-prestador/ocupacao-salas`.
+- **Dentro de um `Dialog` (`@/components/ui/dialog`):** passe `portal={false}`
+  e não use `overflow-hidden` no `DialogContent`; no `DialogContent`, impeça que
+  o Esc da busca feche o formulário (`onEscapeKeyDown` checando
+  `[data-multisearch-aberto]`). Sem isso a lista abre mas não aceita clique nem
+  digitação. Exemplo pronto: `components/admin/CreateUserModal.tsx`.
+- **Proibido:** `<select multiple>` e lista de caixas de seleção feita à mão.
+
+### Dívida
+
+Os arquivos que já tinham campo de data nativo estão listados em
+`LEGADO_DATA_NATIVA` (`frontend/eslint.config.mjs`). Ao mexer num deles, prefira
+trocar pelo `DatePicker` e tirar o arquivo da lista. Arquivo novo nunca entra
+nela. Seleção múltipla feita à mão que ainda existe: `UnidadeMultiSelect`
+(Previsão de Receitas) e as listas de `ComparativoSessoesShell` e
+`AnaliseFuturaTab`.
+
 ## Objetivo atual
 
 Criar:
