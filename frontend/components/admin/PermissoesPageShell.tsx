@@ -470,7 +470,14 @@ export default function PermissoesPageShell() {
   const [grupoActionId, setGrupoActionId] = useState<string | null>(null)
   const [grupoSearchByPerm, setGrupoSearchByPerm] = useState('')
   const [onlyGrantedGrupos, setOnlyGrantedGrupos] = useState(true)
-  const [openGroupsPermView, setOpenGroupsPermView] = useState<Set<string>>(INITIAL_OPEN)
+  // "Módulos e abas" abre recolhido: com 11 seções, a lista expandida obriga a
+  // rolar para achar a tela. Os outros dois modos continuam abrindo expandidos,
+  // porque lá a lista é a própria edição.
+  const [openGroupsPermView, setOpenGroupsPermView] = useState<Set<string>>(new Set())
+  // Os dois painéis de "Por permissão" também abrem recolhidos — o cabeçalho de
+  // cada um já traz a contagem, então dá para conferir sem abrir.
+  const [painelGruposAberto, setPainelGruposAberto] = useState(false)
+  const [painelUsuariosAberto, setPainelUsuariosAberto] = useState(false)
   const [grantingUserId, setGrantingUserId] = useState<string | null>(null)
 
   // ─── View "por grupo" (membros + modelo de permissões em lote) ──────────
@@ -1683,16 +1690,32 @@ export default function PermissoesPageShell() {
 
                 {/* ── Grupos que liberam a tela ── */}
                 <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-4 space-y-3">
-                  <div className="flex items-start justify-between gap-3 px-1 flex-wrap">
-                    <div>
-                      <h3 className="text-sm font-semibold text-slate-700">Grupos com acesso</h3>
+                  <button
+                    type="button"
+                    onClick={() => setPainelGruposAberto(v => !v)}
+                    aria-expanded={painelGruposAberto}
+                    className="w-full flex items-start gap-3 px-1 text-left select-none"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <h3 className="text-sm font-semibold text-slate-700">
+                        Grupos com acesso{' '}
+                        <span className="font-normal text-slate-500">({gruposComAcessoCount})</span>
+                      </h3>
                       <p className="mt-0.5 text-xs text-slate-500">
                         O modelo do grupo libera a tela para todos os membros de uma vez. Liberar
                         ou retirar aqui mexe no modelo — a confirmação mostra quem muda.
                       </p>
                     </div>
-                  </div>
+                    <ChevronDown
+                      size={14}
+                      aria-hidden="true"
+                      className={`mt-0.5 shrink-0 text-slate-400 transition-transform duration-200 ${
+                        painelGruposAberto ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </button>
 
+                  {painelGruposAberto && (<>
                   <div className="flex items-center gap-3 flex-wrap">
                     <label className="relative flex-1 min-w-[200px]">
                       <span className="sr-only">Buscar grupo</span>
@@ -1780,9 +1803,37 @@ export default function PermissoesPageShell() {
                       ))}
                     </div>
                   )}
+                  </>)}
                 </div>
 
+                {/* ── Pessoas com acesso à tela ── */}
                 <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-4 space-y-3">
+                  <button
+                    type="button"
+                    onClick={() => setPainelUsuariosAberto(v => !v)}
+                    aria-expanded={painelUsuariosAberto}
+                    className="w-full flex items-start gap-3 px-1 text-left select-none"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <h3 className="text-sm font-semibold text-slate-700">
+                        Usuários com acesso{' '}
+                        <span className="font-normal text-slate-500">({grantedCountForSelectedCodigo})</span>
+                      </h3>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        O acesso de cada pessoa é a soma dos grupos dela mais os ajustes
+                        individuais — quem difere dos grupos vem marcado.
+                      </p>
+                    </div>
+                    <ChevronDown
+                      size={14}
+                      aria-hidden="true"
+                      className={`mt-0.5 shrink-0 text-slate-400 transition-transform duration-200 ${
+                        painelUsuariosAberto ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </button>
+
+                  {painelUsuariosAberto && (<>
                   <div className="flex items-center gap-3 flex-wrap">
                     <label className="relative flex-1 min-w-[200px]">
                       <span className="sr-only">Buscar usuário</span>
@@ -1877,6 +1928,7 @@ export default function PermissoesPageShell() {
                       )}
                     </div>
                   )}
+                  </>)}
                 </div>
               </>
             )}
