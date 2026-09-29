@@ -644,13 +644,42 @@ export default function PermissoesPageShell() {
     return completo
   }
 
+  // Em "Por permissão", cada pessoa vem com a ORIGEM do acesso: `viaGrupo` diz
+  // se algum grupo dela dá a tela. Sem isso, a lista mostra "Liberado" sem dizer
+  // se veio do grupo ou de um ajuste só dela — e quem confere não sabe onde
+  // mexer para corrigir.
   const usersForSelectedCodigo = useMemo(() => {
     if (!selectedCodigo) return []
     return users.map(u => {
-      const efetivo = computeEffectivePerms(allOverrides[u.id] || {}, modelosDoUsuario(gruposDoUsuario, u.id), permissoes)
-      return { user: u, granted: efetivo[selectedCodigo] ?? false }
+      const modelos = modelosDoUsuario(gruposDoUsuario, u.id)
+      const efetivo = computeEffectivePerms(allOverrides[u.id] || {}, modelos, permissoes)
+      return {
+        user: u,
+        granted: efetivo[selectedCodigo] ?? false,
+        viaGrupo: uniaoDosModelos(modelos).has(selectedCodigo),
+      }
     })
   }, [users, allOverrides, selectedCodigo, permissoes, gruposDoUsuario])
+
+  // Grupos que dão (ou não) a tela selecionada, com quantos membros cada um tem.
+  // É a outra metade da conferência: a lista de usuários mostra QUEM tem acesso,
+  // esta mostra DE ONDE ele vem — um grupo indevido libera a tela para todo
+  // mundo nele de uma vez, e só aqui isso aparece.
+  const gruposForSelectedCodigo = useMemo(() => {
+    if (!selectedCodigo) return []
+    return grupos
+      .map(g => ({
+        grupo: g,
+        granted: g.modelo_permissoes?.[selectedCodigo] === true,
+        membros: (membrosPorGrupo[g.id] || []).length,
+      }))
+      .sort((a, b) => Number(b.granted) - Number(a.granted) || a.grupo.nome.localeCompare(b.grupo.nome))
+  }, [grupos, membrosPorGrupo, selectedCodigo])
+
+  const gruposComAcessoCount = useMemo(
+    () => gruposForSelectedCodigo.filter(x => x.granted).length,
+    [gruposForSelectedCodigo]
+  )
 
   const filteredUsersForSelectedCodigo = useMemo(() => {
     let list = usersForSelectedCodigo
@@ -1573,10 +1602,79 @@ export default function PermissoesPageShell() {
                         <p className="text-sm text-slate-500">{selectedPermissao.grupo || 'Outros'}</p>
                       </div>
                     </div>
-                    <span className="px-3 py-1 rounded-full text-xs font-semibold bg-brand-surface text-brand-fg">
-                      {grantedCountForSelectedCodigo} de {users.length} usuários têm acesso
-                    </span>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="px-3 py-1 rounded-full text-xs font-semibold bg-brand-surface text-brand-fg">
+                        {grantedCountForSelectedCodigo} de {users.length} usuários têm acesso
+                      </span>
+                      <span className="px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-700">
+                        {gruposComAcessoCount} de {grupos.length} grupos liberam
+                      </span>
+                    </div>
                   </div>
+                </div>
+
+                {/* ── Grupos que liberam a tela ── */}
+                <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-3 px-1 flex-wrap">
+                    <div>
+                      <h3 className="text-sm font-semibold text-slate-700">Grupos com acesso</h3>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        O modelo do grupo libera a tela para todos os membros. Para tirar de um
+                        grupo inteiro, abra o grupo e desmarque a tela no modelo.
+                      </p>
+                    </div>
+                  </div>
+
+                  {loadingGrupos ? (
+                    <div className="flex flex-col items-center justify-center py-8 gap-3">
+                      <div className="w-5 h-5 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+                      <span className="text-sm text-slate-500">Carregando grupos...</span>
+                    </div>
+                  ) : gruposForSelectedCodigo.length === 0 ? (
+                    <p className="text-center text-sm text-slate-500 py-6">Nenhum grupo cadastrado</p>
+                  ) : (
+                    <div className="space-y-0.5 max-h-72 overflow-y-auto">
+                      {gruposForSelectedCodigo.map(({ grupo, granted, membros }) => (
+                        <div
+                          key={grupo.id}
+                          className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors duration-100"
+                        >
+                          <div
+                            className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                              granted ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                            }`}
+                          >
+                            <UsersRound size={14} aria-hidden="true" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium truncate leading-tight text-slate-700">
+                              {grupo.nome}
+                            </p>
+                            <p className="mt-0.5 text-xs text-slate-500 leading-tight">
+                              {membros} membro{membros !== 1 ? 's' : ''}
+                            </p>
+                          </div>
+                          <span
+                            className={`shrink-0 w-24 text-center px-2.5 py-1 rounded-lg text-xs font-semibold ${
+                              granted ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'
+                            }`}
+                          >
+                            {granted ? 'Libera' : 'Não libera'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleSelectGrupo(grupo)
+                              setViewMode('grupo')
+                            }}
+                            className="shrink-0 px-3 py-2 text-xs font-semibold text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors duration-150"
+                          >
+                            Abrir grupo
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-4 space-y-3">
@@ -1605,7 +1703,7 @@ export default function PermissoesPageShell() {
                     </div>
                   ) : (
                     <div className="space-y-0.5 max-h-[calc(100vh-420px)] overflow-y-auto">
-                      {filteredUsersForSelectedCodigo.map(({ user, granted }) => (
+                      {filteredUsersForSelectedCodigo.map(({ user, granted, viaGrupo }) => (
                         <div
                           key={user.id}
                           className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors duration-100"
@@ -1617,6 +1715,18 @@ export default function PermissoesPageShell() {
                             </p>
                             <GruposDaPessoa grupos={nomesGrupos(user.id)} />
                           </div>
+                          {granted !== viaGrupo && (
+                            <span
+                              className="shrink-0 rounded-md bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-800"
+                              title={
+                                granted
+                                  ? 'Liberada só para esta pessoa — os grupos dela não dão'
+                                  : 'Retirada só desta pessoa — os grupos dela dão'
+                              }
+                            >
+                              Ajuste individual
+                            </span>
+                          )}
                           <span
                             className={`shrink-0 w-24 text-center px-2.5 py-1 rounded-lg text-xs font-semibold ${
                               granted
