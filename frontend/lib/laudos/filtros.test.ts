@@ -22,10 +22,12 @@ import {
   filtrosIniciais,
   ordenar,
   proximaValidadeDeSenha,
+  recuarMeses,
   type FiltrosLaudos,
   type RecorteLaudo,
 } from "./filtros"
 import { calcularSenhasDoLaudo } from "./senhas"
+import { conveniosDaSenha } from "./convenio"
 import type { ItemAcompanhamentoLaudo, SituacaoPaciente } from "@/types/laudosAcompanhamento"
 
 /**
@@ -79,6 +81,7 @@ const TODOS_RECORTES: RecorteLaudo[] = [
   "todos",
   "vigentes",
   "vencidos",
+  "vencidos_ha_muito",
   "vencidos_sem_aviso",
   "proximo_vencimento",
   "avisados_vigentes",
@@ -117,6 +120,8 @@ test("2 · os recortes, nos números", () => {
     todos: 4,
     vigentes: 2,
     vencidos: 2,
+    // As duas validades vencidas (jan e fev/2026) passaram de 6 meses antes de HOJE.
+    vencidos_ha_muito: 2,
     vencidos_sem_aviso: 1,
     proximo_vencimento: 0,
     avisados_vigentes: 1,
@@ -134,15 +139,17 @@ test("3 · vencidos_sem_aviso é vencido E sem data — não a soma dos dois", (
 
 // ─── 2. O estado inicial ────────────────────────────────────────────────────
 
-test("4 · a tela abre em TODOS, ASSIM Saúde, só Ativo, ordenada por validade mais antiga", () => {
+test("4 · a tela abre em TODOS, ASSIM e LEVE, só Ativo, ordenada por validade mais antiga", () => {
   // Pedido do usuário (28/09/2026): "que sempre venha filtrado por paciente
-  // ativo, convênio ASSIM Saúde" e o laudo em Todos. Substituiu a abertura em
+  // ativo, convênio ASSIM Saúde" e o laudo em Todos; em 29/09/2026 o convênio
+  // passou a ASSIM + LEVE ("Senhas ASSIM e LEVE" de saída). Substituiu a abertura em
   // "Vencidos sem aviso" — com o painel da senha ao lado, um recorte de laudo
   // de saída escondia metade do quadro de senhas.
   const f = filtrosIniciais()
   assert.strictEqual(f.recorte, "todos")
   assert.strictEqual(f.recorteSenha, "todos")
-  assert.deepStrictEqual([...f.convenios], ["ASSIM Saúde"])
+  assert.deepStrictEqual([...f.convenios], ["ASSIM Saúde", "LEVE SAUDE"])
+  assert.strictEqual(conveniosDaSenha(f.convenios), "ASSIM e LEVE")
   assert.strictEqual(f.ordem, "validade")
   // E só ATIVO no paciente — pedido do usuário (28/09/2026), que substituiu o
   // "as quatro marcadas" de 28/08. Inativo, sem cadastro e fictício ficam a um
@@ -521,7 +528,7 @@ test("36 · recorte de senha corta pelo pior status; vigente inclui vence em bre
     item({ idLaudo: "b", senhas: comSenha("2026-09-01") }), // 4 dias depois de HOJE
     item({ idLaudo: "x", senhas: comSenha("2026-01-01") }),
     item({ idLaudo: "s", senhas: calcularSenhasDoLaudo([], "ASSIM Saúde", HOJE) }),
-    item({ idLaudo: "o", senhas: calcularSenhasDoLaudo([], "LEVE SAUDE", HOJE) }),
+    item({ idLaudo: "o", senhas: calcularSenhasDoLaudo([], "Particular", HOJE) }),
   ]
   const f = { ...filtrosIniciais(), recorte: "todos" as const }
   const ids = (r: FiltrosLaudos["recorteSenha"]) =>
@@ -532,6 +539,45 @@ test("36 · recorte de senha corta pelo pior status; vigente inclui vence em bre
   assert.deepStrictEqual(ids("vence_em_breve"), ["b"])
   assert.deepStrictEqual(ids("vencida"), ["x"])
   assert.deepStrictEqual(ids("sem_senha"), ["s"])
+})
+
+test("36 · senha no laudo antigo é recorte próprio, separado de Sem senha", () => {
+  const antiga = calcularSenhasDoLaudo([], "ASSIM Saúde", HOJE, [
+    {
+      idAutorizacao: "1",
+      idLaudo: "11",
+      idFavorecido: 1,
+      plano: "ASSIM Saúde",
+      dataLista: null,
+      situacaoDentro: "AUTORIZADO",
+      senhaDentro: "X1",
+      liberacaoDentro: null,
+      validadeDentro: "2027-01-01",
+      situacaoFora: "",
+      senhaFora: "",
+      liberacaoFora: null,
+      validadeFora: null,
+      criadoEmOrigem: null,
+      atualizadoEmOrigem: null,
+      arquivoAutorizacao: "",
+      cronogramaConvenio: "",
+      observacoes: "",
+      especialidades: [],
+    },
+  ])
+  const itens = [
+    item({ idLaudo: "antigo", senhas: antiga }),
+    item({ idLaudo: "sem", senhas: calcularSenhasDoLaudo([], "ASSIM Saúde", HOJE) }),
+  ]
+  const f = { ...filtrosIniciais(), recorte: "todos" as const }
+  assert.deepStrictEqual(filtrar(itens, { ...f, recorteSenha: "laudo_antigo" }, HOJE).map((i) => i.idLaudo), ["antigo"])
+  assert.deepStrictEqual(filtrar(itens, { ...f, recorteSenha: "sem_senha" }, HOJE).map((i) => i.idLaudo), ["sem"])
+  // Vigente no laudo antigo NÃO conta como senha vigente do laudo atual.
+  const k = contarKpisSenha(itens, f, HOJE)
+  assert.strictEqual(k.vigente, 0)
+  assert.strictEqual(k.laudo_antigo, 1)
+  assert.strictEqual(k.sem_senha, 1)
+  assert.strictEqual(k.aplicaveis, 2)
 })
 
 test("37 · sem relatório de senhas (senhas nulo) o laudo só aparece em Todas", () => {
@@ -581,7 +627,7 @@ test("39 · o recorte de senha nasce em Todas, e mexer nele acende o Limpar", ()
 test("39 · aplicáveis = laudos em que a senha ASSIM é assunto (outro convênio fora)", () => {
   const itens = [
     item({ idLaudo: "a", senhas: comSenha("2027-01-01") }),
-    item({ idLaudo: "o", senhas: calcularSenhasDoLaudo([], "LEVE SAUDE", HOJE) }),
+    item({ idLaudo: "o", senhas: calcularSenhasDoLaudo([], "Particular", HOJE) }),
     item({ idLaudo: "n", senhas: null }),
   ]
   const k = contarKpisSenha(itens, { ...filtrosIniciais(), recorte: "todos" }, HOJE)
@@ -619,8 +665,8 @@ test("42 · convênio: vazio = todos; escolhido = só ele; sem convênio tem cha
   assert.strictEqual(filtrar(itens, f, HOJE).length, 3, "vazio = todos")
   assert.deepStrictEqual(
     filtrar(itens, { ...filtrosIniciais(), recorte: "todos" }, HOJE).map((i) => i.idLaudo),
-    ["a"],
-    "o padrão (ASSIM Saúde) já recorta",
+    ["a", "b"],
+    "o padrão (ASSIM e LEVE) já recorta: sai só o sem convênio",
   )
   assert.deepStrictEqual(
     filtrar(itens, { ...f, convenios: new Set(["LEVE SAUDE"]) }, HOJE).map((i) => i.idLaudo),
@@ -633,10 +679,15 @@ test("42 · convênio: vazio = todos; escolhido = só ele; sem convênio tem cha
 })
 
 test("43 · trocar o convênio do padrão acende o Limpar; o mesmo convênio num Set novo, não", () => {
-  assert.strictEqual(filtrosAlterados({ ...filtrosIniciais(), convenios: new Set(["ASSIM Saúde"]) }), false)
+  // Mesmos dois convênios, em outra ordem e num Set novo: nada a limpar.
+  assert.strictEqual(
+    filtrosAlterados({ ...filtrosIniciais(), convenios: new Set(["LEVE SAUDE", "ASSIM Saúde"]) }),
+    false,
+  )
+  assert.strictEqual(filtrosAlterados({ ...filtrosIniciais(), convenios: new Set(["ASSIM Saúde"]) }), true)
   assert.strictEqual(filtrosAlterados({ ...filtrosIniciais(), convenios: new Set(["LEVE SAUDE"]) }), true)
   assert.strictEqual(
-    filtrosAlterados({ ...filtrosIniciais(), convenios: new Set(["ASSIM Saúde", "LEVE SAUDE"]) }),
+    filtrosAlterados({ ...filtrosIniciais(), convenios: new Set(["ASSIM Saúde", "LEVE SAUDE", "Particular"]) }),
     true,
   )
   assert.strictEqual(filtrosAlterados({ ...filtrosIniciais(), convenios: new Set<string>() }), true)
@@ -713,7 +764,7 @@ test("44 · urgência da senha: mais grave primeiro; no mesmo status, a que venc
     item({ idLaudo: "vencida", nome: "C", senhas: senhaCom({ validade: "2026-01-01" }) }),
     item({ idLaudo: "sem", nome: "D", senhas: calcularSenhasDoLaudo([], "ASSIM Saúde", HOJE) }),
     item({ idLaudo: "vig-cedo", nome: "E", senhas: senhaCom({ validade: "2027-01-01" }) }),
-    item({ idLaudo: "outro", nome: "F", senhas: calcularSenhasDoLaudo([], "LEVE SAUDE", HOJE) }),
+    item({ idLaudo: "outro", nome: "F", senhas: calcularSenhasDoLaudo([], "Particular", HOJE) }),
   ]
   assert.deepStrictEqual(
     ordenar(itens, "urgencia_senha").map((i) => i.idLaudo),
@@ -750,4 +801,30 @@ test("46 · fora do ROL também conta na janela de validade da senha", () => {
   const item2 = item({ idLaudo: "so-fora", senhas: senhaComFora("2026-10-05") })
   const f = { ...filtrosIniciais(), recorte: "todos" as const, validadeSenhaDe: "2026-10-01", validadeSenhaAte: "2026-10-31" }
   assert.deepStrictEqual(filtrar([item2], f, HOJE).map((i) => i.idLaudo), ["so-fora"])
+})
+
+// ─── Vencidos há mais de 6 meses ────────────────────────────────────────────
+
+test("recuarMeses conta meses de calendário e encosta no último dia do mês", () => {
+  assert.strictEqual(recuarMeses("2026-09-29", 6), "2026-03-29")
+  assert.strictEqual(recuarMeses("2026-02-15", 6), "2025-08-15")
+  // 31/08 − 6 meses: fevereiro não tem 31 — encosta no 28 (2026 não é bissexto).
+  assert.strictEqual(recuarMeses("2026-08-31", 6), "2026-02-28")
+  assert.strictEqual(recuarMeses("2028-08-31", 6), "2028-02-29")
+})
+
+test("vencidos há mais de 6 meses: só vencido, validade ANTES do limite, subconjunto de Vencidos", () => {
+  // HOJE = 2026-08-28 → limite 2026-02-28.
+  const itens = [
+    item({ idLaudo: "antigo", situacao: "vencido", validade: "2026-02-27" }),
+    item({ idLaudo: "no-limite", situacao: "vencido", validade: "2026-02-28" }),
+    item({ idLaudo: "recente", situacao: "vencido", validade: "2026-08-01" }),
+    item({ idLaudo: "vigente", situacao: "vigente", validade: "2027-01-01" }),
+    item({ idLaudo: "sem-validade", situacao: "vencido", validade: null }),
+  ]
+  const f = { ...filtrosIniciais(), recorte: "vencidos_ha_muito" as const }
+  assert.deepStrictEqual(filtrar(itens, f, HOJE).map((i) => i.idLaudo), ["antigo"])
+  const k = contarKpis(itens, f, HOJE)
+  assert.strictEqual(k.vencidos_ha_muito, 1)
+  assert.strictEqual(k.vencidos, 4)
 })

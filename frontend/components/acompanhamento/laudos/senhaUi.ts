@@ -38,6 +38,8 @@ export function textoStatusSenha(s: SenhaDoRol, lado: "dentro" | "fora" = "dentr
       return "Sem validade"
     case "pendente":
       return lado === "fora" ? "Pendente fora do ROL" : "Pendente"
+    case "laudo_antigo":
+      return "No laudo antigo"
     case "sem_senha":
       return "Sem senha"
     case "nao_se_aplica":
@@ -64,6 +66,8 @@ export function textoStatusSenhaCurto(s: SenhaDoRol, lado: "dentro" | "fora" = "
       return "Sem validade"
     case "pendente":
       return "Pendente"
+    case "laudo_antigo":
+      return "Laudo antigo"
     case "sem_senha":
       return "Sem senha"
     case "nao_se_aplica":
@@ -86,8 +90,9 @@ export function fonteQueCabe(nome: string): string {
 
 /**
  * Verde para vigente e vermelho para vencida (a mesma paleta de Vigente/Vencido
- * do laudo). Âmbar para o que pede atenção sem já ter vencido. Apagado para o
- * que não se aplica.
+ * do laudo). Âmbar para o que pede atenção sem já ter vencido. Azul para a
+ * senha no laudo antigo: existe, mas precisa ser vinculada ao atual — nem
+ * "valendo" nem "falta". Apagado para o que não se aplica.
  */
 export const TOM_SENHA: Record<StatusSenha, { cor: string; contorno: string }> = {
   vigente: {
@@ -113,6 +118,10 @@ export const TOM_SENHA: Record<StatusSenha, { cor: string; contorno: string }> =
   pendente: {
     cor: "text-amber-700 dark:text-amber-400",
     contorno: "border-amber-500/40 bg-amber-500/5",
+  },
+  laudo_antigo: {
+    cor: "text-sky-700 dark:text-sky-400",
+    contorno: "border-sky-500/40 bg-sky-500/5",
   },
   sem_senha: {
     cor: "text-amber-700 dark:text-amber-400",

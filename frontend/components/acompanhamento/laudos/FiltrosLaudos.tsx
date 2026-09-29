@@ -43,8 +43,8 @@ import type { SituacaoPaciente } from "@/types/laudosAcompanhamento"
 //   • Ordenar: `Suspenso`, desta tela — escolha ÚNICA, fora da regra acima.
 
 /**
- * As ordenações, em dois grupos com título — espelho dos painéis Laudo e Senha
- * ASSIM. O grupo da senha só aparece com relatório de senhas importado.
+ * As ordenações, em dois grupos com título — espelho dos painéis Laudo e
+ * Senhas. O grupo da senha só aparece com relatório de senhas importado.
  */
 const GRUPOS_ORDEM: {
   titulo: string
@@ -62,7 +62,7 @@ const GRUPOS_ORDEM: {
     ],
   },
   {
-    titulo: "Senha ASSIM",
+    titulo: "Senha",
     soComSenhas: true,
     ordens: [
       {
@@ -74,7 +74,7 @@ const GRUPOS_ORDEM: {
       { valor: "liberacao_senha", rotulo: "Liberação da senha", dica: "a liberada mais recentemente" },
       {
         valor: "atualizacao_senha",
-        rotulo: "Atualizada na ASSIM",
+        rotulo: "Atualizada no convênio",
         dica: "a alterada mais recentemente no relatório",
       },
     ],
@@ -201,7 +201,7 @@ export function PainelFiltros({
             disabled={!podeLimpar}
             title={
               podeLimpar
-                ? "Volta ao estado inicial: todos os laudos, convênio ASSIM Saúde, só pacientes ativos, por validade mais antiga"
+                ? "Volta ao estado inicial: todos os laudos, convênios ASSIM Saúde e LEVE SAUDE, só pacientes ativos, por validade mais antiga"
                 : "Nenhum filtro alterado"
             }
             className={`flex h-10 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-border bg-background px-3 text-[13px] font-semibold text-foreground transition hover:bg-muted/40 disabled:opacity-40 disabled:hover:bg-background ${foco}`}

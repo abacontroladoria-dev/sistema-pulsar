@@ -347,7 +347,7 @@ function CaixaSenha({
     return (
       <div
         className={`@container flex ${ALTURA_CAIXA} items-center justify-center rounded-lg border px-2 py-1.5 text-center ${TOM_SENHA.nao_se_aplica.contorno}`}
-        title={`${nome} — convênio do paciente; a senha da ASSIM não se aplica`}
+        title={`${nome} — convênio do paciente; a tela acompanha senha só de ASSIM e LEVE`}
       >
         <p
           className="line-clamp-3 font-bold uppercase leading-tight tracking-tight text-muted-foreground [hyphens:none] [overflow-wrap:normal] [word-break:keep-all]"
@@ -391,6 +391,11 @@ function CaixaSenha({
   return (
     <div
       className={`relative flex ${ALTURA_CAIXA} flex-col items-center justify-center rounded-lg border px-2 py-1.5 text-center ${TOM_SENHA[pior].contorno}`}
+      title={
+        pior === "laudo_antigo"
+          ? `Senha do laudo antigo ${senhas.laudosAntigos.join(", ")} — ainda não vinculada a este laudo`
+          : undefined
+      }
     >
       {selo && <span className="absolute right-1 top-1">{selo}</span>}
       <p className="truncate text-sm font-bold leading-none tabular-nums text-foreground">

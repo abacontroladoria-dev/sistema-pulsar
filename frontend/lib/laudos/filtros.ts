@@ -16,7 +16,7 @@ import type {
   SituacaoLaudo,
   StatusSenha,
 } from "@/types/laudosAcompanhamento"
-import { CONVENIO_PADRAO, SEM_CONVENIO } from "./convenio"
+import { CONVENIOS_PADRAO, SEM_CONVENIO } from "./convenio"
 
 /**
  * Recorte de situação do laudo — o que os cards de KPI escrevem.
@@ -27,11 +27,18 @@ import { CONVENIO_PADRAO, SEM_CONVENIO } from "./convenio"
  * escondê-las atrás de uma soma. Já "vencidos" VOLTOU (o usuário pediu de
  * volta pouco depois de tirá-lo): é a visão geral, e convive com
  * `vencidos_sem_aviso` (a fila de trabalho, o subconjunto que importa agir).
+ *
+ * `vencidos_ha_muito` — o 4º card da visão geral (usuário, 29/09/2026), para o
+ * painel do laudo ter a mesma forma do de senhas. Subconjunto de `vencidos`:
+ * medido no mesmo dia, 92 dos 143 vencidos de pacientes ativos tinham passado
+ * de 180 dias — paciente em atendimento sem laudo há meses, não renovação
+ * atrasada. Ver `MESES_VENCIDO_HA_MUITO`.
  */
 export type RecorteLaudo =
   | "todos"
   | "vigentes"
   | "vencidos"
+  | "vencidos_ha_muito"
   | "vencidos_sem_aviso"
   | "proximo_vencimento"
   | "avisados_vigentes"
@@ -56,6 +63,28 @@ export const DIAS_ALERTA_VENCIMENTO = 15
 export const DIAS_AVISO_PREMATURO = 30
 
 /**
+ * "Vencidos há mais de 6 meses": a validade ficou antes de hoje menos 6 meses
+ * de CALENDÁRIO — o rótulo diz meses, então a conta é em meses, não em 180
+ * dias. Número de meses num lugar só: o rótulo do card sai daqui.
+ */
+export const MESES_VENCIDO_HA_MUITO = 6
+
+/**
+ * `hojeISO` recuado `meses` meses de calendário. Dia que não existe no mês de
+ * destino encosta no último (31/08 − 6 meses = 28/02 ou 29/02), em vez de
+ * transbordar para março como faria `Date` sozinho.
+ */
+export function recuarMeses(hojeISO: string, meses: number): string {
+  const [ano, mes, dia] = hojeISO.split("-").map(Number)
+  const total = ano * 12 + (mes - 1) - meses
+  const anoD = Math.floor(total / 12)
+  const mesD = (total % 12) + 1
+  const ultimoDia = new Date(Date.UTC(anoD, mesD, 0)).getUTCDate()
+  const diaD = Math.min(dia, ultimoDia)
+  return `${anoD}-${String(mesD).padStart(2, "0")}-${String(diaD).padStart(2, "0")}`
+}
+
+/**
  * Recorte da SENHA ASSIM — o que os cards do painel "Senha ASSIM" escrevem.
  * Irmão de `RecorteLaudo`, e COMBINÁVEL com ele (decisão do usuário,
  * 28/09/2026): "Vencidos sem aviso" + "Sem senha" mostra o cruzamento.
@@ -63,7 +92,8 @@ export const DIAS_AVISO_PREMATURO = 30
  * Lê `senhas.pior` — o pior dos dois lados (dentro/fora do ROL) —, para uma
  * senha fora do ROL pendente não se esconder atrás de uma dentro do ROL vigente.
  *
- *   visão geral:   vigente (inclui "vence em breve") · vencida · sem_senha
+ *   visão geral:   vigente (inclui "vence em breve") · vencida · laudo_antigo ·
+ *                  sem_senha
  *   fila de ação:  pendente · vence_em_breve · sem_validade · em_analise
  *
  * `vence_em_breve` é subconjunto de `vigente`, como `proximo_vencimento` é de
@@ -74,6 +104,7 @@ export type RecorteSenha =
   | "todos"
   | "vigente"
   | "vencida"
+  | "laudo_antigo"
   | "sem_senha"
   | "pendente"
   | "vence_em_breve"
@@ -105,6 +136,8 @@ export type OrdemLaudos =
 export const GRAVIDADE_SENHA: StatusSenha[] = [
   "vencida",
   "sem_senha",
+  // Depois de "Sem senha": a senha existe, falta vinculá-la ao laudo atual.
+  "laudo_antigo",
   "pendente",
   "em_analise",
   "sem_validade",
@@ -170,7 +203,9 @@ export function filtrosIniciais(): FiltrosLaudos {
     // direto de outra tela abre com as quatro — ver o shell.
     situacoesPaciente: new Set<SituacaoPaciente>(["ativo"]),
     recorteSenha: "todos",
-    convenios: new Set([CONVENIO_PADRAO]),
+    // ASSIM e LEVE marcados — o painel abre em "Senhas ASSIM e LEVE". Ver
+    // `CONVENIOS_PADRAO`.
+    convenios: new Set(CONVENIOS_PADRAO),
     validadeDe: "",
     validadeAte: "",
     validadeSenhaDe: "",
@@ -295,6 +330,12 @@ export const PREDICADO_RECORTE: Record<
   todos: () => true,
   vigentes: ehVigente,
   vencidos: ehVencido,
+  // Validade ANTES do limite (estrita): no dia exato dos 6 meses, ainda não
+  // passou de 6 meses. Laudo sem validade nunca entra — nem vencido ele é.
+  vencidos_ha_muito: (i, hojeISO) =>
+    ehVencido(i) &&
+    i.validade !== null &&
+    i.validade < recuarMeses(hojeISO, MESES_VENCIDO_HA_MUITO),
   // O recorte que a tela existe para servir: vencido E ainda sem contato. É a
   // fila de trabalho do dia — subconjunto de `vencidos`, não par dele.
   vencidos_sem_aviso: (i) => ehVencido(i) && !foiAvisado(i),
@@ -319,6 +360,7 @@ export const PREDICADO_RECORTE_SENHA: Record<RecorteSenha, (i: ItemAcompanhament
     return p === "vigente" || p === "vence_em_breve"
   },
   vencida: (i) => piorDaSenha(i) === "vencida",
+  laudo_antigo: (i) => piorDaSenha(i) === "laudo_antigo",
   sem_senha: (i) => piorDaSenha(i) === "sem_senha",
   pendente: (i) => piorDaSenha(i) === "pendente",
   vence_em_breve: (i) => piorDaSenha(i) === "vence_em_breve",
@@ -326,7 +368,7 @@ export const PREDICADO_RECORTE_SENHA: Record<RecorteSenha, (i: ItemAcompanhament
   em_analise: (i) => piorDaSenha(i) === "em_analise",
 }
 
-/** A senha se aplica ao laudo (é ASSIM, ou tem autorização no relatório)? */
+/** A senha se aplica ao laudo (é ASSIM/LEVE, ou tem autorização no relatório)? */
 export function senhaSeAplica(i: ItemAcompanhamentoLaudo): boolean {
   const p = piorDaSenha(i)
   return p !== null && p !== "nao_se_aplica"
@@ -412,6 +454,8 @@ export function contarKpis(
     todos: base.length,
     vigentes: base.filter((i) => PREDICADO_RECORTE.vigentes(i, hojeISO)).length,
     vencidos: base.filter((i) => PREDICADO_RECORTE.vencidos(i, hojeISO)).length,
+    vencidos_ha_muito: base.filter((i) => PREDICADO_RECORTE.vencidos_ha_muito(i, hojeISO))
+      .length,
     vencidos_sem_aviso: base.filter((i) => PREDICADO_RECORTE.vencidos_sem_aviso(i, hojeISO))
       .length,
     proximo_vencimento: base.filter((i) => PREDICADO_RECORTE.proximo_vencimento(i, hojeISO))
@@ -429,7 +473,7 @@ export function contarKpis(
  * senão escolher "Sem senha" zeraria os outros cards de senha.
  *
  * `aplicaveis` é o denominador do painel: quantos laudos, no recorte atual, têm
- * a senha ASSIM como assunto (os de outro convênio ficam fora da conta).
+ * a senha ASSIM/LEVE como assunto (os de outro convênio ficam fora da conta).
  */
 export function contarKpisSenha(
   itens: ItemAcompanhamentoLaudo[],
@@ -442,6 +486,7 @@ export function contarKpisSenha(
     todos: base.length,
     vigente: conta("vigente"),
     vencida: conta("vencida"),
+    laudo_antigo: conta("laudo_antigo"),
     sem_senha: conta("sem_senha"),
     pendente: conta("pendente"),
     vence_em_breve: conta("vence_em_breve"),
@@ -561,6 +606,7 @@ export const RECORTE_LABEL: Record<RecorteLaudo, string> = {
   todos: "Todos",
   vigentes: "Vigentes",
   vencidos: "Vencidos",
+  vencidos_ha_muito: `Vencidos há mais de ${MESES_VENCIDO_HA_MUITO} meses`,
   vencidos_sem_aviso: "Vencidos sem aviso",
   // Mesmo rótulo do card irmão da Senha ASSIM (`RECORTE_SENHA_LABEL.vence_em_breve`)
   // — pedido do usuário (28/09/2026): os dois usam a mesma janela
@@ -587,6 +633,7 @@ export const RECORTE_SENHA_LABEL: Record<RecorteSenha, string> = {
   todos: "Todas",
   vigente: "Senha vigente",
   vencida: "Senha vencida",
+  laudo_antigo: "Senha vinculada ao laudo antigo",
   sem_senha: "Sem senha",
   pendente: "Senha pendente",
   vence_em_breve: `Vence em até ${DIAS_ALERTA_VENCIMENTO} dias`,

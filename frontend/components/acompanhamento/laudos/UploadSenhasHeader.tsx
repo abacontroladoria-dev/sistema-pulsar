@@ -1,11 +1,11 @@
 "use client"
 
 import { memo, useRef, useState } from "react"
-import { CheckCircle2, FileUp, Info, Loader2 } from "lucide-react"
+import { AlertTriangle, CheckCircle2, FileUp, Info, Loader2, Lock } from "lucide-react"
 import toast from "react-hot-toast"
 import { ScheduleModal } from "@/components/cronograma/ui/ScheduleModal"
 import { foco } from "@/components/cadastros/pacientes/ui/campos"
-import type { RespostaUploadSenhas } from "@/types/laudosAcompanhamento"
+import type { MesesFechadosUpload, RespostaUploadSenhas } from "@/types/laudosAcompanhamento"
 
 /**
  * O botão "Atualizar senhas" do cabeçalho: escolhe o
@@ -57,9 +57,12 @@ export const UploadSenhasHeader = memo(function UploadSenhasHeader({
     }
   }
 
+  // Meses fechados (migration 20261001100000): o upload só mexe do mês corrente
+  // em diante. Dito no `title` para ninguém esperar que um relatório novo
+  // corrija agosto.
   const titulo = rotulo
-    ? `Atualizar senhas ASSIM — em uso: ${rotulo}`
-    : "Atualizar senhas ASSIM — nenhum relatório importado ainda"
+    ? `Atualizar senhas (só do mês corrente em diante; meses anteriores ficam como estão) — em uso: ${rotulo}`
+    : "Atualizar senhas — nenhum relatório importado ainda"
 
   return (
     <div className="flex shrink-0 items-center gap-2">
@@ -121,7 +124,7 @@ export function ResultadoUploadSenhasModal({
           ? `Importado em ${resultado.importadoEm ?? "—"}${
               resultado.importadoPorNome ? ` por ${resultado.importadoPorNome}` : ""
             }. Nada foi gravado de novo.`
-          : "A lista já mostra as senhas deste arquivo."
+          : "A lista já mostra as senhas atualizadas."
       }
       maxWidth={520}
       onClose={onFechar}
@@ -136,6 +139,8 @@ export function ResultadoUploadSenhasModal({
       }
     >
       <div className="space-y-4 text-sm">
+        {!resultado.duplicado && <BlocoMesesFechados meses={resultado.mesesFechados} />}
+
         <div className="flex items-start gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 text-emerald-800 dark:text-emerald-300">
           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
           <p>
@@ -180,6 +185,72 @@ export function ResultadoUploadSenhasModal({
         )}
       </div>
     </ScheduleModal>
+  )
+}
+
+const MESES = [
+  "janeiro", "fevereiro", "março", "abril", "maio", "junho",
+  "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
+]
+
+/** "2026-09-01" → "setembro/2026". */
+function mesPorExtenso(iso: string): string {
+  const [ano, mes] = iso.split("-").map(Number)
+  return `${MESES[mes - 1]}/${ano}`
+}
+
+/**
+ * O que a regra de meses fechados fez. `null` num upload gravado = a função do
+ * banco ainda é a antiga (migration pendente) e substituiu TODOS os meses — a
+ * tela diz isso em vez de prometer uma proteção que não houve.
+ */
+function BlocoMesesFechados({ meses }: { meses: MesesFechadosUpload | null }) {
+  if (!meses) {
+    return (
+      <p className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-amber-800 dark:text-amber-300">
+        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+        <span>
+          A proteção dos meses fechados ainda não está ativa no banco: este upload substituiu
+          todos os meses. Avise o responsável pelo sistema.
+        </span>
+      </p>
+    )
+  }
+  if (meses.primeiraImportacao) {
+    return (
+      <p className="flex items-start gap-2 rounded-md border border-border px-3 py-2 text-muted-foreground">
+        <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+        <span>Primeira importação: todos os meses do arquivo foram gravados.</span>
+      </p>
+    )
+  }
+
+  const aberto = mesPorExtenso(meses.mesCorte)
+  return (
+    <div className="rounded-md border border-sky-500/30 bg-sky-500/5 px-3 py-2">
+      <p className="flex items-start gap-2 font-semibold text-sky-900 dark:text-sky-200">
+        <Lock className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+        <span>Só {aberto} em diante foi atualizado. Os meses anteriores estão fechados.</span>
+      </p>
+      <dl className="mt-2 grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 text-xs">
+        <dt className="text-muted-foreground">Aplicadas do arquivo ({aberto} em diante)</dt>
+        <dd className="text-right font-bold tabular-nums text-foreground">{meses.aplicadas}</dd>
+        <dt className="text-muted-foreground">Ignoradas do arquivo (meses fechados)</dt>
+        <dd className="text-right font-bold tabular-nums text-foreground">{meses.ignoradas}</dd>
+        <dt className="text-muted-foreground">Mantidas como estavam (meses fechados)</dt>
+        <dd className="text-right font-bold tabular-nums text-foreground">{meses.mantidas}</dd>
+        {meses.removidas > 0 && (
+          <>
+            <dt className="text-muted-foreground">
+              Saíram do relatório ({aberto} em diante)
+            </dt>
+            <dd className="text-right font-bold tabular-nums text-amber-700 dark:text-amber-400">
+              {meses.removidas}
+            </dd>
+          </>
+        )}
+      </dl>
+    </div>
   )
 }
 
