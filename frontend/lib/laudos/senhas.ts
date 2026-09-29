@@ -22,6 +22,7 @@
 
 import Papa from "papaparse"
 import { brParaIso } from "./acompanhamento"
+import { convenioTemSenha } from "./convenio"
 import { DIAS_ALERTA_VENCIMENTO, GRAVIDADE_SENHA, diasAteValidade, norm } from "./filtros"
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
@@ -35,7 +36,10 @@ import { DIAS_ALERTA_VENCIMENTO, GRAVIDADE_SENHA, diasAteValidade, norm } from "
  *   em_analise     — a ASSIM ainda não decidiu (ou renovação pedida depois de vencer)
  *   sem_validade   — autorizada/com senha, mas sem data de validade no relatório
  *   pendente       — precisa de senha e o relatório não traz nenhuma
- *   sem_senha      — laudo ASSIM ausente do relatório
+ *   laudo_antigo   — laudo ASSIM/LEVE ausente do relatório, mas o PACIENTE tem
+ *                    autorização presa a um laudo anterior dele (ver
+ *                    `juntarComSenhas`)
+ *   sem_senha      — laudo ASSIM/LEVE ausente do relatório, e o paciente também
  *   nao_se_aplica  — outro convênio (dentro) / sem especialidade fora do ROL (fora)
  */
 export type StatusSenha =
@@ -45,6 +49,7 @@ export type StatusSenha =
   | "em_analise"
   | "sem_validade"
   | "pendente"
+  | "laudo_antigo"
   | "sem_senha"
   | "nao_se_aplica"
 
@@ -102,8 +107,17 @@ export interface SenhasDoLaudo {
   fora: SenhaDoRol
   /** O pior status entre os dois lados — é o que o filtro "Senha" lê. */
   pior: StatusSenha
-  /** Todas as autorizações do laudo, mais recente primeiro. Vão para o detalhe. */
+  /**
+   * Todas as autorizações do laudo, mais recente primeiro. Vão para o detalhe.
+   * Em `laudo_antigo`, são as do(s) laudo(s) anterior(es) do paciente — cada
+   * uma traz o próprio `idLaudo`, que o detalhe mostra.
+   */
   autorizacoes: AutorizacaoSenha[]
+  /**
+   * Os laudos anteriores de onde vieram as autorizações, do mais novo para o
+   * mais antigo. Vazio fora de `laudo_antigo`.
+   */
+  laudosAntigos: string[]
 }
 
 // ─── Cabeçalho ───────────────────────────────────────────────────────────────
@@ -453,17 +467,20 @@ function piorDe(a: StatusSenha, b: StatusSenha): StatusSenha {
   return GRAVIDADE_SENHA.indexOf(a) <= GRAVIDADE_SENHA.indexOf(b) ? a : b
 }
 
-/** O plano do Órbita é ASSIM? Decide entre "Sem senha" e "Outro convênio". */
-export function planoEhAssim(plano: string): boolean {
-  return /\bassim\b/.test(norm(plano))
-}
-
 /**
  * As senhas de um laudo.
  *
- * Sem nenhuma autorização no relatório: `sem_senha` se o laudo é ASSIM (o
- * relatório é da ASSIM — a ausência é informação), `nao_se_aplica` se é de
- * outro convênio (a ausência é esperada).
+ * Sem nenhuma autorização no relatório: `sem_senha` se o laudo é ASSIM ou LEVE
+ * (o relatório traz os dois — a ausência é informação), `nao_se_aplica` se é
+ * de outro convênio (a ausência é esperada). Ver `convenioTemSenha`.
+ *
+ * Sem autorização do laudo, mas com autorização do MESMO paciente num laudo
+ * anterior (`doLaudoAntigo`): `laudo_antigo` — pedido do usuário (29/09/2026):
+ * o "Sem senha" desses era impreciso, a senha existe, só está vinculada ao
+ * laudo antigo. O lado de dentro carrega a senha dessa autorização (número,
+ * validade) para o cartão mostrar QUAL senha é; o status continua
+ * `laudo_antigo`, seja ela vigente ou vencida — ela não cobre o laudo atual.
+ * O fora do ROL fica "não se aplica": o detalhe mostra as autorizações todas.
  *
  * Fora do ROL só se aplica quando o relatório diz que se aplica: alguma
  * autorização traz senha/situação fora do ROL, ou alguma especialidade é do
@@ -474,16 +491,40 @@ export function calcularSenhasDoLaudo(
   /** O convênio do paciente (da grade; sem ela, o Plano do Órbita). */
   convenio: string,
   hojeISO: string,
+  /** Autorizações do mesmo paciente em laudos ANTERIORES a este. */
+  doLaudoAntigo: AutorizacaoSenha[] = [],
 ): SenhasDoLaudo {
   const ordenadas = [...autorizacoes].sort(maisRecentePrimeiro)
 
   if (ordenadas.length === 0) {
-    const status: StatusSenha = planoEhAssim(convenio) ? "sem_senha" : "nao_se_aplica"
+    if (!convenioTemSenha(convenio)) {
+      return {
+        dentro: { status: "nao_se_aplica", ...SEM_DADO },
+        fora: { status: "nao_se_aplica", ...SEM_DADO },
+        pior: "nao_se_aplica",
+        autorizacoes: [],
+        laudosAntigos: [],
+      }
+    }
+    if (doLaudoAntigo.length > 0) {
+      const antigas = [...doLaudoAntigo].sort(maisRecentePrimeiro)
+      const base = decidirLado(antigas, "dentro", hojeISO)
+      return {
+        dentro: { ...(base ?? SEM_DADO), status: "laudo_antigo" },
+        fora: { status: "nao_se_aplica", ...SEM_DADO },
+        pior: "laudo_antigo",
+        autorizacoes: antigas,
+        laudosAntigos: [...new Set(antigas.map((a) => a.idLaudo))].sort(
+          (a, b) => Number(b) - Number(a),
+        ),
+      }
+    }
     return {
-      dentro: { status, ...SEM_DADO },
+      dentro: { status: "sem_senha", ...SEM_DADO },
       fora: { status: "nao_se_aplica", ...SEM_DADO },
-      pior: status,
+      pior: "sem_senha",
       autorizacoes: [],
+      laudosAntigos: [],
     }
   }
 
@@ -496,10 +537,25 @@ export function calcularSenhasDoLaudo(
     decidirLado(ordenadas, "fora", hojeISO) ??
     ({ status: temEspecialidadeFora ? "pendente" : "nao_se_aplica", ...SEM_DADO } as SenhaDoRol)
 
-  return { dentro, fora, pior: piorDe(dentro.status, fora.status), autorizacoes: ordenadas }
+  return {
+    dentro,
+    fora,
+    pior: piorDe(dentro.status, fora.status),
+    autorizacoes: ordenadas,
+    laudosAntigos: [],
+  }
 }
 
 // ─── Junção com os laudos da tela ────────────────────────────────────────────
+
+/**
+ * `outro` é um laudo anterior a `atual`? Pelo número do ID — o Órbita numera em
+ * sequência. ID que não é número não entra: sem ordem, não há "antigo".
+ */
+function laudoAnterior(outro: string, atual: string): boolean {
+  if (!/^\d+$/.test(outro) || !/^\d+$/.test(atual)) return false
+  return Number(outro) < Number(atual)
+}
 
 export interface ResumoJuncaoSenhas {
   /** Laudos da tela que receberam autorizações. */
@@ -517,6 +573,13 @@ export interface ResumoJuncaoSenhas {
  * (28/09/2026): "cruzamento com ID do Laudo e ID Favorecido para bater
  * exatamente". Um laudo igual com favorecido diferente seria senha de outro
  * paciente no cartão; ele não casa e vai para `laudosDivergentes`.
+ *
+ * Laudo SEM autorização casada procura o paciente (`idFavorecido`) em laudos
+ * ANTERIORES — ID de laudo menor, que é como o Órbita numera a renovação. Achou:
+ * `laudo_antigo` (ver `calcularSenhasDoLaudo`). Medido em 29/09/2026: os 9
+ * "Sem senha" ASSIM de pacientes ativos eram todos isso — senha no laudo
+ * anterior, que já saiu do Órbita (a lista tem um laudo por paciente). Laudo
+ * POSTERIOR não conta: a senha do laudo novo não é "a senha antiga" do velho.
  *
  * A lista de saída tem exatamente os itens de entrada, na mesma ordem.
  */
@@ -538,6 +601,14 @@ export function juntarComSenhas<
     const g = porLaudo.get(a.idLaudo)
     if (g) g.push(a)
     else porLaudo.set(a.idLaudo, [a])
+  }
+
+  const porFavorecido = new Map<number, AutorizacaoSenha[]>()
+  for (const a of autorizacoes) {
+    if (a.idFavorecido === null) continue
+    const g = porFavorecido.get(a.idFavorecido)
+    if (g) g.push(a)
+    else porFavorecido.set(a.idFavorecido, [a])
   }
 
   const idsDaTela = new Set(itens.map((i) => i.idLaudo))
@@ -562,9 +633,15 @@ export function juntarComSenhas<
       })
     }
     if (casadas.length > 0) laudosCasados++
+    const doLaudoAntigo =
+      casadas.length === 0 && item.idFavorecido !== null
+        ? (porFavorecido.get(item.idFavorecido) ?? []).filter((a) =>
+            laudoAnterior(a.idLaudo, item.idLaudo),
+          )
+        : []
     return {
       ...item,
-      senhas: calcularSenhasDoLaudo(casadas, item.convenio ?? item.plano, hojeISO),
+      senhas: calcularSenhasDoLaudo(casadas, item.convenio ?? item.plano, hojeISO, doLaudoAntigo),
     }
   })
 

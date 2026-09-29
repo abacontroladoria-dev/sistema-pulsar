@@ -19,6 +19,7 @@ import { HistoricoCadastrosModal } from "@/components/cadastros/historico/Histor
 import { DatePicker } from "@/components/ui/date-picker"
 import { campo, foco, rotulo } from "@/components/cadastros/pacientes/ui/campos"
 import { isoParaBr } from "@/lib/laudos/acompanhamento"
+import { planoEhLeve } from "@/lib/laudos/convenio"
 import { SITUACAO_LAUDO_LABEL, avisoEhPrematuro, diasAteValidade } from "@/lib/laudos/filtros"
 import { salvarAcompanhamento } from "@/services/laudosAcompanhamento.service"
 import type {
@@ -397,12 +398,14 @@ function SecaoSenhas({
   metaSenhas: MetaSenhas | null
 }) {
   const senhas = item.senhas
+  // O convênio do próprio laudo: um laudo LEVE não mostra "Senhas ASSIM".
+  const titulo = item.convenio && planoEhLeve(item.convenio) ? "Senhas LEVE" : "Senhas ASSIM"
 
   return (
-    <section className="rounded-lg border border-border px-3 py-3" aria-label="Senhas ASSIM">
+    <section className="rounded-lg border border-border px-3 py-3" aria-label={titulo}>
       <h3 className="flex items-center gap-1.5 text-sm font-bold text-foreground">
         <KeyRound className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-        Senhas ASSIM
+        {titulo}
       </h3>
 
       {!senhas ? (
@@ -427,6 +430,14 @@ function SecaoSenhas({
             )}
           </dl>
 
+          {senhas.pior === "laudo_antigo" && (
+            <p className="mt-2 rounded-md border border-sky-500/30 bg-sky-500/5 px-2.5 py-2 text-xs text-sky-800 dark:text-sky-300">
+              O relatório não traz autorização para o laudo {item.idLaudo}. A senha acima é do
+              laudo antigo {senhas.laudosAntigos.join(", ")} deste paciente — falta vinculá-la ao
+              laudo atual.
+            </p>
+          )}
+
           {senhas.autorizacoes.length > 0 && (
             <details className="group mt-3">
               <summary
@@ -449,6 +460,7 @@ function SecaoSenhas({
                       a.idAutorizacao === senhas.fora.idAutorizacao
                     }
                     mostrarFora={senhas.fora.status !== "nao_se_aplica"}
+                    doLaudoAntigo={autorizacaoDeOutroLaudo(a, item)}
                   />
                 ))}
               </ul>
@@ -493,20 +505,33 @@ function ResumoLado({
 }
 
 /** Uma autorização do relatório, com tudo o que a ASSIM informa dela. */
+/** A autorização é de outro laudo (o antigo) — só acontece em `laudo_antigo`. */
+function autorizacaoDeOutroLaudo(a: AutorizacaoSenha, item: ItemAcompanhamentoLaudo): boolean {
+  return a.idLaudo !== item.idLaudo
+}
+
 function DetalheAutorizacao({
   autorizacao: a,
   exibida,
   mostrarFora,
+  doLaudoAntigo,
 }: {
   autorizacao: AutorizacaoSenha
   /** É a autorização cuja senha aparece no cartão. */
   exibida: boolean
   mostrarFora: boolean
+  /** Vem de um laudo anterior do paciente: mostra de qual. */
+  doLaudoAntigo: boolean
 }) {
   return (
     <li className="rounded-md bg-muted/40 px-3 py-2 text-xs">
       <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <span className="font-bold text-foreground">Autorização {a.idAutorizacao}</span>
+        {doLaudoAntigo && (
+          <span className="rounded bg-sky-500/10 px-1.5 font-semibold text-sky-700 dark:text-sky-300">
+            laudo antigo {a.idLaudo}
+          </span>
+        )}
         {exibida && (
           <span className="rounded bg-primary/10 px-1.5 font-semibold text-primary">
             senha exibida no cartão

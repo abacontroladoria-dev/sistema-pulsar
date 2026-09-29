@@ -23,7 +23,7 @@ import {
   type RecorteLaudo,
   type RecorteSenha,
 } from "@/lib/laudos/filtros"
-import { opcoesDeConvenio } from "@/lib/laudos/convenio"
+import { conveniosDaSenha, opcoesDeConvenio } from "@/lib/laudos/convenio"
 import type {
   ItemAcompanhamentoLaudo,
   MetaAcompanhamentoLaudos,
@@ -80,7 +80,7 @@ export function AcompanhamentoLaudosShell({ buscaInicial = "" }: Props) {
           recorte: "todos",
           // Todas as situações e todos os convênios: o paciente do link pode
           // estar inativo, sem cadastro ou em outro convênio, e o padrão (Ativo
-          // + ASSIM) o esconderia de quem veio procurá-lo.
+          // + ASSIM/LEVE) o esconderia de quem veio procurá-lo.
           situacoesPaciente: new Set(TODAS_SITUACOES_PACIENTE),
           convenios: new Set<string>(),
         }
@@ -277,7 +277,7 @@ export function AcompanhamentoLaudosShell({ buscaInicial = "" }: Props) {
         >
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
           <span>
-            Não foi possível carregar as senhas da ASSIM ({meta.senhasErro}). Os laudos estão
+            Não foi possível carregar as senhas ({meta.senhasErro}). Os laudos estão
             completos; só as senhas ficaram de fora.
           </span>
         </div>
@@ -320,6 +320,7 @@ export function AcompanhamentoLaudosShell({ buscaInicial = "" }: Props) {
         onRecorteSenha={escolherRecorteSenha}
         carregando={carregando}
         comSenhas={comSenhas}
+        conveniosSenha={conveniosDaSenha(filtros.convenios)}
       />
 
       <FaixaRecortes

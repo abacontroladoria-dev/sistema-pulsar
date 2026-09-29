@@ -147,11 +147,34 @@ export interface MetaAcompanhamentoLaudos {
 }
 
 /** Resposta de POST /api/acompanhamento-laudos/senhas/. */
+/**
+ * O que a regra de meses fechados fez num upload (migration 20261001100000).
+ * Meses antes de `mesCorte` são inalteráveis: vêm da importação anterior, e o
+ * que o arquivo traz deles é ignorado.
+ */
+export interface MesesFechadosUpload {
+  /** "AAAA-MM-01" — o mês aberto no upload (Brasília). */
+  mesCorte: string
+  /** Sem importação anterior: carga completa, nada foi ignorado. */
+  primeiraImportacao: boolean
+  autorizacoesArquivo: number
+  /** Do mês aberto em diante, gravadas a partir do arquivo. */
+  aplicadas: number
+  /** Do arquivo, de mês fechado — não gravadas. */
+  ignoradas: number
+  /** Da importação anterior, de mês fechado — copiadas intocadas. */
+  mantidas: number
+  /** De mês aberto, estavam na importação anterior e não vieram no arquivo. */
+  removidas: number
+}
+
 export interface RespostaUploadSenhas {
   ok: true
   duplicado: boolean
   importadoEm: string | null
   importadoPorNome: string | null
+  /** `null` quando o arquivo é duplicado (nada foi gravado). */
+  mesesFechados: MesesFechadosUpload | null
   resumo: {
     linhas: number
     linhasDescartadas: number

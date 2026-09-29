@@ -2,6 +2,7 @@ import "server-only"
 
 import { supabaseService } from "@/lib/supabase/service"
 import type { AutorizacaoSenha, EspecialidadeAutorizada } from "@/lib/laudos/senhas"
+import type { MesesFechadosUpload } from "@/types/laudosAcompanhamento"
 
 // Leitura e gravação do relatório de senhas da ASSIM
 // (`laudos_senhas_importacoes` / `laudos_senhas_autorizacoes`, migration
@@ -165,7 +166,16 @@ export async function buscarSenhasAtuais(
 }
 
 export type ResultadoGravacaoSenhas =
-  | { duplicado: false; importacaoId: string }
+  | {
+      duplicado: false
+      importacaoId: string
+      /**
+       * `null` = a função do banco ainda é a anterior à regra de meses fechados
+       * (migration 20261001100000 não aplicada): o upload substituiu TODOS os
+       * meses. A tela avisa em vez de dizer que eles estão protegidos.
+       */
+      mesesFechados: MesesFechadosUpload | null
+    }
   | {
       duplicado: true
       importacaoId: string
@@ -176,6 +186,11 @@ export type ResultadoGravacaoSenhas =
 /**
  * Grava uma importação pela RPC `laudos_senhas_importar` (uma transação só).
  * Mesmo conteúdo (sha256) já importado devolve `duplicado`.
+ *
+ * A regra de meses fechados mora INTEIRA no banco (migration 20261001100000):
+ * o mês corrente vem do relógio do banco em Brasília, e o que é de mês fechado
+ * é copiado da importação anterior, não deste payload. Daqui só sai o arquivo
+ * como veio — nenhum filtro de mês aqui, para não haver duas regras.
  */
 export async function gravarImportacaoSenhas(
   entrada: {
@@ -237,6 +252,13 @@ export async function gravarImportacaoSenhas(
     importacao_id: string
     importado_em_brasilia?: string | null
     importado_por_nome?: string | null
+    mes_corte?: string
+    primeira_importacao?: boolean
+    autorizacoes_arquivo?: number
+    aplicadas_do_arquivo?: number
+    ignoradas_mes_fechado?: number
+    mantidas_da_base?: number
+    removidas_mes_aberto?: number
   }
   if (r.duplicado) {
     return {
@@ -246,5 +268,27 @@ export async function gravarImportacaoSenhas(
       importadoPorNome: r.importado_por_nome ?? null,
     }
   }
-  return { duplicado: false, importacaoId: r.importacao_id }
+  // Sem estes campos, a função do banco é a versão ANTERIOR à regra de meses
+  // fechados (migration não aplicada) — e ela substituiu tudo, jan–ago
+  // inclusive. A gravação já aconteceu: erro aqui diria "falhou" sobre algo que
+  // gravou. Devolve `null` e a tela diz a verdade.
+  if (r.mes_corte === undefined || r.aplicadas_do_arquivo === undefined) {
+    console.warn(
+      "[laudos:senhas] laudos_senhas_importar sem a regra de meses fechados — migration 20261001100000 pendente",
+    )
+    return { duplicado: false, importacaoId: r.importacao_id, mesesFechados: null }
+  }
+  return {
+    duplicado: false,
+    importacaoId: r.importacao_id,
+    mesesFechados: {
+      mesCorte: r.mes_corte,
+      primeiraImportacao: r.primeira_importacao ?? false,
+      autorizacoesArquivo: r.autorizacoes_arquivo ?? 0,
+      aplicadas: r.aplicadas_do_arquivo,
+      ignoradas: r.ignoradas_mes_fechado ?? 0,
+      mantidas: r.mantidas_da_base ?? 0,
+      removidas: r.removidas_mes_aberto ?? 0,
+    },
+  }
 }

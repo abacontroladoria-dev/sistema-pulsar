@@ -5,6 +5,8 @@
 import { test } from "vitest"
 import assert from "node:assert/strict"
 import {
+  convenioTemSenha,
+  conveniosDaSenha,
   convenioVigente,
   juntarComConvenio,
   opcoesDeConvenio,
@@ -93,5 +95,23 @@ test("3 · depois de unificar, a MEMORIAL soma na contagem da ASSIM no filtro", 
     ]),
   )
   assert.deepStrictEqual(opcoes, [{ id: "ASSIM Saúde", nome: "ASSIM Saúde (2)" }])
+})
+
+test("4 · nome do painel de senhas segue o filtro Convênio", () => {
+  // Vazio = todos os convênios.
+  assert.strictEqual(conveniosDaSenha(new Set()), "ASSIM e LEVE")
+  assert.strictEqual(conveniosDaSenha(new Set(["ASSIM Saúde", "LEVE SAUDE", "Particular"])), "ASSIM e LEVE")
+  assert.strictEqual(conveniosDaSenha(new Set(["ASSIM Saúde"])), "ASSIM")
+  assert.strictEqual(conveniosDaSenha(new Set(["ASSIM Saúde", "Particular"])), "ASSIM")
+  assert.strictEqual(conveniosDaSenha(new Set(["LEVE SAUDE"])), "LEVE")
+  // Nenhum dos dois marcado: o painel continua sendo o das duas.
+  assert.strictEqual(conveniosDaSenha(new Set(["Particular"])), "ASSIM e LEVE")
+})
+
+test("4 · só ASSIM e LEVE têm senha acompanhada", () => {
+  assert.ok(convenioTemSenha("ASSIM Saúde"))
+  assert.ok(convenioTemSenha("LEVE SAUDE"))
+  assert.ok(!convenioTemSenha("SULAMERICA"))
+  assert.ok(!convenioTemSenha("Particular"))
 })
 

@@ -6,9 +6,11 @@ import {
   ClockAlert,
   FileCheck2,
   FileClock,
+  FileX,
   Hourglass,
   KeyRound,
   Layers,
+  Link2,
   MailCheck,
   MailWarning,
   ShieldAlert,
@@ -24,11 +26,13 @@ import {
   type RecorteLaudo,
   type RecorteSenha,
 } from "@/lib/laudos/filtros"
+import type { ConveniosDaSenha } from "@/lib/laudos/convenio"
 
-// Os indicadores da tela: DOIS painéis lado a lado, "Laudo" e "Senha ASSIM" —
+// Os indicadores da tela: DOIS painéis lado a lado, "Laudo" e "Senhas" —
 // decisão do usuário (28/09/2026). Até ali só existia o do laudo, e a senha era
 // uma lista suspensa sem número; 118 pacientes ASSIM sem senha não apareciam em
-// lugar nenhum.
+// lugar nenhum. O painel da senha cobre ASSIM e LEVE e o nome segue o filtro
+// "Convênio" (29/09/2026): "Senhas ASSIM", "Senhas LEVE" ou "Senhas ASSIM e LEVE".
 //
 //   • Cada painel É o filtro da sua dimensão (mesma regra de antes: o número que
 //     motiva o filtro é o próprio botão — clicar filtra, clicar de novo desfaz).
@@ -77,10 +81,22 @@ const PASTEL = {
     base: "border-rose-100 bg-rose-50 dark:border-rose-900/60 dark:bg-rose-950/30",
     ativo: "border-rose-400 bg-rose-100 ring-1 ring-rose-400/30 dark:border-rose-700 dark:bg-rose-900/40",
   },
+  // O mesmo assunto de `rosa`, um grau pior: texto e moldura mais fortes, fundo
+  // um tom acima — "Vencidos há mais de 6 meses" ao lado de "Vencidos".
+  rosaForte: {
+    tom: "text-rose-800 dark:text-rose-300",
+    base: "border-rose-200 bg-rose-100/70 dark:border-rose-800/70 dark:bg-rose-950/50",
+    ativo: "border-rose-500 bg-rose-200/70 ring-1 ring-rose-500/30 dark:border-rose-600 dark:bg-rose-900/60",
+  },
   ambar: {
     tom: "text-amber-600 dark:text-amber-400",
     base: "border-amber-100 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-950/30",
     ativo: "border-amber-400 bg-amber-100 ring-1 ring-amber-400/30 dark:border-amber-700 dark:bg-amber-900/40",
+  },
+  azul: {
+    tom: "text-sky-600 dark:text-sky-400",
+    base: "border-sky-100 bg-sky-50 dark:border-sky-900/60 dark:bg-sky-950/30",
+    ativo: "border-sky-400 bg-sky-100 ring-1 ring-sky-400/30 dark:border-sky-700 dark:bg-sky-900/40",
   },
 }
 
@@ -90,6 +106,7 @@ const LAUDO_GERAL: CardInfo<RecorteLaudo>[] = [
   { recorte: "todos", rotulo: RECORTE_LABEL.todos, icone: Layers, ...PASTEL.neutro },
   { recorte: "vigentes", rotulo: RECORTE_LABEL.vigentes, icone: FileCheck2, ...PASTEL.verde },
   { recorte: "vencidos", rotulo: RECORTE_LABEL.vencidos, icone: FileClock, ...PASTEL.rosa },
+  { recorte: "vencidos_ha_muito", rotulo: RECORTE_LABEL.vencidos_ha_muito, icone: FileX, ...PASTEL.rosaForte },
 ]
 
 /** Na ordem de urgência: a fila do dia primeiro, o que já foi tratado por último. */
@@ -131,6 +148,8 @@ const LAUDO_ACAO: CardInfo<RecorteLaudo>[] = [
 const SENHA_GERAL: CardInfo<RecorteSenha>[] = [
   { recorte: "vigente", rotulo: RECORTE_SENHA_LABEL.vigente, icone: ShieldCheck, ...PASTEL.verde },
   { recorte: "vencida", rotulo: RECORTE_SENHA_LABEL.vencida, icone: ShieldX, ...PASTEL.rosa },
+  // Azul: a senha existe, só está no laudo anterior — nem "valendo" nem "falta".
+  { recorte: "laudo_antigo", rotulo: RECORTE_SENHA_LABEL.laudo_antigo, icone: Link2, ...PASTEL.azul },
   { recorte: "sem_senha", rotulo: RECORTE_SENHA_LABEL.sem_senha, icone: ShieldOff, ...PASTEL.ambar },
 ]
 
@@ -171,15 +190,20 @@ const SENHA_ACAO: CardInfo<RecorteSenha>[] = [
 ]
 
 /** O que cada card de senha quer dizer — no `title`, para quem passa o mouse. */
-const EXPLICA_SENHA: Record<RecorteSenha, string> = {
-  todos: "",
-  vigente: "Senha válida hoje, dentro e (quando se aplica) fora do ROL",
-  vencida: "A validade da senha já passou",
-  sem_senha: "Laudo ASSIM que não aparece no relatório de autorizações",
-  pendente: "Precisa de senha (ex.: especialidade fora do ROL) e o relatório não traz",
-  vence_em_breve: "Ainda válida, mas vence em até 15 dias",
-  sem_validade: "Autorizada, mas o relatório não traz a data de validade",
-  em_analise: "A ASSIM ainda está analisando o pedido",
+function explicaSenha(r: RecorteSenha, convenios: ConveniosDaSenha): string {
+  const EXPLICA: Record<RecorteSenha, string> = {
+    todos: "",
+    vigente: "Senha válida hoje, dentro e (quando se aplica) fora do ROL",
+    vencida: "A validade da senha já passou",
+    laudo_antigo:
+      "O relatório tem senha do paciente, mas no laudo anterior — falta vincular ao laudo atual",
+    sem_senha: `Laudo ${convenios} sem nenhuma autorização do paciente no relatório`,
+    pendente: "Precisa de senha (ex.: especialidade fora do ROL) e o relatório não traz",
+    vence_em_breve: "Ainda válida, mas vence em até 15 dias",
+    sem_validade: "Autorizada, mas o relatório não traz a data de validade",
+    em_analise: "O convênio ainda está analisando o pedido",
+  }
+  return EXPLICA[r]
 }
 
 type Aba = "laudo" | "senha"
@@ -193,6 +217,7 @@ export function PainelIndicadores({
   onRecorteSenha,
   carregando,
   comSenhas,
+  conveniosSenha,
 }: {
   contagensLaudo: Record<RecorteLaudo, number>
   contagensSenha: Record<RecorteSenha, number> & { aplicaveis: number }
@@ -203,6 +228,8 @@ export function PainelIndicadores({
   carregando: boolean
   /** Há relatório de senhas importado? Sem ele, o painel da senha explica o que falta. */
   comSenhas: boolean
+  /** Segue o filtro "Convênio" — ver `conveniosDaSenha`. */
+  conveniosSenha: ConveniosDaSenha
 }) {
   const [aba, setAba] = useState<Aba>("laudo")
 
@@ -231,7 +258,9 @@ export function PainelIndicadores({
           ativo={aba === "senha"}
           onClick={() => setAba("senha")}
           icone={KeyRound}
-          rotulo="Senha ASSIM"
+          // Só "Senhas" na aba: "Senhas ASSIM e LEVE" não cabe em meia largura
+          // de celular, e o nome inteiro está no título do painel logo abaixo.
+          rotulo="Senhas"
           comRecorte={recorteSenha !== "todos"}
         />
       </div>
@@ -245,7 +274,8 @@ export function PainelIndicadores({
           contagem={carregando ? "—" : `${contagensLaudo.todos} laudos`}
         >
           <Grupo rotulo="Visão geral">
-            <div className="grid grid-cols-3 gap-2">
+            {/* Mesma grade do painel de senhas: os dois com quatro cards. */}
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               {LAUDO_GERAL.map((c) => (
                 <CardGrande
                   key={c.recorte}
@@ -277,16 +307,22 @@ export function PainelIndicadores({
         <Painel
           escondidoNoCelular={aba !== "senha"}
           icone={KeyRound}
-          titulo="Senha ASSIM"
+          titulo={`Senhas ${conveniosSenha}`}
           subtitulo="Autorização do convênio"
           contagem={
-            carregando ? "—" : comSenhas ? `${contagensSenha.aplicaveis} laudos ASSIM` : undefined
+            carregando
+              ? "—"
+              : comSenhas
+                ? `${contagensSenha.aplicaveis} laudos ${conveniosSenha}`
+                : undefined
           }
         >
           {comSenhas || carregando ? (
             <>
               <Grupo rotulo="Visão geral">
-                <div className="grid grid-cols-3 gap-2">
+                {/* Quatro cards: 2×2 no celular (em quatro colunas o rótulo
+                    "Senha vinculada ao laudo antigo" quebraria em cinco linhas). */}
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                   {SENHA_GERAL.map((c) => (
                     <CardGrande
                       key={c.recorte}
@@ -294,7 +330,7 @@ export function PainelIndicadores({
                       valor={contagensSenha[c.recorte]}
                       selecionado={recorteSenha === c.recorte}
                       carregando={carregando}
-                      titulo={EXPLICA_SENHA[c.recorte]}
+                      titulo={explicaSenha(c.recorte, conveniosSenha)}
                       onClick={() => clicarSenha(c.recorte)}
                     />
                   ))}
@@ -309,7 +345,7 @@ export function PainelIndicadores({
                       valor={contagensSenha[c.recorte]}
                       selecionado={recorteSenha === c.recorte}
                       carregando={carregando}
-                      titulo={EXPLICA_SENHA[c.recorte]}
+                      titulo={explicaSenha(c.recorte, conveniosSenha)}
                       onClick={() => clicarSenha(c.recorte)}
                     />
                   ))}
@@ -497,9 +533,9 @@ function Grupo({ rotulo, children }: { rotulo: string; children: ReactNode }) {
 }
 
 /**
- * Cartão da VISÃO GERAL: centralizado, pastel, número grande. Em três colunas
- * mesmo no celular (~105px cada): o rótulo quebra em duas linhas, mas os três
- * números cabem numa só faixa, que é o que se lê de relance.
+ * Cartão da VISÃO GERAL: centralizado, pastel, número grande. Quatro por
+ * painel (laudo e senha), em 2×2 no celular e em uma faixa a partir de `sm`:
+ * em quatro colunas de ~80px o rótulo mais longo quebraria em cinco linhas.
  */
 function CardGrande<R extends string>({
   card,

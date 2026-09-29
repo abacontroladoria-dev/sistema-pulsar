@@ -1,7 +1,6 @@
-import { createServerClient } from "@supabase/ssr"
 import { NextResponse } from "next/server"
-import type { NextRequest } from "next/server"
 import { buscarAcompanhamentoLaudos } from "@/services/laudos/acompanhamento"
+import { AcessoNegado, lerAcessoLaudos, type AcessoLaudos } from "@/services/laudos/acesso"
 
 // GET /api/acompanhamento-laudos → { ok, itens, meta }
 //
@@ -20,44 +19,38 @@ import { buscarAcompanhamentoLaudos } from "@/services/laudos/acompanhamento"
 // `hoje` para vigente/vencido — nunca pode ser assada no build.
 export const dynamic = "force-dynamic"
 
-async function usuarioDaRequisicao(request: NextRequest) {
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll()
-        },
-        setAll() {},
-      },
-    },
-  )
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  return user
-}
-
-export async function GET(request: NextRequest) {
-  // Esta rota roda com service_role e devolve nome de paciente e dado de laudo —
-  // exige sessão, ao contrário de /api/laudos. `DISABLE_AUTH` cobre o
-  // desenvolvimento local, onde não há login (mesma convenção de
-  // /api/tita/situacao-favorecidos).
+export async function GET() {
+  // Esta rota roda com service_role e devolve nome de paciente, dado de laudo e
+  // o relatório de senhas — a RLS não a protege, a checagem é aqui
+  // (services/laudos/acesso.ts). Até 29/09/2026 bastava estar logado.
   //
-  // A autorização FINA continua na RLS: quem não tem `acompanhamento_laudos`
-  // (nem papel admin/diretoria/recepcao) não lê nem grava
-  // `laudos_acompanhamento`, e o Sidebar/canAccess já esconde a rota. Repetir a
-  // checagem de permissão aqui exigiria um segundo lugar para mantê-la em dia.
-  if (process.env.DISABLE_AUTH !== "true") {
-    const user = await usuarioDaRequisicao(request)
-    if (!user) {
-      return NextResponse.json({ ok: false, error: "not_authenticated" }, { status: 401 })
+  //   • tela de laudos (ou admin/diretoria/recepção): tudo;
+  //   • só Ocupação Paciente: os laudos SEM as senhas — ela mostra a situação do
+  //     laudo e nunca a senha;
+  //   • nenhuma das duas: 403.
+  let acesso: AcessoLaudos
+  try {
+    acesso = await lerAcessoLaudos()
+  } catch (e) {
+    if (e instanceof AcessoNegado) {
+      return NextResponse.json({ ok: false, error: "not_authenticated" }, { status: e.status })
     }
+    console.error("[api/acompanhamento-laudos] falha ao verificar o acesso", e)
+    return NextResponse.json({ ok: false, error: "falha_ao_verificar_acesso" }, { status: 500 })
+  }
+  if (!acesso.laudos) {
+    return NextResponse.json({ ok: false, error: "sem_permissao" }, { status: 403 })
   }
 
   try {
     const { itens, meta } = await buscarAcompanhamentoLaudos()
+    if (!acesso.senhas) {
+      return NextResponse.json({
+        ok: true,
+        itens: itens.map((i) => ({ ...i, senhas: null })),
+        meta: { ...meta, senhas: null, senhasErro: null },
+      })
+    }
     return NextResponse.json({ ok: true, itens, meta })
   } catch (e) {
     console.error("[api/acompanhamento-laudos] falha ao montar a lista", e)

@@ -15,10 +15,10 @@ import {
   COLUNAS_OBRIGATORIAS_SENHAS,
   juntarComSenhas,
   parsearRelatorioSenhas,
-  planoEhAssim,
   RelatorioSenhasInvalidoError,
   type AutorizacaoSenha,
 } from "./senhas"
+import { planoEhAssim, planoEhLeve } from "./convenio"
 
 const HOJE = "2026-09-28"
 
@@ -379,12 +379,16 @@ test("4 · pior = o lado mais grave", () => {
 
 // ─── 5. Laudo ausente do relatório ──────────────────────────────────────────
 
-test("5 · laudo ASSIM sem autorização = sem senha; outro convênio = não se aplica", () => {
+test("5 · laudo ASSIM ou LEVE sem autorização = sem senha; outro convênio = não se aplica", () => {
   const assim = calcularSenhasDoLaudo([], "ASSIM Saúde", HOJE)
   assert.strictEqual(assim.dentro.status, "sem_senha")
   assert.strictEqual(assim.pior, "sem_senha")
 
-  const outro = calcularSenhasDoLaudo([], "LEVE SAUDE", HOJE)
+  const leve = calcularSenhasDoLaudo([], "LEVE SAUDE", HOJE)
+  assert.strictEqual(leve.dentro.status, "sem_senha")
+  assert.strictEqual(leve.pior, "sem_senha")
+
+  const outro = calcularSenhasDoLaudo([], "SULAMERICA", HOJE)
   assert.strictEqual(outro.dentro.status, "nao_se_aplica")
   assert.strictEqual(outro.pior, "nao_se_aplica")
 })
@@ -395,6 +399,14 @@ test("5 · planoEhAssim reconhece a grafia do Órbita e não confunde com outros
   assert.ok(!planoEhAssim("Particular"))
   assert.ok(!planoEhAssim("SEGUROS UNIMED"))
   assert.ok(!planoEhAssim(""))
+})
+
+test("5 · planoEhLeve reconhece LEVE com e sem acento, e só a palavra inteira", () => {
+  assert.ok(planoEhLeve("LEVE SAUDE"))
+  assert.ok(planoEhLeve("Leve Saúde"))
+  assert.ok(!planoEhLeve("ASSIM Saúde"))
+  assert.ok(!planoEhLeve("RELEVE"))
+  assert.ok(!planoEhLeve(""))
 })
 
 // ─── 6. Junção: laudo E favorecido, exatamente ──────────────────────────────
@@ -475,3 +487,70 @@ test("6 · o convênio resolvido (grade) decide Sem senha × não se aplica, nã
   assert.strictEqual(outro.itens[0].senhas.pior, "nao_se_aplica")
 })
 
+
+// ─── 7. Senha vinculada ao laudo antigo ─────────────────────────────────────
+//
+// Medido em 29/09/2026: os 9 "Sem senha" ASSIM de pacientes ativos tinham
+// autorização do mesmo paciente num laudo anterior, que já saiu do Órbita
+// (ex.: laudo 624 na tela, senha no laudo 11).
+
+test("7 · sem autorização do laudo, mas com a do paciente num laudo ANTERIOR = laudo antigo", () => {
+  const { itens, resumo } = juntarComSenhas(
+    [item("624", 5001)],
+    [
+      aut({ idAutorizacao: "1", idLaudo: "11", idFavorecido: 5001, senhaDentro: "ANTIGA", validadeDentro: "2026-09-27" }),
+    ],
+    HOJE,
+  )
+  const s = itens[0].senhas
+  assert.strictEqual(s.pior, "laudo_antigo")
+  assert.strictEqual(s.dentro.status, "laudo_antigo")
+  // O cartão mostra QUAL senha é, mesmo vencida: o status não vira "vencida".
+  assert.strictEqual(s.dentro.senha, "ANTIGA")
+  assert.strictEqual(s.fora.status, "nao_se_aplica")
+  assert.deepStrictEqual(s.laudosAntigos, ["11"])
+  assert.strictEqual(s.autorizacoes.length, 1)
+  // Não é casamento: o laudo continua sem autorização própria, e o antigo segue órfão.
+  assert.strictEqual(resumo.laudosCasados, 0)
+  assert.deepStrictEqual(resumo.laudosOrfaos, ["11"])
+})
+
+test("7 · vários laudos antigos: todos entram, do mais novo para o mais antigo", () => {
+  const { itens } = juntarComSenhas(
+    [item("621", 5001)],
+    [
+      aut({ idAutorizacao: "1", idLaudo: "16", validadeDentro: null }),
+      aut({ idAutorizacao: "2", idLaudo: "429", validadeDentro: "2027-02-17" }),
+    ],
+    HOJE,
+  )
+  assert.deepStrictEqual(itens[0].senhas.laudosAntigos, ["429", "16"])
+  assert.strictEqual(itens[0].senhas.dentro.idAutorizacao, "2")
+})
+
+test("7 · laudo POSTERIOR do paciente não conta como laudo antigo", () => {
+  const { itens } = juntarComSenhas([item("10", 5001)], [aut({ idLaudo: "20", idFavorecido: 5001 })], HOJE)
+  assert.strictEqual(itens[0].senhas.pior, "sem_senha")
+  assert.deepStrictEqual(itens[0].senhas.laudosAntigos, [])
+})
+
+test("7 · laudo antigo de OUTRO paciente não conta", () => {
+  const { itens } = juntarComSenhas([item("624", 5001)], [aut({ idLaudo: "11", idFavorecido: 7777 })], HOJE)
+  assert.strictEqual(itens[0].senhas.pior, "sem_senha")
+})
+
+test("7 · com autorização própria, o laudo antigo é ignorado", () => {
+  const { itens } = juntarComSenhas(
+    [item("624", 5001)],
+    [aut({ idAutorizacao: "1", idLaudo: "624" }), aut({ idAutorizacao: "2", idLaudo: "11" })],
+    HOJE,
+  )
+  assert.strictEqual(itens[0].senhas.pior, "vigente")
+  assert.deepStrictEqual(itens[0].senhas.autorizacoes.map((a) => a.idAutorizacao), ["1"])
+})
+
+test("7 · convênio atual sem controle de senha continua 'não se aplica', mesmo com laudo antigo", () => {
+  // Caso real: paciente hoje SULAMERICA com senha ASSIM num laudo anterior.
+  const { itens } = juntarComSenhas([item("640", 5001, "SULAMERICA")], [aut({ idLaudo: "279" })], HOJE)
+  assert.strictEqual(itens[0].senhas.pior, "nao_se_aplica")
+})

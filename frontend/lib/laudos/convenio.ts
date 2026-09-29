@@ -29,11 +29,16 @@ export type OrigemConvenio = "grade" | "orbita"
  */
 export const SEM_CONVENIO = ""
 
+/** Grafia exata da grade/Órbita. */
+export const CONVENIO_ASSIM = "ASSIM Saúde"
+export const CONVENIO_LEVE = "LEVE SAUDE"
+
 /**
- * O convênio com que a tela abre — pedido do usuário (28/09/2026): "que sempre
- * venha filtrado por … convênio ASSIM Saúde". Grafia exata da grade/Órbita.
+ * Os convênios com que a tela abre: ASSIM e LEVE, os dois cuja senha a tela
+ * acompanha — pedido do usuário (29/09/2026): abrir em "Senhas ASSIM e LEVE".
+ * Substitui o padrão de 28/09/2026, que abria só na ASSIM.
  */
-export const CONVENIO_PADRAO = "ASSIM Saúde"
+export const CONVENIOS_PADRAO: readonly string[] = [CONVENIO_ASSIM, CONVENIO_LEVE]
 
 /** Comparável: sem acento, sem caixa, espaços colapsados. */
 function chave(nome: string): string {
@@ -55,7 +60,45 @@ function chave(nome: string): string {
  * Fusão nova = uma linha aqui.
  */
 const CONVENIOS_INCORPORADOS: Record<string, string> = {
-  [chave("MEMORIAL SAÚDE LTDA")]: CONVENIO_PADRAO,
+  [chave("MEMORIAL SAÚDE LTDA")]: CONVENIO_ASSIM,
+}
+
+/** O convênio é ASSIM? Casa a grafia da grade e do Órbita ("ASSIM Saúde"). */
+export function planoEhAssim(plano: string): boolean {
+  return /\bassim\b/.test(chave(plano))
+}
+
+/** O convênio é LEVE? Casa "LEVE SAUDE" (grade/Órbita) com ou sem acento. */
+export function planoEhLeve(plano: string): boolean {
+  return /\bleve\b/.test(chave(plano))
+}
+
+/**
+ * Os convênios cuja senha a tela acompanha: ASSIM e LEVE — pedido do usuário
+ * (29/09/2026). O relatório de autorizações traz os dois (medido no mesmo dia:
+ * 791 autorizações ASSIM, 5 LEVE). Decide "Sem senha" × "não se aplica" quando
+ * o laudo não aparece no relatório.
+ */
+export function convenioTemSenha(plano: string): boolean {
+  return planoEhAssim(plano) || planoEhLeve(plano)
+}
+
+/** O nome do painel de senhas: "Senhas ASSIM", "Senhas LEVE" ou os dois. */
+export type ConveniosDaSenha = "ASSIM" | "LEVE" | "ASSIM e LEVE"
+
+/**
+ * Qual convênio de senha o filtro "Convênio" deixa na tela. Vazio (= todos) ou
+ * com os dois marcados → "ASSIM e LEVE"; só um dos dois marcado → ele. Sem
+ * nenhum dos dois (ex.: só Particular), fica o nome completo: o painel não
+ * deixa de ser o das senhas ASSIM e LEVE por o filtro apontar para outro lugar.
+ */
+export function conveniosDaSenha(convenios: Set<string>): ConveniosDaSenha {
+  const nomes = [...convenios]
+  const assim = nomes.some(planoEhAssim)
+  const leve = nomes.some(planoEhLeve)
+  if (assim && !leve) return "ASSIM"
+  if (leve && !assim) return "LEVE"
+  return "ASSIM e LEVE"
 }
 
 /** O convênio que vale hoje: o próprio, ou quem o incorporou. */
