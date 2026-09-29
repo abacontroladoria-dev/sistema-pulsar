@@ -1,4 +1,4 @@
-// Tipos da tela Acompanhamento de Laudos (/acompanhamento/laudos).
+// Tipos da tela Status Laudos e Senhas (/acompanhamento/laudos).
 //
 // Vivem AQUI, e não em services/laudos/acompanhamento.ts, porque aquele módulo é
 // `server-only` (lê `orbita_laudos_*` com service_role) e os componentes desta
@@ -6,9 +6,18 @@
 // o bundle. Mesma separação já feita por `MetaImportacaoLaudos` em
 // types/cronograma.ts.
 
-import type { SituacaoLaudo } from "@/lib/laudos/acompanhamento"
+import type { EspecialidadeQtd, SituacaoLaudo } from "@/lib/laudos/acompanhamento"
+import type { OrigemConvenio } from "@/lib/laudos/convenio"
+import type {
+  AutorizacaoSenha,
+  EspecialidadeAutorizada,
+  SenhaDoRol,
+  SenhasDoLaudo,
+  StatusSenha,
+} from "@/lib/laudos/senhas"
 
-export type { SituacaoLaudo }
+export type { EspecialidadeQtd, OrigemConvenio, SituacaoLaudo }
+export type { AutorizacaoSenha, EspecialidadeAutorizada, SenhaDoRol, SenhasDoLaudo, StatusSenha }
 
 /**
  * Situação do paciente no cadastro do Pulsar, do ponto de vista desta tela.
@@ -48,6 +57,23 @@ export interface ItemAcompanhamentoLaudo {
   /** O Órbita e o cálculo por validade discordam — mostrar, nunca engolir. */
   situacaoDivergente: boolean
   especialidades: string[]
+  /** Especialidades com `Qtd laudo`/`Qtd autorizada` — a tabela do detalhe. */
+  especialidadesQtd: EspecialidadeQtd[]
+  /** `Plano` do relatório do Órbita, como veio. */
+  plano: string
+  /**
+   * O convênio do paciente: o da GRADE da TiTa (próximo agendamento, ou o
+   * último) e, sem o paciente na grade, o `Plano` do Órbita. É o que o filtro
+   * "Convênio" lê, o que o cartão mostra quando a senha não se aplica, e o que
+   * decide entre "Sem senha" (ASSIM) e outro convênio. `null` = nenhum dos dois.
+   */
+  convenio: string | null
+  convenioOrigem: OrigemConvenio | null
+  /**
+   * O nome como veio da grade/Órbita quando o convênio foi INCORPORADO por outro
+   * (ex.: "MEMORIAL SAÚDE LTDA", absorvida pela ASSIM). `null` no caso normal.
+   */
+  convenioOriginal: string | null
 
   // ─── Do cadastro do Pulsar (enriquecimento; pode faltar) ───
   /** Nulo nos laudos cujo paciente não tem cadastro — 58 de 343 em 28/08/2026. */
@@ -65,6 +91,31 @@ export interface ItemAcompanhamentoLaudo {
   /** Quem salvou por último e quando (data/hora de Brasília, já formatada). */
   registradoPorNome: string | null
   registradoEm: string | null
+
+  // ─── Do relatório de senhas da ASSIM (upload manual) ───
+  /**
+   * `null` enquanto nenhum relatório de senhas foi importado (ou se a leitura
+   * falhou — ver `MetaAcompanhamentoLaudos.senhasErro`). Com relatório, TODO
+   * laudo tem `senhas`, mesmo os ausentes dele ("Sem senha"/"Outro convênio").
+   */
+  senhas: SenhasDoLaudo | null
+}
+
+/** De onde vieram as senhas da tela, e o que do relatório não casou. */
+export interface MetaSenhas {
+  importacaoId: string
+  arquivoNome: string
+  /** `DD/MM/AAAA HH:MM`, Brasília. */
+  importadoEm: string | null
+  importadoPorNome: string | null
+  totalLinhas: number
+  autorizacoes: number
+  /** Laudos da tela com ao menos uma autorização casada (laudo + favorecido). */
+  laudosCasados: number
+  /** Laudos do relatório que não estão no Órbita. */
+  laudosOrfaos: string[]
+  /** Laudo no Órbita com favorecido diferente no relatório — não casados. */
+  laudosDivergentes: string[]
 }
 
 /** Metadados da resposta — de onde veio a lista e o que ela deixou de fora. */
@@ -85,6 +136,32 @@ export interface MetaAcompanhamentoLaudos {
   comCamposDivergentes: number
   /** Laudos onde o rótulo do Órbita discorda da validade. Esperado: 0. */
   comSituacaoDivergente: number
+  /** Importação de senhas em uso. `null` = nenhuma ainda, ou leitura falhou. */
+  senhas: MetaSenhas | null
+  /** Por que as senhas não vieram, quando a leitura falhou. A lista vem mesmo assim. */
+  senhasErro: string | null
+  /** Laudos cujo convênio veio da grade da TiTa (o resto, do Plano do Órbita). */
+  convenioPelaGrade: number
+  /** Por que o convênio da grade não veio. A lista vem com o Plano do Órbita. */
+  convenioErro: string | null
+}
+
+/** Resposta de POST /api/acompanhamento-laudos/senhas/. */
+export interface RespostaUploadSenhas {
+  ok: true
+  duplicado: boolean
+  importadoEm: string | null
+  importadoPorNome: string | null
+  resumo: {
+    linhas: number
+    linhasDescartadas: number
+    autorizacoes: number
+    laudosCasados: number
+    laudosOrfaos: string[]
+    laudosDivergentes: string[]
+    autorizacoesDivergentes: string[]
+    datasInvalidas: number
+  }
 }
 
 export interface RespostaAcompanhamentoLaudos {

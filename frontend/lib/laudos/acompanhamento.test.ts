@@ -253,6 +253,7 @@ function laudoAgrupado(over: Partial<LaudoAgrupadoTeste> = {}): LaudoAgrupadoTes
     idLaudo: "111",
     idFavorecido: 123,
     pacienteNome: "Paciente Teste",
+    plano: "ASSIM Saúde",
     dataLaudo: "2026-07-01",
     validade: "2027-01-01",
     autorizadoEm: "2026-07-08",
@@ -260,6 +261,7 @@ function laudoAgrupado(over: Partial<LaudoAgrupadoTeste> = {}): LaudoAgrupadoTes
     situacaoOrbita: "Vigente",
     situacaoDivergente: false,
     especialidades: ["Psicologia ABA"],
+    especialidadesQtd: [{ especialidade: "Psicologia ABA", qtdLaudo: "10", qtdAutorizada: "10" }],
     linhas: 1,
     camposDivergentes: [],
     ...over,
@@ -372,4 +374,52 @@ test("37 · nome do cadastro tem precedência; sem cadastro, cai no nome do Órb
     [],
   )
   assert.strictEqual(semCadastro[0].nome, "Como Está No Órbita")
+})
+
+// ─── 7. Plano (convênio) e senhas ───────────────────────────────────────────
+
+test("7 · o plano do Órbita chega ao item, e as senhas nascem nulas", () => {
+  // O plano decide "Sem senha" (ASSIM) × "Outro convênio" no cartão; as senhas
+  // só entram depois, por juntarComSenhas, quando há relatório importado.
+  const { laudos } = agruparLaudos([linha({ Plano: "LEVE SAUDE" })], HOJE)
+  assert.strictEqual(laudos[0].plano, "LEVE SAUDE")
+
+  const [item] = juntarComAcompanhamento(laudos, [], [])
+  assert.strictEqual(item.plano, "LEVE SAUDE")
+  assert.strictEqual(item.senhas, null)
+})
+
+test("7 · laudo sem coluna Plano fica com plano vazio (vira Outro convênio, nunca Sem senha)", () => {
+  const { laudos } = agruparLaudos([linha()], HOJE)
+  assert.strictEqual(laudos[0].plano, "")
+})
+
+// ─── 8. Quantidades por especialidade (tabela do detalhe) ────────────────────
+
+test("8 · cada especialidade leva Qtd laudo e Qtd autorizada, em ordem alfabética", () => {
+  const rows = [
+    linha({ Especialidade: "Terapia Ocupacional", "Qtd laudo": "4", "Qtd autorizada": "4" }),
+    linha({ Especialidade: "Fisioterapia Aquática", "Qtd laudo": "3", "Qtd autorizada": "" }),
+    linha({ Especialidade: "Fonoaudiologia", "Qtd laudo": "4", "Qtd autorizada": "3" }),
+  ]
+  const { laudos } = agruparLaudos(rows, HOJE)
+  assert.deepStrictEqual(laudos[0].especialidadesQtd, [
+    { especialidade: "Fisioterapia Aquática", qtdLaudo: "3", qtdAutorizada: "" },
+    { especialidade: "Fonoaudiologia", qtdLaudo: "4", qtdAutorizada: "3" },
+    { especialidade: "Terapia Ocupacional", qtdLaudo: "4", qtdAutorizada: "4" },
+  ])
+
+  const [item] = juntarComAcompanhamento(laudos, [], [])
+  assert.strictEqual(item.especialidadesQtd.length, 3)
+})
+
+test("8 · especialidade repetida no laudo aparece uma vez só (vale a primeira linha)", () => {
+  const rows = [
+    linha({ Especialidade: "Musicoterapia", "Qtd laudo": "3", "Qtd autorizada": "3" }),
+    linha({ Especialidade: "Musicoterapia", "Qtd laudo": "9", "Qtd autorizada": "9" }),
+  ]
+  const { laudos } = agruparLaudos(rows, HOJE)
+  assert.deepStrictEqual(laudos[0].especialidadesQtd, [
+    { especialidade: "Musicoterapia", qtdLaudo: "3", qtdAutorizada: "3" },
+  ])
 })

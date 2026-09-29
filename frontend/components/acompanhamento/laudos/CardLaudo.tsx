@@ -1,12 +1,14 @@
 "use client"
 
-import { memo, useEffect, useState } from "react"
+import { memo, useEffect, useState, type ReactNode } from "react"
 import { CalendarDays, CheckCircle2, Hourglass, MailCheck, AlertTriangle } from "lucide-react"
 import { getFotoUrlAssinada } from "@/services/pacientesFoto.service"
 import { ICONES, getTomAvatar, indiceIconeAvatar } from "@/lib/cadastros/avatarPastel"
 import { isoParaBr } from "@/lib/laudos/acompanhamento"
 import { foco } from "@/components/cadastros/pacientes/ui/campos"
-import type { ItemAcompanhamentoLaudo } from "@/types/laudosAcompanhamento"
+import type { ItemAcompanhamentoLaudo, SenhasDoLaudo } from "@/types/laudosAcompanhamento"
+import { TOM_SENHA, fonteQueCabe, textoStatusSenha, textoStatusSenhaCurto } from "./senhaUi"
+import type { SenhaDoRol } from "@/types/laudosAcompanhamento"
 
 // O cartão de laudo. MOLDE do CardPaciente de /cadastros/pacientes: mesma
 // moldura (rounded-xl, border-border, bg-card, p-5, shadow-sm), mesmo hover
@@ -52,11 +54,16 @@ export const CardLaudo = memo(function CardLaudo({
             DUAS CAIXAS, uma por assunto, cada uma completa em si: o número, a
             que ele se refere, e o estado desse alguém.
 
-              ┌──────────┐ ┌──────────┐
-              │  14414   │ │   278    │
-              │ PACIENTE │ │  LAUDO   │
-              │  Ativo   │ │ Vencido  │
-              └──────────┘ └──────────┘
+              ┌──────────┐ ┌───────────────┐
+              │   278    │ │    1234567    │
+              │  LAUDO   │ │     SENHA     │
+              │ Vencido  │ │ Vigente até … │
+              └──────────┘ └───────────────┘
+
+            A caixa da direita era a do PACIENTE (ID PAC + Ativo/Inativo). Deu
+            lugar à SENHA da ASSIM — pedido do usuário (28/09/2026): "basta
+            aparecer o Status da Senha e o Status do Laudo". A situação do
+            paciente continua como filtro, e o ID PAC está no título do detalhe.
 
             O contorno é o que resolve o problema que três formatos anteriores
             não resolveram: sem ele, seis pedaços de texto flutuavam soltos e a
@@ -66,13 +73,14 @@ export const CardLaudo = memo(function CardLaudo({
             `grid-cols-2` com as caixas esticadas: as duas têm a mesma largura e a
             mesma altura mesmo quando um texto ("Sem cadastro") ocupa duas
             linhas e o outro ("Vencido") ocupa uma. */}
-        <div className="grid grid-cols-2 gap-2">
-          <CaixaIdent
-            id={item.idFavorecido ?? "—"}
-            escopo="paciente"
-            {...estadoDoPaciente(item)}
-          />
+        {/* 2/5 para o laudo e 3/5 para a senha: o laudo tem pouco texto ("238 /
+            LAUDO / Vencido"), a senha precisa de espaço — dois números quando há
+            senha fora do ROL, ou o nome do convênio. `min-h` igual nas duas e em
+            todos os cartões: as fotos e os nomes ficam na mesma altura de um
+            cartão para o outro. */}
+        <div className="grid grid-cols-[2fr_3fr] gap-2">
           <CaixaIdent id={item.idLaudo} escopo="laudo" {...estadoDoLaudo(item)} />
+          <CaixaSenha senhas={item.senhas} convenio={item.convenio} />
         </div>
 
         <div className="mt-4 flex flex-col items-center text-center">
@@ -83,9 +91,10 @@ export const CardLaudo = memo(function CardLaudo({
           >
             {item.nome}
           </h2>
-          {/* Quantas especialidades o laudo cobre. Não foi pedido como coluna,
-              mas é o que diz se a renovação atrasada trava uma terapia ou onze —
-              e sai de graça do agrupamento. */}
+          {/* Quantas especialidades o laudo cobre — o que diz se a renovação
+              atrasada trava uma terapia ou onze. O ID do paciente NÃO aparece
+              aqui (pedido do usuário, 28/09/2026): está no título do detalhe
+              ("PAC 14551, LAUDO 267"), e a busca por ele continua valendo. */}
           {item.especialidades.length > 0 && (
             <p className="mt-1 text-xs text-muted-foreground">
               {item.especialidades.length}{" "}
@@ -230,18 +239,20 @@ function CaixaIdent({
   contorno,
 }: {
   id: string | number
-  escopo: "paciente" | "laudo"
+  escopo: "laudo"
   estado: string
   cor: string
-  /** Borda e fundo. Tingidos só na exceção — ver `estadoDoPaciente`. */
+  /** Borda e fundo, tingidos pelo estado. */
   contorno: string
 }) {
   return (
-    <div className={`rounded-lg border px-2 py-1.5 text-center ${contorno}`}>
+    <div
+      className={`flex ${ALTURA_CAIXA} flex-col items-center justify-center rounded-lg border px-2 py-1.5 text-center ${contorno}`}
+    >
       <p className="truncate text-sm font-bold leading-none tabular-nums text-foreground">{id}</p>
       {/* 11px, e não um tamanho menor: é o menor degrau da tipografia do
           projeto (DESIGN.md §3, "Caption") — abaixo dele sai do ramp
-          documentado. `tracking-widest` é o que mantém "PACIENTE"/"LAUDO"
+          documentado. `tracking-widest` é o que mantém "LAUDO"/"SENHA"
           legível nessa altura apesar de compartilhar o degrau com o "estado"
           logo abaixo. */}
       <p className="mt-1 text-[11px] font-semibold uppercase leading-none tracking-widest text-muted-foreground">
@@ -254,8 +265,8 @@ function CaixaIdent({
 
 /**
  * Vigente / Vencido — os dois sinais que a tela existe para destacar.
- * Vencido em vermelho, Vigente em verde — decisão do usuário (28/08/2026), a
- * mesma aplicada ao "Ativo" do paciente.
+ * Vencido em vermelho, Vigente em verde — decisão do usuário (28/08/2026). A
+ * senha usa a mesma paleta (ver senhaUi.ts).
  */
 function estadoDoLaudo(
   item: ItemAcompanhamentoLaudo,
@@ -282,44 +293,156 @@ function estadoDoLaudo(
 }
 
 /**
- * ATIVO (PACIENTE) — a situação no cadastro do Pulsar, não no Órbita.
+ * A caixa da SENHA ASSIM, irmã da caixa do laudo: número em cima, o assunto no
+ * meio, o estado embaixo.
  *
- * `sem_cadastro` não é um terceiro estado inventado: 58 dos 343 laudos são de
- * paciente que não existe em /cadastros/pacientes (medido em 28/08/2026), e 57
- * deles estão vencidos. Mostrar "—" ali esconderia a diferença entre "inativo" e
- * "nunca foi cadastrado", que é justamente o que a recepção precisa saber para
- * achar o telefone do responsável.
+ * O número é o da senha DENTRO do ROL (decisão do usuário, 28/09/2026: o número
+ * aparece no cartão). Quando o laudo também tem senha FORA do ROL — ou precisa
+ * de uma e não tem —, uma segunda faixa aparece embaixo, no mesmo formato. O
+ * contorno segue o PIOR dos dois lados, para uma senha fora do ROL vencida não
+ * se esconder atrás de uma dentro do ROL vigente.
  *
- * `ficticio` são Notificação Prévia, Horário Administrativo e afins: não são
- * pessoas, então não há responsável a avisar. Medido: 1 dos 343. Fica na lista (o
- * usuário testa com ele), mas rotulado — "Ativo" ali seria mentira.
+ * "+N" quando o laudo tem mais de uma autorização no relatório — a exibida é a
+ * de validade mais longa (regra em lib/laudos/senhas.ts); as outras estão no
+ * detalhe.
  *
- * "Ativo" sai em verde — decisão do usuário (28/08/2026): a leitura de relance
- * é "esse paciente está bem", e o contorno tingido reforça isso mesmo ao lado do
- * "Vencido" vermelho do laudo.
+ * Sem relatório importado (`senhas` nulo), a caixa diz isso em vez de "Sem
+ * senha": ausência de arquivo não é ausência de senha.
+ *
+ * Laudo de OUTRO convênio (a senha da ASSIM não se aplica), a caixa fica cinza e
+ * diz SÓ o nome do convênio — pedido do usuário (28/09/2026): sem "—", sem
+ * "senha", sem "Outro convênio". O convênio é o da grade da TiTa (ver
+ * lib/laudos/convenio.ts).
  */
-function estadoDoPaciente(
-  item: ItemAcompanhamentoLaudo,
-): { estado: string; cor: string; contorno: string } {
-  const AMBAR = {
-    cor: "text-amber-700 dark:text-amber-400",
-    contorno: "border-amber-500/40 bg-amber-500/5",
+function CaixaSenha({
+  senhas,
+  convenio,
+}: {
+  senhas: SenhasDoLaudo | null
+  convenio: string | null
+}) {
+  if (!senhas) {
+    return (
+      <div
+        className={`flex ${ALTURA_CAIXA} flex-col items-center justify-center rounded-lg border border-border bg-muted/20 px-2 py-1.5 text-center`}
+      >
+        <p className="text-sm font-bold leading-none text-muted-foreground">—</p>
+        <p className="mt-1 text-[11px] font-semibold uppercase leading-none tracking-widest text-muted-foreground">
+          senha
+        </p>
+        <p className="mt-1.5 text-[11px] font-bold leading-tight text-muted-foreground">
+          Sem relatório
+        </p>
+      </div>
+    )
   }
-  if (item.situacaoPaciente === "ficticio") return { estado: "Fictício", ...AMBAR }
-  if (item.situacaoPaciente === "sem_cadastro") return { estado: "Sem cadastro", ...AMBAR }
-  if (item.situacaoPaciente === "inativo") {
-    return {
-      estado: "Inativo",
-      cor: "text-rose-600 dark:text-rose-400",
-      contorno: "border-rose-500/40 bg-rose-500/5",
-    }
+
+  const { dentro, fora, pior, autorizacoes } = senhas
+
+  if (dentro.status === "nao_se_aplica" && autorizacoes.length === 0) {
+    // CAIXA ALTA sempre (pedido do usuário, 28/09/2026) e NUNCA partindo
+    // palavra: quebra só entre palavras (`keep-all`, sem hifenização), e a
+    // letra encolhe o necessário para a palavra mais longa caber (`fonteQueCabe`).
+    const nome = (convenio ?? "Sem convênio").toLocaleUpperCase("pt-BR")
+    return (
+      <div
+        className={`@container flex ${ALTURA_CAIXA} items-center justify-center rounded-lg border px-2 py-1.5 text-center ${TOM_SENHA.nao_se_aplica.contorno}`}
+        title={`${nome} — convênio do paciente; a senha da ASSIM não se aplica`}
+      >
+        <p
+          className="line-clamp-3 font-bold uppercase leading-tight tracking-tight text-muted-foreground [hyphens:none] [overflow-wrap:normal] [word-break:keep-all]"
+          style={{ fontSize: fonteQueCabe(nome) }}
+        >
+          {nome}
+        </p>
+      </div>
+    )
   }
-  return {
-    estado: "Ativo",
-    cor: "text-emerald-600 dark:text-emerald-400",
-    contorno: "border-emerald-500/40 bg-emerald-500/5",
+
+  const foraAplica = fora.status !== "nao_se_aplica"
+  const extras = autorizacoes.length - 1
+  const selo =
+    extras > 0 ? (
+      <span
+        className="rounded bg-foreground/10 px-1 text-[11px] font-bold leading-4 text-muted-foreground"
+        title={`${autorizacoes.length} autorizações no relatório — veja todas no detalhe`}
+      >
+        +{extras}
+      </span>
+    ) : null
+
+  // ROL + FORA na mesma caixa, na MESMA altura da caixa padrão (pedido do
+  // usuário, 28/09/2026: o cartão com as duas senhas ficava bem mais alto que o
+  // vizinho). Duas linhas por senha — "ROL L772D21" e o status curto na cor
+  // dele — no lugar das três de cada uma. O texto completo fica no `title` e no
+  // detalhe do laudo.
+  if (foraAplica) {
+    return (
+      <div
+        className={`flex ${ALTURA_CAIXA} flex-col justify-center gap-1 rounded-lg border px-2 py-1.5 text-center ${TOM_SENHA[pior].contorno}`}
+      >
+        <LinhaSenhaCompacta rotulo="ROL" senha={dentro} lado="dentro" selo={selo} />
+        <span className="mx-2 border-t border-border" aria-hidden="true" />
+        <LinhaSenhaCompacta rotulo="FORA" senha={fora} lado="fora" />
+      </div>
+    )
   }
+
+  return (
+    <div
+      className={`relative flex ${ALTURA_CAIXA} flex-col items-center justify-center rounded-lg border px-2 py-1.5 text-center ${TOM_SENHA[pior].contorno}`}
+    >
+      {selo && <span className="absolute right-1 top-1">{selo}</span>}
+      <p className="truncate text-sm font-bold leading-none tabular-nums text-foreground">
+        {dentro.senha ?? "—"}
+      </p>
+      <p className="mt-1 text-[11px] font-semibold uppercase leading-none tracking-widest text-muted-foreground">
+        senha
+      </p>
+      <p className={`mt-1.5 text-[11px] font-bold leading-tight ${TOM_SENHA[dentro.status].cor}`}>
+        {textoStatusSenha(dentro, "dentro")}
+      </p>
+    </div>
+  )
 }
+
+/** Uma senha em duas linhas: "ROL L772D21" e o status curto, na cor dele. */
+function LinhaSenhaCompacta({
+  rotulo,
+  senha,
+  lado,
+  selo,
+}: {
+  rotulo: "ROL" | "FORA"
+  senha: SenhaDoRol
+  lado: "dentro" | "fora"
+  selo?: ReactNode
+}) {
+  const completo = `${lado === "dentro" ? "Dentro" : "Fora"} do ROL: ${senha.senha ?? "sem número"} — ${textoStatusSenha(senha, lado)}`
+  return (
+    <div className="min-w-0" title={completo}>
+      <p className="flex items-baseline justify-center gap-1.5 leading-none">
+        <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          {rotulo}
+        </span>
+        <span className="truncate text-[13px] font-bold tabular-nums text-foreground">
+          {senha.senha ?? "—"}
+        </span>
+        {selo}
+      </p>
+      <p className={`mt-0.5 truncate text-[11px] font-bold leading-tight ${TOM_SENHA[senha.status].cor}`}>
+        {textoStatusSenhaCurto(senha, lado)}
+      </p>
+    </div>
+  )
+}
+
+/**
+ * Altura mínima das caixas de identificação — a de uma caixa com status em duas
+ * linhas ("Vigente até / 27/02/27"). Igual em todas, para os cartões lado a lado
+ * alinharem foto e nome na mesma altura.
+ */
+const ALTURA_CAIXA = "min-h-[78px]"
 
 function Avatar({
   item,

@@ -13,8 +13,8 @@ function AcompanhamentoLaudosContent() {
 
   useEffect(() => {
     setHeader(
-      "Acompanhamento de Laudos",
-      "Laudos do Órbita e o registro do aviso ao responsável",
+      "Status Laudos e Senhas",
+      "Laudos do Órbita, senhas da ASSIM e o aviso ao responsável",
     )
     return () => setHeader("", "")
   }, [setHeader])

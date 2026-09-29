@@ -34,6 +34,8 @@ export interface LaudoAgrupado {
   idFavorecido: number | null
   /** Nome como o Órbita escreve. O do cadastro, quando existe, vem depois. */
   pacienteNome: string
+  /** `Plano` (convênio) do Órbita — "ASSIM Saúde", "Particular"… */
+  plano: string
 
   dataLaudo: string | null
   validade: string | null
@@ -53,6 +55,11 @@ export interface LaudoAgrupado {
 
   /** Especialidades do laudo, ordenadas. Uma linha do relatório cada. */
   especialidades: string[]
+  /**
+   * As mesmas especialidades, com `Qtd laudo` e `Qtd autorizada` de cada uma —
+   * a tabela do detalhe, no formato da aba Laudo de /cadastros/pacientes/[id].
+   */
+  especialidadesQtd: EspecialidadeQtd[]
   /** Linhas do relatório que formaram este laudo. */
   linhas: number
   /**
@@ -63,6 +70,13 @@ export interface LaudoAgrupado {
 }
 
 export type SituacaoLaudo = "vigente" | "vencido" | "sem_validade"
+
+/** Uma especialidade do laudo com as quantidades do relatório (texto cru; "" = vazio). */
+export interface EspecialidadeQtd {
+  especialidade: string
+  qtdLaudo: string
+  qtdAutorizada: string
+}
 
 /** Os campos que o agrupamento assume uniformes dentro de um `ID Laudo`. */
 const CAMPOS_DO_LAUDO = [
@@ -153,6 +167,25 @@ function ler(row: LaudoRow, ...chaves: string[]): string {
 }
 
 /**
+ * Uma entrada por especialidade, na mesma ordem de `especialidades`. Se a mesma
+ * especialidade vier em duas linhas do laudo (não acontece no relatório medido),
+ * vale a primeira — uma linha repetida na tabela pareceria duas autorizações.
+ */
+function quantidadesPorEspecialidade(linhas: LaudoRow[]): EspecialidadeQtd[] {
+  const porNome = new Map<string, EspecialidadeQtd>()
+  for (const l of linhas) {
+    const especialidade = ler(l, "Especialidade")
+    if (!especialidade || porNome.has(especialidade)) continue
+    porNome.set(especialidade, {
+      especialidade,
+      qtdLaudo: ler(l, "Qtd laudo", "Qtd Laudo", "Qt Laudo"),
+      qtdAutorizada: ler(l, "Qtd autorizada", "Qtd Autorizada", "Qt Autorizada"),
+    })
+  }
+  return [...porNome.values()].sort((a, b) => a.especialidade.localeCompare(b.especialidade, "pt-BR"))
+}
+
+/**
  * Agrupa as linhas do relatório em um registro por `ID Laudo`.
  *
  * Linha sem `ID Laudo` é DESCARTADA e contada em `descartadas`: sem a chave
@@ -200,6 +233,7 @@ export function agruparLaudos(
       idLaudo,
       idFavorecido: fav,
       pacienteNome: ler(primeira, "Paciente") || "(sem nome no relatório)",
+      plano: ler(primeira, "Plano"),
       dataLaudo: brParaIso(ler(primeira, "Data laudo")),
       validade,
       autorizadoEm: brParaIso(ler(primeira, "Autorizado em", "Autorizado Em", "autorizado em")),
@@ -212,6 +246,7 @@ export function agruparLaudos(
       especialidades: [...new Set(linhas.map((l) => ler(l, "Especialidade")).filter(Boolean))].sort(
         (a, b) => a.localeCompare(b, "pt-BR"),
       ),
+      especialidadesQtd: quantidadesPorEspecialidade(linhas),
       linhas: linhas.length,
       camposDivergentes: [...camposDivergentes],
     })
@@ -324,6 +359,13 @@ export function juntarComAcompanhamento(
       situacaoOrbita: laudo.situacaoOrbita,
       situacaoDivergente: laudo.situacaoDivergente,
       especialidades: laudo.especialidades,
+      especialidadesQtd: laudo.especialidadesQtd,
+      plano: laudo.plano,
+      // Ponto de partida: o Plano do Órbita. `juntarComConvenio`
+      // (lib/laudos/convenio.ts) troca pelo da grade da TiTa quando existe.
+      convenio: laudo.plano || null,
+      convenioOrigem: laudo.plano ? "orbita" : null,
+      convenioOriginal: null,
 
       pacienteId: paciente?.id_paciente ?? null,
       pacienteNomeCadastro: paciente?.nome ?? null,
@@ -334,6 +376,10 @@ export function juntarComAcompanhamento(
       observacao: registro?.observacao ?? null,
       registradoPorNome: registro?.atualizado_por_nome ?? null,
       registradoEm: registro?.atualizado_em_brasilia ?? null,
+
+      // Preenchido depois por `juntarComSenhas` (lib/laudos/senhas.ts), quando
+      // há relatório de senhas importado.
+      senhas: null,
     }
   })
 }

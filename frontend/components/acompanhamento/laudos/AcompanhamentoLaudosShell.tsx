@@ -1,29 +1,52 @@
 "use client"
 
 import { memo, useCallback, useEffect, useMemo, useState } from "react"
-import { AlertCircle, ChevronLeft, ChevronRight, History, Search, X } from "lucide-react"
+import {
+  AlertCircle,
+  AlertTriangle,
+  ChevronLeft,
+  ChevronRight,
+  History,
+  Search,
+  X,
+} from "lucide-react"
 import { useHeader } from "@/contexts/HeaderContext"
 import { HistoricoCadastrosModal } from "@/components/cadastros/historico/HistoricoCadastrosModal"
-import { campo, foco } from "@/components/cadastros/pacientes/ui/campos"
-import { aplicar, contarKpis, filtrosIniciais, type FiltrosLaudos } from "@/lib/laudos/filtros"
+import { foco } from "@/components/cadastros/pacientes/ui/campos"
+import {
+  aplicar,
+  contarKpis,
+  contarKpisSenha,
+  filtrosIniciais,
+  TODAS_SITUACOES_PACIENTE,
+  type FiltrosLaudos,
+  type RecorteLaudo,
+  type RecorteSenha,
+} from "@/lib/laudos/filtros"
+import { opcoesDeConvenio } from "@/lib/laudos/convenio"
 import type {
   ItemAcompanhamentoLaudo,
   MetaAcompanhamentoLaudos,
+  RespostaUploadSenhas,
 } from "@/types/laudosAcompanhamento"
-import { BarraFiltros, KpisLaudos } from "./FiltrosLaudos"
+import { PainelFiltros } from "./FiltrosLaudos"
+import { FaixaRecortes, PainelIndicadores } from "./PainelIndicadores"
 import { CardLaudo } from "./CardLaudo"
 import { RegistrarAvisoModal } from "./RegistrarAvisoModal"
+import { ResultadoUploadSenhasModal, UploadSenhasHeader } from "./UploadSenhasHeader"
 
-// Acompanhamento de Laudos: a fila de laudos vencidos e o registro de quando a
-// recepção avisou o responsável.
+// Status Laudos e Senhas: a fila de laudos vencidos, o registro de quando a
+// recepção avisou o responsável e o andamento das senhas da ASSIM (relatório
+// subido pelo botão "Atualizar senhas").
 //
 // A lista vem de /api/acompanhamento-laudos, e não do supabase direto do
 // browser, porque `orbita_laudos_relatorio` só tem GRANT para service_role.
 //
 // A ESTRUTURA da tela é a de /cadastros/pacientes, de propósito: mesma grade de
-// cartões (2→5 colunas), mesma paginação de 75, mesma busca no header com
-// debounce de 200ms, mesmo botão de Histórico ao lado. Quem usa uma sabe usar a
-// outra sem aprender nada novo.
+// cartões (2→5 colunas), mesma paginação de 75, mesma busca com debounce de
+// 200ms. Os FILTROS moram num painel próprio entre o cabeçalho e os KPIs (pedido
+// do usuário, 28/09/2026: o cabeçalho ficou desorganizado); o cabeçalho ficou só
+// com as ações — Atualizar senhas e Histórico.
 //
 // FILTRO NO CLIENTE, sobre a lista inteira. São 343 itens (medido) num payload
 // que já vem pronto do servidor: filtrar aqui é instantâneo, e mandar cada
@@ -50,18 +73,30 @@ export function AcompanhamentoLaudosShell({ buscaInicial = "" }: Props) {
   // vigente que chegou aqui por link direto — "todos" garante que o que veio
   // de fora sempre aparece, não só a fila de trabalho do dia.
   const [filtros, setFiltros] = useState<FiltrosLaudos>(() =>
-    buscaInicial ? { ...filtrosIniciais(), busca: buscaInicial, recorte: "todos" } : filtrosIniciais(),
+    buscaInicial
+      ? {
+          ...filtrosIniciais(),
+          busca: buscaInicial,
+          recorte: "todos",
+          // Todas as situações e todos os convênios: o paciente do link pode
+          // estar inativo, sem cadastro ou em outro convênio, e o padrão (Ativo
+          // + ASSIM) o esconderia de quem veio procurá-lo.
+          situacoesPaciente: new Set(TODAS_SITUACOES_PACIENTE),
+          convenios: new Set<string>(),
+        }
+      : filtrosIniciais(),
   )
   const [pagina, setPagina] = useState(1)
   const [aberto, setAberto] = useState<ItemAcompanhamentoLaudo | null>(null)
   const [verHistorico, setVerHistorico] = useState(false)
+  const [resultadoUpload, setResultadoUpload] = useState<RespostaUploadSenhas | null>(null)
   /** Muda só em "Limpar filtros" — é a chave que remonta o campo de busca. */
   const [versaoFiltros, setVersaoFiltros] = useState(0)
 
   /**
-   * Aplica o termo já debounced. ESTÁVEL (deps vazias) de propósito: é o que
-   * mantém o `setRightContent` abaixo fora do caminho do teclado. Ver
-   * `BuscaHeader`.
+   * Aplica o termo já debounced. ESTÁVEL (deps vazias) de propósito: o campo de
+   * busca é memoizado e só re-renderiza sozinho enquanto se digita. Ver
+   * `CampoBusca`.
    */
   const aplicarBusca = useCallback((texto: string) => {
     setFiltros((f) => (f.busca === texto ? f : { ...f, busca: texto }))
@@ -71,7 +106,7 @@ export function AcompanhamentoLaudosShell({ buscaInicial = "" }: Props) {
   /**
    * Volta a tela ao estado de abertura.
    *
-   * `versaoFiltros` é a chave do `BuscaHeader`: incrementá-la REMONTA o campo de
+   * `versaoFiltros` é a chave do `CampoBusca`: incrementá-la REMONTA o campo de
    * busca, o que zera o texto que vive dentro dele. Sem isso, "Limpar filtros"
    * apagaria `filtros.busca` e o campo continuaria mostrando o termo digitado —
    * a tela mostrando a lista inteira com uma busca escrita no header. Remontar
@@ -111,6 +146,24 @@ export function AcompanhamentoLaudosShell({ buscaInicial = "" }: Props) {
     void carregar()
   }, [carregar])
 
+  /**
+   * Depois do upload: mostra o resumo e relê a lista, que passa a vir com as
+   * senhas do arquivo novo. Estável (`carregar` também é), para o botão do
+   * cabeçalho não forçar o efeito do header a rodar de novo.
+   */
+  const aoConcluirUpload = useCallback(
+    (resposta: RespostaUploadSenhas) => {
+      setResultadoUpload(resposta)
+      if (!resposta.duplicado) void carregar()
+    },
+    [carregar],
+  )
+
+  const rotuloSenhas = meta?.senhas
+    ? [meta.senhas.importadoEm, meta.senhas.importadoPorNome].filter(Boolean).join(" · ")
+    : null
+  const comSenhas = meta?.senhas != null
+
   // O "hoje" do SERVIDOR (meta.hoje), não `new Date()` no cliente: é o mesmo
   // valor que decidiu `item.situacao` de cada laudo lá atrás. Usar uma data
   // diferente aqui abriria uma fresta — por exemplo, a página carregada bem na
@@ -120,15 +173,29 @@ export function AcompanhamentoLaudosShell({ buscaInicial = "" }: Props) {
   // usado por um item de verdade.
   const hoje = meta?.hoje ?? ""
 
-  // `contarKpis` recebe `filtros` inteiro — mas só LÊ dele busca, situação do
-  // paciente e as janelas de data, nunca `filtros.recorte` (ver o comentário
-  // da função). É por isso que os cards respondem a "Avisado em 03/08 até —"
-  // (pedido do usuário, 28/08/2026: "eu tenho 4 Vence em breve, mas nenhum
-  // dentro desse período — o painel precisa responder a isso") sem que
-  // selecionar um recorte zere os outros cards.
+  // Cada painel de indicadores conta com os filtros do painel de filtros E o
+  // recorte do OUTRO painel, nunca o próprio (ver `contarKpis`/`contarKpisSenha`):
+  // os cards respondem ao período, ao convênio e ao cruzamento, sem que escolher
+  // um card zere os vizinhos.
   const contagens = useMemo(() => contarKpis(itens, filtros, hoje), [itens, filtros, hoje])
+  // O painel da senha conta pelo recorte do LAUDO, e o do laudo pelo da senha —
+  // é o cruzamento que os dois painéis oferecem (ver PainelIndicadores).
+  const contagensSenha = useMemo(() => contarKpisSenha(itens, filtros, hoje), [itens, filtros, hoje])
+
+  const escolherRecorte = useCallback((recorte: RecorteLaudo) => {
+    setFiltros((f) => ({ ...f, recorte }))
+    setPagina(1)
+  }, [])
+  const escolherRecorteSenha = useCallback((recorteSenha: RecorteSenha) => {
+    setFiltros((f) => ({ ...f, recorteSenha }))
+    setPagina(1)
+  }, [])
 
   const filtrados = useMemo(() => aplicar(itens, filtros, hoje), [itens, filtros, hoje])
+
+  // Da lista inteira, não da filtrada: filtrar por convênio não pode sumir com
+  // as outras opções do próprio filtro.
+  const opcoesConvenio = useMemo(() => opcoesDeConvenio(itens), [itens])
 
   const totalPaginas = Math.max(1, Math.ceil(filtrados.length / POR_PAGINA))
   // Um filtro que encurta a lista pode deixar a página atual fora do intervalo;
@@ -164,23 +231,11 @@ export function AcompanhamentoLaudosShell({ buscaInicial = "" }: Props) {
 
   useEffect(() => {
     setRightContent(
-      // `overflow-x-auto` é a rede de segurança: em janelas mais estreitas que
-      // busca + filtros + Histórico juntos, o próprio bloco rola de lado em vez
-      // de a barra do sistema (fixa em 80px, `layout.tsx`) cortar o que não
-      // coube. `min-w-0` é o que deixa esse `overflow-x-auto` valer: sem ele, um
-      // item flex por padrão recusa encolher abaixo do seu conteúdo, e o scroll
-      // nunca chegaria a ativar. `flex-nowrap`: quebrar linha aqui estouraria
-      // essa mesma altura fixa.
-      <div className="flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto">
-        <BuscaHeader key={versaoFiltros} onBusca={aplicarBusca} textoInicial={buscaInicial} />
-        <BarraFiltros
-          filtros={filtros}
-          onChange={(f) => {
-            setFiltros(f)
-            setPagina(1)
-          }}
-          onLimpar={limparFiltros}
-        />
+      // Só AÇÕES no cabeçalho. Os filtros saíram para `PainelFiltros`, abaixo
+      // dele — a faixa de 80px (`layout.tsx`) não comportava busca + filtros +
+      // upload + Histórico sem rolar de lado.
+      <div className="flex min-w-0 flex-nowrap items-center gap-2">
+        <UploadSenhasHeader rotulo={rotuloSenhas} onConcluido={aoConcluirUpload} />
         <button
           type="button"
           onClick={() => setVerHistorico(true)}
@@ -192,15 +247,10 @@ export function AcompanhamentoLaudosShell({ buscaInicial = "" }: Props) {
       </div>,
     )
     return () => setRightContent(null)
-    // `aplicarBusca`, `setRightContent` e `limparFiltros` são estáveis. `filtros`
-    // NÃO é — muda a cada clique num filtro, e por isso ESTÁ na lista: sem ele,
-    // a `BarraFiltros` movida para cá (pedido do usuário, 28/08/2026) ficaria
-    // presa no valor de quando o efeito rodou pela última vez, mostrando uma
-    // data antiga depois de escolher uma nova. Isso não reabre o problema da
-    // digitação instantânea: `filtros` só muda em ações discretas de clique
-    // (data, ordenar, situação, KPI), nunca por tecla — quem segura o texto
-    // livre é `BuscaHeader`, com seu próprio estado e debounce.
-  }, [aplicarBusca, filtros, limparFiltros, setRightContent, versaoFiltros])
+    // `aoConcluirUpload` e `setRightContent` são estáveis; `rotuloSenhas` só
+    // muda quando a lista recarrega depois de um upload. Nenhum filtro entra
+    // aqui: mexer num filtro não recria o cabeçalho.
+  }, [aoConcluirUpload, rotuloSenhas, setRightContent])
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-4 px-4 py-6">
@@ -217,14 +267,68 @@ export function AcompanhamentoLaudosShell({ buscaInicial = "" }: Props) {
         </div>
       )}
 
-      <KpisLaudos
-        contagens={contagens}
-        recorte={filtros.recorte}
-        carregando={carregando}
-        onRecorte={(recorte) => {
-          setFiltros((f) => ({ ...f, recorte }))
+      {/* As senhas falharam, os laudos não: a lista está inteira, só sem a
+          coluna de senha. Dizer isso evita que "Sem relatório" em todos os
+          cartões pareça que ninguém subiu o arquivo. */}
+      {meta?.senhasErro && (
+        <div
+          role="alert"
+          className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-300"
+        >
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+          <span>
+            Não foi possível carregar as senhas da ASSIM ({meta.senhasErro}). Os laudos estão
+            completos; só as senhas ficaram de fora.
+          </span>
+        </div>
+      )}
+
+      {/* O convênio da grade não veio: a lista está inteira, com o Plano do
+          Órbita no lugar. Sem o aviso, um convênio antigo passaria por atual. */}
+      {meta?.convenioErro && (
+        <div
+          role="alert"
+          className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-300"
+        >
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+          <span>
+            Não foi possível ler o convênio da grade da TiTa ({meta.convenioErro}). O convênio
+            mostrado é o Plano do relatório do Órbita.
+          </span>
+        </div>
+      )}
+
+      <PainelFiltros
+        filtros={filtros}
+        onChange={(f) => {
+          setFiltros(f)
           setPagina(1)
         }}
+        onLimpar={limparFiltros}
+        comSenhas={comSenhas}
+        hoje={hoje}
+        busca={<CampoBusca key={versaoFiltros} onBusca={aplicarBusca} textoInicial={buscaInicial} />}
+        opcoesConvenio={opcoesConvenio}
+      />
+
+      <PainelIndicadores
+        contagensLaudo={contagens}
+        contagensSenha={contagensSenha}
+        recorte={filtros.recorte}
+        recorteSenha={filtros.recorteSenha}
+        onRecorte={escolherRecorte}
+        onRecorteSenha={escolherRecorteSenha}
+        carregando={carregando}
+        comSenhas={comSenhas}
+      />
+
+      <FaixaRecortes
+        recorte={filtros.recorte}
+        recorteSenha={filtros.recorteSenha}
+        total={filtrados.length}
+        carregando={carregando}
+        onRecorte={escolherRecorte}
+        onRecorteSenha={escolherRecorteSenha}
       />
 
       {carregando ? (
@@ -290,6 +394,24 @@ export function AcompanhamentoLaudosShell({ buscaInicial = "" }: Props) {
           {meta.descartadas > 0 && ` · ${meta.descartadas} linha(s) sem ID Laudo, descartada(s)`}
           {meta.comSituacaoDivergente > 0 &&
             ` · ${meta.comSituacaoDivergente} com situação divergente do Órbita`}
+          {!meta.convenioErro &&
+            ` · convênio pela grade da TiTa em ${meta.convenioPelaGrade} de ${meta.laudos} (o resto pelo Plano do Órbita)`}
+          <br />
+          {meta.senhas ? (
+            <>
+              Senhas <span className="font-semibold">{meta.senhas.arquivoNome}</span>
+              {meta.senhas.importadoEm && ` · importado em ${meta.senhas.importadoEm}`}
+              {meta.senhas.importadoPorNome && ` por ${meta.senhas.importadoPorNome}`} ·{" "}
+              {meta.senhas.autorizacoes} autorizações → {meta.senhas.laudosCasados} laudos
+              casados
+              {meta.senhas.laudosOrfaos.length > 0 &&
+                ` · ${meta.senhas.laudosOrfaos.length} fora do Órbita (${meta.senhas.laudosOrfaos.join(", ")})`}
+              {meta.senhas.laudosDivergentes.length > 0 &&
+                ` · ${meta.senhas.laudosDivergentes.length} com favorecido divergente (${meta.senhas.laudosDivergentes.join(", ")})`}
+            </>
+          ) : (
+            !meta.senhasErro && "Nenhum relatório de senhas importado — use “Atualizar senhas”."
+          )}
         </p>
       )}
 
@@ -297,8 +419,16 @@ export function AcompanhamentoLaudosShell({ buscaInicial = "" }: Props) {
         <RegistrarAvisoModal
           item={aberto}
           hoje={hoje}
+          metaSenhas={meta?.senhas ?? null}
           onFechar={() => setAberto(null)}
           onSalvo={substituir}
+        />
+      )}
+
+      {resultadoUpload && (
+        <ResultadoUploadSenhasModal
+          resultado={resultadoUpload}
+          onFechar={() => setResultadoUpload(null)}
         />
       )}
 
@@ -315,30 +445,17 @@ export function AcompanhamentoLaudosShell({ buscaInicial = "" }: Props) {
 }
 
 /**
- * O campo de busca do header — dono do PRÓPRIO texto.
+ * O campo de busca do painel de filtros — dono do PRÓPRIO texto.
  *
- * POR QUE ELE EXISTE COMO COMPONENTE, e não como um `<input>` inline no
- * `setRightContent`: naquele desenho o texto morava no estado do shell, então
- * CADA TECLA
- *
- *   1. atualizava o estado do shell,
- *   2. re-executava o efeito de `setRightContent` (que dependia do texto),
- *   3. recriava a árvore inteira do header e a empurrava para o
- *      HeaderContext,
- *   4. re-renderizava o layout do dashboard — que contém este próprio input.
- *
- * O debounce de 200ms não ajudava nada nisso: ele só atrasa o REFILTRO, e o
- * caminho caro acontecia antes dele, no passo 3. O sintoma era exatamente o
- * relatado: digitar e a letra demorar a aparecer.
- *
- * Com o texto aqui dentro, uma tecla re-renderiza só este componente. O shell
- * ouve apenas o valor debounced, por um callback estável (`aplicarBusca`), e o
- * efeito do header roda uma única vez, na montagem.
- *
- * (O mesmo padrão vale para /cadastros/pacientes, que tem a estrutura antiga —
- * fora do escopo desta tela, não mexido aqui.)
+ * O texto mora aqui, e não no estado do shell, para uma tecla re-renderizar só
+ * este campo: com o texto no shell, cada letra refaria o painel, os KPIs e a
+ * grade de 75 cartões antes do debounce ter qualquer chance de ajudar (foi o
+ * sintoma de "digitar e a letra demorar a aparecer" quando a busca morava no
+ * cabeçalho). O shell ouve só o valor debounced, por um callback estável
+ * (`aplicarBusca`), e "Limpar filtros" zera o texto remontando o campo pela
+ * chave (`versaoFiltros`).
  */
-const BuscaHeader = memo(function BuscaHeader({
+const CampoBusca = memo(function CampoBusca({
   onBusca,
   textoInicial = "",
 }: {
@@ -353,29 +470,26 @@ const BuscaHeader = memo(function BuscaHeader({
   }, [texto, onBusca])
 
   return (
-    <div className="relative min-w-0 flex-1">
+    <div className="relative">
       <Search
-        className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+        className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
         aria-hidden="true"
       />
       <input
-        type="text"
-        // `min-w-[160px]`, não `w-80` fixo: agora divide o cabeçalho com a
-        // barra de filtros inteira (pedido do usuário, 28/08/2026) — `flex-1`
-        // deixa este campo ser o primeiro a ceder espaço quando o resto não
-        // couber, até um piso ainda digitável, em vez de tirar espaço fixo dos
-        // filtros ao lado.
-        className={`${campo} pl-9 ${texto ? "pr-9" : ""} min-w-[160px]`}
-        placeholder="Buscar nome ou ID"
+        type="search"
+        className={`h-10 w-full rounded-lg border border-border bg-background pl-9 ${
+          texto ? "pr-9" : "pr-3"
+        } text-sm text-foreground placeholder:text-muted-foreground/70 focus:outline-none focus:ring-2 focus:ring-ring [&::-webkit-search-cancel-button]:hidden`}
+        placeholder="Buscar por nome, ID do paciente ou ID do laudo"
         value={texto}
         onChange={(e) => setTexto(e.target.value)}
-        aria-label="Buscar laudo"
+        aria-label="Buscar laudo por nome, ID do paciente ou ID do laudo"
       />
       {texto && (
         <button
           type="button"
           onClick={() => setTexto("")}
-          className={`absolute right-1.5 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground ${foco}`}
+          className={`absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground ${foco}`}
           aria-label="Limpar busca"
         >
           <X className="h-4 w-4" aria-hidden="true" />

@@ -8,10 +8,17 @@ import {
   type PacienteParaAcompanhamento,
   type RegistroAcompanhamentoBruto,
 } from "@/lib/laudos/acompanhamento"
+import { juntarComSenhas } from "@/lib/laudos/senhas"
+import { juntarComConvenio, unificarConvenios, type ConvenioDaGrade } from "@/lib/laudos/convenio"
 import { buscarLaudosDoRelatorio } from "./relatorio"
-import type { ItemAcompanhamentoLaudo, MetaAcompanhamentoLaudos } from "@/types/laudosAcompanhamento"
+import { buscarSenhasAtuais } from "./senhas"
+import type {
+  ItemAcompanhamentoLaudo,
+  MetaAcompanhamentoLaudos,
+  MetaSenhas,
+} from "@/types/laudosAcompanhamento"
 
-// A lista da tela Acompanhamento de Laudos: três fontes, uma linha por laudo.
+// A lista da tela Status Laudos e Senhas: quatro fontes, uma linha por laudo.
 //
 //   1. `orbita_laudos_relatorio` — a LISTA. Quem está nela está na tela.
 //      Reusa buscarLaudosDoRelatorio() de propósito: aquela função já carrega as
@@ -22,6 +29,12 @@ import type { ItemAcompanhamentoLaudo, MetaAcompanhamentoLaudos } from "@/types/
 //      aqui seria reabrir os três em silêncio.
 //   2. `public.pacientes` — ENRIQUECIMENTO: `ativo` e `foto_path`. Pode faltar.
 //   3. `public.laudos_acompanhamento` — o registro da recepção. Pode faltar.
+//   4. `laudos_senhas_*` — o relatório de senhas da ASSIM, subido à mão. Pode
+//      faltar (nunca importado) e pode FALHAR sem derrubar a tela: a fila de
+//      laudos não depende das senhas, e a falha vai para `meta.senhasErro`.
+//   5. `grade_convenio_por_paciente()` — o convênio do paciente pela grade da
+//      TiTa. Também pode falhar sem derrubar: a lista fica com o Plano do
+//      Órbita, e a falha vai para `meta.convenioErro`.
 //
 // A ordem importa: a lista NUNCA é definida pelo cadastro. Medido em
 // 28/08/2026, 58 dos 343 laudos são de paciente sem cadastro no Pulsar — 57
@@ -83,8 +96,17 @@ export async function buscarAcompanhamentoLaudos(
   const { rows, meta: metaImportacao } = await buscarLaudosDoRelatorio(sb)
   const { laudos, descartadas } = agruparLaudos(rows, hoje)
 
-  // As duas leituras de enriquecimento são independentes entre si — em paralelo.
-  const [pacientesBrutos, registrosBrutos] = await Promise.all([
+  // As leituras de enriquecimento são independentes entre si — em paralelo.
+  // A das senhas nunca rejeita: o erro vira valor, para não derrubar as outras.
+  const senhasPromessa = buscarSenhasAtuais(sb).then(
+    (r) => ({ ok: true as const, r }),
+    (e: unknown) => ({ ok: false as const, erro: e instanceof Error ? e.message : String(e) }),
+  )
+  const convenioPromessa = lerConvenioDaGrade(sb).then(
+    (r) => ({ ok: true as const, r }),
+    (e: unknown) => ({ ok: false as const, erro: e instanceof Error ? e.message : String(e) }),
+  )
+  const [pacientesBrutos, registrosBrutos, senhasLidas, convenioLido] = await Promise.all([
     lerTudo(
       sb,
       "pacientes",
@@ -97,6 +119,8 @@ export async function buscarAcompanhamentoLaudos(
       "id_laudo, mensagem_enviada_em, observacao, atualizado_por_nome, atualizado_em_brasilia",
       "id_laudo",
     ),
+    senhasPromessa,
+    convenioPromessa,
   ])
 
   // O CRUZAMENTO em si é puro e mora em lib/laudos/acompanhamento.ts — é lá que
@@ -104,11 +128,57 @@ export async function buscarAcompanhamentoLaudos(
   // é do LAUDO, não do paciente: um paciente com laudo novo (id_laudo diferente)
   // volta a precisar de aviso, sem nenhuma lógica extra aqui, só porque o
   // cruzamento é por id_laudo.
-  const itens = juntarComAcompanhamento(
+  const itensSemConvenio = juntarComAcompanhamento(
     laudos,
     pacientesBrutos as unknown as PacienteParaAcompanhamento[],
     registrosBrutos as unknown as RegistroAcompanhamentoBruto[],
   )
+
+  // O convênio vem ANTES das senhas: é ele que decide "Sem senha" (ASSIM) ×
+  // outro convênio para o laudo que não está no relatório de senhas.
+  let itensSemSenha = itensSemConvenio
+  let convenioPelaGrade = 0
+  let convenioErro: string | null = null
+  if (convenioLido.ok) {
+    const juncao = juntarComConvenio(itensSemConvenio, convenioLido.r)
+    itensSemSenha = juncao.itens
+    convenioPelaGrade = juncao.pelaGrade
+  } else {
+    convenioErro = convenioLido.erro
+    console.error(`[laudos:acompanhamento] convênio da grade não carregado: ${convenioLido.erro}`)
+  }
+  // Incorporações (MEMORIAL → ASSIM) valem para o convênio da grade E para o
+  // Plano do Órbita — e antes das senhas, que decidem "Sem senha" por ele.
+  itensSemSenha = unificarConvenios(itensSemSenha)
+
+  let itens: ItemAcompanhamentoLaudo[] = itensSemSenha
+  let senhas: MetaSenhas | null = null
+  let senhasErro: string | null = null
+
+  if (!senhasLidas.ok) {
+    senhasErro = senhasLidas.erro
+    console.error(`[laudos:acompanhamento] senhas não carregadas: ${senhasLidas.erro}`)
+  } else if (senhasLidas.r) {
+    const { importacao, autorizacoes } = senhasLidas.r
+    const juncao = juntarComSenhas(itensSemSenha, autorizacoes, hoje)
+    itens = juncao.itens
+    senhas = {
+      importacaoId: importacao.id,
+      arquivoNome: importacao.arquivoNome,
+      importadoEm: importacao.importadoEm,
+      importadoPorNome: importacao.importadoPorNome,
+      totalLinhas: importacao.totalLinhas,
+      autorizacoes: importacao.totalAutorizacoes,
+      laudosCasados: juncao.resumo.laudosCasados,
+      laudosOrfaos: juncao.resumo.laudosOrfaos,
+      laudosDivergentes: [...new Set(juncao.resumo.laudosDivergentes.map((d) => d.idLaudo))],
+    }
+    if (juncao.resumo.laudosDivergentes.length > 0) {
+      console.warn(
+        `[laudos:acompanhamento] ${senhas.laudosDivergentes.length} laudo(s) com favorecido diferente entre o Órbita e o relatório de senhas — não casados.`,
+      )
+    }
+  }
 
   const comCamposDivergentes = laudos.filter((l) => l.camposDivergentes.length > 0).length
   const comSituacaoDivergente = laudos.filter((l) => l.situacaoDivergente).length
@@ -145,6 +215,44 @@ export async function buscarAcompanhamentoLaudos(
       descartadas,
       comCamposDivergentes,
       comSituacaoDivergente,
+      senhas,
+      senhasErro,
+      convenioPelaGrade,
+      convenioErro,
     },
   }
+}
+
+/**
+ * O convênio de cada paciente pela grade (uma linha por paciente, ~500).
+ * Paginado mesmo assim: RPC também passa pelo teto de 1.000 do PostgREST, e o
+ * corte seria silencioso.
+ */
+async function lerConvenioDaGrade(sb: ClienteSupabase): Promise<ConvenioDaGrade[]> {
+  const todas: ConvenioDaGrade[] = []
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await sb
+      .rpc("grade_convenio_por_paciente")
+      .order("paciente_id", { ascending: true })
+      .range(from, from + PAGE - 1)
+    if (error) throw new Error(`falha ao ler grade_convenio_por_paciente: ${error.message}`)
+    const pagina = (data ?? []) as {
+      paciente_id: number | string
+      convenio_nome: string
+      data_referencia: string | null
+      futuro: boolean
+    }[]
+    for (const l of pagina) {
+      const id = Number(l.paciente_id)
+      if (!Number.isFinite(id) || !l.convenio_nome) continue
+      todas.push({
+        pacienteId: id,
+        convenio: l.convenio_nome,
+        dataReferencia: l.data_referencia,
+        futuro: l.futuro,
+      })
+    }
+    if (pagina.length < PAGE) break
+  }
+  return todas
 }

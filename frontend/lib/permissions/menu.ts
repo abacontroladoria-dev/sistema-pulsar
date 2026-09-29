@@ -97,7 +97,7 @@ export const MENU_ITENS: MenuItemDef[] = [
   { codigo: 'atendimentos', label: 'Atendimentos', grupo: G.pacientes.nome, path: '/solicitar', icon: PlusCircle },
   { codigo: 'gestao', label: 'Gestão Recepção', grupo: G.pacientes.nome, path: '/central-pacientes', icon: Activity },
   { codigo: 'autorizacoes_avulsas', label: 'Autorizações Avulsas', grupo: G.pacientes.nome, path: '/autorizacoes-avulsas', icon: ClipboardPlus },
-  { codigo: 'acompanhamento_laudos', label: 'Status dos Laudos', grupo: G.pacientes.nome, path: '/acompanhamento/laudos', icon: FileClock },
+  { codigo: 'acompanhamento_laudos', label: 'Status Laudos e Senhas', grupo: G.pacientes.nome, path: '/acompanhamento/laudos', icon: FileClock },
   { codigo: 'outros_convenios', label: 'Outros Convênios', grupo: G.pacientes.nome, path: '/outros-convenios', icon: Landmark },
 
   { codigo: 'escala_terapeutica', label: 'Gestão', grupo: G.terapeutico.nome, path: '/central-terapeutas', icon: UserRound },

@@ -34,6 +34,18 @@ interface Props<Id extends string | number> {
   ariaLabel: string
   /** Plural usado no resumo com 3+ selecionados (ex.: "3 {nomePlural} selecionadas"). */
   nomePlural?: string
+  /**
+   * A palavra depois do número no resumo. Padrão "selecionadas" (terapias,
+   * situações); "selecionados" para substantivo masculino (convênios).
+   */
+  adjetivoResumo?: string
+  /**
+   * Liga a linha "Marcar todos · Desmarcar todos" logo abaixo da busca. Recebe
+   * os ids VISÍVEIS: com texto digitado, marca só os que a busca achou — o que
+   * se espera de "marcar todos" numa lista filtrada.
+   */
+  onMarcarTodos?: (idsVisiveis: Id[]) => void
+  onDesmarcarTodos?: () => void
   /** Lista todos os selecionados no resumo, em vez de resumir em "N selecionadas". */
   resumoCompleto?: boolean
   /** Classe extra do gatilho, pra casar com o estilo da tela que o usa. */
@@ -58,7 +70,7 @@ interface Props<Id extends string | number> {
   portal?: boolean
 }
 
-export function MultiSearchCombobox<Id extends string | number = number>({ opcoes, selecionados, onToggle, placeholder = "Nenhuma opção selecionada", ariaLabel, nomePlural = "opções", resumoCompleto = false, className = "", disabled = false, variant = "padrao", triggerRef, portal = true }: Props<Id>) {
+export function MultiSearchCombobox<Id extends string | number = number>({ opcoes, selecionados, onToggle, placeholder = "Nenhuma opção selecionada", ariaLabel, nomePlural = "opções", adjetivoResumo = "selecionadas", onMarcarTodos, onDesmarcarTodos, resumoCompleto = false, className = "", disabled = false, variant = "padrao", triggerRef, portal = true }: Props<Id>) {
   const [aberto, setAberto] = useState(false)
   const [texto, setTexto] = useState("")
   const wrapperRef = useRef<HTMLDivElement>(null)
@@ -123,7 +135,7 @@ export function MultiSearchCombobox<Id extends string | number = number>({ opcoe
     ? placeholder
     : resumoCompleto || nomesSelecionados.length <= 2
       ? nomesSelecionados.join(", ")
-      : `${nomesSelecionados.length} ${nomePlural} selecionadas`
+      : `${nomesSelecionados.length} ${nomePlural} ${adjetivoResumo}`
 
   const plano = variant === "plano"
   const classesGatilho = plano
@@ -155,6 +167,31 @@ export function MultiSearchCombobox<Id extends string | number = number>({ opcoe
         placeholder="Digite para buscar..."
         className="shrink-0 border-b border-border bg-transparent px-3 py-2 text-[13px] text-foreground placeholder:text-muted-foreground focus:outline-none"
       />
+      {(onMarcarTodos || onDesmarcarTodos) && (
+        // Ações em massa: texto, não botão pesado — é atalho, não o conteúdo.
+        <div className="flex shrink-0 items-center justify-end gap-3 border-b border-border px-3 py-1.5 text-[12px]">
+          {onMarcarTodos && (
+            <button
+              type="button"
+              onClick={() => onMarcarTodos(filtradas.map(o => o.id))}
+              disabled={!filtradas.length || filtradas.every(o => selecionados.has(o.id))}
+              className="font-semibold text-primary hover:underline disabled:cursor-default disabled:text-muted-foreground disabled:no-underline disabled:opacity-60"
+            >
+              {texto.trim() ? "Marcar os encontrados" : "Marcar todos"}
+            </button>
+          )}
+          {onDesmarcarTodos && (
+            <button
+              type="button"
+              onClick={onDesmarcarTodos}
+              disabled={selecionados.size === 0}
+              className="font-semibold text-muted-foreground hover:text-foreground hover:underline disabled:cursor-default disabled:no-underline disabled:opacity-50"
+            >
+              Desmarcar todos
+            </button>
+          )}
+        </div>
+      )}
       <div className="overflow-y-auto p-1">
         {!filtradas.length ? (
           <div className="px-3 py-2 text-[12px] text-muted-foreground">Nenhuma opção encontrada.</div>
