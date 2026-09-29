@@ -468,6 +468,8 @@ export default function PermissoesPageShell() {
   // os membros de uma vez, então nada é gravado sem mostrar quem muda.
   const [grupoToggleAlvo, setGrupoToggleAlvo] = useState<{ grupo: Grupo; valor: boolean } | null>(null)
   const [grupoActionId, setGrupoActionId] = useState<string | null>(null)
+  const [grupoSearchByPerm, setGrupoSearchByPerm] = useState('')
+  const [onlyGrantedGrupos, setOnlyGrantedGrupos] = useState(true)
   const [openGroupsPermView, setOpenGroupsPermView] = useState<Set<string>>(INITIAL_OPEN)
   const [grantingUserId, setGrantingUserId] = useState<string | null>(null)
 
@@ -686,6 +688,16 @@ export default function PermissoesPageShell() {
     () => gruposForSelectedCodigo.filter(x => x.granted).length,
     [gruposForSelectedCodigo]
   )
+
+  const filteredGruposForSelectedCodigo = useMemo(() => {
+    let list = gruposForSelectedCodigo
+    if (onlyGrantedGrupos) list = list.filter(x => x.granted)
+    if (grupoSearchByPerm) {
+      const q = grupoSearchByPerm.toLowerCase()
+      list = list.filter(x => x.grupo.nome.toLowerCase().includes(q))
+    }
+    return list
+  }, [gruposForSelectedCodigo, onlyGrantedGrupos, grupoSearchByPerm])
 
   const filteredUsersForSelectedCodigo = useMemo(() => {
     let list = usersForSelectedCodigo
@@ -1681,16 +1693,34 @@ export default function PermissoesPageShell() {
                     </div>
                   </div>
 
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <label className="relative flex-1 min-w-[200px]">
+                      <span className="sr-only">Buscar grupo</span>
+                      <Search size={13} aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="Buscar grupo..."
+                        value={grupoSearchByPerm}
+                        onChange={e => setGrupoSearchByPerm(e.target.value)}
+                        className="w-full pl-8 pr-3 py-2 text-sm rounded-xl border border-slate-200 bg-slate-50 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/10"
+                      />
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer select-none">
+                      <Checkbox checked={onlyGrantedGrupos} onChange={setOnlyGrantedGrupos} label="Somente com acesso" />
+                      Somente com acesso
+                    </label>
+                  </div>
+
                   {loadingGrupos ? (
                     <div className="flex flex-col items-center justify-center py-8 gap-3">
                       <div className="w-5 h-5 border-2 border-brand border-t-transparent rounded-full animate-spin" />
                       <span className="text-sm text-slate-500">Carregando grupos...</span>
                     </div>
-                  ) : gruposForSelectedCodigo.length === 0 ? (
-                    <p className="text-center text-sm text-slate-500 py-6">Nenhum grupo cadastrado</p>
+                  ) : filteredGruposForSelectedCodigo.length === 0 ? (
+                    <p className="text-center text-sm text-slate-500 py-6">Nenhum grupo encontrado</p>
                   ) : (
                     <div className="space-y-0.5 max-h-72 overflow-y-auto">
-                      {gruposForSelectedCodigo.map(({ grupo, granted, membros }) => (
+                      {filteredGruposForSelectedCodigo.map(({ grupo, granted, membros }) => (
                         <div
                           key={grupo.id}
                           className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors duration-100"
