@@ -14,15 +14,18 @@ import {
   PREDICADO_RECORTE,
   TODAS_SITUACOES_PACIENTE,
   aplicar,
+  contarKpisSenha,
   avisoEhPrematuro,
   contarKpis,
   filtrar,
   filtrosAlterados,
   filtrosIniciais,
   ordenar,
+  proximaValidadeDeSenha,
   type FiltrosLaudos,
   type RecorteLaudo,
 } from "./filtros"
+import { calcularSenhasDoLaudo } from "./senhas"
 import type { ItemAcompanhamentoLaudo, SituacaoPaciente } from "@/types/laudosAcompanhamento"
 
 /**
@@ -44,6 +47,11 @@ function item(over: Partial<ItemAcompanhamentoLaudo> = {}): ItemAcompanhamentoLa
     situacaoOrbita: "Vigente",
     situacaoDivergente: false,
     especialidades: ["Arteterapia"],
+    especialidadesQtd: [{ especialidade: "Arteterapia", qtdLaudo: "2", qtdAutorizada: "2" }],
+    plano: "ASSIM Saúde",
+    convenio: "ASSIM Saúde",
+    convenioOrigem: "grade",
+    convenioOriginal: null,
     pacienteId: 11511,
     pacienteNomeCadastro: "Adrian Araújo Nery",
     situacaoPaciente: "ativo",
@@ -52,6 +60,7 @@ function item(over: Partial<ItemAcompanhamentoLaudo> = {}): ItemAcompanhamentoLa
     observacao: null,
     registradoPorNome: null,
     registradoEm: null,
+    senhas: null,
     ...over,
   }
 }
@@ -125,20 +134,20 @@ test("3 · vencidos_sem_aviso é vencido E sem data — não a soma dos dois", (
 
 // ─── 2. O estado inicial ────────────────────────────────────────────────────
 
-test("4 · a tela abre em VENCIDOS SEM AVISO, ordenada por validade mais antiga", () => {
-  // Abrir em "todos" faria a recepção aplicar o mesmo filtro todo dia antes de
-  // começar a trabalhar. E não em "vencidos" — esse recorte nem existe mais
-  // sozinho (ver RecorteLaudo): um vencido já avisado não é a urgência do dia.
+test("4 · a tela abre em TODOS, ASSIM Saúde, só Ativo, ordenada por validade mais antiga", () => {
+  // Pedido do usuário (28/09/2026): "que sempre venha filtrado por paciente
+  // ativo, convênio ASSIM Saúde" e o laudo em Todos. Substituiu a abertura em
+  // "Vencidos sem aviso" — com o painel da senha ao lado, um recorte de laudo
+  // de saída escondia metade do quadro de senhas.
   const f = filtrosIniciais()
-  assert.strictEqual(f.recorte, "vencidos_sem_aviso")
+  assert.strictEqual(f.recorte, "todos")
+  assert.strictEqual(f.recorteSenha, "todos")
+  assert.deepStrictEqual([...f.convenios], ["ASSIM Saúde"])
   assert.strictEqual(f.ordem, "validade")
-  // E as QUATRO situações de paciente nascem marcadas: esconder por padrão os
-  // laudos sem cadastro tiraria 57 vencidos da fila sem avisar, e o fictício
-  // fica visível por pedido do usuário (é o laudo de teste dele).
-  assert.deepStrictEqual(
-    [...f.situacoesPaciente].sort(),
-    ["ativo", "ficticio", "inativo", "sem_cadastro"],
-  )
+  // E só ATIVO no paciente — pedido do usuário (28/09/2026), que substituiu o
+  // "as quatro marcadas" de 28/08. Inativo, sem cadastro e fictício ficam a um
+  // clique no filtro Paciente.
+  assert.deepStrictEqual([...f.situacoesPaciente], ["ativo"])
 })
 
 // ─── 3. Busca ───────────────────────────────────────────────────────────────
@@ -270,12 +279,16 @@ test("16 · recém-aberta, não há nada a limpar", () => {
 
 test("17 · qualquer filtro mexido acende o botão", () => {
   const casos: Array<[string, Partial<FiltrosLaudos>]> = [
-    ["recorte", { recorte: "todos" }],
+    ["recorte", { recorte: "vencidos" }],
+    ["convenios", { convenios: new Set<string>() }],
     ["ordem", { ordem: "nome" }],
     ["busca", { busca: "ana" }],
     ["validadeDe", { validadeDe: "2026-01-01" }],
+    ["validadeSenhaDe", { validadeSenhaDe: "2026-01-01" }],
     ["validadeAte", { validadeAte: "2026-01-01" }],
-    ["situacoesPaciente", { situacoesPaciente: new Set<SituacaoPaciente>(["ativo"]) }],
+    ["situacoesPaciente", { situacoesPaciente: new Set<SituacaoPaciente>(["ativo", "inativo"]) }],
+    ["recorteSenha", { recorteSenha: "vencida" }],
+    ["ordem validade_senha", { ordem: "validade_senha" }],
   ]
   for (const [nome, over] of casos) {
     assert.strictEqual(
@@ -287,18 +300,19 @@ test("17 · qualquer filtro mexido acende o botão", () => {
 })
 
 test("18 · troca de situação com a MESMA contagem também acende", () => {
-  // Comparar só `size` deixaria passar isto: 4 situações → 4 situações, uma
-  // trocada. O resultado na tela é outro, então o botão tem que acender.
+  // Comparar só `size` deixaria passar isto: 1 situação → 1 situação, trocada
+  // ("Ativo" por "Inativo"). O resultado na tela é outro, então o botão acende.
   const f = filtrosIniciais()
-  const trocado = new Set<SituacaoPaciente>(["ativo", "inativo", "sem_cadastro", "ficticio"])
-  assert.strictEqual(filtrosAlterados({ ...f, situacoesPaciente: trocado }), false)
-
-  trocado.delete("ficticio")
-  trocado.add("ficticio") // mesma coisa, ordem diferente — continua limpo
-  assert.strictEqual(filtrosAlterados({ ...f, situacoesPaciente: trocado }), false)
-
-  const semUm = new Set<SituacaoPaciente>(["ativo", "inativo", "sem_cadastro"])
-  assert.strictEqual(filtrosAlterados({ ...f, situacoesPaciente: semUm }), true)
+  assert.strictEqual(
+    filtrosAlterados({ ...f, situacoesPaciente: new Set<SituacaoPaciente>(["ativo"]) }),
+    false,
+    "o mesmo conteúdo num Set novo continua limpo",
+  )
+  assert.strictEqual(
+    filtrosAlterados({ ...f, situacoesPaciente: new Set<SituacaoPaciente>(["inativo"]) }),
+    true,
+  )
+  assert.strictEqual(filtrosAlterados({ ...f, situacoesPaciente: new Set<SituacaoPaciente>() }), true)
 })
 
 test("19 · busca só de espaços não conta como filtro", () => {
@@ -318,8 +332,8 @@ test("20 · limpar devolve exatamente o estado inicial", () => {
 
 test("21 · aplicar = filtrar e DEPOIS ordenar", () => {
   const itens = amostra()
-  const saida = aplicar(itens, filtrosIniciais(), HOJE)
-  // Recorte default (vencidos_sem_aviso): só o item 1 — o 2 já foi avisado.
+  const saida = aplicar(itens, { ...filtrosIniciais(), recorte: "vencidos_sem_aviso" }, HOJE)
+  // Vencidos sem aviso: só o item 1 — o 2 já foi avisado.
   assert.deepStrictEqual(saida.map((i) => i.idLaudo), ["1"])
 })
 
@@ -446,16 +460,13 @@ test("34 · busca e situação do paciente também recalculam os cards", () => {
     item({ idLaudo: "b", nome: "Beto Alves", situacaoPaciente: "inativo", situacao: "vencido" }),
   ]
 
-  assert.strictEqual(contarKpis(itens, filtrosIniciais(), HOJE).vencidos, 2)
+  const todas = { ...filtrosIniciais(), situacoesPaciente: new Set(TODAS_SITUACOES_PACIENTE) }
+  assert.strictEqual(contarKpis(itens, todas, HOJE).vencidos, 2)
 
-  const soAtivos = contarKpis(
-    itens,
-    { ...filtrosIniciais(), situacoesPaciente: new Set(["ativo"]) },
-    HOJE,
-  )
-  assert.strictEqual(soAtivos.vencidos, 1)
+  // O padrão (só Ativo) já recorta os cards.
+  assert.strictEqual(contarKpis(itens, filtrosIniciais(), HOJE).vencidos, 1)
 
-  const busca = contarKpis(itens, { ...filtrosIniciais(), busca: "beto" }, HOJE)
+  const busca = contarKpis(itens, { ...todas, busca: "beto" }, HOJE)
   assert.strictEqual(busca.vencidos, 1)
 })
 
@@ -469,4 +480,274 @@ test("35 · o recorte selecionado NUNCA muda os números dos OUTROS cards", () =
   const k3 = contarKpis(amostra(), { ...filtrosIniciais(), recorte: "todos" }, HOJE)
   assert.deepStrictEqual(k1, k2)
   assert.deepStrictEqual(k1, k3)
+})
+
+// ─── Senhas ASSIM ───────────────────────────────────────────────────────────
+
+/** Senha com uma validade dentro do ROL (e, opcionalmente, fora). */
+function comSenha(validadeDentro: string | null, validadeFora: string | null = null) {
+  return calcularSenhasDoLaudo(
+    [
+      {
+        idAutorizacao: "1",
+        idLaudo: "477",
+        idFavorecido: 11511,
+        plano: "ASSIM Saúde",
+        dataLista: null,
+        situacaoDentro: "AUTORIZADO",
+        senhaDentro: "1234567",
+        liberacaoDentro: null,
+        validadeDentro,
+        situacaoFora: validadeFora ? "AUTORIZADO" : "",
+        senhaFora: validadeFora ? "7654321" : "",
+        liberacaoFora: null,
+        validadeFora,
+        criadoEmOrigem: null,
+        atualizadoEmOrigem: null,
+        arquivoAutorizacao: "",
+        cronogramaConvenio: "",
+        observacoes: "",
+        especialidades: [],
+      },
+    ],
+    "ASSIM Saúde",
+    HOJE,
+  )
+}
+
+test("36 · recorte de senha corta pelo pior status; vigente inclui vence em breve", () => {
+  const itens = [
+    item({ idLaudo: "v", senhas: comSenha("2027-01-01") }),
+    item({ idLaudo: "b", senhas: comSenha("2026-09-01") }), // 4 dias depois de HOJE
+    item({ idLaudo: "x", senhas: comSenha("2026-01-01") }),
+    item({ idLaudo: "s", senhas: calcularSenhasDoLaudo([], "ASSIM Saúde", HOJE) }),
+    item({ idLaudo: "o", senhas: calcularSenhasDoLaudo([], "LEVE SAUDE", HOJE) }),
+  ]
+  const f = { ...filtrosIniciais(), recorte: "todos" as const }
+  const ids = (r: FiltrosLaudos["recorteSenha"]) =>
+    filtrar(itens, { ...f, recorteSenha: r }, HOJE).map((i) => i.idLaudo)
+
+  assert.deepStrictEqual(ids("todos"), ["v", "b", "x", "s", "o"])
+  assert.deepStrictEqual(ids("vigente"), ["v", "b"])
+  assert.deepStrictEqual(ids("vence_em_breve"), ["b"])
+  assert.deepStrictEqual(ids("vencida"), ["x"])
+  assert.deepStrictEqual(ids("sem_senha"), ["s"])
+})
+
+test("37 · sem relatório de senhas (senhas nulo) o laudo só aparece em Todas", () => {
+  const itens = [item({ idLaudo: "1", senhas: null })]
+  const f = { ...filtrosIniciais(), recorte: "todos" as const }
+  assert.strictEqual(filtrar(itens, f, HOJE).length, 1)
+  assert.strictEqual(filtrar(itens, { ...f, recorteSenha: "sem_senha" }, HOJE).length, 0)
+})
+
+test("38 · os dois painéis se cruzam: cada um conta pelo recorte do OUTRO, nunca pelo seu", () => {
+  const itens = [
+    item({ idLaudo: "a", situacao: "vencido", validade: "2026-01-01", senhas: comSenha("2027-01-01") }),
+    item({ idLaudo: "b", situacao: "vencido", validade: "2026-01-01", senhas: calcularSenhasDoLaudo([], "ASSIM Saúde", HOJE) }),
+    item({ idLaudo: "c", situacao: "vigente", senhas: calcularSenhasDoLaudo([], "ASSIM Saúde", HOJE) }),
+  ]
+  const base = { ...filtrosIniciais(), recorte: "todos" as const }
+
+  // "Sem senha" marcado: o painel do laudo passa a contar só b e c.
+  const laudo = contarKpis(itens, { ...base, recorteSenha: "sem_senha" }, HOJE)
+  assert.strictEqual(laudo.todos, 2)
+  assert.strictEqual(laudo.vencidos, 1)
+
+  // "Vencidos" marcado: o painel da senha conta só a e b.
+  const senha = contarKpisSenha(itens, { ...base, recorte: "vencidos" }, HOJE)
+  assert.strictEqual(senha.todos, 2)
+  assert.strictEqual(senha.vigente, 1)
+  assert.strictEqual(senha.sem_senha, 1)
+
+  // Marcar um card de senha NÃO muda os outros cards de senha.
+  assert.deepStrictEqual(
+    contarKpisSenha(itens, { ...base, recorteSenha: "sem_senha" }, HOJE),
+    contarKpisSenha(itens, { ...base, recorteSenha: "vigente" }, HOJE),
+  )
+
+  // E a lista é a interseção.
+  assert.deepStrictEqual(
+    filtrar(itens, { ...base, recorte: "vencidos", recorteSenha: "sem_senha" }, HOJE).map((i) => i.idLaudo),
+    ["b"],
+  )
+})
+
+test("39 · o recorte de senha nasce em Todas, e mexer nele acende o Limpar", () => {
+  assert.strictEqual(filtrosIniciais().recorteSenha, "todos")
+  assert.strictEqual(filtrosAlterados({ ...filtrosIniciais(), recorteSenha: "sem_senha" }), true)
+})
+
+test("39 · aplicáveis = laudos em que a senha ASSIM é assunto (outro convênio fora)", () => {
+  const itens = [
+    item({ idLaudo: "a", senhas: comSenha("2027-01-01") }),
+    item({ idLaudo: "o", senhas: calcularSenhasDoLaudo([], "LEVE SAUDE", HOJE) }),
+    item({ idLaudo: "n", senhas: null }),
+  ]
+  const k = contarKpisSenha(itens, { ...filtrosIniciais(), recorte: "todos" }, HOJE)
+  assert.strictEqual(k.aplicaveis, 1)
+})
+
+test("40 · ordenar por validade da senha: a que vence primeiro, sem senha no fim", () => {
+  const itens = [
+    item({ idLaudo: "tarde", nome: "A", senhas: comSenha("2027-06-01") }),
+    item({ idLaudo: "sem", nome: "B", senhas: calcularSenhasDoLaudo([], "ASSIM Saúde", HOJE) }),
+    item({ idLaudo: "fora-cedo", nome: "C", senhas: comSenha("2027-06-01", "2026-10-01") }),
+    item({ idLaudo: "nulo", nome: "D", senhas: null }),
+  ]
+  assert.deepStrictEqual(
+    ordenar(itens, "validade_senha").map((i) => i.idLaudo),
+    ["fora-cedo", "tarde", "sem", "nulo"],
+  )
+})
+
+test("41 · proximaValidadeDeSenha pega a menor entre dentro e fora", () => {
+  assert.strictEqual(proximaValidadeDeSenha(item({ senhas: comSenha("2027-06-01", "2026-10-01") })), "2026-10-01")
+  assert.strictEqual(proximaValidadeDeSenha(item({ senhas: comSenha(null) })), null)
+  assert.strictEqual(proximaValidadeDeSenha(item({ senhas: null })), null)
+})
+
+// ─── Convênio ───────────────────────────────────────────────────────────────
+
+test("42 · convênio: vazio = todos; escolhido = só ele; sem convênio tem chave própria", () => {
+  const itens = [
+    item({ idLaudo: "a", convenio: "ASSIM Saúde" }),
+    item({ idLaudo: "b", convenio: "LEVE SAUDE" }),
+    item({ idLaudo: "c", convenio: null, convenioOrigem: null }),
+  ]
+  const f = { ...filtrosIniciais(), recorte: "todos" as const, convenios: new Set<string>() }
+  assert.strictEqual(filtrar(itens, f, HOJE).length, 3, "vazio = todos")
+  assert.deepStrictEqual(
+    filtrar(itens, { ...filtrosIniciais(), recorte: "todos" }, HOJE).map((i) => i.idLaudo),
+    ["a"],
+    "o padrão (ASSIM Saúde) já recorta",
+  )
+  assert.deepStrictEqual(
+    filtrar(itens, { ...f, convenios: new Set(["LEVE SAUDE"]) }, HOJE).map((i) => i.idLaudo),
+    ["b"],
+  )
+  assert.deepStrictEqual(
+    filtrar(itens, { ...f, convenios: new Set([""]) }, HOJE).map((i) => i.idLaudo),
+    ["c"],
+  )
+})
+
+test("43 · trocar o convênio do padrão acende o Limpar; o mesmo convênio num Set novo, não", () => {
+  assert.strictEqual(filtrosAlterados({ ...filtrosIniciais(), convenios: new Set(["ASSIM Saúde"]) }), false)
+  assert.strictEqual(filtrosAlterados({ ...filtrosIniciais(), convenios: new Set(["LEVE SAUDE"]) }), true)
+  assert.strictEqual(
+    filtrosAlterados({ ...filtrosIniciais(), convenios: new Set(["ASSIM Saúde", "LEVE SAUDE"]) }),
+    true,
+  )
+  assert.strictEqual(filtrosAlterados({ ...filtrosIniciais(), convenios: new Set<string>() }), true)
+})
+
+// ─── Ordenação pela senha ───────────────────────────────────────────────────
+
+/** Senha com validade, liberação e "Atualizado em" controlados. */
+function senhaCom(o: { validade?: string | null; liberacao?: string | null; atualizado?: string | null }) {
+  return calcularSenhasDoLaudo(
+    [
+      {
+        idAutorizacao: "1",
+        idLaudo: "477",
+        idFavorecido: 11511,
+        plano: "ASSIM Saúde",
+        dataLista: null,
+        situacaoDentro: "AUTORIZADO",
+        senhaDentro: "1234567",
+        liberacaoDentro: o.liberacao ?? null,
+        validadeDentro: o.validade ?? null,
+        situacaoFora: "",
+        senhaFora: "",
+        liberacaoFora: null,
+        validadeFora: null,
+        criadoEmOrigem: null,
+        atualizadoEmOrigem: o.atualizado ?? null,
+        arquivoAutorizacao: "",
+        cronogramaConvenio: "",
+        observacoes: "",
+        especialidades: [],
+      },
+    ],
+    "ASSIM Saúde",
+    HOJE,
+  )
+}
+
+/** Senha só com o lado FORA do ROL preenchido (dentro fica "não se aplica"). */
+function senhaComFora(validade: string) {
+  return calcularSenhasDoLaudo(
+    [
+      {
+        idAutorizacao: "1",
+        idLaudo: "477",
+        idFavorecido: 11511,
+        plano: "ASSIM Saúde",
+        dataLista: null,
+        situacaoDentro: "",
+        senhaDentro: "",
+        liberacaoDentro: null,
+        validadeDentro: null,
+        situacaoFora: "AUTORIZADO",
+        senhaFora: "7654321",
+        liberacaoFora: null,
+        validadeFora: validade,
+        criadoEmOrigem: null,
+        atualizadoEmOrigem: null,
+        arquivoAutorizacao: "",
+        cronogramaConvenio: "",
+        observacoes: "",
+        especialidades: [{ especialidade: "Fisioterapia Aquática", grupo: "Fora do ROL", quantidadeAutorizada: "", quantidadeSolicitada: "", codigoGuia: "", descricaoGuia: "", emUso: "" }],
+      },
+    ],
+    "ASSIM Saúde",
+    HOJE,
+  )
+}
+
+test("44 · urgência da senha: mais grave primeiro; no mesmo status, a que vence antes; sem relatório no fim", () => {
+  const itens = [
+    item({ idLaudo: "vig-tarde", nome: "A", senhas: senhaCom({ validade: "2027-06-01" }) }),
+    item({ idLaudo: "nulo", nome: "B", senhas: null }),
+    item({ idLaudo: "vencida", nome: "C", senhas: senhaCom({ validade: "2026-01-01" }) }),
+    item({ idLaudo: "sem", nome: "D", senhas: calcularSenhasDoLaudo([], "ASSIM Saúde", HOJE) }),
+    item({ idLaudo: "vig-cedo", nome: "E", senhas: senhaCom({ validade: "2027-01-01" }) }),
+    item({ idLaudo: "outro", nome: "F", senhas: calcularSenhasDoLaudo([], "LEVE SAUDE", HOJE) }),
+  ]
+  assert.deepStrictEqual(
+    ordenar(itens, "urgencia_senha").map((i) => i.idLaudo),
+    ["vencida", "sem", "vig-cedo", "vig-tarde", "outro", "nulo"],
+  )
+})
+
+test("45 · liberação e atualização na ASSIM: a mais RECENTE primeiro, sem data no fim", () => {
+  const itens = [
+    item({ idLaudo: "velha", nome: "A", senhas: senhaCom({ liberacao: "2026-08-01", atualizado: "2026-08-02T10:00" }) }),
+    item({ idLaudo: "sem", nome: "B", senhas: senhaCom({}) }),
+    item({ idLaudo: "nova", nome: "C", senhas: senhaCom({ liberacao: "2026-09-20", atualizado: "2026-09-21T09:00" }) }),
+  ]
+  assert.deepStrictEqual(ordenar(itens, "liberacao_senha").map((i) => i.idLaudo), ["nova", "velha", "sem"])
+  assert.deepStrictEqual(ordenar(itens, "atualizacao_senha").map((i) => i.idLaudo), ["nova", "velha", "sem"])
+})
+
+test("46 · janela de validade da SENHA: qualquer lado (dentro/fora) dentro do período conta", () => {
+  const itens = [
+    item({ idLaudo: "dentro-perto", senhas: senhaCom({ validade: "2026-10-05" }) }),
+    item({ idLaudo: "dentro-longe", senhas: senhaCom({ validade: "2027-06-01" }) }),
+    item({ idLaudo: "sem-validade", senhas: senhaCom({}) }),
+    item({ idLaudo: "nulo", senhas: null }),
+  ]
+  const f = { ...filtrosIniciais(), recorte: "todos" as const }
+  assert.deepStrictEqual(
+    filtrar(itens, { ...f, validadeSenhaDe: "2026-10-01", validadeSenhaAte: "2026-10-31" }, HOJE).map((i) => i.idLaudo),
+    ["dentro-perto"],
+  )
+  assert.strictEqual(filtrar(itens, f, HOJE).length, 4, "sem período, ninguém é cortado")
+})
+
+test("46 · fora do ROL também conta na janela de validade da senha", () => {
+  const item2 = item({ idLaudo: "so-fora", senhas: senhaComFora("2026-10-05") })
+  const f = { ...filtrosIniciais(), recorte: "todos" as const, validadeSenhaDe: "2026-10-01", validadeSenhaAte: "2026-10-31" }
+  assert.deepStrictEqual(filtrar([item2], f, HOJE).map((i) => i.idLaudo), ["so-fora"])
 })

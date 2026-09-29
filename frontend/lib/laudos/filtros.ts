@@ -1,4 +1,4 @@
-// Filtro, ordenação e contagem da tela Acompanhamento de Laudos.
+// Filtro, ordenação e contagem da tela Status Laudos e Senhas.
 //
 // Módulo PURO, separado dos componentes por dois motivos concretos:
 //
@@ -14,7 +14,9 @@ import type {
   ItemAcompanhamentoLaudo,
   SituacaoPaciente,
   SituacaoLaudo,
+  StatusSenha,
 } from "@/types/laudosAcompanhamento"
+import { CONVENIO_PADRAO, SEM_CONVENIO } from "./convenio"
 
 /**
  * Recorte de situação do laudo — o que os cards de KPI escrevem.
@@ -53,7 +55,63 @@ export const DIAS_ALERTA_VENCIMENTO = 15
  */
 export const DIAS_AVISO_PREMATURO = 30
 
-export type OrdemLaudos = "validade" | "nome" | "avisado_em" | "data_laudo"
+/**
+ * Recorte da SENHA ASSIM — o que os cards do painel "Senha ASSIM" escrevem.
+ * Irmão de `RecorteLaudo`, e COMBINÁVEL com ele (decisão do usuário,
+ * 28/09/2026): "Vencidos sem aviso" + "Sem senha" mostra o cruzamento.
+ *
+ * Lê `senhas.pior` — o pior dos dois lados (dentro/fora do ROL) —, para uma
+ * senha fora do ROL pendente não se esconder atrás de uma dentro do ROL vigente.
+ *
+ *   visão geral:   vigente (inclui "vence em breve") · vencida · sem_senha
+ *   fila de ação:  pendente · vence_em_breve · sem_validade · em_analise
+ *
+ * `vence_em_breve` é subconjunto de `vigente`, como `proximo_vencimento` é de
+ * `vigentes` no laudo: o card geral diz "está valendo", o de detalhe diz "vai
+ * deixar de valer logo". Os demais são disjuntos.
+ */
+export type RecorteSenha =
+  | "todos"
+  | "vigente"
+  | "vencida"
+  | "sem_senha"
+  | "pendente"
+  | "vence_em_breve"
+  | "sem_validade"
+  | "em_analise"
+
+/**
+ * Ordenação da lista, em dois grupos — espelho dos dois painéis (pedido do
+ * usuário, 28/09/2026: "os filtros de ordenação só estão pensando no laudo").
+ *
+ *   laudo: validade · data_laudo · avisado_em · nome
+ *   senha: urgencia_senha · validade_senha · liberacao_senha · atualizacao_senha
+ */
+export type OrdemLaudos =
+  | "validade"
+  | "data_laudo"
+  | "avisado_em"
+  | "nome"
+  | "urgencia_senha"
+  | "validade_senha"
+  | "liberacao_senha"
+  | "atualizacao_senha"
+
+/**
+ * Status da senha do PIOR para o melhor. É a régua de `senhas.pior` (o pior dos
+ * dois lados, em senhas.ts) E da ordenação "Urgência da senha" — uma régua só,
+ * para o card e a ordem da lista nunca discordarem do que é mais grave.
+ */
+export const GRAVIDADE_SENHA: StatusSenha[] = [
+  "vencida",
+  "sem_senha",
+  "pendente",
+  "em_analise",
+  "sem_validade",
+  "vence_em_breve",
+  "vigente",
+  "nao_se_aplica",
+]
 
 export interface FiltrosLaudos {
   recorte: RecorteLaudo
@@ -61,9 +119,26 @@ export interface FiltrosLaudos {
   busca: string
   /** Situação do paciente no cadastro — complementares, somam ao resultado. */
   situacoesPaciente: Set<SituacaoPaciente>
+  /** Recorte da senha ASSIM — os cards do painel "Senha ASSIM". Ver `RecorteSenha`. */
+  recorteSenha: RecorteSenha
+  /**
+   * Convênios escolhidos. VAZIO = todos — ao contrário de paciente e senha, que
+   * nascem com tudo marcado: as opções de convênio só existem depois que a lista
+   * carrega (saem dos itens), e são ~17; marcar todas de saída obrigaria a
+   * desmarcar 16 para ver um. `SEM_CONVENIO` ("") = laudo sem convênio.
+   */
+  convenios: Set<string>
   /** Janela de `validade` (ISO, inclusiva nas duas pontas). "" = sem limite. */
   validadeDe: string
   validadeAte: string
+  /**
+   * Janela da validade da SENHA (ISO, inclusiva). O laudo entra quando QUALQUER
+   * das suas senhas (dentro ou fora do ROL) vence dentro dela — "próximos 15
+   * dias" precisa pegar a senha fora do ROL que vence semana que vem mesmo com a
+   * de dentro valendo até o ano que vem. "" = sem limite.
+   */
+  validadeSenhaDe: string
+  validadeSenhaAte: string
   ordem: OrdemLaudos
 }
 
@@ -74,29 +149,32 @@ export const TODAS_SITUACOES_PACIENTE: SituacaoPaciente[] = [
   "ficticio",
 ]
 
+
 /**
- * O estado inicial da tela: **vencidos sem aviso**, ordenados por validade mais
- * antiga.
+ * O estado inicial da tela — pedido do usuário (28/09/2026): "que sempre venha
+ * filtrado por paciente ativo, convênio ASSIM Saúde" e o laudo em **Todos**.
  *
- * É a fila de trabalho de verdade — vencido e ninguém ainda contatou o
- * responsável — e não "vencidos" (que existe como card de visão geral, mas
- * inclui quem já foi avisado): um vencido já avisado está fora da urgência do
- * dia. Abrir em "todos" faria a recepção aplicar o mesmo filtro toda vez antes
- * de começar a trabalhar.
+ * Até ali abria em "Vencidos sem aviso" (a fila de trabalho do laudo). Com o
+ * painel da senha ao lado, abrir num recorte de laudo escondia metade do quadro
+ * de senhas logo de cara; "Todos" mostra os dois painéis inteiros, e a fila do
+ * dia continua a um clique, no primeiro card da "Fila de ação".
  */
 export function filtrosIniciais(): FiltrosLaudos {
   return {
-    recorte: "vencidos_sem_aviso",
+    recorte: "todos",
     busca: "",
-    // As QUATRO marcadas, fictício incluído. /cadastros/pacientes deixa o
-    // fictício fora por padrão, e aqui a inclinação era copiar isso — mas o
-    // usuário pediu explicitamente para "Notificação Prévia" continuar visível
-    // (é o laudo que ele usa para testar a tela, 28/08/2026). O fictício segue
-    // identificado por selo próprio e desmarcável no filtro; só não nasce
-    // escondido.
-    situacoesPaciente: new Set(TODAS_SITUACOES_PACIENTE),
+    // Só ATIVO — pedido do usuário (28/09/2026): "precisa vir automaticamente
+    // como filtrado somente por ATIVO". Substitui a decisão de 28/08 de abrir
+    // com as quatro (fictício incluído, por causa do laudo de teste "Notificação
+    // Prévia"): o fictício continua a um clique, no filtro Paciente. O link
+    // direto de outra tela abre com as quatro — ver o shell.
+    situacoesPaciente: new Set<SituacaoPaciente>(["ativo"]),
+    recorteSenha: "todos",
+    convenios: new Set([CONVENIO_PADRAO]),
     validadeDe: "",
     validadeAte: "",
+    validadeSenhaDe: "",
+    validadeSenhaAte: "",
     ordem: "validade",
   }
 }
@@ -118,12 +196,18 @@ export function filtrosAlterados(f: FiltrosLaudos): boolean {
   if (f.ordem !== inicial.ordem) return true
   if (f.busca.trim() !== "") return true
   if (f.validadeDe || f.validadeAte) return true
+  if (f.validadeSenhaDe || f.validadeSenhaAte) return true
   // Conjunto: tamanho E conteúdo. Só o tamanho deixaria passar uma troca de
   // "ativo" por "fictício", que tem a mesma contagem e resultado diferente.
   if (f.situacoesPaciente.size !== inicial.situacoesPaciente.size) return true
   for (const s of inicial.situacoesPaciente) {
     if (!f.situacoesPaciente.has(s)) return true
   }
+  if (f.convenios.size !== inicial.convenios.size) return true
+  for (const c of inicial.convenios) {
+    if (!f.convenios.has(c)) return true
+  }
+  if (f.recorteSenha !== inicial.recorteSenha) return true
   return false
 }
 
@@ -222,6 +306,32 @@ export const PREDICADO_RECORTE: Record<
   avisados_vencidos: (i) => ehVencido(i) && foiAvisado(i),
 }
 
+const piorDaSenha = (i: ItemAcompanhamentoLaudo): StatusSenha | null => i.senhas?.pior ?? null
+
+/**
+ * Um predicado por recorte de senha. Laudo sem `senhas` (nenhum relatório
+ * importado) só entra em "todos": não é "sem senha", é "sem informação".
+ */
+export const PREDICADO_RECORTE_SENHA: Record<RecorteSenha, (i: ItemAcompanhamentoLaudo) => boolean> = {
+  todos: () => true,
+  vigente: (i) => {
+    const p = piorDaSenha(i)
+    return p === "vigente" || p === "vence_em_breve"
+  },
+  vencida: (i) => piorDaSenha(i) === "vencida",
+  sem_senha: (i) => piorDaSenha(i) === "sem_senha",
+  pendente: (i) => piorDaSenha(i) === "pendente",
+  vence_em_breve: (i) => piorDaSenha(i) === "vence_em_breve",
+  sem_validade: (i) => piorDaSenha(i) === "sem_validade",
+  em_analise: (i) => piorDaSenha(i) === "em_analise",
+}
+
+/** A senha se aplica ao laudo (é ASSIM, ou tem autorização no relatório)? */
+export function senhaSeAplica(i: ItemAcompanhamentoLaudo): boolean {
+  const p = piorDaSenha(i)
+  return p !== null && p !== "nao_se_aplica"
+}
+
 /** `null` nunca entra numa janela de data: ausência não é intervalo. */
 function dentroDaJanela(iso: string | null, de: string, ate: string): boolean {
   if (!de && !ate) return true
@@ -232,8 +342,8 @@ function dentroDaJanela(iso: string | null, de: string, ate: string): boolean {
 }
 
 /**
- * Os filtros da barra que NÃO são o recorte: busca, situação do paciente e a
- * janela de validade. Extraído à parte porque `contarKpis` precisa aplicá-los
+ * Os filtros do painel que NÃO são recorte: busca, situação do paciente,
+ * convênio e as janelas de validade (do laudo e da senha). Extraído à parte porque `contarKpis` precisa aplicá-los
  * SEM aplicar o recorte — ver o comentário lá.
  */
 function aplicarFiltrosSecundarios(
@@ -247,7 +357,17 @@ function aplicarFiltrosSecundarios(
     // situações, o resultado honesto é nenhuma linha, não todas.
     if (!f.situacoesPaciente.has(i.situacaoPaciente)) return false
 
+    if (f.convenios.size > 0 && !f.convenios.has(i.convenio ?? SEM_CONVENIO)) return false
+
     if (!dentroDaJanela(i.validade, f.validadeDe, f.validadeAte)) return false
+
+    if (f.validadeSenhaDe || f.validadeSenhaAte) {
+      // Sem nenhuma validade de senha (sem relatório, sem senha, outro convênio)
+      // não entra: ausência não é intervalo — mesma regra da validade do laudo.
+      const validades = [i.senhas?.dentro.validade ?? null, i.senhas?.fora.validade ?? null]
+      if (!validades.some((v) => v !== null && dentroDaJanela(v, f.validadeSenhaDe, f.validadeSenhaAte)))
+        return false
+    }
 
     if (termo) {
       const casaNome = norm(i.nome).includes(termo)
@@ -285,7 +405,9 @@ export function contarKpis(
   f: FiltrosLaudos,
   hojeISO: string,
 ): Record<RecorteLaudo, number> {
-  const base = aplicarFiltrosSecundarios(itens, f)
+  // CRUZADO: respeita o recorte da SENHA (o outro painel), não o do laudo. É o
+  // que faz "Sem senha" marcado responder "e desses, quantos vencidos?".
+  const base = aplicarFiltrosSecundarios(itens, f).filter(PREDICADO_RECORTE_SENHA[f.recorteSenha])
   return {
     todos: base.length,
     vigentes: base.filter((i) => PREDICADO_RECORTE.vigentes(i, hojeISO)).length,
@@ -302,16 +424,46 @@ export function contarKpis(
 }
 
 /**
- * A lista que a tela mostra: os filtros secundários E o recorte selecionado.
- * Cada card de KPI leva a EXATAMENTE esta lista quando vira o recorte ativo —
- * é o que `contarKpis` promete contar.
+ * Os números do painel "Senha ASSIM". Espelho de `contarKpis`: aplica os
+ * filtros secundários e o recorte do LAUDO (o outro painel), nunca o próprio —
+ * senão escolher "Sem senha" zeraria os outros cards de senha.
+ *
+ * `aplicaveis` é o denominador do painel: quantos laudos, no recorte atual, têm
+ * a senha ASSIM como assunto (os de outro convênio ficam fora da conta).
+ */
+export function contarKpisSenha(
+  itens: ItemAcompanhamentoLaudo[],
+  f: FiltrosLaudos,
+  hojeISO: string,
+): Record<RecorteSenha, number> & { aplicaveis: number } {
+  const base = aplicarFiltrosSecundarios(itens, f).filter((i) => PREDICADO_RECORTE[f.recorte](i, hojeISO))
+  const conta = (r: RecorteSenha) => base.filter(PREDICADO_RECORTE_SENHA[r]).length
+  return {
+    todos: base.length,
+    vigente: conta("vigente"),
+    vencida: conta("vencida"),
+    sem_senha: conta("sem_senha"),
+    pendente: conta("pendente"),
+    vence_em_breve: conta("vence_em_breve"),
+    sem_validade: conta("sem_validade"),
+    em_analise: conta("em_analise"),
+    aplicaveis: base.filter(senhaSeAplica).length,
+  }
+}
+
+/**
+ * A lista que a tela mostra: os filtros secundários E os DOIS recortes (laudo e
+ * senha). Cada card leva a EXATAMENTE esta lista quando vira o recorte ativo —
+ * é o que `contarKpis`/`contarKpisSenha` prometem contar.
  */
 export function filtrar(
   itens: ItemAcompanhamentoLaudo[],
   f: FiltrosLaudos,
   hojeISO: string,
 ): ItemAcompanhamentoLaudo[] {
-  return aplicarFiltrosSecundarios(itens, f).filter((i) => PREDICADO_RECORTE[f.recorte](i, hojeISO))
+  return aplicarFiltrosSecundarios(itens, f).filter(
+    (i) => PREDICADO_RECORTE[f.recorte](i, hojeISO) && PREDICADO_RECORTE_SENHA[f.recorteSenha](i),
+  )
 }
 
 /**
@@ -327,29 +479,73 @@ export function ordenar(
     a.nome.localeCompare(b.nome, "pt-BR")
 
   // Datas em ISO comparam como string. `null` vai para o FIM em todos os
-  // critérios de data: "sem data" não é "muito antigo".
-  const porData =
-    (campo: "validade" | "mensagemEnviadaEm" | "dataLaudo") =>
+  // critérios de data, nos dois sentidos: "sem data" não é "muito antigo" nem
+  // "muito recente".
+  const porValor =
+    (valor: (i: ItemAcompanhamentoLaudo) => string | null, sentido: 1 | -1 = 1) =>
     (a: ItemAcompanhamentoLaudo, b: ItemAcompanhamentoLaudo) => {
-      const x = a[campo]
-      const y = b[campo]
+      const x = valor(a)
+      const y = valor(b)
       if (x === y) return porNome(a, b)
       if (!x) return 1
       if (!y) return -1
-      return x < y ? -1 : 1
+      return (x < y ? -1 : 1) * sentido
     }
 
-  const comparador =
-    ordem === "nome"
-      ? porNome
-      : ordem === "avisado_em"
-        ? porData("mensagemEnviadaEm")
-        : ordem === "data_laudo"
-          ? porData("dataLaudo")
-          : porData("validade")
+  // Mais grave primeiro; no mesmo status, a senha que vence antes. Laudo sem
+  // relatório de senhas (`senhas` nulo) vai para o fim, depois de "não se aplica".
+  const porUrgencia = (a: ItemAcompanhamentoLaudo, b: ItemAcompanhamentoLaudo) => {
+    const g = (i: ItemAcompanhamentoLaudo) =>
+      i.senhas ? GRAVIDADE_SENHA.indexOf(i.senhas.pior) : GRAVIDADE_SENHA.length
+    return g(a) - g(b) || porValor(proximaValidadeDeSenha)(a, b)
+  }
+
+  const COMPARADORES: Record<
+    OrdemLaudos,
+    (a: ItemAcompanhamentoLaudo, b: ItemAcompanhamentoLaudo) => number
+  > = {
+    validade: porValor((i) => i.validade),
+    data_laudo: porValor((i) => i.dataLaudo),
+    avisado_em: porValor((i) => i.mensagemEnviadaEm),
+    nome: porNome,
+    urgencia_senha: porUrgencia,
+    validade_senha: porValor(proximaValidadeDeSenha),
+    liberacao_senha: porValor(ultimaLiberacaoDeSenha, -1),
+    atualizacao_senha: porValor(ultimaAtualizacaoNaAssim, -1),
+  }
+  const comparador = COMPARADORES[ordem]
 
   // Cópia: ordenar no lugar mutaria o array do estado do React.
   return [...itens].sort(comparador)
+}
+
+/**
+ * A validade de senha que vence PRIMEIRO no laudo — dentro ou fora do ROL. É a
+ * que define até quando o paciente pode ser atendido sem nova senha.
+ */
+export function proximaValidadeDeSenha(i: ItemAcompanhamentoLaudo): string | null {
+  const datas = [i.senhas?.dentro.validade, i.senhas?.fora.validade].filter(
+    (d): d is string => !!d,
+  )
+  if (datas.length === 0) return null
+  return datas.reduce((menor, d) => (d < menor ? d : menor))
+}
+
+/** A liberação de senha mais RECENTE do laudo, dentro ou fora do ROL. */
+export function ultimaLiberacaoDeSenha(i: ItemAcompanhamentoLaudo): string | null {
+  const datas = [i.senhas?.dentro.liberacao, i.senhas?.fora.liberacao].filter(
+    (d): d is string => !!d,
+  )
+  if (datas.length === 0) return null
+  return datas.reduce((maior, d) => (d > maior ? d : maior))
+}
+
+/**
+ * Quando a ASSIM mexeu por último em alguma autorização do laudo ("Atualizado
+ * em" do relatório). As autorizações já vêm da mais recente para a mais antiga.
+ */
+export function ultimaAtualizacaoNaAssim(i: ItemAcompanhamentoLaudo): string | null {
+  return i.senhas?.autorizacoes[0]?.atualizadoEmOrigem ?? null
 }
 
 /** Filtrar + ordenar, na ordem certa. É o que a tela chama. */
@@ -366,7 +562,10 @@ export const RECORTE_LABEL: Record<RecorteLaudo, string> = {
   vigentes: "Vigentes",
   vencidos: "Vencidos",
   vencidos_sem_aviso: "Vencidos sem aviso",
-  proximo_vencimento: "Vence em breve",
+  // Mesmo rótulo do card irmão da Senha ASSIM (`RECORTE_SENHA_LABEL.vence_em_breve`)
+  // — pedido do usuário (28/09/2026): os dois usam a mesma janela
+  // (DIAS_ALERTA_VENCIMENTO = 15), então o nome tem que dizer o mesmo prazo.
+  proximo_vencimento: `Vence em até ${DIAS_ALERTA_VENCIMENTO} dias`,
   avisados_vigentes: "Avisados — Vigentes",
   avisados_vencidos: "Avisados — Vencidos",
 }
@@ -382,4 +581,15 @@ export const SITUACAO_PACIENTE_LABEL: Record<SituacaoPaciente, string> = {
   inativo: "Inativo",
   sem_cadastro: "Sem cadastro",
   ficticio: "Fictício",
+}
+
+export const RECORTE_SENHA_LABEL: Record<RecorteSenha, string> = {
+  todos: "Todas",
+  vigente: "Senha vigente",
+  vencida: "Senha vencida",
+  sem_senha: "Sem senha",
+  pendente: "Senha pendente",
+  vence_em_breve: `Vence em até ${DIAS_ALERTA_VENCIMENTO} dias`,
+  sem_validade: "Sem validade",
+  em_analise: "Em análise",
 }
