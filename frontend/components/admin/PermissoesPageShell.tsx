@@ -1774,7 +1774,7 @@ export default function PermissoesPageShell() {
                             <button
                               onClick={() => setGrupoToggleAlvo({ grupo, valor: false })}
                               disabled={grupoActionId === grupo.id}
-                              className="shrink-0 px-3 py-3.5 text-xs font-semibold text-rose-500 border border-rose-200 rounded-lg hover:bg-rose-50 transition-colors duration-150 disabled:opacity-50"
+                              className="shrink-0 px-3 py-1.5 text-xs font-semibold text-rose-500 border border-rose-200 rounded-lg hover:bg-rose-50 transition-colors duration-150 disabled:opacity-50"
                             >
                               {grupoActionId === grupo.id ? 'Retirando...' : 'Retirar acesso'}
                             </button>
@@ -1782,7 +1782,7 @@ export default function PermissoesPageShell() {
                             <button
                               onClick={() => setGrupoToggleAlvo({ grupo, valor: true })}
                               disabled={grupoActionId === grupo.id}
-                              className="shrink-0 px-3 py-3.5 text-xs font-semibold text-brand-fg border border-brand/30 rounded-lg hover:bg-brand-hover transition-colors duration-150 disabled:opacity-50"
+                              className="shrink-0 px-3 py-1.5 text-xs font-semibold text-brand-fg border border-brand/30 rounded-lg hover:bg-brand-hover transition-colors duration-150 disabled:opacity-50"
                             >
                               {grupoActionId === grupo.id ? 'Liberando...' : 'Liberar acesso'}
                             </button>
@@ -1896,7 +1896,7 @@ export default function PermissoesPageShell() {
                             <button
                               onClick={() => handleRevokeAccessToCodigo(user.id)}
                               disabled={grantingUserId === user.id}
-                              className="shrink-0 px-3 py-3.5 text-xs font-semibold text-rose-500 border border-rose-200 rounded-lg hover:bg-rose-50 transition-colors duration-150 disabled:opacity-50"
+                              className="shrink-0 px-3 py-1.5 text-xs font-semibold text-rose-500 border border-rose-200 rounded-lg hover:bg-rose-50 transition-colors duration-150 disabled:opacity-50"
                             >
                               {grantingUserId === user.id ? 'Retirando...' : 'Retirar acesso'}
                             </button>
@@ -1904,7 +1904,7 @@ export default function PermissoesPageShell() {
                             <button
                               onClick={() => handleGrantAccessToCodigo(user.id)}
                               disabled={grantingUserId === user.id}
-                              className="shrink-0 px-3 py-3.5 text-xs font-semibold text-brand-fg border border-brand/30 rounded-lg hover:bg-brand-hover transition-colors duration-150 disabled:opacity-50"
+                              className="shrink-0 px-3 py-1.5 text-xs font-semibold text-brand-fg border border-brand/30 rounded-lg hover:bg-brand-hover transition-colors duration-150 disabled:opacity-50"
                             >
                               {grantingUserId === user.id ? 'Liberando...' : 'Liberar acesso'}
                             </button>
