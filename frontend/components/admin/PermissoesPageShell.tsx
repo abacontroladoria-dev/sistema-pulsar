@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   AlertTriangle,
+  ArrowUpRight,
   ChevronDown,
   KeyRound,
   MinusCircle,
@@ -462,7 +463,21 @@ export default function PermissoesPageShell() {
   const [permissaoSearch, setPermissaoSearch] = useState('')
   const [userSearchByPerm, setUserSearchByPerm] = useState('')
   const [onlyGranted, setOnlyGranted] = useState(true)
-  const [openGroupsPermView, setOpenGroupsPermView] = useState<Set<string>>(INITIAL_OPEN)
+  // Liberar/retirar a tela de um GRUPO inteiro, direto da visão "Por permissão".
+  // `grupoToggleAlvo` segura a confirmação: mexer no modelo muda a tela de todos
+  // os membros de uma vez, então nada é gravado sem mostrar quem muda.
+  const [grupoToggleAlvo, setGrupoToggleAlvo] = useState<{ grupo: Grupo; valor: boolean } | null>(null)
+  const [grupoActionId, setGrupoActionId] = useState<string | null>(null)
+  const [grupoSearchByPerm, setGrupoSearchByPerm] = useState('')
+  const [onlyGrantedGrupos, setOnlyGrantedGrupos] = useState(true)
+  // "Módulos e abas" abre recolhido: com 11 seções, a lista expandida obriga a
+  // rolar para achar a tela. Os outros dois modos continuam abrindo expandidos,
+  // porque lá a lista é a própria edição.
+  const [openGroupsPermView, setOpenGroupsPermView] = useState<Set<string>>(new Set())
+  // Os dois painéis de "Por permissão" também abrem recolhidos — o cabeçalho de
+  // cada um já traz a contagem, então dá para conferir sem abrir.
+  const [painelGruposAberto, setPainelGruposAberto] = useState(false)
+  const [painelUsuariosAberto, setPainelUsuariosAberto] = useState(false)
   const [grantingUserId, setGrantingUserId] = useState<string | null>(null)
 
   // ─── View "por grupo" (membros + modelo de permissões em lote) ──────────
@@ -644,13 +659,52 @@ export default function PermissoesPageShell() {
     return completo
   }
 
+  // Em "Por permissão", cada pessoa vem com a ORIGEM do acesso: `viaGrupo` diz
+  // se algum grupo dela dá a tela. Sem isso, a lista mostra "Liberado" sem dizer
+  // se veio do grupo ou de um ajuste só dela — e quem confere não sabe onde
+  // mexer para corrigir.
   const usersForSelectedCodigo = useMemo(() => {
     if (!selectedCodigo) return []
     return users.map(u => {
-      const efetivo = computeEffectivePerms(allOverrides[u.id] || {}, modelosDoUsuario(gruposDoUsuario, u.id), permissoes)
-      return { user: u, granted: efetivo[selectedCodigo] ?? false }
+      const modelos = modelosDoUsuario(gruposDoUsuario, u.id)
+      const efetivo = computeEffectivePerms(allOverrides[u.id] || {}, modelos, permissoes)
+      return {
+        user: u,
+        granted: efetivo[selectedCodigo] ?? false,
+        viaGrupo: uniaoDosModelos(modelos).has(selectedCodigo),
+      }
     })
   }, [users, allOverrides, selectedCodigo, permissoes, gruposDoUsuario])
+
+  // Grupos que dão (ou não) a tela selecionada, com quantos membros cada um tem.
+  // É a outra metade da conferência: a lista de usuários mostra QUEM tem acesso,
+  // esta mostra DE ONDE ele vem — um grupo indevido libera a tela para todo
+  // mundo nele de uma vez, e só aqui isso aparece.
+  const gruposForSelectedCodigo = useMemo(() => {
+    if (!selectedCodigo) return []
+    return grupos
+      .map(g => ({
+        grupo: g,
+        granted: g.modelo_permissoes?.[selectedCodigo] === true,
+        membros: (membrosPorGrupo[g.id] || []).length,
+      }))
+      .sort((a, b) => Number(b.granted) - Number(a.granted) || a.grupo.nome.localeCompare(b.grupo.nome))
+  }, [grupos, membrosPorGrupo, selectedCodigo])
+
+  const gruposComAcessoCount = useMemo(
+    () => gruposForSelectedCodigo.filter(x => x.granted).length,
+    [gruposForSelectedCodigo]
+  )
+
+  const filteredGruposForSelectedCodigo = useMemo(() => {
+    let list = gruposForSelectedCodigo
+    if (onlyGrantedGrupos) list = list.filter(x => x.granted)
+    if (grupoSearchByPerm) {
+      const q = grupoSearchByPerm.toLowerCase()
+      list = list.filter(x => x.grupo.nome.toLowerCase().includes(q))
+    }
+    return list
+  }, [gruposForSelectedCodigo, onlyGrantedGrupos, grupoSearchByPerm])
 
   const filteredUsersForSelectedCodigo = useMemo(() => {
     let list = usersForSelectedCodigo
@@ -983,6 +1037,56 @@ export default function PermissoesPageShell() {
         return { user, ...diferencaDoModelo(antes, depois, permissoes) }
       })
       .filter(x => x.ganha.length > 0 || x.perde.length > 0)
+  }
+
+  // O modelo de `grupo` com a tela selecionada ligada/desligada, completo (todos
+  // os códigos do catálogo), pronto para salvar.
+  function modeloComCodigo(grupo: Grupo, codigo: string, valor: boolean) {
+    const completo: Record<string, boolean> = {}
+    for (const p of permissoes) completo[p.codigo] = grupo.modelo_permissoes?.[p.codigo] ?? false
+    completo[codigo] = valor
+    return completo
+  }
+
+  // O que trocar o modelo de um grupo muda para cada membro dele — a mesma conta
+  // de impactoDoModeloEmEdicao, para um grupo qualquer.
+  function impactoDoModeloDeGrupo(grupo: Grupo, modeloNovo: Record<string, boolean>) {
+    return users
+      .filter(u => (membrosPorGrupo[grupo.id] || []).includes(u.id))
+      .map(user => {
+        const ajustes = allOverrides[user.id] || {}
+        const antes = computeEffectivePerms(ajustes, modelosDe(user.id), permissoes)
+        const depois = computeEffectivePerms(
+          ajustes,
+          modelosDe(user.id, { troca: { grupoId: grupo.id, modelo: modeloNovo } }),
+          permissoes
+        )
+        return { user, ...diferencaDoModelo(antes, depois, permissoes) }
+      })
+      .filter(x => x.ganha.length > 0 || x.perde.length > 0)
+  }
+
+  // Liberar/retirar a tela selecionada de um grupo inteiro, em "Por permissão".
+  // Grava só o modelo: as telas dos membros acompanham (grupos ao vivo). Quem
+  // tem ajuste individual nessa tela continua com o ajuste — por isso a
+  // confirmação mostra o impacto real, membro a membro, e não a lista de membros.
+  async function handleToggleGrupoCodigo(grupo: Grupo, valor: boolean) {
+    if (!selectedCodigo) return
+    setGrupoActionId(grupo.id)
+    const modeloCompleto = modeloComCodigo(grupo, selectedCodigo, valor)
+    const ok = await salvarModeloGrupo(grupo.id, modeloCompleto)
+    if (ok) {
+      setGrupos(prev => prev.map(g => (g.id === grupo.id ? { ...g, modelo_permissoes: modeloCompleto } : g)))
+      if (selectedGrupo?.id === grupo.id) {
+        setSelectedGrupo({ ...selectedGrupo, modelo_permissoes: modeloCompleto })
+        setGrupoModeloPerms({ ...modeloCompleto })
+      }
+      toast.success(valor ? `Acesso liberado para ${grupo.nome}` : `Acesso retirado de ${grupo.nome}`)
+      setGrupoToggleAlvo(null)
+    } else {
+      toast.error('Erro ao salvar o modelo do grupo')
+    }
+    setGrupoActionId(null)
   }
 
   // Salva o modelo — e é só isso: com os grupos ao vivo, o modelo salvo JÁ é o
@@ -1573,13 +1677,163 @@ export default function PermissoesPageShell() {
                         <p className="text-sm text-slate-500">{selectedPermissao.grupo || 'Outros'}</p>
                       </div>
                     </div>
-                    <span className="px-3 py-1 rounded-full text-xs font-semibold bg-brand-surface text-brand-fg">
-                      {grantedCountForSelectedCodigo} de {users.length} usuários têm acesso
-                    </span>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="px-3 py-1 rounded-full text-xs font-semibold bg-brand-surface text-brand-fg">
+                        {grantedCountForSelectedCodigo} de {users.length} usuários têm acesso
+                      </span>
+                      <span className="px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-700">
+                        {gruposComAcessoCount} de {grupos.length} grupos liberam
+                      </span>
+                    </div>
                   </div>
                 </div>
 
+                {/* ── Grupos que liberam a tela ── */}
                 <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-4 space-y-3">
+                  <button
+                    type="button"
+                    onClick={() => setPainelGruposAberto(v => !v)}
+                    aria-expanded={painelGruposAberto}
+                    className="w-full flex items-start gap-3 px-1 text-left select-none"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <h3 className="text-sm font-semibold text-slate-700">
+                        Grupos com acesso{' '}
+                        <span className="font-normal text-slate-500">({gruposComAcessoCount})</span>
+                      </h3>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        O modelo do grupo libera a tela para todos os membros de uma vez. Liberar
+                        ou retirar aqui mexe no modelo — a confirmação mostra quem muda.
+                      </p>
+                    </div>
+                    <ChevronDown
+                      size={14}
+                      aria-hidden="true"
+                      className={`mt-0.5 shrink-0 text-slate-400 transition-transform duration-200 ${
+                        painelGruposAberto ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </button>
+
+                  {painelGruposAberto && (<>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <label className="relative flex-1 min-w-[200px]">
+                      <span className="sr-only">Buscar grupo</span>
+                      <Search size={13} aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="Buscar grupo..."
+                        value={grupoSearchByPerm}
+                        onChange={e => setGrupoSearchByPerm(e.target.value)}
+                        className="w-full pl-8 pr-3 py-2 text-sm rounded-xl border border-slate-200 bg-slate-50 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/10"
+                      />
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer select-none">
+                      <Checkbox checked={onlyGrantedGrupos} onChange={setOnlyGrantedGrupos} label="Somente com acesso" />
+                      Somente com acesso
+                    </label>
+                  </div>
+
+                  {loadingGrupos ? (
+                    <div className="flex flex-col items-center justify-center py-8 gap-3">
+                      <div className="w-5 h-5 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+                      <span className="text-sm text-slate-500">Carregando grupos...</span>
+                    </div>
+                  ) : filteredGruposForSelectedCodigo.length === 0 ? (
+                    <p className="text-center text-sm text-slate-500 py-6">Nenhum grupo encontrado</p>
+                  ) : (
+                    <div className="space-y-0.5 max-h-72 overflow-y-auto">
+                      {filteredGruposForSelectedCodigo.map(({ grupo, granted, membros }) => (
+                        <div
+                          key={grupo.id}
+                          className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors duration-100"
+                        >
+                          <div
+                            className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                              granted ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                            }`}
+                          >
+                            <UsersRound size={14} aria-hidden="true" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium truncate leading-tight text-slate-700">
+                              {grupo.nome}
+                            </p>
+                            <p className="mt-0.5 text-xs text-slate-500 leading-tight">
+                              {membros} membro{membros !== 1 ? 's' : ''}
+                            </p>
+                          </div>
+                          <span
+                            className={`shrink-0 w-24 text-center px-2.5 py-1 rounded-lg text-xs font-semibold ${
+                              granted ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'
+                            }`}
+                          >
+                            {granted ? 'Liberado' : 'Sem acesso'}
+                          </span>
+                          {granted ? (
+                            <button
+                              onClick={() => setGrupoToggleAlvo({ grupo, valor: false })}
+                              disabled={grupoActionId === grupo.id}
+                              className="shrink-0 px-3 py-1.5 text-xs font-semibold text-rose-500 border border-rose-200 rounded-lg hover:bg-rose-50 transition-colors duration-150 disabled:opacity-50"
+                            >
+                              {grupoActionId === grupo.id ? 'Retirando...' : 'Retirar acesso'}
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => setGrupoToggleAlvo({ grupo, valor: true })}
+                              disabled={grupoActionId === grupo.id}
+                              className="shrink-0 px-3 py-1.5 text-xs font-semibold text-brand-fg border border-brand/30 rounded-lg hover:bg-brand-hover transition-colors duration-150 disabled:opacity-50"
+                            >
+                              {grupoActionId === grupo.id ? 'Liberando...' : 'Liberar acesso'}
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleSelectGrupo(grupo)
+                              setViewMode('grupo')
+                            }}
+                            className="shrink-0 w-7 h-7 flex items-center justify-center text-slate-400 hover:text-brand-fg hover:bg-slate-100 rounded-lg transition-colors duration-150"
+                            aria-label={`Abrir o grupo ${grupo.nome}`}
+                            title="Abrir grupo"
+                          >
+                            <ArrowUpRight size={14} aria-hidden="true" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  </>)}
+                </div>
+
+                {/* ── Pessoas com acesso à tela ── */}
+                <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-4 space-y-3">
+                  <button
+                    type="button"
+                    onClick={() => setPainelUsuariosAberto(v => !v)}
+                    aria-expanded={painelUsuariosAberto}
+                    className="w-full flex items-start gap-3 px-1 text-left select-none"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <h3 className="text-sm font-semibold text-slate-700">
+                        Usuários com acesso{' '}
+                        <span className="font-normal text-slate-500">({grantedCountForSelectedCodigo})</span>
+                      </h3>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        O acesso de cada pessoa é a soma dos grupos dela mais os ajustes
+                        individuais — quem difere dos grupos vem marcado.
+                      </p>
+                    </div>
+                    <ChevronDown
+                      size={14}
+                      aria-hidden="true"
+                      className={`mt-0.5 shrink-0 text-slate-400 transition-transform duration-200 ${
+                        painelUsuariosAberto ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </button>
+
+                  {painelUsuariosAberto && (<>
                   <div className="flex items-center gap-3 flex-wrap">
                     <label className="relative flex-1 min-w-[200px]">
                       <span className="sr-only">Buscar usuário</span>
@@ -1605,7 +1859,7 @@ export default function PermissoesPageShell() {
                     </div>
                   ) : (
                     <div className="space-y-0.5 max-h-[calc(100vh-420px)] overflow-y-auto">
-                      {filteredUsersForSelectedCodigo.map(({ user, granted }) => (
+                      {filteredUsersForSelectedCodigo.map(({ user, granted, viaGrupo }) => (
                         <div
                           key={user.id}
                           className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors duration-100"
@@ -1617,6 +1871,18 @@ export default function PermissoesPageShell() {
                             </p>
                             <GruposDaPessoa grupos={nomesGrupos(user.id)} />
                           </div>
+                          {granted !== viaGrupo && (
+                            <span
+                              className="shrink-0 rounded-md bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-800"
+                              title={
+                                granted
+                                  ? 'Liberada só para esta pessoa — os grupos dela não dão'
+                                  : 'Retirada só desta pessoa — os grupos dela dão'
+                              }
+                            >
+                              Ajuste individual
+                            </span>
+                          )}
                           <span
                             className={`shrink-0 w-24 text-center px-2.5 py-1 rounded-lg text-xs font-semibold ${
                               granted
@@ -1630,7 +1896,7 @@ export default function PermissoesPageShell() {
                             <button
                               onClick={() => handleRevokeAccessToCodigo(user.id)}
                               disabled={grantingUserId === user.id}
-                              className="shrink-0 px-3 py-3.5 text-xs font-semibold text-rose-500 border border-rose-200 rounded-lg hover:bg-rose-50 transition-colors duration-150 disabled:opacity-50"
+                              className="shrink-0 px-3 py-1.5 text-xs font-semibold text-rose-500 border border-rose-200 rounded-lg hover:bg-rose-50 transition-colors duration-150 disabled:opacity-50"
                             >
                               {grantingUserId === user.id ? 'Retirando...' : 'Retirar acesso'}
                             </button>
@@ -1638,11 +1904,23 @@ export default function PermissoesPageShell() {
                             <button
                               onClick={() => handleGrantAccessToCodigo(user.id)}
                               disabled={grantingUserId === user.id}
-                              className="shrink-0 px-3 py-3.5 text-xs font-semibold text-brand-fg border border-brand/30 rounded-lg hover:bg-brand-hover transition-colors duration-150 disabled:opacity-50"
+                              className="shrink-0 px-3 py-1.5 text-xs font-semibold text-brand-fg border border-brand/30 rounded-lg hover:bg-brand-hover transition-colors duration-150 disabled:opacity-50"
                             >
                               {grantingUserId === user.id ? 'Liberando...' : 'Liberar acesso'}
                             </button>
                           )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleSelectUser(user)
+                              setViewMode('usuario')
+                            }}
+                            className="shrink-0 w-7 h-7 flex items-center justify-center text-slate-400 hover:text-brand-fg hover:bg-slate-100 rounded-lg transition-colors duration-150"
+                            aria-label={`Abrir ${user.nome || user.email}`}
+                            title="Abrir usuário"
+                          >
+                            <ArrowUpRight size={14} aria-hidden="true" />
+                          </button>
                         </div>
                       ))}
                       {filteredUsersForSelectedCodigo.length === 0 && (
@@ -1650,6 +1928,7 @@ export default function PermissoesPageShell() {
                       )}
                     </div>
                   )}
+                  </>)}
                 </div>
               </>
             )}
@@ -2174,6 +2453,65 @@ export default function PermissoesPageShell() {
                     className="flex-1 py-3 text-sm font-semibold text-white bg-brand-fg rounded-2xl hover:opacity-90 transition-colors disabled:opacity-50"
                   >
                     {savingModelo ? 'Salvando...' : 'Salvar'}
+                  </button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+        )
+      })()}
+
+      {/* ── Modal: liberar/retirar a tela de um grupo inteiro ("Por permissão") ── */}
+      {grupoToggleAlvo && selectedPermissao && (() => {
+        const { grupo, valor } = grupoToggleAlvo
+        const modeloNovo = modeloComCodigo(grupo, selectedPermissao.codigo, valor)
+        const impacto = impactoDoModeloDeGrupo(grupo, modeloNovo)
+        return (
+          <Dialog open onOpenChange={aberto => { if (!aberto) setGrupoToggleAlvo(null) }}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>
+                  {valor ? 'Liberar' : 'Retirar'} {selectedPermissao.nome} {valor ? 'para' : 'de'} {grupo.nome}
+                </DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <p className="text-sm text-slate-500">
+                  {impacto.length === 0
+                    ? 'Nenhum membro muda de tela — os outros grupos e os ajustes individuais deles já cobrem a mudança.'
+                    : `Vale na hora. ${impacto.length} pessoa${impacto.length !== 1 ? 's mudam' : ' muda'} de tela:`}
+                </p>
+                {impacto.length > 0 && (
+                  <ul className="max-h-72 space-y-3 overflow-y-auto">
+                    {impacto.map(({ user, ganha, perde }) => (
+                      <li key={user.id} className="rounded-xl border border-slate-100 p-3">
+                        <p className="mb-2 text-sm font-medium text-slate-700">{user.nome || user.email}</p>
+                        <div className="space-y-2">
+                          <ListaDiferenca titulo="Passa a ter" itens={ganha} tom="ganha" />
+                          <ListaDiferenca titulo="Deixa de ter" itens={perde} tom="perde" />
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    onClick={() => setGrupoToggleAlvo(null)}
+                    className="flex-1 py-3 text-sm font-medium text-slate-600 border border-slate-200 rounded-2xl hover:bg-slate-50 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={() => handleToggleGrupoCodigo(grupo, valor)}
+                    disabled={grupoActionId === grupo.id}
+                    className={`flex-1 py-3 text-sm font-semibold text-white rounded-2xl hover:opacity-90 transition-colors disabled:opacity-50 ${
+                      valor ? 'bg-brand-fg' : 'bg-rose-500'
+                    }`}
+                  >
+                    {grupoActionId === grupo.id
+                      ? 'Salvando...'
+                      : valor
+                        ? 'Liberar acesso'
+                        : 'Retirar acesso'}
                   </button>
                 </div>
               </div>
