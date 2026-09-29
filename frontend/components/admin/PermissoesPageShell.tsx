@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   AlertTriangle,
+  ArrowUpRight,
   ChevronDown,
   KeyRound,
   MinusCircle,
@@ -462,6 +463,11 @@ export default function PermissoesPageShell() {
   const [permissaoSearch, setPermissaoSearch] = useState('')
   const [userSearchByPerm, setUserSearchByPerm] = useState('')
   const [onlyGranted, setOnlyGranted] = useState(true)
+  // Liberar/retirar a tela de um GRUPO inteiro, direto da visão "Por permissão".
+  // `grupoToggleAlvo` segura a confirmação: mexer no modelo muda a tela de todos
+  // os membros de uma vez, então nada é gravado sem mostrar quem muda.
+  const [grupoToggleAlvo, setGrupoToggleAlvo] = useState<{ grupo: Grupo; valor: boolean } | null>(null)
+  const [grupoActionId, setGrupoActionId] = useState<string | null>(null)
   const [openGroupsPermView, setOpenGroupsPermView] = useState<Set<string>>(INITIAL_OPEN)
   const [grantingUserId, setGrantingUserId] = useState<string | null>(null)
 
@@ -1012,6 +1018,56 @@ export default function PermissoesPageShell() {
         return { user, ...diferencaDoModelo(antes, depois, permissoes) }
       })
       .filter(x => x.ganha.length > 0 || x.perde.length > 0)
+  }
+
+  // O modelo de `grupo` com a tela selecionada ligada/desligada, completo (todos
+  // os códigos do catálogo), pronto para salvar.
+  function modeloComCodigo(grupo: Grupo, codigo: string, valor: boolean) {
+    const completo: Record<string, boolean> = {}
+    for (const p of permissoes) completo[p.codigo] = grupo.modelo_permissoes?.[p.codigo] ?? false
+    completo[codigo] = valor
+    return completo
+  }
+
+  // O que trocar o modelo de um grupo muda para cada membro dele — a mesma conta
+  // de impactoDoModeloEmEdicao, para um grupo qualquer.
+  function impactoDoModeloDeGrupo(grupo: Grupo, modeloNovo: Record<string, boolean>) {
+    return users
+      .filter(u => (membrosPorGrupo[grupo.id] || []).includes(u.id))
+      .map(user => {
+        const ajustes = allOverrides[user.id] || {}
+        const antes = computeEffectivePerms(ajustes, modelosDe(user.id), permissoes)
+        const depois = computeEffectivePerms(
+          ajustes,
+          modelosDe(user.id, { troca: { grupoId: grupo.id, modelo: modeloNovo } }),
+          permissoes
+        )
+        return { user, ...diferencaDoModelo(antes, depois, permissoes) }
+      })
+      .filter(x => x.ganha.length > 0 || x.perde.length > 0)
+  }
+
+  // Liberar/retirar a tela selecionada de um grupo inteiro, em "Por permissão".
+  // Grava só o modelo: as telas dos membros acompanham (grupos ao vivo). Quem
+  // tem ajuste individual nessa tela continua com o ajuste — por isso a
+  // confirmação mostra o impacto real, membro a membro, e não a lista de membros.
+  async function handleToggleGrupoCodigo(grupo: Grupo, valor: boolean) {
+    if (!selectedCodigo) return
+    setGrupoActionId(grupo.id)
+    const modeloCompleto = modeloComCodigo(grupo, selectedCodigo, valor)
+    const ok = await salvarModeloGrupo(grupo.id, modeloCompleto)
+    if (ok) {
+      setGrupos(prev => prev.map(g => (g.id === grupo.id ? { ...g, modelo_permissoes: modeloCompleto } : g)))
+      if (selectedGrupo?.id === grupo.id) {
+        setSelectedGrupo({ ...selectedGrupo, modelo_permissoes: modeloCompleto })
+        setGrupoModeloPerms({ ...modeloCompleto })
+      }
+      toast.success(valor ? `Acesso liberado para ${grupo.nome}` : `Acesso retirado de ${grupo.nome}`)
+      setGrupoToggleAlvo(null)
+    } else {
+      toast.error('Erro ao salvar o modelo do grupo')
+    }
+    setGrupoActionId(null)
   }
 
   // Salva o modelo — e é só isso: com os grupos ao vivo, o modelo salvo JÁ é o
@@ -1619,8 +1675,8 @@ export default function PermissoesPageShell() {
                     <div>
                       <h3 className="text-sm font-semibold text-slate-700">Grupos com acesso</h3>
                       <p className="mt-0.5 text-xs text-slate-500">
-                        O modelo do grupo libera a tela para todos os membros. Para tirar de um
-                        grupo inteiro, abra o grupo e desmarque a tela no modelo.
+                        O modelo do grupo libera a tela para todos os membros de uma vez. Liberar
+                        ou retirar aqui mexe no modelo — a confirmação mostra quem muda.
                       </p>
                     </div>
                   </div>
@@ -1659,17 +1715,36 @@ export default function PermissoesPageShell() {
                               granted ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'
                             }`}
                           >
-                            {granted ? 'Libera' : 'Não libera'}
+                            {granted ? 'Liberado' : 'Sem acesso'}
                           </span>
+                          {granted ? (
+                            <button
+                              onClick={() => setGrupoToggleAlvo({ grupo, valor: false })}
+                              disabled={grupoActionId === grupo.id}
+                              className="shrink-0 px-3 py-3.5 text-xs font-semibold text-rose-500 border border-rose-200 rounded-lg hover:bg-rose-50 transition-colors duration-150 disabled:opacity-50"
+                            >
+                              {grupoActionId === grupo.id ? 'Retirando...' : 'Retirar acesso'}
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => setGrupoToggleAlvo({ grupo, valor: true })}
+                              disabled={grupoActionId === grupo.id}
+                              className="shrink-0 px-3 py-3.5 text-xs font-semibold text-brand-fg border border-brand/30 rounded-lg hover:bg-brand-hover transition-colors duration-150 disabled:opacity-50"
+                            >
+                              {grupoActionId === grupo.id ? 'Liberando...' : 'Liberar acesso'}
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => {
                               handleSelectGrupo(grupo)
                               setViewMode('grupo')
                             }}
-                            className="shrink-0 px-3 py-2 text-xs font-semibold text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors duration-150"
+                            className="shrink-0 w-7 h-7 flex items-center justify-center text-slate-400 hover:text-brand-fg hover:bg-slate-100 rounded-lg transition-colors duration-150"
+                            aria-label={`Abrir o grupo ${grupo.nome}`}
+                            title="Abrir grupo"
                           >
-                            Abrir grupo
+                            <ArrowUpRight size={14} aria-hidden="true" />
                           </button>
                         </div>
                       ))}
@@ -1753,6 +1828,18 @@ export default function PermissoesPageShell() {
                               {grantingUserId === user.id ? 'Liberando...' : 'Liberar acesso'}
                             </button>
                           )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleSelectUser(user)
+                              setViewMode('usuario')
+                            }}
+                            className="shrink-0 w-7 h-7 flex items-center justify-center text-slate-400 hover:text-brand-fg hover:bg-slate-100 rounded-lg transition-colors duration-150"
+                            aria-label={`Abrir ${user.nome || user.email}`}
+                            title="Abrir usuário"
+                          >
+                            <ArrowUpRight size={14} aria-hidden="true" />
+                          </button>
                         </div>
                       ))}
                       {filteredUsersForSelectedCodigo.length === 0 && (
@@ -2284,6 +2371,65 @@ export default function PermissoesPageShell() {
                     className="flex-1 py-3 text-sm font-semibold text-white bg-brand-fg rounded-2xl hover:opacity-90 transition-colors disabled:opacity-50"
                   >
                     {savingModelo ? 'Salvando...' : 'Salvar'}
+                  </button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+        )
+      })()}
+
+      {/* ── Modal: liberar/retirar a tela de um grupo inteiro ("Por permissão") ── */}
+      {grupoToggleAlvo && selectedPermissao && (() => {
+        const { grupo, valor } = grupoToggleAlvo
+        const modeloNovo = modeloComCodigo(grupo, selectedPermissao.codigo, valor)
+        const impacto = impactoDoModeloDeGrupo(grupo, modeloNovo)
+        return (
+          <Dialog open onOpenChange={aberto => { if (!aberto) setGrupoToggleAlvo(null) }}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>
+                  {valor ? 'Liberar' : 'Retirar'} {selectedPermissao.nome} {valor ? 'para' : 'de'} {grupo.nome}
+                </DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <p className="text-sm text-slate-500">
+                  {impacto.length === 0
+                    ? 'Nenhum membro muda de tela — os outros grupos e os ajustes individuais deles já cobrem a mudança.'
+                    : `Vale na hora. ${impacto.length} pessoa${impacto.length !== 1 ? 's mudam' : ' muda'} de tela:`}
+                </p>
+                {impacto.length > 0 && (
+                  <ul className="max-h-72 space-y-3 overflow-y-auto">
+                    {impacto.map(({ user, ganha, perde }) => (
+                      <li key={user.id} className="rounded-xl border border-slate-100 p-3">
+                        <p className="mb-2 text-sm font-medium text-slate-700">{user.nome || user.email}</p>
+                        <div className="space-y-2">
+                          <ListaDiferenca titulo="Passa a ter" itens={ganha} tom="ganha" />
+                          <ListaDiferenca titulo="Deixa de ter" itens={perde} tom="perde" />
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    onClick={() => setGrupoToggleAlvo(null)}
+                    className="flex-1 py-3 text-sm font-medium text-slate-600 border border-slate-200 rounded-2xl hover:bg-slate-50 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={() => handleToggleGrupoCodigo(grupo, valor)}
+                    disabled={grupoActionId === grupo.id}
+                    className={`flex-1 py-3 text-sm font-semibold text-white rounded-2xl hover:opacity-90 transition-colors disabled:opacity-50 ${
+                      valor ? 'bg-brand-fg' : 'bg-rose-500'
+                    }`}
+                  >
+                    {grupoActionId === grupo.id
+                      ? 'Salvando...'
+                      : valor
+                        ? 'Liberar acesso'
+                        : 'Retirar acesso'}
                   </button>
                 </div>
               </div>
