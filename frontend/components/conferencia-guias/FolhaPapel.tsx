@@ -930,7 +930,9 @@ function IndicacaoFilipeta({ filipeta }: { filipeta: NonNullable<ReturnType<type
       ? ' (erro no reconhecimento facial)'
       : filipeta.motivo === 'dispositivo_indisponivel'
         ? ' (dispositivo indisponível)'
-        : ''
+        : filipeta.motivo === 'sem_celular'
+          ? ' (beneficiário sem celular)'
+          : ''
   return (
     <span
       className="inline-flex h-6 max-w-full items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2 text-xs font-medium whitespace-nowrap text-slate-700"

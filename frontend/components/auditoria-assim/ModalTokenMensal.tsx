@@ -6,7 +6,12 @@ import { useModalDialog } from '@/hooks/useModalDialog'
 import { AlertTriangle, Check, ChevronLeft, ChevronRight, ClipboardCheck, Copy, KeySquare, Loader2, RefreshCw, Search, X } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import { listarTokensMensal, marcarTokenConferido } from '@/services/auditoria-assim.service'
-import { LABEL_ERRO_FACIAL, erroReconhecimentoFacial } from './formaValidacao'
+import {
+  LABEL_ERRO_FACIAL,
+  LABEL_SEM_CELULAR,
+  beneficiarioSemCelularForma,
+  erroReconhecimentoFacial,
+} from './formaValidacao'
 import type { TokenMensalItem } from './types'
 
 type Props = {
@@ -85,6 +90,7 @@ function normalizar(valor: string) {
 function identificacaoDoPapel(item: TokenMensalItem) {
   if (item.token) return item.token
   if (erroReconhecimentoFacial(item.forma_autorizacao)) return LABEL_ERRO_FACIAL
+  if (beneficiarioSemCelularForma(item.forma_autorizacao)) return LABEL_SEM_CELULAR
   return 'SEM TOKEN'
 }
 
@@ -198,6 +204,8 @@ const LinhaConferencia = memo(function LinhaConferencia({
             </p>
           ) : erroReconhecimentoFacial(item.forma_autorizacao) ? (
             <p className="text-[11px] whitespace-nowrap text-slate-600">{LABEL_ERRO_FACIAL}</p>
+          ) : beneficiarioSemCelularForma(item.forma_autorizacao) ? (
+            <p className="text-[11px] whitespace-nowrap text-slate-600">{LABEL_SEM_CELULAR}</p>
           ) : (
             /* Rosa é a anomalia real: nem filipeta nem erro facial explica esta
                linha. -700 e não -600 pela regra que o SituacaoBadge já fixa

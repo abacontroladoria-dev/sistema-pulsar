@@ -65,7 +65,7 @@ describe('temPapelParaConferir', () => {
   })
 
   it('outras formas de validação nunca pedem conferência', () => {
-    for (const forma of ['QR Code', 'Biometria', 'Beneficiário sem celular', null]) {
+    for (const forma of ['QR Code', 'Biometria', 'Beneficiário recusou validação facial/QR Code', null]) {
       expect(
         temPapelParaConferir({ teve_token: false, forma_autorizacao: forma, status_assim: 'Liberado' })
       ).toBe(false)
@@ -129,5 +129,52 @@ describe('temPapelParaConferir', () => {
         status_assim: 'Liberado',
       })
     ).toBe(true)
+  })
+
+  describe('beneficiário sem celular (20260930100000)', () => {
+    it('`3-` deixa papel mesmo sem token — o caso Maria Clara', () => {
+      // MARIA CLARA BERTELLI, 23/09/2026 16:03: sem celular, a ASSIM emite a
+      // filipeta. Mesma régua do `8-`.
+      expect(
+        temPapelParaConferir({
+          teve_token: false,
+          biofacial: '3-BENEFICIARIO SEM CELULAR',
+          forma_autorizacao: 'Beneficiário sem celular',
+          status_assim: 'Liberado',
+        })
+      ).toBe(true)
+    })
+
+    it('`3-` é resposta da ASSIM e não passa pelo gate de recusa', () => {
+      expect(
+        temPapelParaConferir({
+          teve_token: false,
+          biofacial: '3-BENEFICIARIO SEM CELULAR',
+          status_assim: '1013-CADASTRO DO BENEFICI',
+        })
+      ).toBe(true)
+    })
+
+    it('"sem celular" marcado pela recepção entra, com o gate do erro facial', () => {
+      expect(
+        temPapelParaConferir({ teve_token: false, forma_autorizacao: 'Beneficiário sem celular', status_assim: 'Liberado' })
+      ).toBe(true)
+      expect(
+        temPapelParaConferir({ teve_token: false, forma_autorizacao: 'Beneficiário sem celular', status_assim: null })
+      ).toBe(true)
+      expect(
+        temPapelParaConferir({
+          teve_token: false,
+          forma_autorizacao: 'Beneficiário sem celular',
+          status_assim: '1013-CADASTRO DO BENEFICI',
+        })
+      ).toBe(false)
+    })
+
+    it('casa por prefixo: 13- e 30- ficam de fora', () => {
+      expect(temPapelParaConferir({ biofacial: ' 3-BENEFICIARIO SEM CELU' })).toBe(true)
+      expect(temPapelParaConferir({ biofacial: '13-ALGUMA COISA' })).toBe(false)
+      expect(temPapelParaConferir({ biofacial: '30-OUTRA COISA' })).toBe(false)
+    })
   })
 })

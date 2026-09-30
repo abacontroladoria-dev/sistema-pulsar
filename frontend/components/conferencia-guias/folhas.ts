@@ -14,7 +14,12 @@
  */
 
 import { segundaDe } from '@/components/auditoria-assim/reconciliacao/datas'
-import { dispositivoIndisponivel, temPapelParaConferir } from '@/components/auditoria-assim/situacoes'
+import {
+  beneficiarioSemCelular,
+  dispositivoIndisponivel,
+  temPapelParaConferir,
+} from '@/components/auditoria-assim/situacoes'
+import { beneficiarioSemCelularForma } from '@/components/auditoria-assim/formaValidacao'
 
 export const ASSINATURAS_POR_FOLHA = 10
 
@@ -82,7 +87,7 @@ export type Filipeta = {
   /** O número do token; nulo quando o papel não tem número. */
   numero: string | null
   /** Por que saiu papel sem número. */
-  motivo: 'token' | 'erro_facial' | 'dispositivo_indisponivel'
+  motivo: 'token' | 'erro_facial' | 'dispositivo_indisponivel' | 'sem_celular'
   conferida: boolean
 }
 
@@ -98,7 +103,9 @@ export function filipetaDaSessao(s: SessaoConferencia): Filipeta | null {
     ? 'token'
     : dispositivoIndisponivel(s.biofacial)
       ? 'dispositivo_indisponivel'
-      : 'erro_facial'
+      : beneficiarioSemCelular(s.biofacial) || beneficiarioSemCelularForma(s.forma_autorizacao)
+        ? 'sem_celular'
+        : 'erro_facial'
   return { numero, motivo, conferida: Boolean(s.filipeta_conferida) }
 }
 

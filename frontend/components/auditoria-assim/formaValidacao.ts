@@ -17,6 +17,13 @@ export function erroReconhecimentoFacial(forma: string | null | undefined) {
   return /reconhecimento\s+facial/i.test(forma ?? '')
 }
 
+/** `3-BENEFICIARIO SEM CELULAR`: também sai papel sem número (20260930100000). */
+export const LABEL_SEM_CELULAR = 'Beneficiário sem celular'
+
+export function beneficiarioSemCelularForma(forma: string | null | undefined) {
+  return /sem\s+celular/i.test(forma ?? '')
+}
+
 /**
  * De-para de EXIBIÇÃO da forma de validação. Só troca a palavra na tela — o
  * valor gravado continua o de `OPCOES_VALIDACAO` (rpa.js:407-414).

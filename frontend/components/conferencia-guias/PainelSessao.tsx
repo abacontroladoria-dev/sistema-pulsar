@@ -271,7 +271,9 @@ function LinhaFilipeta({
     ? `Filipeta com token ${f.numero}`
     : f.motivo === 'dispositivo_indisponivel'
       ? 'Filipeta sem token (dispositivo indisponível)'
-      : 'Filipeta sem token (erro no reconhecimento facial)'
+      : f.motivo === 'sem_celular'
+        ? 'Filipeta sem token (beneficiário sem celular)'
+        : 'Filipeta sem token (erro no reconhecimento facial)'
   return (
     <div className="flex flex-col gap-2">
       <p className="flex items-start gap-1.5 text-xs text-slate-600">

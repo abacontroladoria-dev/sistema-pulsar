@@ -271,6 +271,22 @@ describe('filipetaDaSessao', () => {
       motivo: 'dispositivo_indisponivel',
     })
   })
+  it('beneficiário sem celular (biofacial 3- ou forma da recepção): papel sem número', () => {
+    expect(filipetaDaSessao(sessao({ biofacial: '3-BENEFICIARIO SEM CELULAR' }))).toMatchObject({
+      numero: null,
+      motivo: 'sem_celular',
+    })
+    expect(filipetaDaSessao(sessao({ forma_autorizacao: 'Beneficiário sem celular' }))).toMatchObject({
+      numero: null,
+      motivo: 'sem_celular',
+    })
+  })
+  it('erro facial sem token continua com o motivo de erro facial', () => {
+    expect(filipetaDaSessao(sessao({ forma_autorizacao: 'Erro no Reconhecimento Facial' }))).toMatchObject({
+      numero: null,
+      motivo: 'erro_facial',
+    })
+  })
   it('erro facial com glosa explícita não tem papel', () => {
     expect(
       filipetaDaSessao(sessao({ forma_autorizacao: 'Erro no Reconhecimento Facial', status_assim: 'Negado' }))

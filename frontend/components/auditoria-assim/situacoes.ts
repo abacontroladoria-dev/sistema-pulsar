@@ -73,8 +73,8 @@ export function ehGlosa(situacao: string | null): boolean {
 /**
  * Existe papel para a recepção conferir nesta sessão?
  *
- * Três casos deixam papel: filipeta, erro de reconhecimento facial e dispositivo
- * indisponível — mas só quando a autorização SAIU. As fontes não têm a mesma
+ * Quatro casos deixam papel: filipeta, erro de reconhecimento facial, dispositivo
+ * indisponível e beneficiário sem celular — mas só quando a autorização SAIU. As fontes não têm a mesma
  * autoridade sobre isso:
  *
  * - `teve_token` vem de `autorizacoes_assim`, o relatório da ASSIM. Existir
@@ -132,6 +132,15 @@ export function dispositivoIndisponivel(biofacial: string | null | undefined): b
   return (biofacial ?? '').trim().split('-')[0] === '8'
 }
 
+/**
+ * `3-BENEFICIARIO SEM CELULAR` no extrato: sem celular para QR Code/biometria,
+ * a ASSIM emite a filipeta. Mesma comparação por prefixo do `8-`, e o mesmo
+ * `IN ('3', '8')` de get_tokens_mensal (20260930100000).
+ */
+export function beneficiarioSemCelular(biofacial: string | null | undefined): boolean {
+  return (biofacial ?? '').trim().split('-')[0] === '3'
+}
+
 export function temPapelParaConferir(item: {
   teve_token?: boolean | null
   forma_autorizacao?: string | null
@@ -149,7 +158,13 @@ export function temPapelParaConferir(item: {
   // '8-DISPOSITIVO INDISPONIVEL', token vazio, status Liberado — papel existia,
   // a Conferência de Filipetas já o cobrava e esta linha não o oferecia.
   if (dispositivoIndisponivel(item.biofacial)) return true
-  if (!/reconhecimento\s+facial/i.test(item.forma_autorizacao ?? '')) return false
+  // Mesmo raciocínio para o `3-`: resposta da ASSIM, sem gate. Caso real: MARIA
+  // CLARA BERTELLI, 23/09/2026 16:03 — papel sem token que nada cobrava.
+  if (beneficiarioSemCelular(item.biofacial)) return true
+  // "Sem celular" marcado pela recepção é intenção, como o erro facial, e
+  // divide com ele o gate de recusa abaixo.
+  const forma = item.forma_autorizacao ?? ''
+  if (!/reconhecimento\s+facial/i.test(forma) && !/sem\s+celular/i.test(forma)) return false
   // Nulo = sem resposta = desconhecido, e desconhecido mantém o botão.
   return item.status_assim == null || LIBERACOES.includes(item.status_assim)
 }
