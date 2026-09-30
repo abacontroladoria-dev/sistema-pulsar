@@ -1,0 +1,14 @@
+node_modules
+testes
+scripts
+demo.js
+.env
+.env.*
+*.env
+*.pem
+*.key
+*.pfx
+*.cer
+*.crt
+*.xlsx
+*.xls
