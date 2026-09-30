@@ -783,11 +783,11 @@ export default function Sidebar() {
               apareceria para quem não tem /admin. O grupo aparece com qualquer
               um dos três — cada item tem código próprio, e quem só tem a API
               não pode ficar sem caminho até ela. */}
-          {(canAccess("/admin") || canAccess("/admin/permissoes") || canAccess("/admin/api")) && (
+          {(canAccess("/admin") || canAccess("/admin/permissoes") || canAccess("/admin/api") || canAccess("/admin/robo-sharepoint")) && (
             <SidebarGroup
               title={GRUPO.administracao.nome}
               icon={GRUPO.administracao.icon}
-              defaultOpen={["/admin", "/admin/permissoes", "/admin/api"].some(p => pathname === p)}
+              defaultOpen={["/admin", "/admin/permissoes", "/admin/api", "/admin/robo-sharepoint"].some(p => pathname === p)}
             >
               {canAccess("/admin") && (
                 <Item codigo="usuarios" />
@@ -797,6 +797,9 @@ export default function Sidebar() {
               )}
               {canAccess("/admin/api") && (
                 <Item codigo="api_integracao" />
+              )}
+              {canAccess("/admin/robo-sharepoint") && (
+                <Item codigo="robo_sharepoint" />
               )}
             </SidebarGroup>
           )}
