@@ -1,0 +1,19 @@
+# Segredos: a chave do certificado e o .env vivem FORA do repositório
+# (C:\Users\...\.pulsar-sharepoint). Estas linhas são a segunda tranca, caso
+# alguém copie um deles para cá por engano.
+.env
+.env.*
+*.env
+*.pem
+*.key
+*.pfx
+*.p12
+*.cer
+*.crt
+
+node_modules/
+
+# Planilhas reais nunca entram (o .gitignore raiz já barra *.xlsx); os testes
+# geram as planilhas fictícias em memória.
+*.xlsx
+*.xls

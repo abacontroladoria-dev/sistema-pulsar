@@ -1,0 +1,174 @@
+import { getSupabaseClient } from '@/lib/supabase/client'
+import type { RoboExecucao, RoboSaude, SpItem, SpPendenciaPasta } from '@/types/roboSharepoint'
+
+// Leitura das tabelas sp_pep_* (RLS: robo_sharepoint / relacionamento_prestador_pep)
+// e as duas escritas permitidas a pessoas (RPCs sp_pep_resolver_item e
+// sp_pep_vincular_pasta). O robô em si nunca passa por aqui.
+
+const CAMPOS_EXECUCAO =
+  'id, maquina_id, gatilho, modo, status, etapa_atual, etapas, resumo, metricas, erro, versao, certificado, solicitado_por_nome, iniciado_em, concluido_em, duracao_ms'
+
+export async function listarExecucoes(limite = 30): Promise<RoboExecucao[]> {
+  const { data, error } = await getSupabaseClient()
+    .from('sp_pep_execucoes')
+    .select(CAMPOS_EXECUCAO)
+    .order('iniciado_em', { ascending: false })
+    .limit(limite)
+  if (error) throw error
+  return (data ?? []) as RoboExecucao[]
+}
+
+/**
+ * Histórico completo, paginado. A tabela cresce ~1 linha por dia (mais os
+ * "Executar agora"), então página de 25 com contagem exata é barata.
+ */
+export async function listarExecucoesPagina(input: {
+  pagina: number
+  tamanho?: number
+  status?: 'concluido' | 'erro' | null
+  gatilho?: 'agenda' | 'manual' | 'demo' | 'inventario' | null
+}): Promise<{ execucoes: RoboExecucao[]; total: number }> {
+  const tamanho = input.tamanho ?? 25
+  const de = input.pagina * tamanho
+  let q = getSupabaseClient()
+    .from('sp_pep_execucoes')
+    .select(CAMPOS_EXECUCAO, { count: 'exact' })
+    .order('iniciado_em', { ascending: false })
+    .range(de, de + tamanho - 1)
+  if (input.status) q = q.eq('status', input.status)
+  if (input.gatilho) q = q.eq('gatilho', input.gatilho)
+  const { data, error, count } = await q
+  if (error) throw error
+  return { execucoes: (data ?? []) as RoboExecucao[], total: count ?? 0 }
+}
+
+/**
+ * Pastas que o robô não conseguiu reconhecer (prestador ou paciente), com
+ * quantos arquivos estão presos atrás de cada uma. Poucas dezenas no máximo.
+ */
+export async function listarPendenciasDePasta(): Promise<SpPendenciaPasta[]> {
+  const sb = getSupabaseClient()
+  const [prest, pac, pastas, itens] = await Promise.all([
+    sb.from('sp_pep_prestadores').select('pasta_id, motivo').eq('status', 'nao_reconhecido'),
+    sb.from('sp_pep_pacientes').select('pasta_id, prestador_pasta_id, motivo').eq('status', 'nao_reconhecido'),
+    sb.from('sp_pep_pastas').select('id, nome').not('papel', 'is', null),
+    sb.from('sp_pep_itens').select('prestador_pasta_id, paciente_pasta_id').eq('status', 'nao_reconhecido'),
+  ])
+  for (const r of [prest, pac, pastas, itens]) if (r.error) throw r.error
+
+  const nome = new Map((pastas.data ?? []).map(p => [p.id as string, p.nome as string]))
+  const presosPorPasta = new Map<string, number>()
+  for (const i of itens.data ?? []) {
+    for (const id of [i.prestador_pasta_id, i.paciente_pasta_id]) {
+      if (id) presosPorPasta.set(id, (presosPorPasta.get(id) ?? 0) + 1)
+    }
+  }
+
+  return [
+    ...(prest.data ?? []).map(p => ({
+      pasta_id: p.pasta_id as string, tipo: 'prestador' as const, nome_pasta: nome.get(p.pasta_id) ?? '(pasta)',
+      prestador_pasta_nome: null, motivo: p.motivo as string | null, arquivos: presosPorPasta.get(p.pasta_id) ?? 0,
+    })),
+    ...(pac.data ?? []).map(p => ({
+      pasta_id: p.pasta_id as string, tipo: 'paciente' as const, nome_pasta: nome.get(p.pasta_id) ?? '(pasta)',
+      prestador_pasta_nome: p.prestador_pasta_id ? nome.get(p.prestador_pasta_id) ?? null : null,
+      motivo: p.motivo as string | null, arquivos: presosPorPasta.get(p.pasta_id) ?? 0,
+    })),
+  ].sort((a, b) => b.arquivos - a.arquivos || a.nome_pasta.localeCompare(b.nome_pasta))
+}
+
+export async function listarItensNaoReconhecidos(limite = 200): Promise<SpItem[]> {
+  const { data, error } = await getSupabaseClient()
+    .from('sp_pep_itens')
+    .select('*')
+    .eq('status', 'nao_reconhecido')
+    .order('criado_em_sp', { ascending: false })
+    .limit(limite)
+  if (error) throw error
+  return (data ?? []) as SpItem[]
+}
+
+/** Sugestões e confirmados de um prestador num mês (gaveta da tela PEP). */
+export async function listarItensDoPrestador(prestadorNome: string, competencia: string): Promise<SpItem[]> {
+  const { data, error } = await getSupabaseClient()
+    .from('sp_pep_itens')
+    .select('*')
+    .eq('prestador_nome', prestadorNome)
+    .eq('competencia', competencia)
+    .in('status', ['sugerido', 'confirmado'])
+    .order('criado_em_sp', { ascending: true })
+  if (error) throw error
+  return (data ?? []) as SpItem[]
+}
+
+export async function resolverItem(input: {
+  spId: string
+  acao: 'confirmar' | 'ignorar' | 'reabrir'
+  registroEntregaId?: string | null
+  competencia?: string | null
+}): Promise<SpItem> {
+  const { data, error } = await getSupabaseClient().rpc('sp_pep_resolver_item', {
+    p_sp_id: input.spId,
+    p_acao: input.acao,
+    p_registro_entrega_id: input.registroEntregaId ?? null,
+    p_competencia: input.competencia ?? null,
+  })
+  if (error) throw error
+  return data as SpItem
+}
+
+export async function vincularPasta(input: {
+  pastaId: string
+  tipo: 'prestador' | 'paciente'
+  prestadorNome?: string | null
+  pacienteNome?: string | null
+  pacienteCpf?: string | null
+}) {
+  const { data, error } = await getSupabaseClient().rpc('sp_pep_vincular_pasta', {
+    p_pasta_id: input.pastaId,
+    p_tipo: input.tipo,
+    p_prestador_nome: input.prestadorNome ?? null,
+    p_paciente_nome: input.pacienteNome ?? null,
+    p_paciente_cpf: input.pacienteCpf ?? null,
+  })
+  if (error) throw error
+  return data as Record<string, unknown>
+}
+
+export async function listarNomesDePrestadores(): Promise<string[]> {
+  const { data, error } = await getSupabaseClient()
+    .from('remuneracao_contratos')
+    .select('profissional_nome')
+    .order('profissional_nome')
+  if (error) throw error
+  return (data ?? []).map(r => r.profissional_nome as string)
+}
+
+export async function buscarPacientes(termo: string): Promise<{ nome: string; cpf: string | null }[]> {
+  const t = termo.trim()
+  if (t.length < 3) return []
+  const { data, error } = await getSupabaseClient()
+    .from('pacientes')
+    .select('nome, cpf')
+    .ilike('nome', `%${t.replace(/[%_]/g, '')}%`)
+    .eq('ficticio', false)
+    .order('nome')
+    .limit(10)
+  if (error) throw error
+  return (data ?? []) as { nome: string; cpf: string | null }[]
+}
+
+export async function obterSaude(): Promise<RoboSaude> {
+  const r = await fetch('/api/robo-sharepoint/executar', { cache: 'no-store' })
+  const corpo = await r.json().catch(() => ({}))
+  if (r.status === 503) return { configurado: false }
+  if (!r.ok) throw new Error(corpo?.error ?? `HTTP ${r.status}`)
+  return corpo as RoboSaude
+}
+
+export async function executarAgora(): Promise<void> {
+  const r = await fetch('/api/robo-sharepoint/executar', { method: 'POST' })
+  if (r.status === 202) return
+  const corpo = await r.json().catch(() => ({}))
+  throw new Error(corpo?.error ?? `HTTP ${r.status}`)
+}

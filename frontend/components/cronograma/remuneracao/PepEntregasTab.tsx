@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useSearchParams } from "next/navigation"
-import { Paperclip, Check, AlertTriangle, CalendarPlus, X, Trash2, History, Loader2, LayoutDashboard } from "lucide-react"
+import { Paperclip, Check, AlertTriangle, CalendarPlus, X, Trash2, History, Loader2, LayoutDashboard, ExternalLink, FlaskConical } from "lucide-react"
 import { useHeader } from "@/contexts/HeaderContext"
 import { useRemuneracaoRPContext } from "@/contexts/RemuneracaoRPContext"
 import { useParametrosGerais } from "@/hooks/useParametrosGerais"
@@ -18,7 +18,23 @@ import { BarraCompetencia, NotaFaturamento, VisaoGeralPep, faturamentoDaCompeten
 import { ExplicacaoPepTooltip } from "./pep/ExplicacaoPepTooltip"
 import { analistasDaGrade, pacientesCCDoProfissional } from "@/lib/remuneracao/visaoGeralPep"
 import { COMPETENCIA_TESTE_PEP, calcularAjusteRecorrentes } from "@/lib/remuneracao/calculoPEP"
-import type { PepCatalogoItem, PepEvidencia, PepPlanejamentoSemestral, PepRegistroEntrega } from "@/types/pep"
+import type { PepCatalogoItem, PepEvidencia, PepPlanejamentoSemestral, PepRegistroEntrega, PepStatusEntrega } from "@/types/pep"
+import toast from "react-hot-toast"
+import { useUsuarioAtual } from "@/hooks/useUsuarioAtual"
+import { usePepSharepoint } from "@/hooks/usePepSharepoint"
+import { EvidenciasSharepoint, type AvaliacaoSugestao } from "./pep/EvidenciasSharepoint"
+import { carregarAnalistasDeTeste, ehProfissionalDeTeste, type AnalistaTeste } from "@/lib/roboSharepoint/homologacao"
+import { resolverItem } from "@/services/roboSharepoint.service"
+import type { SpItem } from "@/types/roboSharepoint"
+
+// Motivo gravado na trilha de auditoria quando a entrega vem de uma sugestão
+// do robô SharePoint (a pessoa que clicou em "Confirmar" é quem fica como autora).
+const MOTIVO_SHAREPOINT = "Evidência do SharePoint confirmada (robô)"
+
+/** Data de envio do arquivo no fuso de Brasília, 'YYYY-MM-DD'. */
+function dataBrasilia(iso: string): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(iso))
+}
 
 const money = (v: number) => `R$ ${v.toFixed(2).replace(".", ",")}`
 
@@ -188,7 +204,30 @@ export function PepEntregasTab() {
   // Roster da Grade: quem atende como Coordenador de Caso no mês, com seus
   // pacientes — a mesma regra da visão geral (lib/remuneracao/visaoGeralPep.ts).
   const analistasGrade = useMemo(() => analistasDaGrade(resultado ?? []), [resultado])
-  const analistas = useMemo(() => analistasGrade.map(a => a.nome), [analistasGrade])
+
+  // Modo teste (homologação do robô SharePoint), só para admin: acrescenta o
+  // par "Profissional/Paciente Teste Robô PEP", que o cálculo compartilhado
+  // esconde de propósito. Nada dele entra na apuração (ver pacientesApuracao).
+  const { role } = useUsuarioAtual()
+  const ehAdmin = role === "admin"
+  const [modoTeste, setModoTeste] = useState(false)
+  const [analistasTesteCarregados, setAnalistasTesteCarregados] = useState<AnalistaTeste[]>([])
+  const testeVisivel = ehAdmin && modoTeste
+  useEffect(() => {
+    if (!testeVisivel) return
+    let vivo = true
+    carregarAnalistasDeTeste(competencia).then(l => { if (vivo) setAnalistasTesteCarregados(l) })
+    return () => { vivo = false }
+  }, [testeVisivel, competencia])
+  const analistasTeste = useMemo(
+    () => (testeVisivel ? analistasTesteCarregados : []),
+    [testeVisivel, analistasTesteCarregados]
+  )
+
+  const analistas = useMemo(
+    () => [...analistasGrade.map(a => a.nome), ...analistasTeste.map(a => a.nome)],
+    [analistasGrade, analistasTeste]
+  )
 
   // Deep link vindo de outra tela (ex.: "Abrir Entregas PEP" no modal de
   // Rem. Mês - Total): ?competencia=YYYY-MM&prestador=Nome. Aplica só uma vez
@@ -230,10 +269,12 @@ export function PepEntregasTab() {
     setPrestador(prestadorParam)
   }
 
+  const prestadorDeTeste = ehProfissionalDeTeste(prestador)
   const pacientes = useMemo(() => {
+    if (prestadorDeTeste) return analistasTeste.find(a => a.nome === prestador)?.pacientes ?? []
     const p = (resultado ?? []).find(r => r.prof === prestador)
     return p ? pacientesCCDoProfissional(p) : []
-  }, [resultado, prestador])
+  }, [resultado, prestador, prestadorDeTeste, analistasTeste])
 
   const {
     itensRecorrentes, itensSemestrais,
@@ -245,10 +286,17 @@ export function PepEntregasTab() {
 
   const { parametros } = useParametrosGerais()
   const valorMensalPorPaciente = parametros?.cc_pe_default ?? 0
-  const pacientesApuracao = useMemo(() => pacientes.map(nome => ({ nome })), [pacientes])
+  // Par de teste não é apurado: com a lista vazia, apurarESalvarPEP não grava
+  // nenhuma linha em pep_apuracao_mensal — nada chega à Visão geral nem à
+  // remuneração.
+  const pacientesApuracao = useMemo(
+    () => (prestadorDeTeste ? [] : pacientes.map(nome => ({ nome }))),
+    [pacientes, prestadorDeTeste]
+  )
   const { resultadoDe, totalPrestador, loading: apuracaoLoading, recalcular: recalcularApuracao, liberado, liberar, reabrir } = usePepApuracao(
     prestador, competencia, pacientesApuracao, valorMensalPorPaciente
   )
+  const { itens: spItens, recarregar: recarregarSp } = usePepSharepoint(prestador, competencia)
   const [confirmandoLiberar, setConfirmandoLiberar] = useState(false)
   const [confirmandoReabrir, setConfirmandoReabrir] = useState(false)
   const [motivoReabrir, setMotivoReabrir] = useState("")
@@ -308,6 +356,7 @@ export function PepEntregasTab() {
           </p>
         )}
         <SeletorPrestador analistas={analistas} prestador={prestador} onChange={setPrestador} onHistoricoGeral={() => setHistoricoAberto("geral")} carregando={gradeLoading} />
+        {ehAdmin && <InterruptorModoTeste ligado={modoTeste} onMudar={setModoTeste} encontrados={analistasTeste.length} />}
         {gradeLoading || analistas.length === 0 ? (
           <div className="rounded-xl border border-border bg-card p-10 text-center text-sm text-muted-foreground">
             {gradeLoading
@@ -329,6 +378,138 @@ export function PepEntregasTab() {
     )
   }
 
+  // Entrega semestral — uma regra só para o painel manual e para a sugestão do
+  // SharePoint. Entrega antecipada reprograma o próximo ciclo (marco zero + 6
+  // meses a partir da competência em que foi de fato entregue).
+  async function registrarEntregaSemestral(pacienteNome: string | null, item: PepCatalogoItem, dados: {
+    status: PepStatusEntrega
+    evidencias: PepEvidencia[]
+    observacao: string | null
+    motivo: string | null
+    dataEntrega: string
+  }) {
+    const plano = pacienteNome ? planejamentoDe(pacienteNome, item.id) : null
+    const competenciaEntrega = competenciaDaData(dados.dataEntrega)
+    const antecipada = plano && competenciaEntrega < plano.competencia_planejada ? plano : null
+
+    const r = await marcarEntrega({
+      pacienteNome,
+      itemId: item.id,
+      status: dados.status,
+      observacao: dados.observacao,
+      evidencias: dados.evidencias,
+      motivo: dados.motivo,
+      competencia: competenciaEntrega,
+      dataEntrega: dados.dataEntrega,
+    })
+
+    if (r.ok && dados.status === "entregue" && antecipada && pacienteNome) {
+      const proximaCompetencia = addMeses(competenciaEntrega, 6)
+      await cadastrarPlanejamento({
+        pacienteNome,
+        itemId: item.id,
+        competenciaPlanejada: proximaCompetencia,
+        dataPlanejada: `${proximaCompetencia}-01`,
+        reprogramarDe: antecipada,
+      })
+    }
+
+    await recalcularApuracao()
+    return r
+  }
+
+  // ── Sugestões do robô SharePoint ────────────────────────────────────────────
+  // O robô já conferiu prestador (CNPJ), paciente (CPF + nome) e a sessão de
+  // Coordenador de Caso no mês. Aqui fica só o que depende do estado da tela:
+  // mês liberado, item já completo, semestral sem planejamento.
+  function avaliarSugestao(sp: SpItem): AvaliacaoSugestao {
+    const cat = catalogoCompleto.find(c => c.id === sp.item_id)
+    if (!cat) return { pode: false, motivo: "Item do PEP desconhecido." }
+    if (liberado) return { pode: false, motivo: "Faturamento deste mês já liberado. Reabra para registrar." }
+    const pac = cat.tipo_registro === "GERAL" ? null : sp.paciente_nome
+    if (pac && !pacientes.includes(pac)) {
+      return { pode: false, motivo: "Paciente não está entre os pacientes deste analista na Grade do mês." }
+    }
+    if (cat.classe === "recorrente") {
+      const reg = registroDe(pac, cat.id)
+      if (reg?.evidencias?.some(e => e.caminho === sp.web_url)) return { pode: true }
+      const { esperado, entregue } = statusRecorrente(cat, semanasCalendario, reg)
+      if (entregue >= esperado) return { pode: false, motivo: `${cat.sigla} já está completo neste mês (${entregue}/${esperado}).` }
+      return { pode: true }
+    }
+    if (!pac || !planejamentoDe(pac, cat.id)) {
+      return { pode: false, motivo: "Planeje este item em “Entregas semestrais” antes de confirmar a entrega." }
+    }
+    if (registroSemestralDe(pac, cat.id)?.status === "entregue") {
+      return { pode: false, motivo: "Este documento já está registrado como entregue neste ciclo." }
+    }
+    return { pode: true }
+  }
+
+  async function confirmarSugestao(sp: SpItem): Promise<boolean> {
+    const cat = catalogoCompleto.find(c => c.id === sp.item_id)
+    if (!cat) return false
+    const pac = cat.tipo_registro === "GERAL" ? null : sp.paciente_nome
+    const evidencia: PepEvidencia = { caminho: sp.web_url ?? sp.caminho ?? sp.nome, nome: sp.nome }
+    let registroId: string | null = null
+    let competenciaFinal = sp.competencia
+
+    if (cat.classe === "recorrente") {
+      const reg = registroDe(pac, cat.id)
+      if (reg && reg.evidencias?.some(e => e.caminho === evidencia.caminho)) {
+        registroId = reg.id
+      } else {
+        const { esperado, entregue } = statusRecorrente(cat, semanasCalendario, reg)
+        const r = await marcarQuantidade({
+          pacienteNome: pac,
+          pacienteCpf: sp.paciente_cpf,
+          itemId: cat.id,
+          quantidadeEntregue: entregue + 1,
+          quantidadeEsperada: esperado,
+          observacao: reg?.observacao ?? null,
+          evidencias: [...normalizarEvidencias(reg?.evidencias ?? [], entregue), evidencia],
+          motivo: MOTIVO_SHAREPOINT,
+        })
+        if (!r.ok) { toast.error("Não foi possível registrar a entrega."); return false }
+        registroId = r.registro?.id ?? null
+        await recalcularApuracao()
+      }
+      competenciaFinal = competencia
+    } else {
+      // Data da entrega = dia em que o arquivo foi enviado. Se o mês veio do
+      // NOME do arquivo e for outro, vale o nome (dia 1º daquele mês).
+      let dataEntrega = sp.criado_em_sp ? dataBrasilia(sp.criado_em_sp) : `${sp.competencia}-01`
+      if (sp.competencia && competenciaDaData(dataEntrega) !== sp.competencia) dataEntrega = `${sp.competencia}-01`
+      const r = await registrarEntregaSemestral(pac, cat, {
+        status: "entregue", evidencias: [evidencia], observacao: null, motivo: MOTIVO_SHAREPOINT, dataEntrega,
+      })
+      if (!r.ok) { toast.error("Não foi possível registrar a entrega."); return false }
+      registroId = r.registro?.id ?? null
+      competenciaFinal = competenciaDaData(dataEntrega)
+    }
+
+    try {
+      await resolverItem({ spId: sp.sp_id, acao: "confirmar", registroEntregaId: registroId, competencia: competenciaFinal })
+      toast.success(`${cat.sigla} registrado com a evidência do SharePoint.`)
+    } catch (e) {
+      // A entrega JÁ foi registrada; só a marca "confirmado" da sugestão falhou.
+      toast.error(`Entrega registrada, mas a sugestão não foi marcada: ${e instanceof Error ? e.message : "erro"}`)
+    }
+    await recarregarSp()
+    return true
+  }
+
+  async function ignorarSugestao(sp: SpItem): Promise<boolean> {
+    try {
+      await resolverItem({ spId: sp.sp_id, acao: "ignorar" })
+      await recarregarSp()
+      return true
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não foi possível ignorar a sugestão.")
+      return false
+    }
+  }
+
   return (
     <div className="space-y-6">
       <SecaoTitulo numero={1}>Analista do Comportamento</SecaoTitulo>
@@ -341,6 +522,7 @@ export function PepEntregasTab() {
         onVisaoGeral={() => setPrestador("")}
         carregando={gradeLoading}
       />
+      {ehAdmin && <InterruptorModoTeste ligado={modoTeste} onMudar={setModoTeste} encontrados={analistasTeste.length} />}
 
       <SecaoTitulo numero={2}>Entregas mensais</SecaoTitulo>
       <div className="space-y-4">
@@ -397,6 +579,14 @@ export function PepEntregasTab() {
             onCancelar={() => { setConfirmandoReabrir(false); setMotivoReabrir("") }}
           />
         )}
+
+        <EvidenciasSharepoint
+          itens={spItens}
+          catalogo={catalogoCompleto}
+          avaliar={avaliarSugestao}
+          onConfirmar={confirmarSugestao}
+          onIgnorar={ignorarSugestao}
+        />
 
         {/* Colgroup igual nas duas tabelas (primeira coluna e largura por item
             idênticas) — Geral fica em bloco separado, mas STC/ETC alinham
@@ -580,36 +770,9 @@ export function PepEntregasTab() {
             // a próxima etapa (observação/evidência) sem forçar reabrir o modal.
           }}
           onSalvarEntrega={async ({ status, evidencias, observacao, motivo, dataEntrega }) => {
-            const plano = celulaAtiva.pacienteNome ? planejamentoDe(celulaAtiva.pacienteNome, celulaAtiva.item.id) : null
-            const competenciaEntrega = competenciaDaData(dataEntrega)
-            const antecipada = plano && competenciaEntrega < plano.competencia_planejada ? plano : null
-
-            await marcarEntrega({
-              pacienteNome: celulaAtiva.pacienteNome,
-              itemId: celulaAtiva.item.id,
-              status,
-              observacao,
-              evidencias,
-              motivo,
-              competencia: competenciaEntrega,
-              dataEntrega,
+            await registrarEntregaSemestral(celulaAtiva.pacienteNome, celulaAtiva.item, {
+              status, evidencias, observacao: observacao ?? null, motivo: motivo ?? null, dataEntrega,
             })
-
-            // Regra: entrega semestral antecipada reprograma e recalcula a
-            // próxima competência planejada (marco zero + 6 meses a partir da
-            // competência em que foi de fato entregue).
-            if (status === "entregue" && antecipada && celulaAtiva.pacienteNome) {
-              const proximaCompetencia = addMeses(competenciaEntrega, 6)
-              await cadastrarPlanejamento({
-                pacienteNome: celulaAtiva.pacienteNome,
-                itemId: celulaAtiva.item.id,
-                competenciaPlanejada: proximaCompetencia,
-                dataPlanejada: `${proximaCompetencia}-01`,
-                reprogramarDe: antecipada,
-              })
-            }
-
-            await recalcularApuracao()
             setCelulaAtiva(null)
           }}
           onSalvarReprogramacaoImpedimento={async ({ dataPlanejada, motivo, evidencias }) => {
@@ -863,6 +1026,25 @@ function SeletorPrestador({ analistas, prestador, onChange, onHistoricoGeral, on
   )
 }
 
+// Só aparece para admin. Liga o par de teste da homologação do robô
+// SharePoint na lista de analistas; o resto do sistema continua sem vê-lo.
+function InterruptorModoTeste({ ligado, onMudar, encontrados }: {
+  ligado: boolean
+  onMudar: (v: boolean) => void
+  encontrados: number
+}) {
+  return (
+    <label className="flex min-h-11 cursor-pointer items-center gap-2.5 rounded-xl border border-dashed border-border px-4 py-2 text-sm text-muted-foreground">
+      <input type="checkbox" checked={ligado} onChange={e => onMudar(e.target.checked)} className="h-4 w-4 accent-slate-700" />
+      <FlaskConical size={14} aria-hidden />
+      <span>
+        Modo teste (só admin): mostrar o analista de teste do robô SharePoint
+        {ligado && <span className="ml-1 font-medium text-foreground">· {encontrados ? `${encontrados} encontrado(s) na Grade` : "nenhum na Grade deste mês"}</span>}
+      </span>
+    </label>
+  )
+}
+
 type RegistroResumo = Pick<PepRegistroEntrega, "status" | "quantidade_entregue" | "evidencias" | "observacao" | "data_entrega"> | null
 
 function temEvidencia(registro: RegistroResumo): boolean {
@@ -1035,11 +1217,21 @@ function CampoEvidenciaUnidade({ evidencia, rotulo, onChange }: {
   rotulo: string
   onChange: (campo: keyof PepEvidencia, valor: string) => void
 }) {
+  // Evidência confirmada a partir do robô do SharePoint chega com o endereço
+  // completo do arquivo (webUrl) e o nome: aí dá para abrir direto daqui.
+  const link = /^https?:\/\//i.test(evidencia.caminho) ? evidencia.caminho : null
   return (
     <div className="space-y-1.5">
-      <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-        {rotulo}
-      </label>
+      <div className="flex items-center justify-between gap-2">
+        <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+          {rotulo}
+        </label>
+        {link && (
+          <a href={link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-medium text-blue-700 hover:underline dark:text-blue-400">
+            Abrir{evidencia.nome ? ` ${evidencia.nome}` : " arquivo"} <ExternalLink size={11} />
+          </a>
+        )}
+      </div>
       <input
         type="text"
         placeholder="ex.: SharePoint/Pacientes/Fulano/STC-01-082026.pdf"

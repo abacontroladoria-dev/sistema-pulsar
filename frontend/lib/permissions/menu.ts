@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   ArrowRightLeft,
   BarChart3,
+  Bot,
   BriefcaseBusiness,
   Building2,
   Calendar,
@@ -149,6 +150,7 @@ export const MENU_ITENS: MenuItemDef[] = [
   { codigo: 'usuarios', label: 'Usuários', grupo: G.administracao.nome, path: '/admin', icon: Users },
   { codigo: 'permissoes', label: 'Permissões', grupo: G.administracao.nome, path: '/admin/permissoes', icon: KeyRound },
   { codigo: 'api_integracao', label: 'API', grupo: G.administracao.nome, path: '/admin/api', icon: Plug },
+  { codigo: 'robo_sharepoint', label: 'Robô SharePoint', grupo: G.administracao.nome, path: '/admin/robo-sharepoint', icon: Bot },
 
   { codigo: 'connect', label: 'Pulsar Connect', grupo: G.geral.nome, path: '/connect', icon: Zap },
 ]
