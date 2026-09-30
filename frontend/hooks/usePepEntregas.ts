@@ -123,7 +123,7 @@ export function usePepEntregas(prestadorNome: string, competencia: string, pacie
         setRegistros(prev => [...prev.filter(r => r.id !== data.id), data])
         setRegistrosTodasCompetencias(prev => [...prev.filter(r => r.id !== data.id), data])
       }
-      return { ok: true as const }
+      return { ok: true as const, registro: data ?? null }
     } catch (e) {
       setError("Não foi possível salvar o registro de entrega.")
       return { ok: false as const, error: e }
@@ -165,7 +165,7 @@ export function usePepEntregas(prestadorNome: string, competencia: string, pacie
         setRegistros(prev => [...prev.filter(r => r.id !== data.id), data])
         setRegistrosTodasCompetencias(prev => [...prev.filter(r => r.id !== data.id), data])
       }
-      return { ok: true as const }
+      return { ok: true as const, registro: data ?? null }
     } catch (e) {
       setError("Não foi possível salvar a quantidade entregue.")
       return { ok: false as const, error: e }
