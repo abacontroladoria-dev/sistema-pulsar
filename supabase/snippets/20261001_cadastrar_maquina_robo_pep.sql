@@ -4,55 +4,42 @@
 --
 -- PRÉ-REQUISITO: a migration 20261001120000_robo_pep_sharepoint.sql aplicada.
 --
--- Rode em DUAS ETAPAS no SQL Editor do Supabase.
+-- UM PASSO SÓ (01/10/2026: a versão em duas etapas parava na trava quando o
+-- arquivo era rodado inteiro). Gera o token, grava só o hash SHA-256 e mostra
+-- o token em claro UMA VEZ, na coluna token_copie_agora.
+--
+-- Copie o token direto para:
+--   1. C:\Users\Maquina001\.pulsar-sharepoint\robo.env  → MACHINE_TOKEN=
+--   2. Coolify, recurso robo-pep-sharepoint           → MACHINE_TOKEN (Secret)
+-- Não cole em chat nem em e-mail.
+--
+-- ATENÇÃO: rodar de novo gera OUTRO token e invalida o anterior (o robô para
+-- até o token novo ser colado nos dois lugares). É também o jeito de trocar o
+-- token se ele vazar.
 
--- ---------------------------------------------------------------------------
--- ETAPA 1 — gerar o token em claro. Aparece SÓ AGORA, nunca mais.
--- ---------------------------------------------------------------------------
-select encode(gen_random_bytes(32), 'hex') as token_claro;
-
--- Copie o valor de "token_claro". Ele vai para o Coolify como MACHINE_TOKEN
--- (Secret) do recurso robo-pep-sharepoint — e para o robo.env da máquina de
--- desenvolvimento, que fica FORA do repositório. Não cole em chat nem e-mail.
-
--- ---------------------------------------------------------------------------
--- ETAPA 2 — colar o token copiado no lugar das DUAS ocorrências de
--- SEU_TOKEN_AQUI (Ctrl+H), trocar a trava para true e rodar. Só o hash SHA-256
--- fica gravado.
--- ---------------------------------------------------------------------------
-DO $$
-DECLARE
-  colei_o_token_da_etapa_1 boolean := false;
-BEGIN
-  IF NOT colei_o_token_da_etapa_1 THEN
-    RAISE EXCEPTION 'Pare: rode a ETAPA 1, cole o token no lugar de SEU_TOKEN_AQUI e troque false por true. Nada foi alterado.';
-  END IF;
-  IF length('SEU_TOKEN_AQUI') < 64 THEN
-    RAISE EXCEPTION 'O token colado é curto demais (esperado: 64 caracteres). Nada foi alterado.';
-  END IF;
-
-  INSERT INTO public.maquinas (id, nome, ativa, hostname, token_hash, token_criado_em)
-  VALUES (
-    'robo-pep-sharepoint',
-    'Robô SharePoint → PEP (Coolify)',
-    true,
-    'coolify',
-    encode(sha256(convert_to('SEU_TOKEN_AQUI', 'UTF8')), 'hex'),
-    now()
-  )
-  ON CONFLICT (id) DO UPDATE
-    SET token_hash        = EXCLUDED.token_hash,
-        token_criado_em   = EXCLUDED.token_criado_em,
-        token_revogado_em = NULL,
-        ativa             = true;
-END $$;
-
--- ---------------------------------------------------------------------------
--- Conferência — 1 linha, ativa = true, token_revogado_em nulo.
--- ---------------------------------------------------------------------------
-select id, nome, ativa, hostname, token_criado_em, token_revogado_em, last_seen, app_version
-  from public.maquinas
- where id = 'robo-pep-sharepoint';
+with novo as (
+  select encode(gen_random_bytes(32), 'hex') as token
+), gravado as (
+  insert into public.maquinas (id, nome, ativa, hostname, token_hash, token_criado_em)
+  select 'robo-pep-sharepoint',
+         'Robô SharePoint → PEP (Coolify)',
+         true,
+         'coolify',
+         encode(sha256(convert_to(novo.token, 'UTF8')), 'hex'),
+         now()
+    from novo
+  on conflict (id) do update
+    set token_hash        = excluded.token_hash,
+        token_criado_em   = excluded.token_criado_em,
+        token_revogado_em = null,
+        ativa             = true
+  returning id, token_criado_em
+)
+select novo.token          as token_copie_agora,
+       gravado.id          as maquina,
+       gravado.token_criado_em,
+       (select count(*) from public.sp_pep_execucoes) as execucoes_registradas  -- 0 = migration aplicada
+  from novo, gravado;
 
 -- ---------------------------------------------------------------------------
 -- Em caso de vazamento do token: revogar (o robô para na próxima chamada).
