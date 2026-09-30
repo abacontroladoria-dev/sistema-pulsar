@@ -3,9 +3,11 @@
 import { Fragment, useCallback, useEffect, useState } from 'react'
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from 'lucide-react'
 import { Drawer } from '@/components/cronograma/ui/Drawer'
+import { Z_MODAL_EMPILHADO } from '@/components/cronograma/ui/useModalLayer'
+import { DetalheExecucaoDrawer } from './detalhe/DetalheExecucaoDrawer'
 import { dataHora, GATILHOS, MODOS, segundos } from '@/lib/roboSharepoint/rotulos'
 import { listarExecucoesPagina } from '@/services/roboSharepoint.service'
-import type { RoboExecucao } from '@/types/roboSharepoint'
+import type { RoboEtapaNome, RoboExecucao } from '@/types/roboSharepoint'
 import { LinhaDoTempo } from './LinhaDoTempo'
 import { CustoExecucao } from './CustoExecucao'
 
@@ -47,7 +49,12 @@ function Filtro<T extends string>({ rotulo, valor, opcoes, onMudar }: {
 
 const textoStatus = (e: RoboExecucao) => (e.status === 'erro' ? 'Falhou' : e.status === 'executando' ? 'Executando' : 'Concluída')
 
-export function HistoricoCompletoDrawer({ onClose }: { onClose: () => void }) {
+export function HistoricoCompletoDrawer({ idUltimaGravada, ultimaCompleta, onClose }: {
+  idUltimaGravada: string | null
+  ultimaCompleta: RoboExecucao | null
+  onClose: () => void
+}) {
+  const [detalhe, setDetalhe] = useState<{ execucao: RoboExecucao; etapa: RoboEtapaNome } | null>(null)
   const [pagina, setPagina] = useState(0)
   const [status, setStatus] = useState<FiltroStatus>('todos')
   const [gatilho, setGatilho] = useState<FiltroGatilho>('todos')
@@ -155,7 +162,7 @@ export function HistoricoCompletoDrawer({ onClose }: { onClose: () => void }) {
                   {expandida && (
                     <tr className="border-b border-slate-100 bg-slate-50/60">
                       <td colSpan={8} className="space-y-5 px-3 py-4">
-                        <LinhaDoTempo execucao={e} />
+                        <LinhaDoTempo execucao={e} onAbrir={etapa => setDetalhe({ execucao: e, etapa })} />
                         <CustoExecucao execucao={e} compacto />
                       </td>
                     </tr>
@@ -169,6 +176,17 @@ export function HistoricoCompletoDrawer({ onClose }: { onClose: () => void }) {
           </tbody>
         </table>
       </div>
+      {detalhe && (
+        <DetalheExecucaoDrawer
+          execucao={detalhe.execucao}
+          etapaInicial={detalhe.etapa}
+          ehUltima={detalhe.execucao.id === idUltimaGravada}
+          ultimaCompleta={ultimaCompleta}
+          onAbrirExecucao={(execucao, etapa) => setDetalhe({ execucao, etapa })}
+          zIndex={Z_MODAL_EMPILHADO}
+          onClose={() => setDetalhe(null)}
+        />
+      )}
     </Drawer>
   )
 }

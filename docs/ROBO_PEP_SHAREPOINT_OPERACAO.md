@@ -8,6 +8,7 @@ Roteiro de 01/10/2026 para colocar no ar o robô planejado em `docs/ESTUDO_ROBO_
 |---|---|
 | Robô (container Node 20) | `robo-pep-sharepoint/` |
 | Banco: tabelas, reconhecimento, RPCs | `supabase/migrations/20261001120000_robo_pep_sharepoint.sql` |
+| "O que o robô leu" (registro por execução + resumos) | `supabase/migrations/20261001130000_robo_pep_sharepoint_detalhe.sql`. Aplicar **antes** de subir o robô 0.2 (que manda também planilhas e arquivos ignorados) |
 | Cadastro da máquina do robô | `supabase/snippets/20261001_cadastrar_maquina_robo_pep.sql` |
 | Limpeza dos dados de teste | `supabase/snippets/20261001_limpar_dados_teste_robo_pep.sql` |
 | Painel ao vivo | `/admin/robo-sharepoint` (Administração → Robô SharePoint) |
@@ -29,9 +30,7 @@ Sem ele, nada roda contra o SharePoint. Depois, avise o Bernardo com a frase com
 
 ### 2. Aplicar o banco (você)
 1. SQL Editor do Supabase → rodar `supabase/migrations/20261001120000_robo_pep_sharepoint.sql`. É idempotente e foi testado num Postgres 17 local com 37 cenários.
-2. Rodar `supabase/snippets/20261001_cadastrar_maquina_robo_pep.sql`:
-   - **Etapa 1** mostra o token uma vez. Copie.
-   - **Etapa 2**: cole o token nas duas ocorrências de `SEU_TOKEN_AQUI`, troque `false` por `true` e rode.
+2. Rodar `supabase/snippets/20261001_cadastrar_maquina_robo_pep.sql` inteiro, uma vez. É um passo só: o resultado mostra o token **uma única vez**, na coluna `token_copie_agora`. Rodar de novo gera outro token e invalida o anterior.
 3. Cole o mesmo token em `MACHINE_TOKEN=` no arquivo `C:\Users\Maquina001\.pulsar-sharepoint\robo.env`. Não mande por chat.
 
 A tela nova nasce visível só para admin. Liberar para o grupo Diretoria só **depois** da validação: /admin/permissoes → Por grupo → Diretoria → "Robô SharePoint".

@@ -31,7 +31,8 @@ interface DrawerProps {
   /** Rodapé fixo (ex.: ações de editar/excluir). */
   footer?: React.ReactNode
   /** Largura do painel em px. O padrão cabe num texto de ~50 caracteres por linha. */
-  width?: number
+  /** px, ou qualquer largura CSS (ex.: "min(1320px, 96vw)") */
+  width?: number | string
   zIndex?: number
   onClose: () => void
   children: React.ReactNode

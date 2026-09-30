@@ -1,5 +1,8 @@
 import { getSupabaseClient } from '@/lib/supabase/client'
-import type { RoboExecucao, RoboSaude, SpItem, SpPendenciaPasta } from '@/types/roboSharepoint'
+import type {
+  ArquivoLido, ArquivoLidoCompleto, ArvorePastas, MatrizEvidencias, PacienteDetalhe, ResumoExecucao, RoboExecucao, RoboSaude,
+  SituacaoReconhecimento, SpItem, SpItemStatus, SpPendenciaPasta, TipoArquivoLido,
+} from '@/types/roboSharepoint'
 
 // Leitura das tabelas sp_pep_* (RLS: robo_sharepoint / relacionamento_prestador_pep)
 // e as duas escritas permitidas a pessoas (RPCs sp_pep_resolver_item e
@@ -40,6 +43,100 @@ export async function listarExecucoesPagina(input: {
   const { data, error, count } = await q
   if (error) throw error
   return { execucoes: (data ?? []) as RoboExecucao[], total: count ?? 0 }
+}
+
+// ── "O que o robô leu" ───────────────────────────────────────────────────────
+// Agregados vêm por RPC (uma linha jsonb): o PostgREST corta listas em 1000
+// linhas sem avisar, e uma leitura completa pode passar disso.
+
+export async function obterResumoExecucao(execucaoId: string): Promise<ResumoExecucao> {
+  const { data, error } = await getSupabaseClient().rpc('sp_pep_resumo_execucao', { p_execucao_id: execucaoId })
+  if (error) throw error
+  return data as ResumoExecucao
+}
+
+export async function obterSituacaoReconhecimento(): Promise<SituacaoReconhecimento> {
+  const { data, error } = await getSupabaseClient().rpc('sp_pep_situacao_reconhecimento')
+  if (error) throw error
+  return data as SituacaoReconhecimento
+}
+
+export type OrdemArquivos = 'caminho' | 'recentes' | 'nome'
+
+/**
+ * Arquivos lidos por UMA execução, com a situação de cada um no Pulsar
+ * (vw_sp_pep_arquivos_lidos). Sem a migration 20261001140000 aplicada, cai
+ * para a tabela crua — a lista aparece, só sem a situação.
+ */
+export async function listarArquivosLidos(input: {
+  execucaoId: string
+  tipo?: TipoArquivoLido | null
+  sigla?: string | null
+  motivo?: string | null
+  prestadorPastaId?: string | null
+  pacientePastaId?: string | null
+  situacao?: SpItemStatus | null
+  motivoPulsar?: string | null
+  soNovos?: boolean
+  busca?: string
+  ordem?: OrdemArquivos
+  pagina: number
+  tamanho?: number
+}): Promise<{ arquivos: ArquivoLidoCompleto[]; total: number }> {
+  const tamanho = input.tamanho ?? 25
+  const de = input.pagina * tamanho
+  const montar = (fonte: string, comSituacao: boolean) => {
+    let q = getSupabaseClient().from(fonte).select('*', { count: 'exact' }).eq('execucao_id', input.execucaoId)
+    q = input.ordem === 'recentes' ? q.order('criado_em_sp', { ascending: false, nullsFirst: false })
+      : input.ordem === 'nome' ? q.order('nome', { ascending: true })
+        : q.order('caminho', { ascending: true })
+    q = q.range(de, de + tamanho - 1)
+    if (input.tipo) q = q.eq('tipo', input.tipo)
+    if (input.sigla) q = q.eq('sigla', input.sigla)
+    if (input.motivo) q = q.eq('motivo', input.motivo)
+    if (input.prestadorPastaId) q = q.eq('prestador_pasta_id', input.prestadorPastaId)
+    if (input.pacientePastaId) q = q.eq('paciente_pasta_id', input.pacientePastaId)
+    if (comSituacao && input.situacao) q = q.eq('situacao', input.situacao)
+    if (comSituacao && input.motivoPulsar) q = q.eq('motivo_pulsar', input.motivoPulsar)
+    if (comSituacao && input.soNovos) q = q.eq('novo', true)
+    const busca = input.busca?.trim().replace(/[%_,()]/g, ' ')
+    if (busca) q = q.or(`nome.ilike.%${busca}%,caminho.ilike.%${busca}%`)
+    return q
+  }
+  const r = await montar('vw_sp_pep_arquivos_lidos', true)
+  if (!r.error) return { arquivos: (r.data ?? []) as ArquivoLidoCompleto[], total: r.count ?? 0 }
+  const cru = await montar('sp_pep_execucao_arquivos', false)
+  if (cru.error) throw cru.error
+  return { arquivos: (cru.data ?? []) as ArquivoLidoCompleto[], total: cru.count ?? 0 }
+}
+
+export async function obterArvorePastas(execucaoId: string, pastaPai: string | null): Promise<ArvorePastas> {
+  const { data, error } = await getSupabaseClient().rpc('sp_pep_arvore_pastas', { p_execucao_id: execucaoId, p_pasta_pai: pastaPai })
+  if (error) throw error
+  return data as ArvorePastas
+}
+
+export async function obterMatrizEvidencias(execucaoId: string): Promise<MatrizEvidencias> {
+  const { data, error } = await getSupabaseClient().rpc('sp_pep_matriz_evidencias', { p_execucao_id: execucaoId })
+  if (error) throw error
+  return data as MatrizEvidencias
+}
+
+export async function obterPacientesDetalhe(): Promise<PacienteDetalhe[]> {
+  const { data, error } = await getSupabaseClient().rpc('sp_pep_pacientes_detalhe')
+  if (error) throw error
+  return ((data as { pacientes?: PacienteDetalhe[] })?.pacientes ?? [])
+}
+
+export async function listarPlanilhasLidas(execucaoId: string): Promise<ArquivoLido[]> {
+  const { data, error } = await getSupabaseClient()
+    .from('sp_pep_execucao_arquivos')
+    .select('*')
+    .eq('execucao_id', execucaoId)
+    .eq('tipo', 'planilha')
+    .order('caminho')
+  if (error) throw error
+  return (data ?? []) as ArquivoLido[]
 }
 
 /**

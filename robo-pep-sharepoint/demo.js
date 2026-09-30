@@ -5,6 +5,7 @@
  *
  *   --sem-banco   lê o SharePoint e classifica, mas não fala com o Pulsar
  *                 (serve antes de a migration estar aplicada)
+ *   --completa    relê o site inteiro, ignorando o "só o que mudou"
  *   --simular     manda ao banco, que reconhece tudo e devolve as contagens
  *                 SEM gravar sugestões (é o que o inventário usa)
  *
@@ -23,6 +24,7 @@ const { executar } = require('./lib/execucao')
 const args = new Set(process.argv.slice(2))
 const semBanco = args.has('--sem-banco')
 const simular = args.has('--simular')
+const completa = args.has('--completa')
 
 const cor = (c, s) => (process.stdout.isTTY ? `\x1b[${c}m${s}\x1b[0m` : s)
 const verde = s => cor(32, s)
@@ -82,7 +84,7 @@ const observador = {
   const api = semBanco ? null : new Api(config.supabaseUrl, config.supabaseAnon, config.machineToken)
   console.log(cinza(`certificado "${auth.credencial.assunto}" · vence em ${auth.credencial.diasRestantes} dias`))
   try {
-    await executar({ graph, api, config: { ...config, credencial: auth.credencial }, gatilho: 'demo', simular, observador })
+    await executar({ graph, api, config: { ...config, credencial: auth.credencial, forcarCompleta: completa }, gatilho: 'demo', simular, observador })
   } catch {
     process.exitCode = 1
   }

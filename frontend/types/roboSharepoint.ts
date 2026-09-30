@@ -87,6 +87,159 @@ export type SpPendenciaPasta = {
   arquivos: number
 }
 
+// ── "O que o robô leu" (migration 20261001130000) ────────────────────────────
+
+export type TipoArquivoLido = 'evidencia' | 'planilha' | 'ignorado' | 'fora_padrao' | 'removido'
+
+export type DetalhePlanilha =
+  | {
+      usada: true
+      ilegivel?: boolean
+      razao_social?: string | null
+      cnpj_valido?: boolean
+      cnpj_informado?: boolean
+      pacientes?: { nome: string; cpfValido: boolean; cpfInformado?: boolean }[]
+      planejamento_linhas?: number
+      /** Linhas da aba Planejamento (robô 0.3+), sem CPF. */
+      planejamento?: { paciente: string; documento: string | null; sigla: string | null; competencia: string | null }[]
+      avisos?: string[]
+    }
+  | { usada: false; motivo: string }
+
+export type ArquivoLido = {
+  execucao_id: string
+  sp_id: string
+  nome: string
+  caminho: string | null
+  web_url: string | null
+  tipo: TipoArquivoLido
+  motivo: string | null
+  sigla: string | null
+  prestador_pasta_id: string | null
+  paciente_pasta_id: string | null
+  tamanho: number | null
+  criado_em_sp: string | null
+  criado_por: string | null
+  competencia: string | null
+  detalhe: DetalhePlanilha | null
+}
+
+export type ResumoPrestadorLido = {
+  pasta_id: string
+  nome: string
+  arquivos: number
+  evidencias: number
+  planilhas: number
+  ignorados: number
+  pastas_paciente: number
+  tem_planilha: boolean
+}
+
+export type ResumoExecucao = {
+  registrado: boolean
+  total: number
+  por_tipo: Partial<Record<TipoArquivoLido, number>>
+  por_sigla: Record<string, number>
+  motivos: { tipo: 'ignorado' | 'fora_padrao'; motivo: string; n: number }[]
+  sem_prestador: number
+  prestadores: ResumoPrestadorLido[]
+  pastas: { total: number; prestadores: number; pacientes: number }
+}
+
+export type SituacaoReconhecimento = {
+  prestadores: {
+    pasta_id: string
+    nome_pasta: string
+    prestador_nome: string | null
+    status: 'reconhecido' | 'nao_reconhecido'
+    motivo: string | null
+    sinais: Record<string, boolean | number | null>
+    planilha_nome: string | null
+    planilha_web_url: string | null
+  }[]
+  pacientes: {
+    pasta_id: string
+    prestador_pasta_id: string | null
+    nome_pasta: string
+    paciente_nome: string | null
+    status: 'reconhecido' | 'nao_reconhecido'
+    motivo: string | null
+    origem: 'cadastro' | 'agenda' | 'manual' | null
+    sinais: { na_planilha?: boolean; cpf_valido?: boolean; no_cadastro?: boolean; nome_compativel?: boolean }
+    arquivos: number
+  }[]
+  sugestoes: {
+    sp_id: string
+    nome: string
+    web_url: string | null
+    sigla: string | null
+    paciente_nome: string | null
+    prestador_nome: string | null
+    competencia: string | null
+    criado_em_sp: string | null
+  }[]
+  itens_por_status: Partial<Record<SpItemStatus, number>>
+  itens_motivos: { motivo: string; n: number }[]
+}
+
+// ── Itens visuais (migration 20261001140000) ─────────────────────────────────
+
+/** Linha de vw_sp_pep_arquivos_lidos: o arquivo lido + a situação dele no Pulsar. */
+export type ArquivoLidoCompleto = ArquivoLido & {
+  modificado_em_sp: string | null
+  situacao: SpItemStatus | null
+  motivo_pulsar: string | null
+  paciente_nome: string | null
+  prestador_nome: string | null
+  competencia_pulsar: string | null
+  sinais: Record<string, boolean | null> | null
+  resolvido_por_nome: string | null
+  resolvido_em: string | null
+  visto_primeiro_em: string | null
+  novo: boolean | null
+}
+
+export type NoPasta = {
+  id: string
+  nome: string
+  papel: 'prestador' | 'paciente' | null
+  web_url: string | null
+  criado_em_sp: string | null
+  subpastas: number
+  arquivos: number
+  evidencias: number
+}
+
+export type ArvorePastas = {
+  pastas: NoPasta[]
+  arquivos: Pick<ArquivoLido, 'sp_id' | 'nome' | 'web_url' | 'tipo' | 'motivo' | 'sigla' | 'criado_em_sp' | 'criado_por'>[]
+}
+
+export type MatrizEvidencias = {
+  prestadores: { pasta_id: string; nome: string; web_url: string | null; prestador_nome: string | null; status: string | null }[]
+  pacientes: { pasta_id: string; prestador_pasta_id: string; nome: string; web_url: string | null; paciente_nome: string | null; status: string; motivo: string | null }[]
+  celulas: { prestador_pasta_id: string | null; paciente_pasta_id: string | null; sigla: string; situacao: SpItemStatus; n: number }[]
+}
+
+export type PacienteDetalhe = {
+  prestador_pasta_id: string | null
+  prestador_nome_pasta: string | null
+  nome: string
+  na_planilha: boolean
+  cpf_valido: boolean | null
+  cpf_informado: boolean | null
+  pasta_id: string | null
+  nome_pasta: string | null
+  web_url: string | null
+  paciente_nome: string | null
+  status: 'reconhecido' | 'nao_reconhecido'
+  motivo: string | null
+  origem: 'cadastro' | 'agenda' | 'manual' | null
+  sinais: { na_planilha?: boolean; cpf_valido?: boolean; no_cadastro?: boolean; nome_compativel?: boolean } | null
+  arquivos_por_sigla: Record<string, number>
+  planejamento: { sigla: string | null; competencia: string | null }[]
+}
+
 export type RoboSaude = {
   configurado: boolean
   online?: boolean
