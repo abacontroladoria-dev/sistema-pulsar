@@ -20,7 +20,11 @@ const ETAPAS = ['autenticar', 'listar', 'classificar', 'planilhas', 'enviar']
 
 /** Nó da árvore a partir de um driveItem do Graph. */
 function noDoItem(item) {
-  return { id: item.id, nome: item.name, paiId: item.parentReference?.id ?? null, pasta: !!item.folder }
+  return {
+    id: item.id, nome: item.name, paiId: item.parentReference?.id ?? null, pasta: !!item.folder,
+    // Link e data da pasta: o painel abre qualquer pasta direto no SharePoint.
+    webUrl: item.webUrl ?? null, criadoEm: item.createdDateTime ?? null,
+  }
 }
 
 function montarArvore(pastasSalvas) {
@@ -107,6 +111,7 @@ async function executar({ graph, api, config, gatilho, simular = false, observad
   observador?.inicio?.({ execucaoId: ctx.execucaoId, modo, gatilho })
 
   const contagens = {}
+  const detalhePlanilha = new Map()
   let resultadoLote = null
 
   try {
@@ -129,7 +134,9 @@ async function executar({ graph, api, config, gatilho, simular = false, observad
         itens = await graph.listarPasta(bib.driveId, config.somentePastaId)
         completo = true
       } else {
-        const mesmoDrive = estado?.drive_id && estado.drive_id === bib.driveId
+        // `forcarCompleta`: relê o site inteiro mesmo havendo deltaLink (serve para
+        // refazer o retrato completo; o delta seguinte continua valendo).
+        const mesmoDrive = !config.forcarCompleta && estado?.drive_id && estado.drive_id === bib.driveId
         arvore = mesmoDrive ? montarArvore(estado.pastas) : new Map()
         const d = await graph.delta(bib.driveId, mesmoDrive ? estado.delta_link : null)
         itens = d.itens; deltaLink = d.deltaLink; completo = d.completo
@@ -216,6 +223,29 @@ async function executar({ graph, api, config, gatilho, simular = false, observad
           saida.push({ ...base, pacientes: [], planejamento: [], avisos: ['planilha_ilegivel'], erro: e.message.slice(0, 200) })
         }
       }
+
+      // O que o painel mostra de cada planilha lida — e das que ficaram de
+      // fora por haver outra mais recente na mesma pasta. Sem CPF: só o nome
+      // e se o dígito verificador bateu.
+      const usadas = new Map(saida.map(p => [p.sp_id, p]))
+      for (const { item, c } of classificados) {
+        if (c.tipo !== 'planilha') continue
+        const p = usadas.get(item.id)
+        detalhePlanilha.set(item.id, p
+          ? {
+            usada: true,
+            ilegivel: p.avisos.includes('planilha_ilegivel'),
+            razao_social: p.razao_social ?? null,
+            cnpj_valido: !!p.cnpj,
+            cnpj_informado: !!p.cnpj_informado,
+            pacientes: p.pacientes.map(x => ({ nome: x.nome, cpfValido: !!x.cpfValido, cpfInformado: !!x.cpfInformado })),
+            planejamento_linhas: p.planejamento.length,
+            // As linhas da aba Planejamento, sem CPF: o painel desenha a planilha.
+            planejamento: p.planejamento.map(l => ({ paciente: l.paciente, documento: l.documento ?? null, sigla: l.sigla, competencia: l.competencia })),
+            avisos: p.avisos,
+          }
+          : { usada: false, motivo: 'havia_planilha_mais_recente' })
+      }
       return {
         resultado: saida,
         detalhe: {
@@ -229,8 +259,10 @@ async function executar({ graph, api, config, gatilho, simular = false, observad
     })
 
     resultadoLote = await cronometrar('enviar', ctx, async () => {
+      // TODOS os arquivos lidos vão ao banco: evidências e fora do padrão viram
+      // (ou atualizam) sugestões; planilhas e ignorados só entram no registro
+      // da execução, que é o que o painel abre em "O que o robô leu".
       const arquivos = classificados
-        .filter(({ c }) => c.tipo === 'evidencia' || c.tipo === 'fora_padrao')
         .map(({ item, c }) => {
           const comp = competenciaDoArquivo(item.name, item.createdDateTime)
           return {
@@ -249,8 +281,9 @@ async function executar({ graph, api, config, gatilho, simular = false, observad
             prestador_pasta_id: c.prestadorPastaId ?? null,
             paciente_pasta_id: c.pacientePastaId ?? null,
             sigla: c.sigla ?? null,
-            competencia: comp.competencia,
-            competencia_fonte: comp.fonte,
+            competencia: c.tipo === 'evidencia' || c.tipo === 'fora_padrao' ? comp.competencia : null,
+            competencia_fonte: c.tipo === 'evidencia' || c.tipo === 'fora_padrao' ? comp.fonte : null,
+            detalhe: c.tipo === 'planilha' ? detalhePlanilha.get(item.id) ?? null : null,
           }
         })
       // Arquivo que deixou de ser evidência (movido para a pasta 6/7, por
@@ -258,7 +291,10 @@ async function executar({ graph, api, config, gatilho, simular = false, observad
       const deixaram = classificados.filter(({ c }) => c.tipo === 'ignorado' || c.tipo === 'planilha').map(({ item }) => item.id)
       const pastas = listagem.pastas.map(p => {
         const papel = classificarPasta(arvore, bib.raizId, p.id)
-        return { id: p.id, nome: p.nome, pai_id: p.paiId, papel: papel.papel, prestador_pasta_id: papel.prestadorPastaId ?? null }
+        return {
+          id: p.id, nome: p.nome, pai_id: p.paiId, papel: papel.papel, prestador_pasta_id: papel.prestadorPastaId ?? null,
+          web_url: p.webUrl ?? null, criado_em: p.criadoEm ?? null,
+        }
       })
 
       if (!api) {

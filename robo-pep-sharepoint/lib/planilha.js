@@ -163,6 +163,7 @@ function lerPlanejamento(aba, avisos) {
       sigla: siglaDoDocumento(documento),
       competencia: lerCompetencia(competenciaBruta),
       competenciaInformada: !!texto(competenciaBruta),
+      documento: texto(documento) || null,
     })
   }
   return lista

@@ -45,7 +45,8 @@ test('carga completa: evidências e planilha vão ao banco num lote só', async 
   const tap = item({ nome: 'TAP-01-092026.pdf', pai: pac.subs[1].id })
   const ignorado = item({ nome: 'aval.pdf', pai: pac.subs[6].id })
   const plan = item({ nome: 'Planejamento Documentos Técnicos - Fulana.xlsx', pai: e.plan.id })
-  const graph = graphFalso({ deltas: [{ itens: [...e.itens, tap, ignorado, plan] }], arquivos: { [plan.id]: await planilhaBuffer() } })
+  const buf = await planilhaBuffer({ planejamento: [['Beltrano Exemplo da Silva', '52998224725', 'Plano Individualizado Comportamental (PIC)', 'Mai/2026']] })
+  const graph = graphFalso({ deltas: [{ itens: [...e.itens, tap, ignorado, plan] }], arquivos: { [plan.id]: buf } })
   const api = apiFalsa()
 
   const r = await executar({ graph, api, config: { siteId: 'S', versao: 't' }, gatilho: 'demo' })
@@ -56,7 +57,21 @@ test('carga completa: evidências e planilha vão ao banco num lote só', async 
   assert.equal(lote.completo, true)
   assert.equal(lote.final, true)
   assert.equal(lote.deltaLink, 'link-1')
-  assert.deepEqual(lote.arquivos.map(a => [a.sigla, a.competencia, a.competencia_fonte]), [['TAP', '2026-09', 'nome']])
+  const evid = lote.arquivos.filter(a => a.tipo === 'evidencia')
+  assert.deepEqual(evid.map(a => [a.sigla, a.competencia, a.competencia_fonte]), [['TAP', '2026-09', 'nome']])
+  // o registro da execução leva TUDO o que foi lido: evidência, ignorado e planilha
+  assert.deepEqual(lote.arquivos.map(a => a.tipo).sort(), ['evidencia', 'ignorado', 'planilha'])
+  const ign = lote.arquivos.find(a => a.tipo === 'ignorado')
+  assert.equal(ign.motivo, 'pasta_fora_do_pep')
+  assert.equal(ign.competencia, null)
+  const pl = lote.arquivos.find(a => a.tipo === 'planilha')
+  assert.equal(pl.detalhe.usada, true)
+  assert.equal(pl.detalhe.cnpj_valido, true)
+  assert.deepEqual(pl.detalhe.pacientes, [{ nome: 'Beltrano Exemplo da Silva', cpfValido: true, cpfInformado: true }])
+  assert.ok(!JSON.stringify(pl.detalhe).includes('52998224725'), 'o detalhe da planilha não leva CPF')
+  assert.deepEqual(pl.detalhe.planejamento, [{ paciente: 'Beltrano Exemplo da Silva', documento: 'Plano Individualizado Comportamental (PIC)', sigla: 'PIC', competencia: '2026-05' }])
+  // as pastas levam o link para abrir no SharePoint
+  assert.ok(lote.pastas.every(x => typeof x.web_url === 'string' && x.web_url.startsWith('https://')))
   assert.equal(lote.planilhas.length, 1)
   assert.equal(lote.planilhas[0].cnpj, '11222333000181')
   assert.ok(lote.arquivosRemovidos.includes(ignorado.id), 'arquivo em pasta 6 sai do PEP')
@@ -89,6 +104,16 @@ test('incremental: usa o deltaLink guardado e a árvore do banco', async () => {
   assert.equal(lote.completo, false)
   assert.equal(lote.pastas.length, 0, 'nada de pasta nova: não reenvia a árvore')
   assert.equal(lote.arquivos[0].sigla, 'RT')
+})
+
+test('forcarCompleta ignora o deltaLink guardado', async () => {
+  const e = prestador(RAIZ)
+  const pastasSalvas = e.itens.map(i => ({ id: i.id, nome: i.name, pai_id: i.parentReference.id }))
+  const graph = graphFalso({ deltas: [{ itens: e.itens }] })
+  const api = apiFalsa({ delta_link: 'LINK-ANTIGO', drive_id: 'DRIVE', pastas: pastasSalvas })
+  await executar({ graph, api, config: { siteId: 'S', versao: 't', forcarCompleta: true }, gatilho: 'demo' })
+  assert.deepEqual(graph.pedidos, [null])
+  assert.equal(api.lotes[0].completo, true)
 })
 
 test('pasta renomeada força leitura completa', async () => {
@@ -138,6 +163,23 @@ test('simulação vai numa parte só (cada parte simulada é desfeita)', async (
   assert.equal(api.lotes.length, 1)
   assert.equal(api.lotes[0].arquivos.length, 1500)
   assert.equal(api.lotes[0].simular, true)
+})
+
+test('duas planilhas na mesma pasta: vale a mais recente, a outra fica registrada como não usada', async () => {
+  const e = prestador(RAIZ)
+  const velha = item({ nome: 'Planejamento antigo.xlsx', pai: e.plan.id, criado: '2026-08-01T12:00:00Z' })
+  const nova = item({ nome: 'Planejamento.xlsx', pai: e.plan.id, criado: '2026-09-20T12:00:00Z' })
+  const buf = await planilhaBuffer()
+  const graph = graphFalso({ deltas: [{ itens: [...e.itens, velha, nova] }], arquivos: { [velha.id]: buf, [nova.id]: buf } })
+  const api = apiFalsa()
+  await executar({ graph, api, config: { siteId: 'S', versao: 't' }, gatilho: 'demo' })
+  const lote = api.lotes[0]
+  assert.equal(lote.planilhas.length, 1)
+  assert.equal(lote.planilhas[0].sp_id, nova.id)
+  const reg = Object.fromEntries(lote.arquivos.filter(a => a.tipo === 'planilha').map(a => [a.sp_id, a.detalhe]))
+  assert.equal(reg[nova.id].usada, true)
+  assert.ok(reg[nova.id].avisos.includes('varias_planilhas'))
+  assert.deepEqual(reg[velha.id], { usada: false, motivo: 'havia_planilha_mais_recente' })
 })
 
 test('planilha ilegível não derruba a execução', async () => {
