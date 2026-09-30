@@ -39,7 +39,60 @@ export const MOTIVOS: Record<string, string> = {
   fora_padrao: 'Fora do padrão de pastas',
 }
 
-export const rotuloMotivo = (m: string | null | undefined) => (m ? MOTIVOS[m] ?? m.replace(/_/g, ' ') : '—')
+export const rotuloMotivo = (m: string | null | undefined) => (m ? MOTIVOS[m] ?? MOTIVOS_IGNORADO[m] ?? m.replace(/_/g, ' ') : '—')
+
+// Por que um arquivo lido não é evidência do PEP (robo-pep-sharepoint/lib/mapeamento.js).
+export const MOTIVOS_IGNORADO: Record<string, string> = {
+  pasta_fora_do_pep: 'Nas pastas 6 ou 7 do paciente (Avaliações Gerais, Protocolo de Conduta), que não entram no PEP',
+  arquivo_solto_no_paciente: 'Solto na pasta do paciente, fora das 7 subpastas',
+  arquivo_solto_em_pacientes: 'Solto em “3. Pacientes”, fora da pasta de um paciente',
+  arquivo_solto_no_geral: 'Solto em “2. Geral”, fora de Supervisão ou Estudo',
+  arquivo_solto_no_prestador: 'Solto na pasta do prestador, fora das 3 seções',
+  nao_e_planilha: 'Na pasta de Planejamento, mas não é planilha',
+  havia_planilha_mais_recente: 'Havia outra planilha mais recente na mesma pasta',
+}
+
+// Itens do catálogo PEP, na ordem das pastas do SharePoint.
+export const ITENS_PEP: { sigla: string; nome: string; onde: string }[] = [
+  { sigla: 'STC', nome: 'Supervisão Técnica ABA do Caso', onde: '2. Geral / 1.' },
+  { sigla: 'ETC', nome: 'Estudo Técnico de Caso', onde: '2. Geral / 2.' },
+  { sigla: 'TAP', nome: 'Treinamento de Aplicadores ABA', onde: 'Paciente / 1.' },
+  { sigla: 'TOP', nome: 'Treinamento e Orientação Parental', onde: 'Paciente / 2.' },
+  { sigla: 'PIC', nome: 'Plano Individualizado Comportamental', onde: 'Paciente / 3.' },
+  { sigla: 'RT', nome: 'Relatório de Fechamento Técnico', onde: 'Paciente / 4.' },
+  { sigla: 'OE', nome: 'Orientação Escolar', onde: 'Paciente / 5.' },
+]
+
+export const TIPOS_ARQUIVO: Record<string, { rotulo: string; plural: string }> = {
+  evidencia: { rotulo: 'Evidência', plural: 'Evidências' },
+  planilha: { rotulo: 'Planilha', plural: 'Planilhas' },
+  ignorado: { rotulo: 'Fora do PEP', plural: 'Fora do PEP' },
+  fora_padrao: { rotulo: 'Fora do padrão', plural: 'Fora do padrão' },
+  removido: { rotulo: 'Apagado', plural: 'Apagados' },
+}
+
+/**
+ * Lê o caminho que o robô gravou ("Prestador de Serviço - Fulana (X LTDA)/3.
+ * Pacientes/Beltrano/1. Treinamento…/arquivo.pdf") em partes legíveis.
+ */
+export function partesDoCaminho(caminho: string | null | undefined) {
+  const seg = (caminho ?? '').split('/').filter(Boolean)
+  const m = /^prestador\s+de\s+servi[cç]o\s*[-–—]\s*(.+?)\s*(?:\([^()]+\))?\s*$/i.exec(seg[0] ?? '')
+  const prestador = m ? m[1] : seg[0] ?? null
+  const secao = seg[1] ?? null
+  const ehPaciente = /^0*3\s*[.)\-–]/.test(secao ?? '')
+  return {
+    prestador,
+    paciente: ehPaciente && seg.length > 3 ? seg[2] : null,
+    pasta: seg.length > 1 ? seg[seg.length - 2] : null,
+  }
+}
+
+/** "Prestador de Serviço - Fulana (FULANA LTDA)" → "Fulana". */
+export const nomeCurtoPrestador = (nomePasta: string | null | undefined) =>
+  partesDoCaminho(`${nomePasta ?? ''}/x`).prestador ?? nomePasta ?? '—'
+
+export const numero = (n: number | null | undefined) => (n == null ? '—' : n.toLocaleString('pt-BR'))
 
 export const GATILHOS: Record<string, string> = {
   agenda: 'Agendada',

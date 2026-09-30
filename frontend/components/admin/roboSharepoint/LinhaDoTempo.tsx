@@ -1,9 +1,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Check, Circle, Loader2, X } from 'lucide-react'
-import { ETAPAS, segundos } from '@/lib/roboSharepoint/rotulos'
-import type { RoboEtapa, RoboExecucao } from '@/types/roboSharepoint'
+import { ArrowUpRight, Check, ChevronRight, Circle, Loader2, X } from 'lucide-react'
+import { ETAPAS, numero, segundos } from '@/lib/roboSharepoint/rotulos'
+import type { RoboEtapa, RoboEtapaNome, RoboExecucao } from '@/types/roboSharepoint'
 
 // A execução contada etapa por etapa. É a tela que responde "o que o robô
 // está fazendo agora e quanto tempo levou": cada etapa chega pelo Realtime no
@@ -11,7 +11,9 @@ import type { RoboEtapa, RoboExecucao } from '@/types/roboSharepoint'
 // local (o banco só recebe o tempo quando ela termina).
 //
 // Cor = estado da etapa, sempre com ícone e texto junto (DESIGN.md: sky em
-// trânsito, emerald concluída, rose falhou, slate ainda não começou).
+// trânsito, emerald concluída, rose falhou, slate ainda não começou). A cor
+// fica na faixa do topo e no selo; o cartão é branco. Etapa terminada é um
+// botão: abre "O que o robô leu" naquela etapa.
 
 function useAgora(ativo: boolean) {
   const [agora, setAgora] = useState(() => Date.now())
@@ -23,29 +25,45 @@ function useAgora(ativo: boolean) {
   return agora
 }
 
-function resumoDetalhe(etapa: RoboEtapa): string | null {
+type Numero = { valor: number | null | undefined; rotulo: string; atencao?: boolean }
+
+/** Os números que cada etapa registrou, para mostrar grandes em vez de numa frase. */
+function numerosDetalhe(etapa: RoboEtapa): { numeros: Numero[]; nota?: string } | null {
   const d = etapa.detalhe as Record<string, unknown> | null | undefined
-  if (!d) return null
-  if (typeof d.erro === 'string') return d.erro
+  if (!d || typeof d.erro === 'string') return null
+  const n = (k: string) => (typeof d[k] === 'number' ? (d[k] as number) : null)
   switch (etapa.etapa) {
     case 'autenticar':
-      return d.certificado_dias_restantes != null ? `Certificado vence em ${d.certificado_dias_restantes} dias` : null
+      return { numeros: [{ valor: n('certificado_dias_restantes'), rotulo: 'dias até o certificado vencer', atencao: (n('certificado_dias_restantes') ?? 99) < 30 }], nota: 'acesso só de leitura' }
     case 'listar':
-      return `${d.leitura === 'completa' ? 'Leitura completa' : 'Só o que mudou'} · ${d.arquivos_novos_ou_alterados ?? 0} arquivo(s) · ${d.pastas ?? 0} pastas`
+      return {
+        numeros: [{ valor: n('arquivos_novos_ou_alterados'), rotulo: 'arquivos' }, { valor: n('pastas'), rotulo: 'pastas' }],
+        nota: d.leitura === 'completa' ? 'leitura completa' : 'só o que mudou',
+      }
     case 'classificar':
-      return `${d.evidencias ?? 0} evidência(s) · ${d.planilhas ?? 0} planilha(s) · ${d.fora_padrao ?? 0} fora do padrão`
+      return { numeros: [{ valor: n('evidencias'), rotulo: 'evidências' }, { valor: n('planilhas'), rotulo: 'planilhas' }, { valor: n('fora_padrao'), rotulo: 'fora do padrão', atencao: (n('fora_padrao') ?? 0) > 0 }] }
     case 'planilhas':
-      return `${d.lidas ?? 0} lida(s) · ${d.pacientes_nas_planilhas ?? 0} pacientes · ${d.cpfs_invalidos ?? 0} CPF inválido`
+      return { numeros: [{ valor: n('lidas'), rotulo: 'lidas' }, { valor: n('pacientes_nas_planilhas'), rotulo: 'pacientes' }, { valor: n('cpfs_invalidos'), rotulo: 'CPF inválido', atencao: (n('cpfs_invalidos') ?? 0) > 0 }] }
     case 'enviar':
-      return d.sem_banco
-        ? 'Banco desligado (demonstração)'
-        : `${d.novos ?? 0} novo(s) · ${d.sugeridos ?? 0} sugestão(ões) · ${d.ms_banco ?? '—'} ms no banco`
+      if (d.sem_banco) return { numeros: [], nota: 'banco desligado (demonstração)' }
+      return { numeros: [{ valor: n('sugeridos'), rotulo: 'sugestões' }, { valor: n('novos'), rotulo: 'novos' }, { valor: n('ms_banco'), rotulo: 'ms no banco' }] }
     default:
       return null
   }
 }
 
-export function LinhaDoTempo({ execucao }: { execucao: RoboExecucao | null }) {
+const TOM = {
+  concluida: { faixa: 'bg-emerald-500', selo: 'bg-emerald-50 text-emerald-700 ring-emerald-200', texto: 'concluída', Icone: Check },
+  executando: { faixa: 'bg-sky-500', selo: 'bg-sky-50 text-sky-700 ring-sky-200', texto: 'em andamento', Icone: Loader2 },
+  erro: { faixa: 'bg-rose-500', selo: 'bg-rose-50 text-rose-700 ring-rose-200', texto: 'falhou', Icone: X },
+  pendente: { faixa: 'bg-slate-200', selo: 'bg-slate-50 text-slate-500 ring-slate-200', texto: 'aguardando', Icone: Circle },
+} as const
+
+export function LinhaDoTempo({ execucao, onAbrir }: {
+  execucao: RoboExecucao | null
+  /** Clique num card de etapa concluída → "O que o robô leu" naquela etapa. */
+  onAbrir?: (etapa: RoboEtapaNome) => void
+}) {
   const rodando = execucao?.status === 'executando'
   const agora = useAgora(rodando)
 
@@ -61,49 +79,104 @@ export function LinhaDoTempo({ execucao }: { execucao: RoboExecucao | null }) {
   const totalMs = rodando
     ? agora - new Date(execucao.iniciado_em).getTime()
     : execucao.duracao_ms ?? execucao.metricas?.duracao_ms ?? null
+  const algumaAbrivel = !!onAbrir && execucao.etapas.some(e => e.status === 'concluida' || e.status === 'erro')
 
   return (
     <div>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <p className="text-xs font-semibold text-slate-500">
           {rodando ? 'Executando agora' : execucao.status === 'erro' ? 'Última execução falhou' : 'Última execução'}
+          {algumaAbrivel && <span className="font-normal"> · toque numa etapa para ver, item por item, o que o robô leu</span>}
         </p>
         <p className="text-sm text-slate-600" aria-live="polite">
           Tempo total <strong className="text-2xl font-bold tabular-nums text-slate-800">{segundos(totalMs)}</strong>
         </p>
       </div>
 
-      <ol className="mt-4 grid gap-2 md:grid-cols-5">
-        {ETAPAS.map(({ etapa, rotulo, explica }) => {
+      <ol className="mt-4 grid gap-3 md:grid-cols-5">
+        {ETAPAS.map(({ etapa, rotulo, explica }, i) => {
           const e = porEtapa.get(etapa)
-          const estado = e?.status ?? (rodando ? 'pendente' : execucao.status === 'erro' ? 'pulada' : 'pendente')
+          const bruto = e?.status ?? (rodando ? 'pendente' : execucao.status === 'erro' ? 'pulada' : 'pendente')
+          const estado = bruto === 'concluida' || bruto === 'executando' || bruto === 'erro' ? bruto : 'pendente'
+          const tom = TOM[estado]
           const ms = e?.status === 'executando' && e.inicio ? agora - new Date(e.inicio).getTime() : e?.duracao_ms ?? null
-          const detalhe = e ? resumoDetalhe(e) : null
+          const det = e ? numerosDetalhe(e) : null
+          const erroTexto = e && typeof (e.detalhe as { erro?: unknown } | null)?.erro === 'string' ? String((e.detalhe as { erro: string }).erro) : null
+          const ultimo = i === ETAPAS.length - 1
 
-          const estilo =
-            estado === 'concluida' ? 'border-emerald-200 bg-emerald-50/60'
-              : estado === 'executando' ? 'border-sky-300 bg-sky-50'
-                : estado === 'erro' ? 'border-rose-200 bg-rose-50/70'
-                  : 'border-slate-200 bg-white'
-          const icone =
-            estado === 'concluida' ? <Check className="h-4 w-4 text-emerald-700" aria-hidden />
-              : estado === 'executando' ? <Loader2 className="h-4 w-4 animate-spin text-sky-700 motion-reduce:animate-none" aria-hidden />
-                : estado === 'erro' ? <X className="h-4 w-4 text-rose-700" aria-hidden />
-                  : <Circle className="h-4 w-4 text-slate-300" aria-hidden />
-          const textoEstado =
-            estado === 'concluida' ? 'concluída' : estado === 'executando' ? 'em andamento' : estado === 'erro' ? 'falhou' : 'aguardando'
+          const abrivel = !!onAbrir && (estado === 'concluida' || estado === 'erro')
+          const corpo = (
+            <>
+              <span className={`block h-1 w-full ${tom.faixa} ${estado === 'executando' ? 'animate-pulse motion-reduce:animate-none' : ''}`} aria-hidden />
+              <span className="flex flex-1 flex-col p-4">
+                <span className="flex items-start justify-between gap-2">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-800 text-[11px] font-bold tabular-nums text-white">{i + 1}</span>
+                    <span className="truncate text-sm font-bold text-slate-800">{rotulo}</span>
+                  </span>
+                  {abrivel && (
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 text-brand-fg transition-colors group-hover:border-brand-fg group-hover:bg-brand-fg group-hover:text-white motion-reduce:transition-none" aria-hidden>
+                      <ArrowUpRight className="h-4 w-4" />
+                    </span>
+                  )}
+                </span>
+
+                <span className="mt-3 flex items-end justify-between gap-2">
+                  <span className="text-[28px] font-black leading-none tabular-nums text-slate-800">
+                    {ms != null ? segundos(ms, 2) : <span className="text-slate-300">—</span>}
+                  </span>
+                  <span className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${tom.selo}`}>
+                    <tom.Icone className={`h-3 w-3 ${estado === 'executando' ? 'animate-spin motion-reduce:animate-none' : ''}`} aria-hidden />{tom.texto}
+                  </span>
+                </span>
+
+                {!e && <span className="mt-2 block text-xs leading-snug text-slate-500">{explica}</span>}
+
+                {erroTexto ? (
+                  <span className="mt-3 block rounded-lg bg-rose-50 px-2.5 py-2 text-xs leading-snug text-rose-800">{erroTexto}</span>
+                ) : det && det.numeros.length > 0 ? (
+                  <span className={`mt-3 grid divide-x divide-slate-200 border-t border-slate-100 pt-3 ${
+                    det.numeros.length === 1 ? 'grid-cols-1' : det.numeros.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+                    {det.numeros.map(x => (
+                      <span key={x.rotulo} className="min-w-0 px-2 first:pl-0">
+                        <span className={`block text-lg font-black leading-none tabular-nums ${x.atencao ? 'text-amber-700' : 'text-slate-800'}`}>{numero(x.valor)}</span>
+                        <span className="mt-1 block text-[10px] leading-tight text-slate-500">{x.rotulo}</span>
+                      </span>
+                    ))}
+                  </span>
+                ) : null}
+                {det?.nota && <span className="mt-2 block text-[11px] font-medium text-slate-500">{det.nota}</span>}
+              </span>
+
+              {abrivel && (
+                <span className="mt-auto flex items-center justify-between border-t border-slate-100 bg-brand-surface/60 px-4 py-2.5 text-xs font-bold text-brand-fg transition-colors group-hover:bg-brand-fg group-hover:text-white motion-reduce:transition-none">
+                  Ver o que foi lido
+                  <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-1 motion-reduce:transform-none" aria-hidden />
+                </span>
+              )}
+            </>
+          )
 
           return (
-            <li key={etapa} className={`rounded-xl border p-3 transition-colors ${estilo}`}>
-              <div className="flex items-center gap-2">
-                {icone}
-                <span className="text-sm font-semibold text-slate-800">{rotulo}</span>
-                <span className="sr-only">— {textoEstado}</span>
-              </div>
-              <p className="mt-2 text-xl font-bold tabular-nums text-slate-800">
-                {ms != null ? segundos(ms, 2) : <span className="text-slate-300">—</span>}
-              </p>
-              <p className="mt-1 text-xs leading-snug text-slate-500">{detalhe ?? explica}</p>
+            <li key={etapa} className="relative flex">
+              {abrivel ? (
+                <button
+                  type="button"
+                  onClick={() => onAbrir!(etapa)}
+                  aria-label={`${rotulo}: ${tom.texto}, ${ms != null ? segundos(ms, 2) : ''}. Ver o que foi lido`}
+                  className="group flex w-full cursor-pointer flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white text-left transition-colors hover:border-brand-fg/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 motion-reduce:transition-none"
+                >
+                  {corpo}
+                </button>
+              ) : (
+                <div className={`flex w-full flex-col overflow-hidden rounded-2xl border bg-white ${estado === 'executando' ? 'border-sky-300' : 'border-slate-200'}`}>{corpo}</div>
+              )}
+              {/* seta de uma etapa para a próxima */}
+              {!ultimo && (
+                <span className="pointer-events-none absolute -right-[18px] top-[4.25rem] z-10 hidden h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 md:flex" aria-hidden>
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </span>
+              )}
             </li>
           )
         })}
