@@ -48,6 +48,8 @@ interface Props {
   gradeLoading: boolean
   loading: boolean
   error: string | null
+  // Falha da grade, separada da dos laudos: uma não pode esconder o badge da outra.
+  gradeError?: string | null
   onSelectFile: (file: File) => void
   onClear: () => void
   // Laudos — algumas telas (ex.: Ocupação de Salas) não dependem desse relatório, então o badge some lá.
@@ -69,7 +71,7 @@ interface Props {
 }
 
 export function CronogramaUploadBadges({
-  cRows, lRows, gradeLoading, loading, error, onSelectFile, onClear,
+  cRows, lRows, gradeLoading, loading, error, gradeError = null, onSelectFile, onClear,
   showLaudos = true,
   showDisponibilidade = false, dispRows = [], dispLoading = false, dispError = null, onSelectDisp, onClearDisp,
   periodLabel, laudosMeta = null,
@@ -221,7 +223,9 @@ export function CronogramaUploadBadges({
         <span>{periodo}</span>
       </div>
 
-      {((showLaudos && error) || dispError) && <p className="text-[11px] text-destructive mt-0.5">{(showLaudos && error) || dispError}</p>}
+      {[gradeError, showLaudos ? error : null, dispError].filter(Boolean).map(msg => (
+        <p key={msg} className="text-[11px] text-destructive mt-0.5">{msg}</p>
+      ))}
     </div>
   )
 }

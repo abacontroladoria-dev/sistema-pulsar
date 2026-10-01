@@ -15,7 +15,7 @@ import { usePathname, useSearchParams } from "next/navigation"
 import * as XLSX from "xlsx"
 import { CronogramaDataProvider, useCronogramaData } from "@/contexts/CronogramaDataContext"
 import { useHeader } from "@/contexts/HeaderContext"
-import { buscarGradeComoCSVRows } from "@/lib/cronograma/gradeService"
+import { buscarGradeComoCSVRows, buscarUltimaDataDaGrade } from "@/lib/cronograma/gradeService"
 import { parseDisponibilidadeCSV } from "@/lib/cronograma/disponibilidade"
 import { getRefWeek, getJanelaOcupacaoPaciente } from "@/lib/cronograma/helpers"
 import { CronogramaUploadBadges } from "@/components/cronograma/CronogramaUploadBadges"
@@ -62,12 +62,30 @@ function parseXlsx<T>(file: File): Promise<T[]> {
   })
 }
 
+// Grade vazia no período quase nunca é "sem atendimento": é a sincronização
+// diária com a TiTa que não alcançou aquele mês. Dizer até onde a grade vai
+// separa uma coisa da outra para quem olha o header.
+async function mensagemGradeVazia(periodo: string): Promise<string> {
+  const base = `Grade sem registros para ${periodo}`
+  try {
+    const ultima = await buscarUltimaDataDaGrade()
+    if (ultima) {
+      const [a, m, d] = ultima.split("-")
+      return `${base}. A grade sincronizada vai só até ${d}/${m}/${a}.`
+    }
+  } catch { /* cai na mensagem simples */ }
+  return `${base}.`
+}
+
 function CronogramaLayoutInner({ children }: { children: React.ReactNode }) {
   const { cRows, lRows, dispRows, setCRows, setLRows, setDispRows } = useCronogramaData()
   const { setRightContent } = useHeader()
   const [uploading, setUploading] = useState(false)
   const [gradeLoading, setGradeLoading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
+  // Erro da grade separado do erro dos laudos: com um estado só, a falha de um
+  // escondia o badge do outro e o aviso parecia ser de ambos.
+  const [gradeError, setGradeError] = useState<string | null>(null)
   const [dispUploading, setDispUploading] = useState(false)
   const [dispError, setDispError] = useState<string | null>(null)
   // De qual importação do robô vieram os laudos que estão na tela. `null` = não
@@ -110,15 +128,15 @@ function CronogramaLayoutInner({ children }: { children: React.ReactNode }) {
     gradeFetchedRef.current = true
     const rw = getRefWeek()
     setGradeLoading(true)
-    setUploadError(null)
+    setGradeError(null)
     buscarGradeComoCSVRows(rw.inicio, rw.fim)
-      .then(gradeResult => {
-        if (gradeResult.length === 0) throw new Error("Nenhum registro encontrado para o período.")
+      .then(async gradeResult => {
+        if (gradeResult.length === 0) throw new Error(await mensagemGradeVazia(rw.label))
         setCRows(gradeResult)
       })
       .catch(e => {
         gradeFetchedRef.current = false // permite nova tentativa (ex.: via upload de laudos)
-        setUploadError(e instanceof Error ? e.message : "Erro ao carregar a grade.")
+        setGradeError(e instanceof Error ? e.message : "Erro ao carregar a grade.")
       })
       .finally(() => setGradeLoading(false))
   }, [cRows.length, setCRows])
@@ -175,10 +193,15 @@ function CronogramaLayoutInner({ children }: { children: React.ReactNode }) {
       setLaudosMeta(null)
       // Garante a grade caso o carregamento automático tenha falhado ou ainda não ocorrido.
       if (cRows.length === 0) {
-        const gradeResult = await buscarGradeComoCSVRows(rw.inicio, rw.fim)
-        if (gradeResult.length === 0) throw new Error("Nenhum registro encontrado para o período.")
-        setCRows(gradeResult)
-        gradeFetchedRef.current = true
+        try {
+          const gradeResult = await buscarGradeComoCSVRows(rw.inicio, rw.fim)
+          if (gradeResult.length === 0) throw new Error(await mensagemGradeVazia(rw.label))
+          setCRows(gradeResult)
+          setGradeError(null)
+          gradeFetchedRef.current = true
+        } catch (e) {
+          setGradeError(e instanceof Error ? e.message : "Erro ao carregar a grade.")
+        }
       }
     } catch (e) {
       setUploadError(e instanceof Error ? e.message : "Erro ao processar arquivo.")
@@ -192,6 +215,7 @@ function CronogramaLayoutInner({ children }: { children: React.ReactNode }) {
     setLRows([])
     setLaudosMeta(null)
     setUploadError(null)
+    setGradeError(null)
     laudosFetchedRef.current = false
   }, [setCRows, setLRows])
 
@@ -224,6 +248,7 @@ function CronogramaLayoutInner({ children }: { children: React.ReactNode }) {
         gradeLoading={gradeLoading}
         loading={uploading}
         error={uploadError}
+        gradeError={gradeError}
         onSelectFile={handleLaudosFile}
         onClear={handleClear}
         showLaudos={!isOcupacaoSalasPage}
@@ -238,7 +263,7 @@ function CronogramaLayoutInner({ children }: { children: React.ReactNode }) {
       />
     )
     return () => setRightContent(null)
-  }, [cRows, lRows, dispRows, uploading, gradeLoading, uploadError, dispUploading, dispError, laudosMeta, handleLaudosFile, handleClear, handleDispFile, handleClearDisp, setRightContent, isIndicadoresPage, isOcupacaoSalasPage, isReposicaoPage, isNovoCron, isOcupacaoPacientePage, isOportunidadesRecusadasTab])
+  }, [cRows, lRows, dispRows, uploading, gradeLoading, uploadError, gradeError, dispUploading, dispError, laudosMeta, handleLaudosFile, handleClear, handleDispFile, handleClearDisp, setRightContent, isIndicadoresPage, isOcupacaoSalasPage, isReposicaoPage, isNovoCron, isOcupacaoPacientePage, isOportunidadesRecusadasTab])
 
   return <div>{children}</div>
 }
