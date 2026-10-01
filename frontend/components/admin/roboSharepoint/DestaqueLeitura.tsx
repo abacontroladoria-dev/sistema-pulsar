@@ -1,6 +1,6 @@
 'use client'
 
-import { ArrowRight, Clock, FileText, FolderTree, Loader2, RefreshCw, ScanSearch, TriangleAlert } from 'lucide-react'
+import { ArrowRight, Clock, FileText, FolderSearch, FolderTree, Loader2, RefreshCw, ScanSearch, TriangleAlert } from 'lucide-react'
 import { dataHora, haQuanto, numero } from '@/lib/roboSharepoint/rotulos'
 import type { RoboEtapaNome, RoboExecucao } from '@/types/roboSharepoint'
 
@@ -86,17 +86,23 @@ export function DestaqueLeitura({ execucao, onAbrir }: {
                 sub={arquivos === 0 ? 'nada mudou desde a leitura anterior' : undefined} />
               <Numero icone={FolderTree} valor={numero(pastas)} rotulo="pastas no site" sub="prestadores, seções e pacientes" />
             </div>
-            {/* No centro, embaixo dos dois números (pedido de 02/10/2026). */}
-            <div className="flex justify-center">
-              <button
-                type="button"
-                onClick={() => onAbrir('listar')}
-                className="group inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-brand/40 bg-brand-surface px-6 py-2.5 text-sm font-bold text-brand-fg transition-colors hover:border-brand-fg hover:bg-brand-fg hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 motion-reduce:transition-none sm:w-auto"
-              >
-                Ver o que foi lido
-                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5 motion-reduce:transform-none" aria-hidden />
-              </button>
-            </div>
+            {/* Grande e convidativo, no centro, embaixo dos dois números (pedido de
+                02/10/2026): é a porta para a lista dos arquivos. Steel cheio,
+                texto branco — legível no claro e no escuro. */}
+            <button
+              type="button"
+              onClick={() => onAbrir('listar')}
+              className="group flex min-h-16 w-full items-center justify-center gap-4 rounded-2xl bg-brand-fg px-6 py-3.5 text-left text-white transition-[filter,transform] hover:brightness-110 active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 motion-reduce:transition-none"
+            >
+              <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-white/15 ring-1 ring-white/25">
+                <FolderSearch className="h-6 w-6" aria-hidden />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-lg font-bold leading-tight">Ver o que foi lido</span>
+                <span className="block text-sm text-white/80">a lista das pastas e dos arquivos, um por um</span>
+              </span>
+              <ArrowRight className="ml-auto h-6 w-6 shrink-0 transition-transform group-hover:translate-x-1 motion-reduce:transform-none sm:ml-4" aria-hidden />
+            </button>
           </div>
         ) : (
           <p className="rounded-2xl border border-slate-200 bg-slate-50 p-5 text-sm text-slate-600">
