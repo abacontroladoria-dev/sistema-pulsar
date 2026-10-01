@@ -1,14 +1,14 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Bot, CalendarClock, CheckCircle2, FlaskConical, Gauge, History, Loader2, Play, ShieldCheck, TriangleAlert, XCircle } from 'lucide-react'
+import { Bot, CalendarClock, CheckCircle2, ClipboardList, FlaskConical, Gauge, History, Loader2, Play, ShieldCheck, TriangleAlert, XCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 import { useHeader } from '@/contexts/HeaderContext'
 import { ComoFunciona } from '@/components/admin/roboSharepoint/ComoFunciona'
 import { LinhaDoTempo } from '@/components/admin/roboSharepoint/LinhaDoTempo'
 import { HistoricoExecucoes } from '@/components/admin/roboSharepoint/HistoricoExecucoes'
-import { FilaNaoReconhecidos } from '@/components/admin/roboSharepoint/FilaNaoReconhecidos'
+import { FilaNaoReconhecidos, resumoPendencias } from '@/components/admin/roboSharepoint/FilaNaoReconhecidos'
 import { CustoExecucao } from '@/components/admin/roboSharepoint/CustoExecucao'
 import { HistoricoCompletoDrawer } from '@/components/admin/roboSharepoint/HistoricoCompletoDrawer'
 import { DetalheExecucaoDrawer } from '@/components/admin/roboSharepoint/detalhe/DetalheExecucaoDrawer'
@@ -22,7 +22,7 @@ import type { RoboEtapaNome, RoboExecucao, RoboSaude } from '@/types/roboSharepo
 // Responde três perguntas, nesta ordem:
 //   1. O que o robô leu e encontrou?          → estado + resultado etapa por etapa (ao vivo enquanto roda)
 //   2. Quanto isso custou ao Pulsar?          → tempo total, tempo no banco, chamadas
-//   3. O que ficou para uma pessoa resolver?  → fila de não reconhecidos
+//   3. O que ficou para uma pessoa resolver?  → "O que precisa de você" (tarefas)
 //
 // Só admin e diretoria (código `robo_sharepoint`). O robô em si não tem porta
 // pública: "Executar agora" passa pela rota do servidor, que fala com ele na
@@ -183,10 +183,10 @@ export default function RoboSharepointShell() {
       </section>
 
       <section className={cartao}>
-        <Titulo icone={TriangleAlert} extra={<span className="text-xs text-slate-500">{pendencias.length + itensPresos.length} pendência(s)</span>}>
-          Não reconhecidos
+        <Titulo icone={ClipboardList} extra={<span className="text-xs text-slate-500">{resumoPendencias(pendencias, itensPresos)}</span>}>
+          O que precisa de você
         </Titulo>
-        <FilaNaoReconhecidos pendencias={pendencias} itens={itensPresos} onAtualizar={carregarPendencias} />
+        <FilaNaoReconhecidos fila={pendencias} itens={itensPresos} onAtualizar={carregarPendencias} />
       </section>
 
       <section className={cartao}>

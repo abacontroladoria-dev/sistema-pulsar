@@ -87,6 +87,28 @@ export type SpPendenciaPasta = {
   arquivos: number
 }
 
+/**
+ * Prestador cuja pasta "1. Planejamento" não tem planilha .xlsx. Sem ela não há
+ * CNPJ nem CPF para conferir: o prestador e TODOS os pacientes dele ficam
+ * presos, e vínculo manual não destrava os pacientes. Só a planilha resolve.
+ */
+export type SpPrestadorSemPlanilha = {
+  pasta_id: string
+  nome_pasta: string
+  /** Identificado à mão (sp_pep_vinculos): reconhecido, mas sem planilha. */
+  vinculado_a_mao: boolean
+  pastas_paciente: number
+  arquivos: number
+  /** Pasta "1. Planejamento" no SharePoint (cai para a pasta do prestador). */
+  web_url: string | null
+}
+
+export type SpFilaPendencias = {
+  semPlanilha: SpPrestadorSemPlanilha[]
+  /** Pastas que só uma pessoa resolve (motivo diferente de planilha ausente). */
+  pastas: SpPendenciaPasta[]
+}
+
 // ── "O que o robô leu" (migration 20261001130000) ────────────────────────────
 
 export type TipoArquivoLido = 'evidencia' | 'planilha' | 'ignorado' | 'fora_padrao' | 'removido'

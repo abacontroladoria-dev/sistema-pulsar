@@ -8,7 +8,7 @@ import {
   listarPendenciasDePasta,
   obterSaude,
 } from '@/services/roboSharepoint.service'
-import type { RoboExecucao, RoboSaude, SpItem, SpPendenciaPasta } from '@/types/roboSharepoint'
+import type { RoboExecucao, RoboSaude, SpFilaPendencias, SpItem } from '@/types/roboSharepoint'
 
 const DEBOUNCE_MS = 250
 
@@ -20,7 +20,7 @@ const DEBOUNCE_MS = 250
  */
 export function useRoboSharepoint() {
   const [execucoes, setExecucoes] = useState<RoboExecucao[]>([])
-  const [pendencias, setPendencias] = useState<SpPendenciaPasta[]>([])
+  const [pendencias, setPendencias] = useState<SpFilaPendencias>({ semPlanilha: [], pastas: [] })
   const [itensPresos, setItensPresos] = useState<SpItem[]>([])
   const [saude, setSaude] = useState<RoboSaude | null>(null)
   const [carregando, setCarregando] = useState(true)

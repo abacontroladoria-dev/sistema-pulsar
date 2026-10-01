@@ -1,7 +1,7 @@
 import { getSupabaseClient } from '@/lib/supabase/client'
 import type {
   ArquivoLido, ArquivoLidoCompleto, ArvorePastas, MatrizEvidencias, PacienteDetalhe, ResumoExecucao, RoboExecucao, RoboSaude,
-  SituacaoReconhecimento, SpItem, SpItemStatus, SpPendenciaPasta, TipoArquivoLido,
+  SituacaoReconhecimento, SpFilaPendencias, SpItem, SpItemStatus, SpPendenciaPasta, TipoArquivoLido,
 } from '@/types/roboSharepoint'
 
 // Leitura das tabelas sp_pep_* (RLS: robo_sharepoint / relacionamento_prestador_pep)
@@ -143,15 +143,41 @@ export async function listarPlanilhasLidas(execucaoId: string): Promise<ArquivoL
  * Pastas que o robô não conseguiu reconhecer (prestador ou paciente), com
  * quantos arquivos estão presos atrás de cada uma. Poucas dezenas no máximo.
  */
-export async function listarPendenciasDePasta(): Promise<SpPendenciaPasta[]> {
+// A fila separa a CAUSA dos sintomas. Prestador sem planilha prende ele mesmo,
+// todas as pastas de paciente dele e os arquivos delas, todos com o motivo
+// planilha_ausente — e nenhum vínculo manual resolve, porque o CPF dos
+// pacientes vem da planilha. Por isso esses viram uma linha por prestador, sem
+// botão; só os outros motivos vão para "Vincular". (1ª leitura real, 01/10/2026:
+// 9 prestadores sem planilha prendiam 144 das 150 pastas.)
+// Link da pasta "1. Planejamento" de cada prestador, onde a planilha tem de
+// entrar; sem ela, a pasta do prestador. web_url chega com o robô 0.3
+// (20261001140000). Consulta à parte e tolerante: sem link, a fila funciona.
+async function linksDePlanejamento(prestadores: string[]): Promise<Map<string, string>> {
+  const links = new Map<string, string>()
+  if (prestadores.length === 0) return links
   const sb = getSupabaseClient()
-  const [prest, pac, pastas, itens] = await Promise.all([
+  const [proprias, filhas] = await Promise.all([
+    sb.from('sp_pep_pastas').select('id, web_url').in('id', prestadores),
+    sb.from('sp_pep_pastas').select('pai_id, nome, web_url').in('pai_id', prestadores),
+  ])
+  if (proprias.error || filhas.error) return links
+  for (const p of proprias.data ?? []) if (p.web_url) links.set(p.id as string, p.web_url as string)
+  for (const f of filhas.data ?? []) {
+    if (f.web_url && /^0*1\s*[.)\-–]/.test(String(f.nome ?? '').trim())) links.set(f.pai_id as string, f.web_url as string)
+  }
+  return links
+}
+
+export async function listarPendenciasDePasta(): Promise<SpFilaPendencias> {
+  const sb = getSupabaseClient()
+  const [prest, semPlanilha, pac, pastas, itens] = await Promise.all([
     sb.from('sp_pep_prestadores').select('pasta_id, motivo').eq('status', 'nao_reconhecido'),
+    sb.from('sp_pep_prestadores').select('pasta_id, origem').is('planilha_sp_id', null),
     sb.from('sp_pep_pacientes').select('pasta_id, prestador_pasta_id, motivo').eq('status', 'nao_reconhecido'),
     sb.from('sp_pep_pastas').select('id, nome').not('papel', 'is', null),
     sb.from('sp_pep_itens').select('prestador_pasta_id, paciente_pasta_id').eq('status', 'nao_reconhecido'),
   ])
-  for (const r of [prest, pac, pastas, itens]) if (r.error) throw r.error
+  for (const r of [prest, semPlanilha, pac, pastas, itens]) if (r.error) throw r.error
 
   const nome = new Map((pastas.data ?? []).map(p => [p.id as string, p.nome as string]))
   const presosPorPasta = new Map<string, number>()
@@ -161,7 +187,16 @@ export async function listarPendenciasDePasta(): Promise<SpPendenciaPasta[]> {
     }
   }
 
-  return [
+  const linkPlanejamento = await linksDePlanejamento((semPlanilha.data ?? []).map(p => p.pasta_id as string))
+
+  const pacientesPresos = new Map<string, number>()
+  for (const p of pac.data ?? []) {
+    if (p.motivo === 'planilha_ausente' && p.prestador_pasta_id) {
+      pacientesPresos.set(p.prestador_pasta_id, (pacientesPresos.get(p.prestador_pasta_id) ?? 0) + 1)
+    }
+  }
+
+  const pastasComPessoa: SpPendenciaPasta[] = [
     ...(prest.data ?? []).map(p => ({
       pasta_id: p.pasta_id as string, tipo: 'prestador' as const, nome_pasta: nome.get(p.pasta_id) ?? '(pasta)',
       prestador_pasta_nome: null, motivo: p.motivo as string | null, arquivos: presosPorPasta.get(p.pasta_id) ?? 0,
@@ -171,7 +206,21 @@ export async function listarPendenciasDePasta(): Promise<SpPendenciaPasta[]> {
       prestador_pasta_nome: p.prestador_pasta_id ? nome.get(p.prestador_pasta_id) ?? null : null,
       motivo: p.motivo as string | null, arquivos: presosPorPasta.get(p.pasta_id) ?? 0,
     })),
-  ].sort((a, b) => b.arquivos - a.arquivos || a.nome_pasta.localeCompare(b.nome_pasta))
+  ]
+
+  return {
+    semPlanilha: (semPlanilha.data ?? []).map(p => ({
+      pasta_id: p.pasta_id as string,
+      nome_pasta: nome.get(p.pasta_id) ?? '(pasta)',
+      vinculado_a_mao: p.origem === 'manual',
+      pastas_paciente: pacientesPresos.get(p.pasta_id) ?? 0,
+      arquivos: presosPorPasta.get(p.pasta_id) ?? 0,
+      web_url: linkPlanejamento.get(p.pasta_id) ?? null,
+    })).sort((a, b) => b.arquivos - a.arquivos || b.pastas_paciente - a.pastas_paciente || a.nome_pasta.localeCompare(b.nome_pasta)),
+    pastas: pastasComPessoa
+      .filter(p => p.motivo !== 'planilha_ausente')
+      .sort((a, b) => b.arquivos - a.arquivos || a.nome_pasta.localeCompare(b.nome_pasta)),
+  }
 }
 
 export async function listarItensNaoReconhecidos(limite = 200): Promise<SpItem[]> {
