@@ -197,3 +197,44 @@ export function haQuanto(iso: string | null | undefined, agora = Date.now()) {
   if (h < 24) return `há ${h} h`
   return `há ${Math.round(h / 24)} dia(s)`
 }
+
+// ── Padrão de nome e entrega automática (20261002100000) ─────────────────────
+
+// Por que o nome do arquivo fere o padrão (sp_pep_itens.padrao_motivo).
+export const MOTIVOS_PADRAO: Record<string, string> = {
+  sigla_diferente_da_pasta: 'A sigla no nome não é a da pasta',
+  sem_competencia: 'Falta o mês no fim do nome (MMAAAA)',
+  tap_sem_sequencial: 'TAP precisa do número: TAP-01-PACIENTE-MMAAAA',
+  geral_sem_sequencial: 'Falta o número: SIGLA-01-MMAAAA',
+  formato_desconhecido: 'Nome fora do padrão',
+  paciente_diferente_da_pasta: 'O paciente no nome não é o da pasta',
+  repetido: 'Repetido: outro arquivo igual já conta',
+}
+
+// Por que o robô não entregou um arquivo que segue o padrão (sp_pep_itens.robo_obs).
+export const MOTIVOS_ROBO: Record<string, string> = {
+  mes_liberado: 'Mês já liberado: reabra para registrar',
+  excedente: 'O mês já tem todas as unidades deste item',
+  sem_planejamento: 'Sem planejamento semestral: planeje o item antes',
+  fora_do_ciclo: 'Arquivo de um ciclo anterior ao planejamento',
+  ja_entregue_no_ciclo: 'Já existe entrega deste item no ciclo',
+  arquivo_removido: 'O arquivo foi apagado do SharePoint',
+}
+
+/** Por que um arquivo sugerido está esperando uma pessoa, em uma frase. */
+export function porQueEsperando(i: { padrao?: string | null; padrao_motivo?: string | null; robo_obs?: string | null }): string {
+  if (i.padrao === 'rep') return 'Reprogramação (REP-): registre na matriz semestral'
+  if (i.padrao === 'fora' || i.padrao === 'duplicado') return MOTIVOS_PADRAO[i.padrao_motivo ?? ''] ?? 'Nome fora do padrão'
+  if (i.robo_obs) return MOTIVOS_ROBO[i.robo_obs] ?? i.robo_obs.replace(/_/g, ' ')
+  return 'Segue o padrão: o robô entrega na próxima leitura'
+}
+
+/** Nome que o arquivo deveria ter: "PIC-ADRIAN COSTA-092026", "STC-01-092026", "TAP-01-JOAO-092026". */
+export function nomeEsperado(sigla: string | null | undefined, paciente: string | null | undefined, competencia: string | null | undefined) {
+  if (!sigla) return null
+  const [ano, mes] = (competencia ?? '').split('-')
+  const mmaaaa = ano && mes ? `${mes}${ano}` : 'MMAAAA'
+  if (sigla === 'STC' || sigla === 'ETC') return `${sigla}-01-${mmaaaa}`
+  const pac = (paciente ?? 'PACIENTE').toLocaleUpperCase('pt-BR')
+  return sigla === 'TAP' ? `TAP-01-${pac}-${mmaaaa}` : `${sigla}-${pac}-${mmaaaa}`
+}

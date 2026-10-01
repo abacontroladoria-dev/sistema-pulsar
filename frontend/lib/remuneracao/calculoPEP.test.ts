@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest"
 import {
   calcularAjusteRecorrentes,
   calcularAjusteSemestrais,
+  calcularCreditoPorOrigem,
   calcularDevolucaoRetroativa,
   calcularPEPPaciente,
   type EntregaRecorrente,
@@ -166,4 +167,61 @@ describe("calculoPEP — piso zero e saldo remanescente (Seção 9.10)", () => {
   function arredondarLocal(v: number) {
     return Math.round((v + Number.EPSILON) * 100) / 100
   }
+})
+
+
+// Divisão robô × pessoa (20261002100000, decisão "por unidade" de 01/10/2026).
+describe("calculoPEP — crédito por origem (robô × pessoa)", () => {
+  const STC = { itemCodigo: "SUPERVISAO_TECNICA", pesoMensal: 0.30 }
+  const ETC = { itemCodigo: "ESTUDO_TECNICO", pesoMensal: 0.30 }
+  const TAPi = { itemCodigo: "TREINAMENTO_APLICADORES", pesoMensal: 0.25 }
+  const TOPi = { itemCodigo: "TREINAMENTO_PARENTAL", pesoMensal: 0.15 }
+
+  it("tudo entregue pelo robô → robô fica com V inteiro, pessoa 0", () => {
+    const e: EntregaRecorrente[] = [
+      { ...STC, quantidadeEsperada: 4, quantidadeEntregue: 4, quantidadeRobo: 4 },
+      { ...ETC, quantidadeEsperada: 4, quantidadeEntregue: 4, quantidadeRobo: 4 },
+      { ...TAPi, quantidadeEsperada: 2, quantidadeEntregue: 2, quantidadeRobo: 2 },
+      { ...TOPi, quantidadeEsperada: 1, quantidadeEntregue: 1, quantidadeRobo: 1 },
+    ]
+    expect(calcularCreditoPorOrigem(e, V)).toEqual({ valorRobo: V, valorHumano: 0 })
+  })
+
+  it("misto: 1 TAP do robô + 1 TAP da pessoa → 12,5% de V para cada lado no TAP", () => {
+    const e: EntregaRecorrente[] = [
+      { ...STC, quantidadeEsperada: 4, quantidadeEntregue: 4, quantidadeRobo: 0 },
+      { ...ETC, quantidadeEsperada: 4, quantidadeEntregue: 4, quantidadeRobo: 0 },
+      { ...TAPi, quantidadeEsperada: 2, quantidadeEntregue: 2, quantidadeRobo: 1 },
+      { ...TOPi, quantidadeEsperada: 1, quantidadeEntregue: 1, quantidadeRobo: 0 },
+    ]
+    const r = calcularCreditoPorOrigem(e, V)
+    expect(r.valorRobo).toBeCloseTo(0.125 * V, 2)
+    expect(r.valorRobo + r.valorHumano).toBeCloseTo(V, 2)
+  })
+
+  it("robô + pessoa = V − ajuste dos recorrentes; valor líquido não muda", () => {
+    const e: EntregaRecorrente[] = [
+      { ...STC, quantidadeEsperada: 4, quantidadeEntregue: 2, quantidadeRobo: 2 },
+      { ...ETC, quantidadeEsperada: 4, quantidadeEntregue: 3, quantidadeRobo: 1 },
+      { ...TAPi, quantidadeEsperada: 2, quantidadeEntregue: 0 },
+      { ...TOPi, quantidadeEsperada: 1, quantidadeEntregue: 1 },
+    ]
+    const semRobo = calcularPEPPaciente({ valorBruto: V, entregasRecorrentes: e.map(x => ({ ...x, quantidadeRobo: 0 })), pendenciasSemestrais: [] })
+    const comRobo = calcularPEPPaciente({ valorBruto: V, entregasRecorrentes: e, pendenciasSemestrais: [] })
+    expect(comRobo.valorLiquido).toBe(semRobo.valorLiquido)
+    expect(comRobo.valorRobo + comRobo.valorHumano).toBeCloseTo(V - comRobo.ajusteRecorrentesValor, 2)
+    expect(comRobo.valorRobo).toBeCloseTo((2 * 0.30 / 4 + 1 * 0.30 / 4) * V, 2)
+  })
+
+  it("robô acima do esperado não credita mais que o esperado", () => {
+    const e: EntregaRecorrente[] = [{ ...TOPi, quantidadeEsperada: 1, quantidadeEntregue: 1, quantidadeRobo: 3 }]
+    expect(calcularCreditoPorOrigem(e, V).valorRobo).toBeCloseTo(0.15 * V, 2)
+  })
+
+  it("sem quantidadeRobo (registros antigos) → tudo da pessoa", () => {
+    const e: EntregaRecorrente[] = [{ ...TOPi, quantidadeEsperada: 1, quantidadeEntregue: 1 }]
+    const r = calcularCreditoPorOrigem(e, V)
+    expect(r.valorRobo).toBe(0)
+    expect(r.valorHumano).toBeCloseTo(V, 2)
+  })
 })

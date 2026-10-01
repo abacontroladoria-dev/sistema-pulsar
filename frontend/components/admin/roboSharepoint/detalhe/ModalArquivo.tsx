@@ -19,6 +19,7 @@ const SITUACAO: Record<SpItemStatus, { rotulo: string; tom: 'green' | 'amber' | 
   nao_reconhecido: { rotulo: 'não reconhecido', tom: 'amber' },
   ignorado: { rotulo: 'ignorada pelo RP', tom: 'gray' },
   removido: { rotulo: 'apagado do SharePoint', tom: 'gray' },
+  revertido: { rotulo: 'entrega do robô desfeita por pessoa', tom: 'gray' },
 }
 
 const mesBR = (c: string | null | undefined) => (c ? c.split('-').reverse().join('/') : '—')

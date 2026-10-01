@@ -50,7 +50,7 @@ export type RoboExecucao = {
   duracao_ms: number | null
 }
 
-export type SpItemStatus = 'sugerido' | 'nao_reconhecido' | 'confirmado' | 'ignorado' | 'removido'
+export type SpItemStatus = 'sugerido' | 'nao_reconhecido' | 'confirmado' | 'ignorado' | 'removido' | 'revertido'
 
 export type SpItem = {
   sp_id: string
@@ -76,6 +76,32 @@ export type SpItem = {
   resolvido_por_nome: string | null
   resolvido_em: string | null
   registro_entrega_id: string | null
+  // 20261002100000 — padrão de nome e entrega automática
+  /** ok = segue o padrão; fora = fere (motivo em padrao_motivo); rep = reprogramação; duplicado = repetido. */
+  padrao?: 'ok' | 'fora' | 'rep' | 'duplicado' | null
+  padrao_motivo?: string | null
+  nome_padrao?: { ok: boolean; rep: boolean; sigla?: string; seq?: string | null; paciente?: string | null; competencia?: string; erro?: string | null } | null
+  entregue_por?: 'robo' | 'humano' | null
+  /** Por que o robô não entregou: mes_liberado, excedente, sem_planejamento, fora_do_ciclo, ja_entregue_no_ciclo, arquivo_removido. */
+  robo_obs?: string | null
+  revertido_por_nome?: string | null
+  revertido_em?: string | null
+  revertido_motivo?: string | null
+}
+
+/** vw_pep_indices_robo — uma linha por competência e prestador. */
+export type PepIndicesRobo = {
+  competencia: string
+  prestador_nome: string
+  robo_aprovou: number
+  robo_vigentes: number
+  humano_reverteu: number
+  humano_aprovou: number
+  unidades_robo: number
+  segue_padrao: number
+  fora_padrao: number
+  duplicados: number
+  reprogramacao: number
 }
 
 export type SpPendenciaPasta = {
@@ -258,7 +284,10 @@ export type PacienteDetalhe = {
   motivo: string | null
   origem: 'cadastro' | 'agenda' | 'manual' | null
   sinais: { na_planilha?: boolean; cpf_valido?: boolean; no_cadastro?: boolean; nome_compativel?: boolean } | null
+  /** Só arquivos no padrão de nome (os que contam). */
   arquivos_por_sigla: Record<string, number>
+  /** Arquivos na pasta do item que ferem o padrão (não contam). 20261002100000. */
+  arquivos_fora_por_sigla?: Record<string, number>
   planejamento: { sigla: string | null; competencia: string | null }[]
 }
 

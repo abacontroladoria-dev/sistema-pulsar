@@ -1,7 +1,7 @@
 import { getSupabaseClient } from '@/lib/supabase/client'
 import type {
   ArquivoLido, ArquivoLidoCompleto, ArvorePastas, MatrizEvidencias, PacienteDetalhe, ResumoExecucao, RoboExecucao, RoboSaude,
-  SituacaoReconhecimento, SpFilaPendencias, SpItem, SpItemStatus, SpPendenciaPasta, TipoArquivoLido,
+  PepIndicesRobo, SituacaoReconhecimento, SpFilaPendencias, SpItem, SpItemStatus, SpPendenciaPasta, TipoArquivoLido,
 } from '@/types/roboSharepoint'
 
 // Leitura das tabelas sp_pep_* (RLS: robo_sharepoint / relacionamento_prestador_pep)
@@ -241,7 +241,7 @@ export async function listarItensDoPrestador(prestadorNome: string, competencia:
     .select('*')
     .eq('prestador_nome', prestadorNome)
     .eq('competencia', competencia)
-    .in('status', ['sugerido', 'confirmado'])
+    .in('status', ['sugerido', 'confirmado', 'revertido'])
     .order('criado_em_sp', { ascending: true })
   if (error) throw error
   return (data ?? []) as SpItem[]
@@ -317,4 +317,61 @@ export async function executarAgora(): Promise<void> {
   if (r.status === 202) return
   const corpo = await r.json().catch(() => ({}))
   throw new Error(corpo?.error ?? `HTTP ${r.status}`)
+}
+
+// ── Entrega automática (20261002100000) ─────────────────────────────────────
+
+/** "Desfazer" uma entrega do robô. Motivo obrigatório; vale só para mês aberto. */
+export async function reverterEntregaRobo(spId: string, motivo: string): Promise<SpItem> {
+  const { data, error } = await getSupabaseClient().rpc('sp_pep_reverter_entrega_robo', {
+    p_sp_id: spId, p_motivo: motivo,
+  })
+  if (error) throw error
+  return data as SpItem
+}
+
+/** Índices robô × pessoa × padrão da competência (todos os prestadores). Tolerante: [] se a view não existir. */
+export async function getIndicesRobo(competencia: string): Promise<PepIndicesRobo[]> {
+  const { data, error } = await getSupabaseClient()
+    .from('vw_pep_indices_robo')
+    .select('*')
+    .eq('competencia', competencia)
+  if (error) {
+    console.warn('vw_pep_indices_robo indisponível:', error)
+    return []
+  }
+  return (data ?? []) as PepIndicesRobo[]
+}
+
+export type EstadoEntregaAutomatica = { ligada: boolean; por: string | null; em: string | null }
+
+export async function obterEntregaAutomatica(): Promise<EstadoEntregaAutomatica | null> {
+  const { data, error } = await getSupabaseClient()
+    .from('sp_pep_estado')
+    .select('entrega_automatica, entrega_automatica_por_nome, entrega_automatica_em')
+    .eq('id', 1)
+    .maybeSingle()
+  if (error) return null // migration ainda não aplicada
+  return {
+    ligada: !!data?.entrega_automatica,
+    por: (data?.entrega_automatica_por_nome as string | null) ?? null,
+    em: (data?.entrega_automatica_em as string | null) ?? null,
+  }
+}
+
+/** Só admin. Ligar já reprocessa o que está em aberto (o robô entrega na hora). */
+export async function definirEntregaAutomatica(ligar: boolean): Promise<{ ligada: boolean; resultado: Record<string, unknown> }> {
+  const { data, error } = await getSupabaseClient().rpc('sp_pep_definir_entrega_automatica', { p_ligar: ligar })
+  if (error) throw error
+  return data as { ligada: boolean; resultado: Record<string, unknown> }
+}
+
+/** Quantas evidências seguem / ferem o padrão de nome (todas as competências, sem os apagados). */
+export async function contarPadrao(): Promise<{ ok: number; fora: number; duplicado: number; rep: number } | null> {
+  const sb = getSupabaseClient()
+  const contar = (padrao: string) => sb.from('sp_pep_itens').select('sp_id', { count: 'exact', head: true })
+    .eq('tipo', 'evidencia').eq('padrao', padrao).neq('status', 'removido')
+  const [ok, fora, duplicado, rep] = await Promise.all([contar('ok'), contar('fora'), contar('duplicado'), contar('rep')])
+  if (ok.error || fora.error || duplicado.error || rep.error) return null // migration ainda não aplicada
+  return { ok: ok.count ?? 0, fora: fora.count ?? 0, duplicado: duplicado.count ?? 0, rep: rep.count ?? 0 }
 }

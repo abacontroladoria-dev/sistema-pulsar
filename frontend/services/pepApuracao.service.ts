@@ -122,7 +122,7 @@ export async function getApuracaoResumoTodosPrestadores(
 export type PepApuracaoLinhaCompetencia = Pick<
   PepApuracaoMensal,
   | 'prestador_nome' | 'paciente_nome'
-  | 'valor_bruto' | 'valor_liquido'
+  | 'valor_bruto' | 'valor_liquido' | 'valor_robo' | 'valor_humano'
   | 'ajuste_recorrentes_valor' | 'ajuste_semestrais_valor' | 'devolucao_valor'
   | 'saldo_remanescente_anterior' | 'saldo_remanescente_novo'
   | 'estado' | 'modo_teste'
@@ -145,7 +145,7 @@ export async function getApuracaoCompetencia(
   for (let de = 0; ; de += PAGINA_APURACAO) {
     const { data, error } = await supabase
       .from('pep_apuracao_mensal')
-      .select('prestador_nome, paciente_nome, valor_bruto, valor_liquido, ajuste_recorrentes_valor, ajuste_semestrais_valor, devolucao_valor, saldo_remanescente_anterior, saldo_remanescente_novo, estado, modo_teste')
+      .select('prestador_nome, paciente_nome, valor_bruto, valor_liquido, valor_robo, valor_humano, ajuste_recorrentes_valor, ajuste_semestrais_valor, devolucao_valor, saldo_remanescente_anterior, saldo_remanescente_novo, estado, modo_teste')
       .eq('competencia', competencia)
       .order('id')
       .range(de, de + PAGINA_APURACAO - 1)
@@ -256,6 +256,8 @@ async function upsertApuracaoMensal(
       saldo_remanescente_anterior: row.saldo_remanescente_anterior,
       devolucao_valor: row.devolucao_valor,
       valor_liquido: row.valor_liquido,
+      valor_robo: row.valor_robo,
+      valor_humano: row.valor_humano,
       saldo_remanescente_novo: row.saldo_remanescente_novo,
       modo_teste: row.modo_teste,
       calculado_em: new Date().toISOString(),
@@ -359,6 +361,7 @@ export async function apurarESalvarPEP(input: {
         pesoMensal: item.peso_mensal,
         quantidadeEsperada: item.periodicidade === 'semanal' ? semanasCalendario : (item.qtd_referencia_mes ?? 1),
         quantidadeEntregue: registro?.quantidade_entregue ?? 0,
+        quantidadeRobo: registro?.quantidade_robo ?? 0,
       }
     })
 
@@ -393,6 +396,7 @@ export async function apurarESalvarPEP(input: {
           pesoMensal: item.peso_mensal,
           quantidadeEsperada: item.qtd_referencia_mes ?? 1,
           quantidadeEntregue: registro?.quantidade_entregue ?? 0,
+          quantidadeRobo: registro?.quantidade_robo ?? 0,
         }
       })
 
@@ -445,6 +449,8 @@ export async function apurarESalvarPEP(input: {
       saldo_remanescente_anterior: resultado.saldoRemanescenteAnteriorAplicado,
       devolucao_valor: devolucaoValor,
       valor_liquido: valorLiquidoComDevolucao,
+      valor_robo: resultado.valorRobo,
+      valor_humano: resultado.valorHumano,
       saldo_remanescente_novo: resultado.saldoRemanescenteNovo,
       modo_teste: resultado.modoTeste,
     }
@@ -458,4 +464,30 @@ export async function apurarESalvarPEP(input: {
 
   const totalPrestador = Math.round((resultados.reduce((s, r) => s + r.valor_liquido, 0) + Number.EPSILON) * 100) / 100
   return { resultados, totalPrestador }
+}
+
+// ── Entregas do robô SharePoint (20261002100000) ─────────────────────────────
+
+// Analistas cuja apuração ficou velha porque o robô entregou (ou desfez) algo
+// depois do último cálculo. A tela recalcula e apaga a linha.
+export async function listarRecalculosPendentes(competencia: string): Promise<string[]> {
+  const { data, error } = await getSupabaseClient()
+    .from('pep_apuracao_recalcular')
+    .select('prestador_nome')
+    .eq('competencia', competencia)
+  if (error) {
+    // Migration ainda não aplicada: sem fila, a tela segue como antes.
+    console.warn('pep_apuracao_recalcular indisponível:', error)
+    return []
+  }
+  return (data ?? []).map(r => r.prestador_nome as string)
+}
+
+export async function limparRecalculo(prestadorNome: string, competencia: string): Promise<void> {
+  const { error } = await getSupabaseClient()
+    .from('pep_apuracao_recalcular')
+    .delete()
+    .eq('prestador_nome', prestadorNome)
+    .eq('competencia', competencia)
+  if (error) console.warn('Erro limparRecalculo:', error)
 }

@@ -156,12 +156,20 @@ export function ListaPacientes({ pacientes }: { pacientes: PacienteDetalhe[] }) 
 
                     <div className="mt-2 grid grid-cols-2 divide-x divide-border text-[11px]">
                       <div className="pr-3">
-                        <p className="font-medium text-muted-foreground">Arquivos no SharePoint</p>
+                        <p className="font-medium text-muted-foreground">Arquivos no padrão (contam)</p>
                         <p className="mt-0.5 flex flex-wrap gap-1">
                           {arquivos.length ? arquivos.map(sg => (
                             <span key={sg} className={`rounded-md px-1.5 py-0.5 font-bold tabular-nums ${TONE_CHIP.blue.bg} ${TONE_CHIP.blue.text}`}>{sg} {p.arquivos_por_sigla[sg]}</span>
                           )) : <span className="text-muted-foreground/70">nenhum ainda</span>}
                         </p>
+                        {ORDEM_SIGLAS.some(sg => p.arquivos_fora_por_sigla?.[sg]) && (
+                          <p className="mt-1 flex flex-wrap items-center gap-1" title="Estão na pasta do item, mas o nome não segue o padrão SIGLA-PACIENTE-MMAAAA: não contam como entrega">
+                            <span className="text-muted-foreground">fora do padrão:</span>
+                            {ORDEM_SIGLAS.filter(sg => p.arquivos_fora_por_sigla?.[sg]).map(sg => (
+                              <span key={sg} className={`rounded-md px-1.5 py-0.5 font-bold tabular-nums ${TONE_CHIP.amber.bg} ${TONE_CHIP.amber.text}`}>{sg} {p.arquivos_fora_por_sigla?.[sg]}</span>
+                            ))}
+                          </p>
+                        )}
                       </div>
                       <div className="pl-3">
                         <p className="font-medium text-muted-foreground">Planejamento</p>

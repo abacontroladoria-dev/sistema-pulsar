@@ -6,6 +6,8 @@ import toast from 'react-hot-toast'
 
 import { useHeader } from '@/contexts/HeaderContext'
 import { ComoFunciona } from '@/components/admin/roboSharepoint/ComoFunciona'
+import { EntregaAutomatica } from '@/components/admin/roboSharepoint/EntregaAutomatica'
+import { useUsuarioAtual } from '@/hooks/useUsuarioAtual'
 import { LinhaDoTempo } from '@/components/admin/roboSharepoint/LinhaDoTempo'
 import { HistoricoExecucoes } from '@/components/admin/roboSharepoint/HistoricoExecucoes'
 import { FilaNaoReconhecidos, resumoPendencias } from '@/components/admin/roboSharepoint/FilaNaoReconhecidos'
@@ -97,6 +99,7 @@ function EstadoAgora({ saude, ultima }: { saude: RoboSaude | null; ultima: RoboE
 
 export default function RoboSharepointShell() {
   const { execucoes, pendencias, itensPresos, saude, carregando, erro, carregarPendencias, carregarSaude } = useRoboSharepoint()
+  const { role } = useUsuarioAtual()
   const [pedindo, setPedindo] = useState(false)
   const [historicoAberto, setHistoricoAberto] = useState(false)
   const [detalhe, setDetalhe] = useState<{ execucao: RoboExecucao; etapa: RoboEtapaNome } | null>(null)
@@ -130,7 +133,7 @@ export default function RoboSharepointShell() {
   // fixo. Dentro da página, o botão ficava por baixo do sino.
   const { setHeader, setRightContent } = useHeader()
   useEffect(() => {
-    setHeader('Robô SharePoint', 'Lê o repositório de documentos dos prestadores e sugere as evidências na tela Entregas PEP')
+    setHeader('Robô SharePoint', 'Lê o repositório de documentos dos prestadores e marca as entregas na tela Entregas PEP')
     return () => { setHeader('', ''); setRightContent(null) }
   }, [setHeader, setRightContent])
 
@@ -158,6 +161,8 @@ export default function RoboSharepointShell() {
       <section className={cartao}>
         {carregando ? <p className="text-sm text-slate-500">Carregando…</p> : <EstadoAgora saude={saude} ultima={ultima} />}
       </section>
+
+      <EntregaAutomatica ehAdmin={role === 'admin'} />
 
       <ComoFunciona />
 
@@ -209,7 +214,8 @@ export default function RoboSharepointShell() {
       <p className="flex items-start gap-2 text-xs leading-relaxed text-slate-500">
         <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
         O robô só lê um site do SharePoint (permissão Sites.Selected, papel leitura), entra com certificado e fala com o
-        Pulsar por um token próprio, revogável. Ele não grava entregas: sugere, e quem confirma é o RP na tela Entregas PEP.
+        Pulsar por um token próprio, revogável. Com a entrega automática ligada, ele marca a entrega de quem segue o padrão de
+        nome (em roxo, na tela Entregas PEP); o RP desfaz quando ele errar, e tudo fica no histórico.
       </p>
     </div>
   )

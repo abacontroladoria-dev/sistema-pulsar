@@ -23,8 +23,9 @@ import toast from "react-hot-toast"
 import { useUsuarioAtual } from "@/hooks/useUsuarioAtual"
 import { usePepSharepoint } from "@/hooks/usePepSharepoint"
 import { EvidenciasSharepoint, type AvaliacaoSugestao } from "./pep/EvidenciasSharepoint"
+import { ChipOrigem, LegendaOrigem, ORIGEM, SeloUnidade, contarOrigem, origemDaUnidade } from "./pep/origem"
 import { carregarAnalistasDeTeste, ehProfissionalDeTeste, type AnalistaTeste } from "@/lib/roboSharepoint/homologacao"
-import { resolverItem } from "@/services/roboSharepoint.service"
+import { resolverItem, reverterEntregaRobo } from "@/services/roboSharepoint.service"
 import type { SpItem } from "@/types/roboSharepoint"
 
 // Motivo gravado na trilha de auditoria quando a entrega vem de uma sugestão
@@ -277,7 +278,7 @@ export function PepEntregasTab() {
   }, [resultado, prestador, prestadorDeTeste, analistasTeste])
 
   const {
-    itensRecorrentes, itensSemestrais,
+    itensRecorrentes, itensSemestrais, registros, recarregar: recarregarEntregas,
     loading, error, salvando,
     registroDe, registroSemestralDe, planejamentoDe,
     marcarEntrega, marcarQuantidade, cadastrarPlanejamento,
@@ -293,13 +294,24 @@ export function PepEntregasTab() {
     () => (prestadorDeTeste ? [] : pacientes.map(nome => ({ nome }))),
     [pacientes, prestadorDeTeste]
   )
-  const { resultadoDe, totalPrestador, loading: apuracaoLoading, recalcular: recalcularApuracao, liberado, liberar, reabrir } = usePepApuracao(
+  const { resultados: resultadosApuracao, resultadoDe, totalPrestador, loading: apuracaoLoading, recalcular: recalcularApuracao, liberado, liberar, reabrir } = usePepApuracao(
     prestador, competencia, pacientesApuracao, valorMensalPorPaciente
   )
   const { itens: spItens, recarregar: recarregarSp } = usePepSharepoint(prestador, competencia)
   const [confirmandoLiberar, setConfirmandoLiberar] = useState(false)
   const [confirmandoReabrir, setConfirmandoReabrir] = useState(false)
   const [motivoReabrir, setMotivoReabrir] = useState("")
+
+  // Quanto do apurado veio do robô e quanto de pessoas (20261002100000), e
+  // quantas unidades do mês foram marcadas por pessoas.
+  const valoresOrigem = useMemo(() => resultadosApuracao.length === 0 ? null : {
+    robo: resultadosApuracao.reduce((s, r) => s + (Number(r.valor_robo) || 0), 0),
+    humano: resultadosApuracao.reduce((s, r) => s + (Number(r.valor_humano) || 0), 0),
+  }, [resultadosApuracao])
+  const unidadesPessoa = useMemo(
+    () => registros.filter(r => r.competencia === competencia).reduce((s, r) => s + contarOrigem(r).humano, 0),
+    [registros, competencia]
+  )
 
   const itensGerais = useMemo(() => itensRecorrentes.filter(i => i.tipo_registro === "GERAL"), [itensRecorrentes])
   const itensPorPaciente = useMemo(() => itensRecorrentes.filter(i => i.tipo_registro === "POR_PACIENTE"), [itensRecorrentes])
@@ -450,7 +462,8 @@ export function PepEntregasTab() {
     const cat = catalogoCompleto.find(c => c.id === sp.item_id)
     if (!cat) return false
     const pac = cat.tipo_registro === "GERAL" ? null : sp.paciente_nome
-    const evidencia: PepEvidencia = { caminho: sp.web_url ?? sp.caminho ?? sp.nome, nome: sp.nome }
+    // Marcado por uma pessoa = azul; o sp_id liga a unidade ao arquivo.
+    const evidencia: PepEvidencia = { caminho: sp.web_url ?? sp.caminho ?? sp.nome, nome: sp.nome, origem: "humano", sp_id: sp.sp_id }
     let registroId: string | null = null
     let competenciaFinal = sp.competencia
 
@@ -497,6 +510,22 @@ export function PepEntregasTab() {
     }
     await recarregarSp()
     return true
+  }
+
+  // "Desfazer" uma entrega do robô: o banco tira a unidade, marca o arquivo
+  // como desfeito (o robô não insiste) e desfaz a reprogramação que ele criou.
+  async function desfazerEntregaRobo(sp: SpItem, motivo: string): Promise<boolean> {
+    try {
+      await reverterEntregaRobo(sp.sp_id, motivo)
+      await recarregarEntregas()
+      await recalcularApuracao()
+      await recarregarSp()
+      toast.success(`Entrega do robô desfeita: ${sp.sigla ?? ""} ${sp.paciente_nome ?? ""}`.trim())
+      return true
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não foi possível desfazer a entrega.")
+      return false
+    }
   }
 
   async function ignorarSugestao(sp: SpItem): Promise<boolean> {
@@ -580,12 +609,18 @@ export function PepEntregasTab() {
           />
         )}
 
+        <LegendaOrigem className="rounded-xl border border-border bg-card px-4 py-2.5" />
+
         <EvidenciasSharepoint
           itens={spItens}
           catalogo={catalogoCompleto}
           avaliar={avaliarSugestao}
           onConfirmar={confirmarSugestao}
           onIgnorar={ignorarSugestao}
+          onDesfazer={desfazerEntregaRobo}
+          valores={valoresOrigem}
+          unidadesPessoa={unidadesPessoa}
+          liberado={liberado}
         />
 
         {/* Colgroup igual nas duas tabelas (primeira coluna e largura por item
@@ -1059,22 +1094,29 @@ function CelulaRecorrente({ item, semanasCalendario, registro, onClick, disabled
   disabled?: boolean
 }) {
   const { esperado, entregue, completo } = statusRecorrente(item, semanasCalendario, registro)
+  // Um check por unidade esperada, na cor de quem marcou (roxo robô, azul
+  // pessoa); vazio = pendente. A borda diz completo/parcial/nada.
+  const unidades = Array.from({ length: esperado }, (_, i) => (i < entregue ? origemDaUnidade(registro?.evidencias, i) : null))
+  const { robo, humano } = contarOrigem(registro)
+  const quem = [robo ? `${robo} do robô` : "", humano ? `${humano} de pessoa` : ""].filter(Boolean).join(", ")
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
-      title={disabled ? "Faturamento liberado — reabra para editar" : item.nome}
-      className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed
+      title={disabled ? "Faturamento liberado — reabra para editar" : `${item.nome} — ${entregue} de ${esperado}${quem ? ` (${quem})` : ""}`}
+      className={`inline-flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed
         ${completo
-          ? "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+          ? "border-slate-300 bg-white text-foreground dark:border-slate-600 dark:bg-slate-900"
           : entregue > 0
-            ? "border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300"
+            ? "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300"
             : "border-border bg-background text-muted-foreground hover:bg-muted/50"}`}
     >
-      {completo ? <Check size={13} /> : null}
-      {item.sigla} {entregue}/{esperado}
-      {temEvidencia(registro) && <Paperclip size={11} />}
+      <span className="font-semibold">{item.sigla} {entregue}/{esperado}</span>
+      <span className="inline-flex items-center gap-0.5">
+        {unidades.map((o, i) => <SeloUnidade key={i} origem={o} tamanho={14} />)}
+      </span>
+      {temEvidencia(registro) && <Paperclip size={11} aria-hidden />}
     </button>
   )
 }
@@ -1100,16 +1142,20 @@ function CelulaSemestral({ paciente, item, plano, registro, hoje, onClick, disab
   // planejamento) = azul, Planejar (nem tem planejamento ainda) = âmbar,
   // Realizado = verde — pedido explícito do usuário. Reiterada é uma escalada
   // do vencido (2+ meses), por isso um vermelho mais intenso e em negrito.
+  // Realizado = roxo se o robô entregou, azul se foi uma pessoa (20261002100000).
+  // Por isso "Entrega pendente" deixou o azul e "Reprogramado" o sky: azul só
+  // quer dizer "pessoa" nesta tela.
+  const origem = entregue ? origemDaUnidade(registro?.evidencias, 0) : null
   const tom = entregue
-    ? "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+    ? ORIGEM[origem ?? "humano"].tinta
     : reiterada
       ? "border-red-400 bg-red-100 text-red-800 font-bold dark:border-red-700 dark:bg-red-950 dark:text-red-300"
       : vencido
         ? "border-red-300 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950/70 dark:text-red-300"
         : reprogramado
-          ? "border-sky-300 bg-sky-50 text-sky-700 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-300"
+          ? "border-dashed border-slate-400 bg-slate-50 text-slate-700 dark:border-slate-500 dark:bg-slate-900 dark:text-slate-300"
           : pendente
-            ? "border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-300"
+            ? "border-slate-300 bg-white text-slate-700 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-300"
             : "border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300"
 
   return (
@@ -1122,11 +1168,12 @@ function CelulaSemestral({ paciente, item, plano, registro, hoje, onClick, disab
         : `${item.nome} · ${paciente} — ${statusLabel}${plano?.data_planejada ? ` (planejado para ${formatarDataBR(plano.data_planejada)})` : ""}${!entregue && plano ? " — clique para marcar como entregue" : ""}`}
       className={`inline-flex w-full items-center justify-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${tom}`}
     >
-      {icone === "check" && <Check size={13} />}
+      {icone === "check" && <SeloUnidade origem={origem ?? "humano"} tamanho={14} />}
       {icone === "alert" && <AlertTriangle size={13} />}
       {icone === "calendar" && <CalendarPlus size={13} />}
       {statusLabel}
-      {temEvidencia(registro) && <Paperclip size={11} />}
+      {origem && <span className="sr-only"> por {ORIGEM[origem].rotulo}</span>}
+      {temEvidencia(registro) && <Paperclip size={11} aria-hidden />}
     </button>
   )
 }
@@ -1220,18 +1267,25 @@ function CampoEvidenciaUnidade({ evidencia, rotulo, onChange }: {
   // Evidência confirmada a partir do robô do SharePoint chega com o endereço
   // completo do arquivo (webUrl) e o nome: aí dá para abrir direto daqui.
   const link = /^https?:\/\//i.test(evidencia.caminho) ? evidencia.caminho : null
+  const marcada = !!evidencia.caminho.trim()
   return (
     <div className="space-y-1.5">
-      <div className="flex items-center justify-between gap-2">
-        <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <label className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
           {rotulo}
+          {marcada && <ChipOrigem origem={evidencia.origem === "robo" ? "robo" : "humano"} />}
         </label>
-        {link && (
-          <a href={link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-medium text-blue-700 hover:underline dark:text-blue-400">
-            Abrir{evidencia.nome ? ` ${evidencia.nome}` : " arquivo"} <ExternalLink size={11} />
-          </a>
-        )}
       </div>
+      {link && (
+        <a href={link} target="_blank" rel="noreferrer"
+          className="flex min-h-11 items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-blue-700 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand dark:border-slate-700 dark:bg-slate-900 dark:text-blue-300">
+          <span className="truncate">{evidencia.nome ?? "Abrir arquivo"}</span>
+          <span className="inline-flex shrink-0 items-center gap-1 text-xs">Abrir no SharePoint <ExternalLink size={13} aria-hidden /></span>
+        </a>
+      )}
+      {evidencia.origem === "robo" && (
+        <p className="text-[11px] text-muted-foreground">Mudar este caminho troca a unidade para Pessoa e conta como entrega do robô desfeita.</p>
+      )}
       <input
         type="text"
         placeholder="ex.: SharePoint/Pacientes/Fulano/STC-01-082026.pdf"
@@ -1251,7 +1305,13 @@ function CamposEvidencia({ evidencias, onChange, rotulo }: {
   rotulo: (indice: number) => string
 }) {
   function atualizar(indice: number, campo: keyof PepEvidencia, valor: string) {
-    const nova = evidencias.map((e, i) => i === indice ? { ...e, [campo]: campo === "nome" && !valor ? null : valor } : e)
+    // Trocar o caminho de uma unidade do robô a torna da pessoa (o gatilho do
+    // banco registra a entrega do robô como desfeita).
+    const nova = evidencias.map((e, i) => {
+      if (i !== indice) return e
+      const base = campo === "caminho" && e.origem === "robo" ? { caminho: e.caminho, nome: e.nome } : e
+      return { ...base, [campo]: campo === "nome" && !valor ? null : valor }
+    })
     onChange(nova)
   }
 
@@ -1273,29 +1333,41 @@ function CamposEvidencia({ evidencias, onChange, rotulo }: {
 // por unidade esperada) com check branco/verde — clicar na caixa i preenche
 // até ela (estilo "avaliação por estrelas": clicar numa já marcada desmarca
 // ela e tudo depois). Ninguém digita número; a contagem é derivada.
-function SeletorQuantidadeSlots({ esperado, quantidade, onChange, disabled }: {
+function SeletorQuantidadeSlots({ esperado, quantidade, onChange, disabled, evidencias }: {
   esperado: number
   quantidade: number
   onChange: (nova: number) => void
   disabled?: boolean
+  /** Para pintar cada unidade marcada: roxo = robô, azul = pessoa. */
+  evidencias?: PepEvidencia[]
 }) {
   return (
     <div className="flex flex-wrap gap-2">
       {Array.from({ length: esperado }, (_, i) => {
         const marcado = i < quantidade
+        const origem = marcado ? origemDaUnidade(evidencias, i) : null
+        const Icone = origem ? ORIGEM[origem].icone : null
         return (
           <button
             key={i}
             type="button"
             disabled={disabled}
             onClick={() => onChange(marcado ? i : i + 1)}
-            title={`Unidade ${i + 1} de ${esperado}${marcado ? " — entregue" : " — pendente"}`}
-            className={`flex h-11 w-11 items-center justify-center rounded-xl border-2 text-sm font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed
-              ${marcado
-                ? "border-emerald-500 bg-emerald-500 text-white"
-                : "border-border bg-background text-muted-foreground hover:border-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"}`}
+            title={`Unidade ${i + 1} de ${esperado}${origem ? ` — entregue (${ORIGEM[origem].rotulo})` : " — pendente"}`}
+            className={`relative flex h-11 w-11 items-center justify-center rounded-xl border-2 text-sm font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed
+              ${origem === "robo"
+                ? "border-violet-600 bg-violet-600 text-white"
+                : origem === "humano"
+                  ? "border-blue-600 bg-blue-600 text-white"
+                  : "border-border bg-background text-muted-foreground hover:border-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/30"}`}
           >
-            {marcado ? <Check size={18} /> : i + 1}
+            {marcado ? <Check size={18} strokeWidth={3} /> : i + 1}
+            {Icone && (
+              <span className="absolute -bottom-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-white text-slate-700 ring-1 ring-slate-200 dark:bg-slate-900 dark:text-slate-200">
+                <Icone size={12} aria-hidden />
+              </span>
+            )}
+            {origem && <span className="sr-only">{ORIGEM[origem].rotulo}</span>}
           </button>
         )
       })}
@@ -1442,7 +1514,7 @@ function PainelQuantidade({ pacienteNome, item, competencia, semanasCalendario, 
           <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider">
             Marque as unidades já entregues ({esperado} esperada{esperado > 1 ? "s" : ""} este mês)
           </label>
-          <SeletorQuantidadeSlots esperado={esperado} quantidade={quantidade} onChange={alterarQuantidade} />
+          <SeletorQuantidadeSlots esperado={esperado} quantidade={quantidade} onChange={alterarQuantidade} evidencias={evidencias} />
         </div>
 
         {quantidade > 0 && (
