@@ -166,9 +166,9 @@ function Ramo({ no, ultimo, prefixo }: { no: NoArvore; ultimo: boolean; prefixo:
         </span>
         <Icone className={`h-4 w-4 shrink-0 ${no.tipo === 'planilha' ? 'text-emerald-600' : no.tipo === 'fora' ? 'text-slate-300' : 'text-brand-fg'}`} aria-hidden />
         <span className={`min-w-0 truncate text-[13px] ${no.tipo === 'fora' ? 'text-slate-400' : 'text-slate-700'} ${no.filhos ? 'font-semibold' : ''}`}>{no.nome}</span>
-        {no.sigla && <span className="ml-auto shrink-0 rounded-md bg-sky-50 px-1.5 py-0.5 text-[10px] font-black text-sky-700 ring-1 ring-sky-200">{no.sigla}</span>}
-        {no.tipo === 'planilha' && <span className="ml-auto shrink-0 rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 ring-1 ring-emerald-200">planilha</span>}
-        {no.tipo === 'fora' && <span className="ml-auto shrink-0 rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">fora do PEP</span>}
+        {no.sigla && <span className="ml-1 shrink-0 rounded-md bg-sky-50 px-1.5 py-0.5 text-[10px] font-black text-sky-700 ring-1 ring-sky-200">{no.sigla}</span>}
+        {no.tipo === 'planilha' && <span className="ml-1 shrink-0 rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 ring-1 ring-emerald-200">planilha</span>}
+        {no.tipo === 'fora' && <span className="ml-1 shrink-0 rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">fora do PEP</span>}
       </div>
       {no.filhos && (
         <ul>
@@ -185,7 +185,7 @@ function CartaoRecolhivel({ id, icone: Icone, titulo, sub, children }: {
 }) {
   const [aberto, setAberto] = useState(false)
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]" aria-labelledby={`titulo-${id}`}>
+    <section className="min-w-0 rounded-2xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]" aria-labelledby={`titulo-${id}`}>
       <button type="button" onClick={() => setAberto(a => !a)} aria-expanded={aberto} aria-controls={`conteudo-${id}`}
         className="flex min-h-11 w-full items-start justify-between gap-3 rounded-2xl p-4 text-left hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand sm:p-5">
         <span className="min-w-0">
@@ -206,8 +206,8 @@ function OQueEnxerga() {
   return (
     <CartaoRecolhivel id="o-que-enxerga" icone={FolderTree} titulo="O que o robô enxerga"
       sub="A pasta define o item do PEP; o nome do arquivo confirma o paciente e o mês. O robô não abre PDF nenhum.">
-      <div className="overflow-x-auto">
-        <ul className="min-w-[22rem]">
+      <div className="overflow-x-auto p-1">
+        <ul className="w-max min-w-full">
           <li>
             <div className="flex min-h-8 items-center gap-1.5">
               <Folder className="h-4 w-4 shrink-0 text-brand-fg" aria-hidden />
