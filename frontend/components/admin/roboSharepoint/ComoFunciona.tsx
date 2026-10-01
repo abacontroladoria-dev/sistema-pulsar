@@ -179,12 +179,34 @@ function Ramo({ no, ultimo, prefixo }: { no: NoArvore; ultimo: boolean; prefixo:
   )
 }
 
+/** Cartão com cabeçalho que recolhe e expande o conteúdo. Nasce recolhido. */
+function CartaoRecolhivel({ id, icone: Icone, titulo, sub, children }: {
+  id: string; icone: typeof Folder; titulo: string; sub: string; children: React.ReactNode
+}) {
+  const [aberto, setAberto] = useState(false)
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]" aria-labelledby={`titulo-${id}`}>
+      <button type="button" onClick={() => setAberto(a => !a)} aria-expanded={aberto} aria-controls={`conteudo-${id}`}
+        className="flex min-h-11 w-full items-start justify-between gap-3 rounded-2xl p-4 text-left hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand sm:p-5">
+        <span className="min-w-0">
+          <span id={`titulo-${id}`} className="flex items-center gap-2 text-sm font-bold text-slate-800"><Icone className="h-4 w-4 text-brand-fg" aria-hidden /> {titulo}</span>
+          <span className="mt-1 block text-xs text-slate-500">{sub}</span>
+        </span>
+        <span className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-brand-fg">
+          {aberto ? 'Recolher' : 'Mostrar'}
+          <ChevronDown className={`h-4 w-4 transition-transform motion-reduce:transition-none ${aberto ? 'rotate-180' : ''}`} aria-hidden />
+        </span>
+      </button>
+      {aberto && <div id={`conteudo-${id}`} className="px-4 pb-4 sm:px-5 sm:pb-5">{children}</div>}
+    </section>
+  )
+}
+
 function OQueEnxerga() {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-5">
-      <p className="flex items-center gap-2 text-sm font-bold text-slate-800"><FolderTree className="h-4 w-4 text-brand-fg" aria-hidden /> O que o robô enxerga</p>
-      <p className="mt-1 text-xs text-slate-500">A pasta define o item do PEP; o nome do arquivo confirma o paciente e o mês. O robô não abre PDF nenhum.</p>
-      <div className="mt-3 overflow-x-auto">
+    <CartaoRecolhivel id="o-que-enxerga" icone={FolderTree} titulo="O que o robô enxerga"
+      sub="A pasta define o item do PEP; o nome do arquivo confirma o paciente e o mês. O robô não abre PDF nenhum.">
+      <div className="overflow-x-auto">
         <ul className="min-w-[22rem]">
           <li>
             <div className="flex min-h-8 items-center gap-1.5">
@@ -195,7 +217,7 @@ function OQueEnxerga() {
           </li>
         </ul>
       </div>
-    </div>
+    </CartaoRecolhivel>
   )
 }
 
@@ -210,11 +232,9 @@ const SINAIS = [
 
 function TresSinais() {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-5">
-      <p className="flex items-center gap-2 text-sm font-bold text-slate-800"><ScanSearch className="h-4 w-4 text-brand-fg" aria-hidden /> Como um arquivo vira entrega</p>
-      <p className="mt-1 text-xs text-slate-500">Os quatro sinais precisam bater. Faltando um, o arquivo não conta e espera uma pessoa, com o motivo.</p>
-
-      <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_4.5rem_minmax(0,0.8fr)] sm:gap-0">
+    <CartaoRecolhivel id="vira-entrega" icone={ScanSearch} titulo="Como um arquivo vira entrega"
+      sub="Os quatro sinais precisam bater. Faltando um, o arquivo não conta e espera uma pessoa, com o motivo.">
+      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_4.5rem_minmax(0,0.8fr)] sm:gap-0">
         <ul className="grid gap-2.5 sm:grid-rows-4">
           {SINAIS.map(s => (
             <li key={s.titulo} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-2.5">
@@ -255,7 +275,7 @@ function TresSinais() {
           </div>
         </div>
       </div>
-    </div>
+    </CartaoRecolhivel>
   )
 }
 
@@ -270,25 +290,16 @@ const GARANTIAS = [
 ]
 
 export function ComoFunciona() {
-  const [aberto, setAberto] = useState(true)
   return (
     <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]" aria-labelledby="titulo-como-funciona">
       <style>{ESTILO}</style>
       <div className="h-1 w-full" style={{ background: 'linear-gradient(90deg,#3aaa5c,#2A92C0)' }} />
       <div className="p-5 sm:p-6">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 id="titulo-como-funciona" className="flex items-center gap-2 text-base font-bold text-slate-800">
-            <Workflow className="h-4 w-4 text-brand-fg" aria-hidden /> Como o robô funciona
-          </h2>
-          <button type="button" onClick={() => setAberto(a => !a)} aria-expanded={aberto}
-            className="inline-flex min-h-11 items-center gap-1 rounded-xl px-3 text-sm font-medium text-brand-fg hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand">
-            {aberto ? 'Recolher' : 'Mostrar'}
-            <ChevronDown className={`h-4 w-4 transition-transform motion-reduce:transition-none ${aberto ? 'rotate-180' : ''}`} aria-hidden />
-          </button>
-        </div>
+        <h2 id="titulo-como-funciona" className="flex items-center gap-2 text-base font-bold text-slate-800">
+          <Workflow className="h-4 w-4 text-brand-fg" aria-hidden /> Como o robô funciona
+        </h2>
 
-        {aberto && (
-          <div className="mt-5 space-y-4">
+        <div className="mt-5 space-y-4">
             <Linha />
             <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
               {GARANTIAS.map(g => (
@@ -301,8 +312,7 @@ export function ComoFunciona() {
                 </li>
               ))}
             </ul>
-          </div>
-        )}
+        </div>
       </div>
     </section>
   )
@@ -311,11 +321,12 @@ export function ComoFunciona() {
 /**
  * "O que o robô enxerga" + "Como um arquivo vira entrega", fora do cartão
  * "Como o robô funciona" (pedido de 02/10/2026): dois cartões lado a lado,
- * sempre visíveis, logo abaixo dele.
+ * logo abaixo dele, cada um recolhível (nascem recolhidos). "Como o robô
+ * funciona" fica sempre aberto.
  */
 export function OQueEnxergaEComoDecide() {
   return (
-    <div className="grid gap-4 xl:grid-cols-2">
+    <div className="grid items-start gap-4 xl:grid-cols-2">
       <style>{ESTILO}</style>
       <OQueEnxerga />
       <TresSinais />
