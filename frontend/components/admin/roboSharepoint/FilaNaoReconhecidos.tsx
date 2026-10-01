@@ -2,8 +2,8 @@
 
 import { useMemo, useState } from 'react'
 import {
-  ArrowRight, Bot, Check, CheckCircle2, ChevronDown, Copy, ExternalLink, FileSpreadsheet, FileText, FileWarning,
-  FolderOpen, Search, Send, UserCheck, Users,
+  Bot, Check, CheckCircle2, ChevronDown, Copy, ExternalLink, FileSpreadsheet, FileWarning,
+  FolderOpen, Search, Send, UserCheck,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { grupoMotivo, mensagemPedirPlanilha, nomeCurtoPrestador, numero, rotuloMotivo } from '@/lib/roboSharepoint/rotulos'
@@ -70,7 +70,7 @@ const TOM: Record<Tom, { cartao: string; ativo: string; icone: string; numero: s
   },
 }
 
-const botao = 'inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-brand-fg transition-colors hover:bg-brand-surface/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-50'
+const botao = 'inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-brand-fg transition-colors hover:bg-brand-surface/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-50 sm:min-h-9'
 
 type Passo = { icone: typeof Send; titulo: string; texto: string }
 type TarefaId = 'planilha' | 'pasta' | 'arquivo'
@@ -91,44 +91,31 @@ function CartaoTarefa({ t, ativo, onClick }: { t: Tarefa; ativo: boolean; onClic
       onClick={onClick}
       aria-pressed={ativo}
       aria-controls={`tarefa-${t.id}`}
-      className={`group flex w-full flex-col gap-2 rounded-2xl border p-3.5 text-left sm:gap-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand sm:p-5 ${ativo ? tom.ativo : tom.cartao}`}
+      className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${ativo ? tom.ativo : tom.cartao}`}
     >
-      <span className="flex items-start justify-between gap-3">
-        <span className={`flex size-11 shrink-0 items-center justify-center rounded-xl ${tom.icone}`}>
-          <Icone className="h-5 w-5" aria-hidden />
-        </span>
-        <span className="text-right">
-          <span className={`block text-3xl font-bold leading-none tabular-nums ${tom.numero}`}>{numero(t.quantidade)}</span>
-          <span className="mt-1 block text-xs font-medium text-slate-600">{t.quantidade === 1 ? t.unidade[0] : t.unidade[1]}</span>
-        </span>
+      <span className={`flex size-9 shrink-0 items-center justify-center rounded-lg ${tom.icone}`}>
+        <Icone className="h-4 w-4" aria-hidden />
       </span>
-      <span>
-        <span className="block text-base font-bold text-slate-900">{t.verbo}</span>
-        <span className="mt-0.5 block text-sm text-slate-600">{t.destrava}</span>
+      <span className={`shrink-0 text-2xl font-bold leading-none tabular-nums ${tom.numero}`}>{numero(t.quantidade)}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-bold text-slate-900">{t.verbo}</span>
+        <span className="block truncate text-xs text-slate-600">{t.destrava}</span>
       </span>
-      <span className="flex items-center gap-1 text-xs font-semibold text-brand-fg">
-        {ativo ? 'Lista aberta abaixo' : 'Ver a lista'}
-        <ChevronDown className={`h-3.5 w-3.5 transition-transform motion-reduce:transition-none ${ativo ? 'rotate-180' : ''}`} aria-hidden />
-      </span>
+      <ChevronDown className={`h-4 w-4 shrink-0 text-brand-fg transition-transform motion-reduce:transition-none ${ativo ? 'rotate-180' : '-rotate-90'}`} aria-hidden />
     </button>
   )
 }
 
 function ComoResolver({ passos, tom }: { passos: Passo[]; tom: Tom }) {
   return (
-    <ol className="grid gap-3 sm:grid-cols-3 sm:gap-2">
+    <ol className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3 sm:grid-cols-3 sm:gap-4">
       {passos.map((p, i) => (
-        <li key={p.titulo} className="relative flex items-start gap-3 rounded-xl bg-slate-50 p-3 sm:pr-6">
-          <span className={`flex size-9 shrink-0 items-center justify-center rounded-full ring-1 ${TOM[tom].passo}`}>
-            <p.icone className="h-4 w-4" aria-hidden />
+        <li key={p.titulo} className="flex items-start gap-2">
+          <span className={`mt-px flex size-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold tabular-nums ring-1 ${TOM[tom].passo}`}>{i + 1}</span>
+          <span className="min-w-0 text-xs leading-snug">
+            <span className="font-bold text-slate-800">{p.titulo}.</span>{' '}
+            <span className="text-slate-600">{p.texto}</span>
           </span>
-          <span className="min-w-0">
-            <span className="block text-sm font-bold text-slate-800">{p.titulo}</span>
-            <span className="mt-0.5 block text-xs leading-relaxed text-slate-600">{p.texto}</span>
-          </span>
-          {i < passos.length - 1 && (
-            <ArrowRight className="absolute -right-2.5 top-1/2 z-10 hidden h-4 w-4 -translate-y-1/2 rounded-full bg-white text-slate-400 sm:block" aria-hidden />
-          )}
         </li>
       ))}
     </ol>
@@ -171,7 +158,18 @@ async function copiar(texto: string) {
   }
 }
 
-function CartaoPrestador({ p }: { p: SpPrestadorSemPlanilha }) {
+// Lista em linhas, como tabela: prestador · pacientes · arquivos · ações.
+const GRADE_PRESTADOR = 'sm:grid-cols-[minmax(0,1fr)_8rem_8rem_auto]'
+
+function CabecalhoPrestadores() {
+  return (
+    <div className={`hidden gap-3 border-b border-slate-200 px-3 pb-2 text-[11px] font-semibold text-slate-500 sm:grid ${GRADE_PRESTADOR}`}>
+      <span>Prestador</span><span className="text-right">Pacientes travados</span><span className="text-right">Arquivos esperando</span><span className="w-[15.5rem]" />
+    </div>
+  )
+}
+
+function LinhaPrestador({ p }: { p: SpPrestadorSemPlanilha }) {
   const nome = nomeCurtoPrestador(p.nome_pasta)
   const [copiado, setCopiado] = useState(false)
 
@@ -186,43 +184,42 @@ function CartaoPrestador({ p }: { p: SpPrestadorSemPlanilha }) {
   }
 
   return (
-    <li className="flex flex-col rounded-2xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-      <div className="flex items-start gap-3 p-4">
-        <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-brand-surface text-sm font-bold text-brand-fg" aria-hidden>
+    <li className={`grid items-center gap-x-3 gap-y-2 px-3 py-2 ${GRADE_PRESTADOR}`}>
+      <div className="flex min-w-0 items-center gap-2.5">
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-brand-surface text-[11px] font-bold text-brand-fg" aria-hidden>
           {iniciais(nome)}
         </span>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-base font-bold text-slate-800" title={p.nome_pasta}>{nome}</p>
-          <div className="mt-1.5 flex flex-wrap gap-1.5">
-            <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800 ring-1 ring-amber-200">
-              <Users className="h-3.5 w-3.5" aria-hidden /> {plural(p.pastas_paciente, 'paciente travado', 'pacientes travados')}
-            </span>
-            {p.arquivos > 0 && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
-                <FileText className="h-3.5 w-3.5" aria-hidden /> {plural(p.arquivos, 'arquivo esperando', 'arquivos esperando')}
-              </span>
-            )}
+        <span className="min-w-0">
+          <span className="flex items-center gap-1.5">
+            <span className="truncate text-sm font-semibold text-slate-800" title={p.nome_pasta}>{nome}</span>
             {p.vinculado_a_mao && (
-              <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600"
+              <span className="shrink-0 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600"
                 title="Alguém já disse quem é este prestador, mas os pacientes dele só são liberados quando a planilha chegar.">
-                Já identificado
+                já identificado
               </span>
             )}
-          </div>
-        </div>
+          </span>
+          {/* celular: os números descem para baixo do nome */}
+          <span className="block text-xs text-slate-600 sm:hidden">
+            <strong className="font-semibold text-amber-800">{plural(p.pastas_paciente, 'paciente', 'pacientes')}</strong>
+            {p.arquivos > 0 && <> · {plural(p.arquivos, 'arquivo', 'arquivos')}</>}
+          </span>
+        </span>
       </div>
-      <div className="mt-auto grid grid-cols-2 gap-2 border-t border-slate-100 p-3">
+      <span className="hidden text-right text-sm font-bold tabular-nums text-amber-800 sm:block">{numero(p.pastas_paciente)}</span>
+      <span className={`hidden text-right text-sm tabular-nums sm:block ${p.arquivos > 0 ? 'font-bold text-slate-800' : 'text-slate-400'}`}>{p.arquivos > 0 ? numero(p.arquivos) : '—'}</span>
+      <div className="grid grid-cols-2 gap-2 sm:flex sm:w-[15.5rem] sm:justify-end">
         <button type="button" onClick={copiarMensagem} className={botao}>
-          {copiado ? <Check className="h-4 w-4" aria-hidden /> : <Copy className="h-4 w-4" aria-hidden />}
+          {copiado ? <Check className="h-3.5 w-3.5" aria-hidden /> : <Copy className="h-3.5 w-3.5" aria-hidden />}
           {copiado ? 'Copiada!' : 'Copiar mensagem'}
         </button>
         {p.web_url ? (
           <a href={p.web_url} target="_blank" rel="noreferrer" className={botao}>
-            <FolderOpen className="h-4 w-4" aria-hidden /> Abrir pasta
+            <FolderOpen className="h-3.5 w-3.5" aria-hidden /> Abrir pasta
           </a>
         ) : (
           <span className={`${botao} cursor-not-allowed text-slate-400`} title="O link da pasta chega na próxima leitura do robô.">
-            <FolderOpen className="h-4 w-4" aria-hidden /> Abrir pasta
+            <FolderOpen className="h-3.5 w-3.5" aria-hidden /> Abrir pasta
           </span>
         )}
       </div>
@@ -241,37 +238,29 @@ function GruposDePastas({ pastas, onEscolher }: { pastas: SpPendenciaPasta[]; on
   }, [pastas])
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       {grupos.map(([motivo, lista]) => {
         const g = grupoMotivo(motivo)
         return (
           <section key={motivo} aria-label={g.titulo}>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
               <h4 className="text-sm font-bold text-slate-800">{g.titulo}</h4>
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold tabular-nums text-slate-600">{lista.length}</span>
+              <span className="rounded-full bg-slate-100 px-1.5 text-xs font-semibold tabular-nums text-slate-600">{lista.length}</span>
+              <span className="w-full text-xs text-slate-500 sm:w-auto">{g.porque}</span>
             </div>
-            <p className="mt-0.5 max-w-2xl text-xs leading-relaxed text-slate-600">{g.porque}</p>
-            <ul className="mt-2.5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <ul className="mt-2 divide-y divide-slate-100 rounded-xl border border-slate-200">
               {lista.map(p => (
-                <li key={p.pasta_id} className="flex flex-col rounded-2xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-                  <div className="p-4">
-                    <p className="text-sm font-bold leading-snug text-slate-800">{p.nome_pasta}</p>
-                    <div className="mt-1.5 flex flex-wrap gap-1.5">
-                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
-                        {p.tipo === 'prestador' ? 'Pasta de prestador' : `Prestador: ${nomeCurtoPrestador(p.prestador_pasta_nome)}`}
-                      </span>
-                      {p.arquivos > 0 && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
-                          <FileText className="h-3.5 w-3.5" aria-hidden /> {plural(p.arquivos, 'arquivo esperando', 'arquivos esperando')}
-                        </span>
-                      )}
-                    </div>
+                <li key={p.pasta_id} className="flex flex-col gap-2 px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-slate-800" title={p.nome_pasta}>{p.nome_pasta}</p>
+                    <p className="truncate text-xs text-slate-500">
+                      {p.tipo === 'prestador' ? 'Pasta de prestador' : `Prestador: ${nomeCurtoPrestador(p.prestador_pasta_nome)}`}
+                      {p.arquivos > 0 && <> · {plural(p.arquivos, 'arquivo esperando', 'arquivos esperando')}</>}
+                    </p>
                   </div>
-                  <div className="mt-auto border-t border-slate-100 p-3">
-                    <button type="button" onClick={() => onEscolher(p)} className={`${botao} w-full`}>
-                      <UserCheck className="h-4 w-4" aria-hidden /> {g.botao}
-                    </button>
-                  </div>
+                  <button type="button" onClick={() => onEscolher(p)} className={`${botao} shrink-0`}>
+                    <UserCheck className="h-3.5 w-3.5" aria-hidden /> {g.botao}
+                  </button>
                 </li>
               ))}
             </ul>
@@ -284,15 +273,15 @@ function GruposDePastas({ pastas, onEscolher }: { pastas: SpPendenciaPasta[]; on
 
 function ListaArquivos({ itens }: { itens: SpItem[] }) {
   return (
-    <ul className="grid gap-3 lg:grid-cols-2">
+    <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200">
       {itens.slice(0, 50).map(i => (
-        <li key={i.sp_id} className="flex items-start justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <li key={i.sp_id} className="flex flex-col gap-2 px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
           <div className="min-w-0">
-            <p className="truncate text-sm font-bold text-slate-800" title={i.nome}>{i.nome}</p>
-            <span className="mt-1.5 inline-flex rounded-full bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 ring-1 ring-rose-200">
-              {rotuloMotivo(i.motivo)}
-            </span>
-            <p className="mt-1.5 truncate text-xs text-slate-500" title={i.caminho ?? undefined}>
+            <p className="flex min-w-0 items-center gap-2">
+              <span className="truncate text-sm font-semibold text-slate-800" title={i.nome}>{i.nome}</span>
+              <span className="shrink-0 rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700 ring-1 ring-rose-200">{rotuloMotivo(i.motivo)}</span>
+            </p>
+            <p className="truncate text-xs text-slate-500" title={i.caminho ?? undefined}>
               {i.competencia ? `${i.competencia.split('-').reverse().join('/')} · ` : ''}{i.caminho ?? ''}
             </p>
           </div>
@@ -385,21 +374,22 @@ export function FilaNaoReconhecidos({ fila, itens, onAtualizar }: {
   }
 
   return (
-    <div className="space-y-5">
-      <div className={`grid gap-3 ${tarefas.length === 3 ? 'md:grid-cols-3' : tarefas.length === 2 ? 'md:grid-cols-2' : ''}`}>
+    <div className="space-y-4">
+      <div className={`grid gap-2 ${tarefas.length === 3 ? 'md:grid-cols-3' : tarefas.length === 2 ? 'md:grid-cols-2' : ''}`}>
         {tarefas.map(t => <CartaoTarefa key={t.id} t={t} ativo={t.id === ativa.id} onClick={() => setEscolhida(t.id)} />)}
       </div>
 
-      <div id={`tarefa-${ativa.id}`} className="space-y-4" aria-live="polite">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h3 className="text-base font-bold text-slate-900">Como resolver: {ativa.verbo.toLocaleLowerCase('pt-BR')}</h3>
-        </div>
+      <div id={`tarefa-${ativa.id}`} className="space-y-3" aria-live="polite">
+        <h3 className="text-sm font-bold text-slate-900">Como resolver: {ativa.verbo.toLocaleLowerCase('pt-BR')}</h3>
         <ComoResolver passos={ativa.passos} tom={ativa.tom} />
 
         {ativa.id === 'planilha' && (
-          <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {semPlanilha.map(p => <CartaoPrestador key={p.pasta_id} p={p} />)}
-          </ul>
+          <div className="rounded-xl border border-slate-200 pt-2">
+            <CabecalhoPrestadores />
+            <ul className="divide-y divide-slate-100">
+              {semPlanilha.map(p => <LinhaPrestador key={p.pasta_id} p={p} />)}
+            </ul>
+          </div>
         )}
         {ativa.id === 'pasta' && <GruposDePastas pastas={pastas} onEscolher={setAberta} />}
         {ativa.id === 'arquivo' && <ListaArquivos itens={itensDoArquivo} />}
