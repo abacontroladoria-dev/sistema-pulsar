@@ -862,7 +862,7 @@ AS $$
 DECLARE
   v jsonb;
 BEGIN
-  IF NOT public.usuario_tem_permissao('robo_sharepoint') THEN
+  IF NOT (public.usuario_tem_permissao('robo_sharepoint') OR public.usuario_tem_permissao('relacionamento_prestador_pep')) THEN
     RAISE EXCEPTION 'sem permissao' USING ERRCODE = '42501';
   END IF;
 
@@ -921,6 +921,222 @@ BEGIN
                     AND public.normalizar_nome_paciente(l->>'paciente') = public.normalizar_nome_paciente(j.nome)), '[]'::jsonb)
              ) ORDER BY pp.nome, j.nome)
         FROM juntos j LEFT JOIN sp_pep_pastas pp ON pp.id = j.prestador_pasta_id), '[]'::jsonb)
+  ) INTO v;
+  RETURN v;
+END;
+$$;
+
+-- ═════════════════════════════════════════════════════════════════════════════
+-- 10. Leitura do robô liberada para quem usa a tela Entregas PEP
+-- ═════════════════════════════════════════════════════════════════════════════
+-- Pedido de 02/10/2026: "O que o robô encontrou no SharePoint" e "O que
+-- precisa de você" saíram de /admin/robo-sharepoint para
+-- /relacionamento-prestador/pep, que o RP usa. Pastas, prestadores, pacientes
+-- e arquivos já eram legíveis com relacionamento_prestador_pep; faltavam as
+-- execuções e o detalhe "Ver o que foi lido". Só LEITURA: nenhuma escrita muda
+-- (vincular continua exigindo rp/admin; ligar a entrega, admin).
+
+DROP POLICY IF EXISTS sp_pep_execucoes_select ON public.sp_pep_execucoes;
+CREATE POLICY sp_pep_execucoes_select ON public.sp_pep_execucoes
+  FOR SELECT TO authenticated USING (
+    public.usuario_tem_permissao('robo_sharepoint') OR public.usuario_tem_permissao('relacionamento_prestador_pep'));
+
+DROP POLICY IF EXISTS sp_pep_execucao_arquivos_select ON public.sp_pep_execucao_arquivos;
+CREATE POLICY sp_pep_execucao_arquivos_select ON public.sp_pep_execucao_arquivos
+  FOR SELECT TO authenticated USING (
+    public.usuario_tem_permissao('robo_sharepoint') OR public.usuario_tem_permissao('relacionamento_prestador_pep'));
+
+-- As quatro leituras do detalhe, iguais às de 20261001130000/140000, só com a
+-- tranca ampliada.
+CREATE OR REPLACE FUNCTION public.sp_pep_resumo_execucao(p_execucao_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v jsonb;
+BEGIN
+  IF NOT (public.usuario_tem_permissao('robo_sharepoint') OR public.usuario_tem_permissao('relacionamento_prestador_pep')) THEN
+    RAISE EXCEPTION 'sem permissao' USING ERRCODE = '42501';
+  END IF;
+
+  WITH a AS (SELECT * FROM sp_pep_execucao_arquivos WHERE execucao_id = p_execucao_id),
+  por_prestador AS (
+    SELECT pa.id AS pasta_id, pa.nome,
+           count(a.sp_id)                                             AS arquivos,
+           count(a.sp_id) FILTER (WHERE a.tipo = 'evidencia')         AS evidencias,
+           count(a.sp_id) FILTER (WHERE a.tipo = 'planilha')          AS planilhas,
+           count(a.sp_id) FILTER (WHERE a.tipo IN ('ignorado', 'fora_padrao')) AS ignorados,
+           (SELECT count(*) FROM sp_pep_pastas p2 WHERE p2.papel = 'paciente' AND p2.prestador_pasta_id = pa.id) AS pastas_paciente,
+           EXISTS (SELECT 1 FROM sp_pep_prestadores pr WHERE pr.pasta_id = pa.id AND pr.planilha_sp_id IS NOT NULL) AS tem_planilha
+      FROM sp_pep_pastas pa
+      LEFT JOIN a ON a.prestador_pasta_id = pa.id
+     WHERE pa.papel = 'prestador'
+     GROUP BY pa.id, pa.nome
+  )
+  SELECT jsonb_build_object(
+    'registrado',   EXISTS (SELECT 1 FROM a),
+    'total',        (SELECT count(*) FROM a WHERE tipo <> 'removido'),
+    'por_tipo',     COALESCE((SELECT jsonb_object_agg(tipo, n) FROM (SELECT tipo, count(*) n FROM a GROUP BY tipo) t), '{}'::jsonb),
+    'por_sigla',    COALESCE((SELECT jsonb_object_agg(sigla, n) FROM (
+                      SELECT sigla, count(*) n FROM a WHERE tipo = 'evidencia' AND sigla IS NOT NULL GROUP BY sigla) t), '{}'::jsonb),
+    'motivos',      COALESCE((SELECT jsonb_agg(jsonb_build_object('tipo', tipo, 'motivo', motivo, 'n', n) ORDER BY n DESC) FROM (
+                      SELECT tipo, COALESCE(motivo, 'sem_motivo') motivo, count(*) n FROM a
+                       WHERE tipo IN ('ignorado', 'fora_padrao') GROUP BY tipo, motivo) t), '[]'::jsonb),
+    'sem_prestador', (SELECT count(*) FROM a WHERE prestador_pasta_id IS NULL),
+    'prestadores',  COALESCE((SELECT jsonb_agg(to_jsonb(p) ORDER BY p.nome) FROM por_prestador p), '[]'::jsonb),
+    'pastas', jsonb_build_object(
+      'total',       (SELECT count(*) FROM sp_pep_pastas),
+      'prestadores', (SELECT count(*) FROM sp_pep_pastas WHERE papel = 'prestador'),
+      'pacientes',   (SELECT count(*) FROM sp_pep_pastas WHERE papel = 'paciente'))
+  ) INTO v;
+  RETURN v;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.sp_pep_situacao_reconhecimento()
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v jsonb;
+BEGIN
+  IF NOT (public.usuario_tem_permissao('robo_sharepoint') OR public.usuario_tem_permissao('relacionamento_prestador_pep')) THEN
+    RAISE EXCEPTION 'sem permissao' USING ERRCODE = '42501';
+  END IF;
+
+  SELECT jsonb_build_object(
+    'prestadores', COALESCE((
+      SELECT jsonb_agg(jsonb_build_object(
+               'pasta_id', pr.pasta_id, 'nome_pasta', pa.nome, 'prestador_nome', pr.prestador_nome,
+               'status', pr.status, 'motivo', pr.motivo, 'sinais', pr.sinais,
+               'planilha_nome', pr.planilha_nome, 'planilha_web_url', pr.planilha_web_url)
+             ORDER BY (pr.status = 'reconhecido') DESC, pa.nome)
+        FROM sp_pep_prestadores pr JOIN sp_pep_pastas pa ON pa.id = pr.pasta_id), '[]'::jsonb),
+    'pacientes', COALESCE((
+      SELECT jsonb_agg(jsonb_build_object(
+               'pasta_id', pc.pasta_id, 'prestador_pasta_id', pc.prestador_pasta_id, 'nome_pasta', pa.nome,
+               'paciente_nome', pc.paciente_nome, 'status', pc.status, 'motivo', pc.motivo,
+               'origem', pc.origem, 'sinais', pc.sinais,
+               'arquivos', (SELECT count(*) FROM sp_pep_itens i WHERE i.paciente_pasta_id = pc.pasta_id))
+             ORDER BY pa.nome)
+        FROM sp_pep_pacientes pc JOIN sp_pep_pastas pa ON pa.id = pc.pasta_id), '[]'::jsonb),
+    'sugestoes', COALESCE((
+      SELECT jsonb_agg(jsonb_build_object(
+               'sp_id', i.sp_id, 'nome', i.nome, 'web_url', i.web_url, 'sigla', i.sigla,
+               'paciente_nome', i.paciente_nome, 'prestador_nome', i.prestador_nome,
+               'competencia', i.competencia, 'criado_em_sp', i.criado_em_sp)
+             ORDER BY i.prestador_nome, i.paciente_nome, i.sigla)
+        FROM (SELECT * FROM sp_pep_itens WHERE status = 'sugerido' ORDER BY criado_em_sp DESC LIMIT 500) i), '[]'::jsonb),
+    'itens_por_status', COALESCE((
+      SELECT jsonb_object_agg(status, n) FROM (SELECT status, count(*) n FROM sp_pep_itens GROUP BY status) t), '{}'::jsonb),
+    'itens_motivos', COALESCE((
+      SELECT jsonb_agg(jsonb_build_object('motivo', motivo, 'n', n) ORDER BY n DESC) FROM (
+        SELECT COALESCE(motivo, 'sem_motivo') motivo, count(*) n FROM sp_pep_itens
+         WHERE status = 'nao_reconhecido' GROUP BY motivo) t), '[]'::jsonb)
+  ) INTO v;
+  RETURN v;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.sp_pep_arvore_pastas(p_execucao_id uuid, p_pasta_pai text)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v jsonb;
+BEGIN
+  IF NOT (public.usuario_tem_permissao('robo_sharepoint') OR public.usuario_tem_permissao('relacionamento_prestador_pep')) THEN
+    RAISE EXCEPTION 'sem permissao' USING ERRCODE = '42501';
+  END IF;
+
+  WITH RECURSIVE caminhos AS (
+    SELECT p.id, p.nome::text AS caminho
+      FROM sp_pep_pastas p
+     WHERE p.papel = 'prestador'
+    UNION ALL
+    SELECT f.id, c.caminho || '/' || f.nome
+      FROM sp_pep_pastas f
+      JOIN caminhos c ON f.pai_id = c.id
+  ),
+  filhos AS (
+    SELECT f.id, f.nome, f.papel, f.web_url, f.criado_em_sp, c.caminho
+      FROM sp_pep_pastas f
+      JOIN caminhos c ON c.id = f.id
+     WHERE (p_pasta_pai IS NULL AND f.papel = 'prestador')
+        OR (p_pasta_pai IS NOT NULL AND f.pai_id = p_pasta_pai)
+  ),
+  arq AS (
+    SELECT sp_id, nome, caminho, web_url, tipo, motivo, sigla, criado_em_sp, criado_por
+      FROM sp_pep_execucao_arquivos
+     WHERE execucao_id = p_execucao_id AND tipo <> 'removido'
+  ),
+  pai AS (SELECT caminho FROM caminhos WHERE id = p_pasta_pai)
+  SELECT jsonb_build_object(
+    'pastas', COALESCE((
+      SELECT jsonb_agg(jsonb_build_object(
+               'id', f.id, 'nome', f.nome, 'papel', f.papel, 'web_url', f.web_url, 'criado_em_sp', f.criado_em_sp,
+               'subpastas', (SELECT count(*) FROM sp_pep_pastas s WHERE s.pai_id = f.id),
+               'arquivos', (SELECT count(*) FROM arq WHERE starts_with(arq.caminho, f.caminho || '/')),
+               'evidencias', (SELECT count(*) FROM arq WHERE arq.tipo = 'evidencia' AND starts_with(arq.caminho, f.caminho || '/'))
+             ) ORDER BY f.nome)
+        FROM filhos f), '[]'::jsonb),
+    'arquivos', COALESCE((
+      SELECT jsonb_agg(jsonb_build_object(
+               'sp_id', arq.sp_id, 'nome', arq.nome, 'web_url', arq.web_url, 'tipo', arq.tipo, 'motivo', arq.motivo,
+               'sigla', arq.sigla, 'criado_em_sp', arq.criado_em_sp, 'criado_por', arq.criado_por) ORDER BY arq.nome)
+        FROM arq, pai
+       WHERE starts_with(arq.caminho, pai.caminho || '/')
+         AND position('/' IN substr(arq.caminho, length(pai.caminho) + 2)) = 0), '[]'::jsonb)
+  ) INTO v;
+  RETURN v;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.sp_pep_matriz_evidencias(p_execucao_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v jsonb;
+BEGIN
+  IF NOT (public.usuario_tem_permissao('robo_sharepoint') OR public.usuario_tem_permissao('relacionamento_prestador_pep')) THEN
+    RAISE EXCEPTION 'sem permissao' USING ERRCODE = '42501';
+  END IF;
+
+  SELECT jsonb_build_object(
+    'prestadores', COALESCE((
+      SELECT jsonb_agg(jsonb_build_object('pasta_id', pa.id, 'nome', pa.nome, 'web_url', pa.web_url,
+               'prestador_nome', pr.prestador_nome, 'status', pr.status) ORDER BY pa.nome)
+        FROM sp_pep_pastas pa LEFT JOIN sp_pep_prestadores pr ON pr.pasta_id = pa.id
+       WHERE pa.papel = 'prestador'), '[]'::jsonb),
+    'pacientes', COALESCE((
+      SELECT jsonb_agg(jsonb_build_object('pasta_id', pa.id, 'prestador_pasta_id', pa.prestador_pasta_id,
+               'nome', pa.nome, 'web_url', pa.web_url, 'paciente_nome', pc.paciente_nome,
+               'status', COALESCE(pc.status, 'nao_reconhecido'), 'motivo', pc.motivo) ORDER BY pa.nome)
+        FROM sp_pep_pastas pa LEFT JOIN sp_pep_pacientes pc ON pc.pasta_id = pa.id
+       WHERE pa.papel = 'paciente'), '[]'::jsonb),
+    'celulas', COALESCE((
+      SELECT jsonb_agg(jsonb_build_object('prestador_pasta_id', t.prestador_pasta_id, 'paciente_pasta_id', t.paciente_pasta_id,
+               'sigla', t.sigla, 'situacao', t.situacao, 'n', t.n))
+        FROM (
+          SELECT a.prestador_pasta_id, a.paciente_pasta_id, a.sigla,
+                 COALESCE(i.status, 'nao_reconhecido') AS situacao, count(*) AS n
+            FROM sp_pep_execucao_arquivos a
+            LEFT JOIN sp_pep_itens i ON i.sp_id = a.sp_id
+           WHERE a.execucao_id = p_execucao_id AND a.tipo = 'evidencia'
+           GROUP BY 1, 2, 3, 4) t), '[]'::jsonb)
   ) INTO v;
   RETURN v;
 END;

@@ -13,6 +13,7 @@ Roteiro de 01/10/2026 para colocar no ar o robô planejado em `docs/ESTUDO_ROBO_
 | Limpeza dos dados de teste | `supabase/snippets/20261001_limpar_dados_teste_robo_pep.sql` |
 | Painel ao vivo | `/admin/robo-sharepoint` (Administração → Robô SharePoint) |
 | Entregas do robô na PEP | `/relacionamento-prestador/pep` → cartão "O que o robô fez neste mês" (roxo = robô, azul = pessoa) |
+| O que o robô leu e o que precisa de você | `/relacionamento-prestador/pep` → Visão geral (antes de escolher o analista). O painel do robô ficou com a parte técnica. |
 | Configuração local (fora do repositório) | `C:\Users\Maquina001\.pulsar-sharepoint\robo.env` |
 
 **Como o robô decide:**

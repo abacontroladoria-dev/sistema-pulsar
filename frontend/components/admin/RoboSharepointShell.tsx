@@ -1,17 +1,17 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Bot, CalendarClock, CheckCircle2, ChevronDown, ClipboardList, FlaskConical, Gauge, History, Loader2, Play, ShieldCheck, TriangleAlert, Wrench, XCircle } from 'lucide-react'
+import { ArrowRight, Bot, CalendarClock, CheckCircle2, ChevronDown, FlaskConical, Gauge, History, Loader2, Play, ShieldCheck, TriangleAlert, Wrench, XCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
+import Link from 'next/link'
 
 import { useHeader } from '@/contexts/HeaderContext'
 import { ComoFunciona, OQueEnxergaEComoDecide } from '@/components/admin/roboSharepoint/ComoFunciona'
 import { EntregaAutomatica } from '@/components/admin/roboSharepoint/EntregaAutomatica'
 import { useUsuarioAtual } from '@/hooks/useUsuarioAtual'
 import { LinhaDoTempo } from '@/components/admin/roboSharepoint/LinhaDoTempo'
-import { DestaqueLeitura } from '@/components/admin/roboSharepoint/DestaqueLeitura'
+import { execucoesDeReferencia } from '@/lib/roboSharepoint/referencias'
 import { HistoricoExecucoes } from '@/components/admin/roboSharepoint/HistoricoExecucoes'
-import { FilaNaoReconhecidos, resumoPendencias } from '@/components/admin/roboSharepoint/FilaNaoReconhecidos'
 import { CustoExecucao } from '@/components/admin/roboSharepoint/CustoExecucao'
 import { HistoricoCompletoDrawer } from '@/components/admin/roboSharepoint/HistoricoCompletoDrawer'
 import { DetalheExecucaoDrawer } from '@/components/admin/roboSharepoint/detalhe/DetalheExecucaoDrawer'
@@ -99,7 +99,7 @@ function EstadoAgora({ saude, ultima }: { saude: RoboSaude | null; ultima: RoboE
 }
 
 export default function RoboSharepointShell() {
-  const { execucoes, pendencias, itensPresos, saude, carregando, erro, carregarPendencias, carregarSaude } = useRoboSharepoint()
+  const { execucoes, saude, carregando, erro, carregarSaude } = useRoboSharepoint()
   const { role } = useUsuarioAtual()
   const [pedindo, setPedindo] = useState(false)
   const [historicoAberto, setHistoricoAberto] = useState(false)
@@ -107,15 +107,7 @@ export default function RoboSharepointShell() {
   const [tecnicoAberto, setTecnicoAberto] = useState(false)
   const [detalhe, setDetalhe] = useState<{ execucao: RoboExecucao; etapa: RoboEtapaNome } | null>(null)
 
-  const ultima = execucoes[0] ?? null
-  const ultimaConcluida = execucoes.find(e => e.status !== 'executando') ?? null
-  // A "situação de agora" do reconhecimento é a da última execução que gravou (não simulada).
-  const idUltimaGravada = execucoes.find(e => e.status === 'concluido' && e.modo !== 'simulacao')?.id ?? null
-  // Última leitura do site inteiro já registrada arquivo por arquivo (robô 0.2+).
-  const ultimaCompleta = execucoes.find(e => e.status === 'concluido'
-    && (e.etapas.find(x => x.etapa === 'listar')?.detalhe as { leitura?: string } | null)?.leitura === 'completa'
-    && !/^0\.[01]\./.test(e.versao ?? '0.0.')) ?? null
-  const executando = ultima?.status === 'executando'
+  const { ultima, ultimaConcluida, idUltimaGravada, ultimaCompleta, executando } = execucoesDeReferencia(execucoes)
   const podeExecutar = !!saude?.configurado && saude.online !== false && !saude.erro_fatal && !executando
 
   const pedirExecucao = useCallback(async () => {
@@ -161,9 +153,13 @@ export default function RoboSharepointShell() {
 
       {erro && <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{erro}</p>}
 
-      {/* 1ª coisa da página: o resultado da leitura do SharePoint, sem o
-          tempo da etapa (esse fica na linha do tempo, em Informações técnicas). */}
-      {!carregando && <DestaqueLeitura execucao={ultima} onAbrir={etapa => ultima && setDetalhe({ execucao: ultima, etapa })} />}
+      {/* "O que o robô encontrou no SharePoint" e "O que precisa de você"
+          ficam na tela Entregas PEP desde 02/10/2026 (RoboNaPep). */}
+      <Link href="/relacionamento-prestador/pep"
+        className="group flex min-h-11 items-center justify-between gap-3 rounded-2xl border border-brand/30 bg-brand-surface/60 px-5 py-3 text-sm text-slate-700 hover:bg-brand-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand sm:px-6">
+        <span>O que o robô encontrou no SharePoint e <strong className="font-semibold text-slate-800">o que precisa de você</strong> agora ficam na tela <strong className="font-semibold text-brand-fg">Entregas PEP</strong>.</span>
+        <ArrowRight className="h-4 w-4 shrink-0 text-brand-fg transition-transform group-hover:translate-x-0.5 motion-reduce:transform-none" aria-hidden />
+      </Link>
 
       <section className={cartao}>
         {carregando ? <p className="text-sm text-slate-500">Carregando…</p> : <EstadoAgora saude={saude} ultima={ultima} />}
@@ -174,13 +170,6 @@ export default function RoboSharepointShell() {
       <ComoFunciona />
 
       <OQueEnxergaEComoDecide />
-
-      <section className={cartao}>
-        <Titulo icone={ClipboardList} extra={<span className="text-xs text-slate-500">{resumoPendencias(pendencias, itensPresos)}</span>}>
-          O que precisa de você
-        </Titulo>
-        <FilaNaoReconhecidos fila={pendencias} itens={itensPresos} onAtualizar={carregarPendencias} />
-      </section>
 
       {/* Informações técnicas: o detalhe para quem acompanha o robô. Só muda a
           posição destas três seções; conteúdo, botões e drawers são os mesmos. */}
