@@ -286,9 +286,6 @@ export function ComoFunciona() {
             <ChevronDown className={`h-4 w-4 transition-transform motion-reduce:transition-none ${aberto ? 'rotate-180' : ''}`} aria-hidden />
           </button>
         </div>
-        <p className="mt-1 max-w-3xl text-sm text-slate-600">
-          O caminho de um documento, da pasta do prestador no SharePoint até a tela Entregas PEP. Cada número abaixo é uma etapa que aparece, com o tempo que levou, em “Resultado da última leitura”.
-        </p>
 
         {aberto && (
           <div className="mt-5 space-y-4">
