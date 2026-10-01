@@ -119,9 +119,10 @@ function BotaoPdfPrestador({ no, competencia }: { no: NoPasta; competencia: stri
         carregarRelatorioPrestador(no.id, no.nome, competencia),
       ])
       const bytes = await gerarPdfRelatorio(relatorio)
-      const slug = nome.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '')
-      baixarPdf(bytes, `PEP-${slug}-${competencia}.pdf`)
-      toast.success(`PDF de ${nome} (${rotuloMes(competencia)}) baixado.`)
+      // Nome do arquivo pela razão social, nunca pelo nome da pessoa.
+      const slug = relatorio.razaoSocial.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60)
+      baixarPdf(bytes, `Pendencias-PEP-${slug}-${competencia}.pdf`)
+      toast.success(`Pendências de ${nome} (${rotuloMes(competencia)}) baixadas em PDF.`)
     } catch (e) {
       toast.error(e instanceof Error ? `Não foi possível gerar o PDF: ${e.message}` : 'Não foi possível gerar o PDF')
     } finally {
@@ -131,13 +132,13 @@ function BotaoPdfPrestador({ no, competencia }: { no: NoPasta; competencia: stri
 
   return (
     <button type="button" onClick={gerar} disabled={gerando}
-      title={`Baixar PDF: o que está nas pastas e o que falta ${nome} entregar em ${rotuloMes(competencia)}`}
-      aria-label={`Baixar PDF do que falta ${nome} entregar em ${rotuloMes(competencia)}`}
+      title={`Baixar pendências em PDF: o que está nas pastas e o que falta entregar em ${rotuloMes(competencia)}`}
+      aria-label={`Baixar pendências de ${nome} em PDF (${rotuloMes(competencia)})`}
       className="flex w-full shrink-0 items-center justify-center gap-2 border-t border-border px-4 py-3 text-sm font-semibold text-rose-700 transition-colors hover:bg-rose-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:opacity-60 dark:text-rose-300 dark:hover:bg-rose-950/40 xl:w-28 xl:flex-col xl:gap-1 xl:border-l xl:border-t-0 xl:px-2">
       {gerando
         ? <Loader2 className="h-6 w-6 animate-spin motion-reduce:animate-none" aria-hidden />
         : <FileDown className="h-6 w-6" aria-hidden />}
-      <span className="text-xs font-bold">{gerando ? 'Gerando…' : 'Baixar PDF'}</span>
+      <span className="text-center text-xs font-bold leading-tight">{gerando ? 'Gerando…' : 'Baixar pendências em PDF'}</span>
     </button>
   )
 }

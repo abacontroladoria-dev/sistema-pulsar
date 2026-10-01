@@ -3,7 +3,6 @@ import { getCatalogoItens } from '@/services/pep.service'
 import { getCalendarioCompetencia } from '@/services/pepCalendario.service'
 import { getFeriados } from '@/services/feriados.service'
 import { semanasEsperadas } from '@/lib/remuneracao/semanasCompetencia'
-import { nomeCurtoPrestador } from '@/lib/roboSharepoint/rotulos'
 import {
   montarRelatorio, type ArquivoRelatorio, type CatalogoRelatorio, type PastaPaciente, type PlanoRelatorio,
   type RegistroRelatorio, type Relatorio,
@@ -28,7 +27,7 @@ export async function carregarRelatorioPrestador(prestadorPastaId: string, nomeP
   const sb = getSupabaseClient()
 
   const [prest, pacs, catalogoRes, calendario, feriados] = await Promise.all([
-    sb.from('sp_pep_prestadores').select('prestador_nome, planilha_sp_id, razao_social_planilha').eq('pasta_id', prestadorPastaId).maybeSingle(),
+    sb.from('sp_pep_prestadores').select('prestador_nome, planilha_sp_id, razao_social_planilha, cnpj').eq('pasta_id', prestadorPastaId).maybeSingle(),
     sb.from('sp_pep_pacientes').select('pasta_id, paciente_nome, motivo').eq('prestador_pasta_id', prestadorPastaId),
     getCatalogoItens(),
     getCalendarioCompetencia(competencia),
@@ -79,10 +78,11 @@ export async function carregarRelatorioPrestador(prestadorPastaId: string, nomeP
 
   const semanas = calendario.data?.semanas_supervisao_estudo ?? semanasEsperadas(competencia, feriados.data ?? [])
 
+  // Só a identificação jurídica vai para o PDF: razão social (da planilha;
+  // senão, a que está entre parênteses no nome da pasta) e CNPJ.
   return montarRelatorio({
-    nomePasta: nomeCurtoPrestador(nomePasta),
-    prestadorNome: prestadorNome ? nomeCurtoPrestador(nomePasta) : null,
     razaoSocial: (prest.data?.razao_social_planilha as string | null) ?? (/\(([^()]+)\)\s*$/.exec(nomePasta)?.[1] ?? null),
+    cnpj: (prest.data?.cnpj as string | null) ?? null,
     temPlanilha: !!prest.data?.planilha_sp_id,
     competencia,
     semanas,

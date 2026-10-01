@@ -17,7 +17,7 @@ export async function gerarPdfRelatorio(r: Relatorio, geradoEm = new Date()): Pr
   const lib: Lib = await import('pdf-lib')
   const { PDFDocument, StandardFonts, rgb } = lib
   const doc = await PDFDocument.create()
-  doc.setTitle(`Entregas PEP — ${r.prestador} — ${r.mesRotulo}`)
+  doc.setTitle(`Pendências de entregas PEP — ${r.razaoSocial} — ${r.mesRotulo}`)
   doc.setCreator('Pulsar')
   const fonte = await doc.embedFont(StandardFonts.Helvetica)
   const negrito = await doc.embedFont(StandardFonts.HelveticaBold)
@@ -64,13 +64,26 @@ export async function gerarPdfRelatorio(r: Relatorio, geradoEm = new Date()): Pr
   const novaPagina = () => { pagina = doc.addPage([A4.w, A4.h]); y = A4.h - M }
   const garantir = (h: number, aoQuebrar?: () => void) => { if (y - h < M + RODAPE) { novaPagina(); aoQuebrar?.() } }
 
-  // ── Cabeçalho ──────────────────────────────────────────────────────────────
+  // ── Cabeçalho: identificação jurídica (nunca o nome da pessoa) ─────────────
   pagina.drawRectangle({ x: 0, y: A4.h - 96, width: A4.w, height: 96, color: COR.marca })
   pagina.drawRectangle({ x: 0, y: A4.h - 100, width: A4.w, height: 4, color: COR.verde })
-  texto('ENTREGAS PEP · O QUE ESTÁ NAS PASTAS E O QUE FALTA', M, A4.h - 30, { f: negrito, s: 9, c: COR.branco })
-  texto(r.prestador, M, A4.h - 54, { f: negrito, s: 18, c: COR.branco })
-  texto(`${r.razaoSocial ? `${r.razaoSocial} · ` : ''}Mês de atendimento: ${r.mesRotulo}`, M, A4.h - 74, { s: 10, c: COR.branco })
-  y = A4.h - 124
+  texto('PENDÊNCIAS DE ENTREGAS PEP · O QUE ESTÁ NAS PASTAS E O QUE FALTA', M, A4.h - 30, { f: negrito, s: 9, c: COR.branco })
+  const ident = `${r.cnpj ? `CNPJ ${r.cnpj} – ` : ''}${r.razaoSocial}`
+  const linhasIdent = quebrar(ident, A4.w - 2 * M, negrito, 14).slice(0, 2)
+  linhasIdent.forEach((l, i) => texto(l, M, A4.h - 52 - i * 16, { f: negrito, s: 14, c: COR.branco }))
+  texto(`Mês de atendimento: ${r.mesRotulo}`, M, A4.h - 56 - linhasIdent.length * 16 + 2, { s: 10, c: COR.branco })
+  y = A4.h - 116
+
+  // Faixa de aviso, no espírito do Demonstrativo de Faturamento.
+  const aviso = 'Documento informativo. Mostra o que foi localizado nas pastas do SharePoint e o que consta como pendente na data '
+    + 'de geração. Não é apuração de faturamento nem avaliação do conteúdo técnico dos documentos: a aceitação das entregas '
+    + 'e os valores dependem da validação do Relacionamento com o Prestador.'
+  const linhasAviso = quebrar(aviso, A4.w - 2 * M - 20, fonte, 8)
+  const hAviso = linhasAviso.length * 10 + 12
+  pagina.drawRectangle({ x: M, y: y - hAviso, width: A4.w - 2 * M, height: hAviso, color: COR.fundo, borderColor: COR.linha, borderWidth: 0.6 })
+  pagina.drawRectangle({ x: M, y: y - hAviso, width: 3, height: hAviso, color: COR.marca })
+  linhasAviso.forEach((l, i) => texto(l, M + 12, y - 14 - i * 10, { s: 8, c: COR.suave }))
+  y -= hAviso + 14
 
   // ── Resumo em 4 caixas ─────────────────────────────────────────────────────
   const caixas: { valor: string; rotulo: string; cor: RGB; fundo: RGB }[] = [
@@ -198,12 +211,24 @@ export async function gerarPdfRelatorio(r: Relatorio, geradoEm = new Date()): Pr
     y -= linhas.length * 10 + 6
   }
 
+  // ── Confidencialidade (LGPD), como no Demonstrativo de Faturamento ─────────
+  y -= 10
+  const conf = 'DOCUMENTO CONFIDENCIAL — Informações protegidas pela Lei nº 13.709/2018 (LGPD), inclusive dados de pacientes. '
+    + 'Destinado exclusivamente ao prestador identificado no cabeçalho. Vedado o compartilhamento, a reprodução ou o uso '
+    + 'para outra finalidade sem autorização prévia da Universo ABA.'
+  const linhasConf = quebrar(conf, A4.w - 2 * M - 20, fonte, 7.5)
+  const hConf = linhasConf.length * 9.5 + 12
+  garantir(hConf + 4)
+  pagina.drawRectangle({ x: M, y: y - hConf, width: A4.w - 2 * M, height: hConf, color: COR.fundo, borderColor: COR.linha, borderWidth: 0.6 })
+  linhasConf.forEach((l, i) => texto(l, M + 10, y - 13 - i * 9.5, { f: i === 0 ? negrito : fonte, s: 7.5, c: COR.suave }))
+  y -= hConf
+
   // ── Rodapé em todas as páginas ─────────────────────────────────────────────
   const paginas = doc.getPages()
   const quando = geradoEm.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
   paginas.forEach((pg, i) => {
     pg.drawLine({ start: { x: M, y: M + 14 }, end: { x: A4.w - M, y: M + 14 }, thickness: 0.5, color: COR.linha })
-    pg.drawText(seguro(`Gerado pelo Pulsar em ${quando} · ${r.prestador} · ${r.mesRotulo}`), { x: M, y: M, font: fonte, size: 7, color: COR.suave })
+    pg.drawText(seguro(`Documento elaborado em ${quando} · Universo ABA · Uso exclusivo do prestador identificado acima · ${r.mesRotulo}`), { x: M, y: M, font: fonte, size: 7, color: COR.suave })
     const pgTxt = `página ${i + 1} de ${paginas.length}`
     pg.drawText(pgTxt, { x: A4.w - M - fonte.widthOfTextAtSize(pgTxt, 7), y: M, font: fonte, size: 7, color: COR.suave })
   })

@@ -7,6 +7,8 @@
 
 import { lerNomePadrao, nomesCompativeis } from './padraoNome'
 import { MOTIVOS_PADRAO, nomeEsperado } from './rotulos'
+import { abreviarNomePaciente } from '@/lib/remuneracao/pacientes'
+import { formatCNPJ } from '@/lib/remuneracao/documento'
 
 export type CatalogoRelatorio = {
   id: string; sigla: string; nome: string
@@ -43,8 +45,13 @@ export type BlocoPaciente = { nome: string; reconhecido: boolean; aviso: string 
 export type ArquivoForaDoPadrao = { arquivo: string; onde: string; motivo: string; nomeCerto: string | null }
 
 export type Relatorio = {
-  prestador: string
-  razaoSocial: string | null
+  /**
+   * Identificação JURÍDICA do prestador — nunca o nome da pessoa (pedido de
+   * 02/10/2026, mesmo cuidado do "PDF - Apuração do Faturamento"):
+   * "CNPJ 00.000.000/0000-00 – RAZÃO SOCIAL".
+   */
+  razaoSocial: string
+  cnpj: string | null
   competencia: string
   mesRotulo: string
   temPlanilha: boolean
@@ -90,9 +97,8 @@ function motivoFora(a: ArquivoRelatorio, cat: CatalogoRelatorio | undefined, nom
 }
 
 export function montarRelatorio(input: {
-  nomePasta: string
-  prestadorNome: string | null
   razaoSocial: string | null
+  cnpj: string | null
   temPlanilha: boolean
   competencia: string
   semanas: number
@@ -123,7 +129,7 @@ export function montarRelatorio(input: {
           vistosFora.add(chave)
           foraDoPadrao.push({
             arquivo: a.nome,
-            onde: pasta ? `${pasta.paciente_nome ?? pasta.nome_pasta} · ${cat?.nome ?? sigla}` : `Geral · ${cat?.nome ?? sigla}`,
+            onde: pasta ? `${abreviarNomePaciente(pasta.paciente_nome ?? pasta.nome_pasta)} · ${cat?.nome ?? sigla}` : `Geral · ${cat?.nome ?? sigla}`,
             motivo,
             nomeCerto: nomeEsperado(sigla, pasta?.paciente_nome ?? pasta?.nome_pasta ?? null, a.competencia ?? comp),
           })
@@ -184,7 +190,8 @@ export function montarRelatorio(input: {
   const pacientes: BlocoPaciente[] = [...input.pacientes]
     .sort((a, b) => (a.paciente_nome ?? a.nome_pasta).localeCompare(b.paciente_nome ?? b.nome_pasta))
     .map(p => ({
-      nome: p.paciente_nome ?? p.nome_pasta,
+      // Abreviado, como no PDF de faturamento: "Joao S. S.".
+      nome: abreviarNomePaciente(p.paciente_nome ?? p.nome_pasta) ?? p.nome_pasta,
       reconhecido: !!p.paciente_nome,
       aviso: p.paciente_nome ? null : 'Pasta ainda não ligada a um paciente do Pulsar: os números vêm só do que está na pasta.',
       itens: [...recPac.map(c => linhaRecorrente(c, p.pasta_id, p.paciente_nome)), ...sem.map(c => linhaSemestral(c, p.pasta_id, p.paciente_nome))],
@@ -193,8 +200,8 @@ export function montarRelatorio(input: {
   const todas = [...geral, ...pacientes.flatMap(p => p.itens)]
   const recorrentes = todas.filter(l => l.esperado !== null)
   return {
-    prestador: input.prestadorNome ?? input.nomePasta,
-    razaoSocial: input.razaoSocial,
+    razaoSocial: (input.razaoSocial ?? 'RAZÃO SOCIAL NÃO INFORMADA NA PLANILHA').toLocaleUpperCase('pt-BR'),
+    cnpj: formatCNPJ(input.cnpj) || null,
     competencia: comp,
     mesRotulo: rotuloMes(comp),
     temPlanilha: input.temPlanilha,

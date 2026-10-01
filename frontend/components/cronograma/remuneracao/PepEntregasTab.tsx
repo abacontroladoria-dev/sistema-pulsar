@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useSearchParams } from "next/navigation"
-import { Paperclip, Check, AlertTriangle, CalendarPlus, X, Trash2, History, Loader2, LayoutDashboard, ExternalLink } from "lucide-react"
+import { Paperclip, Check, AlertTriangle, ArrowLeft, CalendarPlus, X, Trash2, History, Loader2, LayoutDashboard, ExternalLink } from "lucide-react"
 import { useHeader } from "@/contexts/HeaderContext"
 import { useRemuneracaoRPContext } from "@/contexts/RemuneracaoRPContext"
 import { useParametrosGerais } from "@/hooks/useParametrosGerais"
@@ -185,7 +185,7 @@ export function PepEntregasTab() {
   // segundo estado de mês no cabeçalho pra manter sincronizado.
   const competencia = controlesGrade.periodo.de.slice(0, 7)
   const { carregarGradeAuto, carregarGradeDoBanco, gradeLoading, gradeErroResumo } = controlesGrade
-  const { semanas: semanasCalendario } = usePepCalendario(competencia)
+  const { semanas: semanasCalendario, loading: calendarioLoading } = usePepCalendario(competencia)
 
 
   // A Grade carregada aqui alimenta o mesmo contexto compartilhado das abas
@@ -268,7 +268,7 @@ export function PepEntregasTab() {
   const { resultados: resultadosApuracao, resultadoDe, totalPrestador, loading: apuracaoLoading, recalcular: recalcularApuracao, liberado, liberar, reabrir } = usePepApuracao(
     prestador, competencia, pacientesApuracao, valorMensalPorPaciente
   )
-  const { itens: spItens, recarregar: recarregarSp } = usePepSharepoint(prestador, competencia)
+  const { itens: spItens, carregando: spCarregando, recarregar: recarregarSp } = usePepSharepoint(prestador, competencia)
   const [confirmandoLiberar, setConfirmandoLiberar] = useState(false)
   const [confirmandoReabrir, setConfirmandoReabrir] = useState(false)
   const [motivoReabrir, setMotivoReabrir] = useState("")
@@ -321,6 +321,48 @@ export function PepEntregasTab() {
     return calcularAjusteRecorrentes(entregas, valorMensalPorPaciente).reduce((soma, a) => soma + a.valor, 0)
   }, [itensGerais, semanasCalendario, registroDe, valorMensalPorPaciente])
 
+  // Carga única também ao abrir um analista (pedido de 02/10/2026): a tela
+  // dele só aparece quando entregas, apuração, calendário, robô e parâmetros
+  // terminaram — um indicador discreto até lá, para ninguém ler número pela
+  // metade. Espera 200 ms "parado" (o recálculo da apuração liga o próprio
+  // loading logo depois do primeiro render). Uma vez pronto, edições
+  // posteriores não escondem a tela. Rede de segurança: 15 s.
+  const carregandoAnalista = gradeLoading || loading || apuracaoLoading || spCarregando || calendarioLoading || parametrosLoading
+  const [analistaPronto, setAnalistaPronto] = useState("")
+  useEffect(() => {
+    if (!prestador || carregandoAnalista || analistaPronto === prestador) return
+    const id = setTimeout(() => setAnalistaPronto(prestador), 200)
+    return () => clearTimeout(id)
+  }, [prestador, carregandoAnalista, analistaPronto])
+  useEffect(() => {
+    if (!prestador || analistaPronto === prestador) return
+    const id = setTimeout(() => setAnalistaPronto(prestador), 15000)
+    return () => clearTimeout(id)
+  }, [prestador, analistaPronto])
+  const analistaVisivel = !!prestador && analistaPronto === prestador
+
+  // Trocar de visão (abrir um analista, voltar ao mês) leva ao TOPO da página:
+  // antes, tocar num analista da lista abria a tela dele no meio, nas
+  // "Entregas semestrais".
+  const topoRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    topoRef.current?.scrollIntoView({ block: 'start' })
+    window.scrollTo({ top: 0 })
+  }, [prestador])
+
+  // "Visão geral do mês" no cabeçalho, com a seta de voltar.
+  useEffect(() => {
+    setRightContent(prestador ? (
+      <button
+        type="button"
+        onClick={() => setPrestador("")}
+        className="inline-flex h-11 items-center gap-2 rounded-xl border border-border bg-card px-4 text-sm font-semibold text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <ArrowLeft size={16} aria-hidden /> Visão geral do mês
+      </button>
+    ) : null)
+  }, [prestador, setRightContent])
+
   // Carga única da visão geral (pedido de 02/10/2026): a grade, os parâmetros,
   // os blocos do robô e a apuração do mês carregam em paralelo e a tela só
   // aparece quando todos terminaram — no lugar, um indicador discreto. Vale
@@ -333,20 +375,29 @@ export function PepEntregasTab() {
   const marcarVisaoPronta = useCallback(() => setVisaoPronta(true), [])
   const gradePronta = !gradeLoading && (resultado != null || !!gradeErroResumo)
   const tudoCarregado = roboPronto && gradePronta && !parametrosLoading && (analistas.length === 0 || visaoPronta)
-  if (tudoCarregado && !primeiraCargaFeita) setPrimeiraCargaFeita(true)
+  // Voltar de um analista para a visão do mês também espera tudo carregar de
+  // novo (os blocos remontam e releem). Ajuste durante o render, como o resto
+  // do arquivo: ao trocar de visão, zera os "pronto" antes de mostrar.
+  const [visaoAnterior, setVisaoAnterior] = useState(prestador)
+  const trocouDeVisao = visaoAnterior !== prestador
+  if (trocouDeVisao) {
+    setVisaoAnterior(prestador)
+    if (!prestador) { setRoboPronto(false); setVisaoPronta(false); setPrimeiraCargaFeita(false) }
+  }
+  if (!trocouDeVisao && tudoCarregado && !primeiraCargaFeita) setPrimeiraCargaFeita(true)
   useEffect(() => {
     if (primeiraCargaFeita) return
     const id = setTimeout(() => setPrimeiraCargaFeita(true), 15000)
     return () => clearTimeout(id)
   }, [primeiraCargaFeita])
-  const visaoGeralVisivel = primeiraCargaFeita || tudoCarregado
+  const visaoGeralVisivel = !trocouDeVisao && (primeiraCargaFeita || tudoCarregado)
 
   // Tela inicial, antes de escolher um analista: a visão do mês inteiro
   // (VisaoGeralPep, só leitura). Antes era só "Selecione um Analista…", e nem
   // o mês dava para trocar daqui.
   if (!prestador) {
     return (
-      <div className="space-y-5">
+      <div ref={topoRef} className="space-y-5">
         {!visaoGeralVisivel && (
           <div className="flex min-h-[40vh] items-center justify-center" role="status" aria-live="polite">
             <span className="inline-flex items-center gap-2 text-sm text-muted-foreground">
@@ -543,7 +594,15 @@ export function PepEntregasTab() {
   }
 
   return (
-    <div className="space-y-6">
+    <div ref={topoRef} className="space-y-6">
+      {!analistaVisivel && (
+        <div className="flex min-h-[40vh] items-center justify-center" role="status" aria-live="polite">
+          <span className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 size={16} className="animate-spin motion-reduce:animate-none" aria-hidden /> Carregando as entregas de {prestador}…
+          </span>
+        </div>
+      )}
+      <div className={analistaVisivel ? "space-y-6" : "hidden"}>
       <SecaoTitulo numero={1}>Analista do Comportamento</SecaoTitulo>
       <SeletorPrestador
         analistas={analistas}
@@ -551,7 +610,6 @@ export function PepEntregasTab() {
         onChange={setPrestador}
         onHistoricoGeral={() => setHistoricoAberto("geral")}
         onHistoricoPrestador={() => setHistoricoAberto("prestador")}
-        onVisaoGeral={() => setPrestador("")}
         carregando={gradeLoading}
       />
 
@@ -866,6 +924,7 @@ export function PepEntregasTab() {
           onClose={() => setHistoricoAberto(null)}
         />
       )}
+      </div>
     </div>
   )
 }

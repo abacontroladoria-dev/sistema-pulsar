@@ -19,7 +19,7 @@ const arq = (nome: string, sigla: string, pasta: string | null, competencia = '2
 
 function exemplo() {
   return montarRelatorio({
-    nomePasta: 'Aline Miranda', prestadorNome: 'Aline Miranda', razaoSocial: 'ALINE MIRANDA PSICOLOGIA LTDA',
+    razaoSocial: 'Aline Miranda Psicologia Ltda', cnpj: '11222333000181',
     temPlanilha: true, competencia: '2026-09', semanas: 4, catalogo: CATALOGO,
     pacientes: [
       { pasta_id: 'A', nome_pasta: 'Adrian Costa', paciente_nome: 'Adrian Costa', motivo: null },
@@ -46,6 +46,14 @@ describe('relatório por prestador — o que está nas pastas e o que falta', ()
   const item = (pac: string | null, sigla: string) =>
     (pac ? r.pacientes.find(p => p.nome === pac)!.itens : r.geral).find(i => i.sigla === sigla)!
 
+  test('identificação só jurídica: CNPJ + razão social, sem o nome da pessoa', () => {
+    expect(r.razaoSocial).toBe('ALINE MIRANDA PSICOLOGIA LTDA')
+    expect(r.cnpj).toBe('11.222.333/0001-81')
+    expect(Object.keys(r)).not.toContain('prestador')
+  })
+  test('pacientes abreviados como no PDF de faturamento', () => {
+    expect(r.pacientes.map(p => p.nome)).toEqual(['Adrian Costa', 'Joao Silva S.'])
+  })
   test('Geral: 2 STC na pasta de 4 esperadas; ETC sem número não conta', () => {
     expect(item(null, 'STC')).toMatchObject({ esperado: 4, naPasta: 2, falta: 2, situacao: 'parcial' })
     expect(item(null, 'ETC')).toMatchObject({ esperado: 4, naPasta: 0, falta: 4, situacao: 'faltando' })
@@ -58,9 +66,9 @@ describe('relatório por prestador — o que está nas pastas e o que falta', ()
     expect(item('Adrian Costa', 'TAP')).toMatchObject({ naPasta: 0, falta: 2 })
   })
   test('João: TAP 2/2, PIC entregue no ciclo, OE ainda não é deste mês', () => {
-    expect(item('Joao Silva Santos', 'TAP')).toMatchObject({ naPasta: 2, falta: 0, situacao: 'completo' })
-    expect(item('Joao Silva Santos', 'PIC').situacao).toBe('completo')
-    expect(item('Joao Silva Santos', 'OE').situacao).toBe('previsto')
+    expect(item('Joao Silva S.', 'TAP')).toMatchObject({ naPasta: 2, falta: 0, situacao: 'completo' })
+    expect(item('Joao Silva S.', 'PIC').situacao).toBe('completo')
+    expect(item('Joao Silva S.', 'OE').situacao).toBe('previsto')
   })
   test('arquivos fora do padrão vêm com o nome certo', () => {
     const nomes = r.foraDoPadrao.map(f => f.arquivo)

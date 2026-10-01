@@ -80,18 +80,23 @@ export function DestaqueLeitura({ execucao, onAbrir }: {
             <p className="text-sm">A leitura do SharePoint falhou: {erro}</p>
           </div>
         ) : pronta ? (
-          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-stretch">
-            <Numero icone={FileText} valor={numero(arquivos)} rotulo={arquivos === 1 ? 'arquivo novo ou alterado' : 'arquivos novos ou alterados'}
-              sub={arquivos === 0 ? 'nada mudou desde a leitura anterior' : undefined} />
-            <Numero icone={FolderTree} valor={numero(pastas)} rotulo="pastas no site" sub="prestadores, seções e pacientes" />
-            <button
-              type="button"
-              onClick={() => onAbrir('listar')}
-              className="group inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-brand/40 bg-brand-surface px-5 py-3 text-sm font-bold text-brand-fg transition-colors hover:border-brand-fg hover:bg-brand-fg hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 motion-reduce:transition-none sm:flex-col sm:gap-1 sm:px-4"
-            >
-              Ver o que foi lido
-              <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-0.5 motion-reduce:transform-none" aria-hidden />
-            </button>
+          <div className="space-y-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Numero icone={FileText} valor={numero(arquivos)} rotulo={arquivos === 1 ? 'arquivo novo ou alterado' : 'arquivos novos ou alterados'}
+                sub={arquivos === 0 ? 'nada mudou desde a leitura anterior' : undefined} />
+              <Numero icone={FolderTree} valor={numero(pastas)} rotulo="pastas no site" sub="prestadores, seções e pacientes" />
+            </div>
+            {/* No centro, embaixo dos dois números (pedido de 02/10/2026). */}
+            <div className="flex justify-center">
+              <button
+                type="button"
+                onClick={() => onAbrir('listar')}
+                className="group inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-brand/40 bg-brand-surface px-6 py-2.5 text-sm font-bold text-brand-fg transition-colors hover:border-brand-fg hover:bg-brand-fg hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 motion-reduce:transition-none sm:w-auto"
+              >
+                Ver o que foi lido
+                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5 motion-reduce:transform-none" aria-hidden />
+              </button>
+            </div>
           </div>
         ) : (
           <p className="rounded-2xl border border-slate-200 bg-slate-50 p-5 text-sm text-slate-600">
