@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Bot, CalendarClock, CheckCircle2, ClipboardList, FlaskConical, FolderSearch, Gauge, History, Loader2, Play, ShieldCheck, TriangleAlert, Wrench, XCircle } from 'lucide-react'
+import { Bot, CalendarClock, CheckCircle2, ChevronDown, ClipboardList, FlaskConical, FolderSearch, Gauge, History, Loader2, Play, ShieldCheck, TriangleAlert, Wrench, XCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 import { useHeader } from '@/contexts/HeaderContext'
@@ -102,6 +102,8 @@ export default function RoboSharepointShell() {
   const { role } = useUsuarioAtual()
   const [pedindo, setPedindo] = useState(false)
   const [historicoAberto, setHistoricoAberto] = useState(false)
+  // "Informações técnicas" nasce recolhido: só aparece quando a pessoa expande.
+  const [tecnicoAberto, setTecnicoAberto] = useState(false)
   const [detalhe, setDetalhe] = useState<{ execucao: RoboExecucao; etapa: RoboEtapaNome } | null>(null)
 
   const ultima = execucoes[0] ?? null
@@ -194,10 +196,27 @@ export default function RoboSharepointShell() {
       {/* Informações técnicas: o detalhe para quem acompanha o robô. Só muda a
           posição destas três seções; conteúdo, botões e drawers são os mesmos. */}
       <section className="space-y-4 border-t border-slate-200 pt-6" aria-labelledby="titulo-tecnico">
-        <Titulo icone={Wrench}>
-          <span id="titulo-tecnico">Informações técnicas</span>
-        </Titulo>
+        <button
+          type="button"
+          onClick={() => setTecnicoAberto(a => !a)}
+          aria-expanded={tecnicoAberto}
+          aria-controls="conteudo-tecnico"
+          className="flex min-h-11 w-full items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand sm:px-6"
+        >
+          <span className="min-w-0">
+            <span id="titulo-tecnico" className="flex items-center gap-2 text-base font-bold text-slate-800">
+              <Wrench className="h-4 w-4 text-brand-fg" aria-hidden /> Informações técnicas
+            </span>
+            <span className="mt-0.5 block text-xs text-slate-500">Resultado da última leitura, custo para o Pulsar e últimas 30 execuções</span>
+          </span>
+          <span className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-brand-fg">
+            {tecnicoAberto ? 'Recolher' : 'Mostrar'}
+            <ChevronDown className={`h-4 w-4 transition-transform motion-reduce:transition-none ${tecnicoAberto ? 'rotate-180' : ''}`} aria-hidden />
+          </span>
+        </button>
 
+        {tecnicoAberto && (
+        <div id="conteudo-tecnico" className="space-y-4">
         <section className={cartao} aria-labelledby="titulo-linha">
           <Titulo icone={Gauge} extra={ultima && (
             <span className="text-xs text-slate-500">
@@ -223,6 +242,8 @@ export default function RoboSharepointShell() {
           <Titulo icone={History} extra={<button type="button" onClick={() => setHistoricoAberto(true)} className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-brand-fg hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"><History className="h-4 w-4" aria-hidden /> Histórico completo</button>}>Últimas 30 execuções</Titulo>
           <HistoricoExecucoes execucoes={execucoes} />
         </section>
+        </div>
+        )}
       </section>
 
       {historicoAberto && <HistoricoCompletoDrawer idUltimaGravada={idUltimaGravada} ultimaCompleta={ultimaCompleta} onClose={() => setHistoricoAberto(false)} />}
