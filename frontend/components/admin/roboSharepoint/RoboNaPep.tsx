@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ClipboardList } from 'lucide-react'
 import { DestaqueLeitura } from './DestaqueLeitura'
 import { FilaNaoReconhecidos, resumoPendencias } from './FilaNaoReconhecidos'
@@ -20,8 +20,10 @@ import type { RoboEtapaNome, RoboExecucao } from '@/types/roboSharepoint'
 
 const cartao = 'rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-6'
 
-export function RoboNaPep() {
+export function RoboNaPep({ onCarregado }: { onCarregado?: () => void } = {}) {
   const { execucoes, pendencias, itensPresos, carregando, erro, carregarPendencias } = useRoboSharepoint({ comSaude: false })
+  // A tela PEP só aparece quando tudo carregou: avisa assim que os dados chegam.
+  useEffect(() => { if (!carregando) onCarregado?.() }, [carregando, onCarregado])
   const { ultima, idUltimaGravada, ultimaCompleta } = execucoesDeReferencia(execucoes)
   const [detalhe, setDetalhe] = useState<{ execucao: RoboExecucao; etapa: RoboEtapaNome } | null>(null)
 

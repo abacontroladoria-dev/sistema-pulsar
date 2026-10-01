@@ -130,6 +130,17 @@ export type PepApuracaoLinhaCompetencia = Pick<
 
 const PAGINA_APURACAO = 1000
 
+// valor_robo/valor_humano chegam com a migration 20261002100000. Enquanto ela
+// não estiver aplicada no banco, ler ou gravar essas colunas falha — e a tela
+// PEP inteira ficaria sem apuração. Então: tenta com elas; se o banco disser
+// que a coluna não existe, lembra disso e segue sem elas (robô/pessoa = 0).
+let semColunasOrigem = false
+function faltaColunaOrigem(error: unknown): boolean {
+  const e = error as { code?: string; message?: string } | null
+  return !!e && (e.code === '42703' || e.code === 'PGRST204') && /valor_(robo|humano)/.test(e.message ?? '')
+}
+const CAMPOS_COMPETENCIA = 'prestador_nome, paciente_nome, valor_bruto, valor_liquido, ajuste_recorrentes_valor, ajuste_semestrais_valor, devolucao_valor, saldo_remanescente_anterior, saldo_remanescente_novo, estado, modo_teste'
+
 // Todas as linhas de uma competência, de todos os prestadores — fonte da
 // visão geral de Entregas PEP (antes de escolher um analista). SÓ LEITURA: não
 // chama apurarESalvarPEP; "não apurado" é justamente a ausência de linha.
@@ -143,17 +154,23 @@ export async function getApuracaoCompetencia(
   const supabase = getSupabaseClient()
   const linhas: PepApuracaoLinhaCompetencia[] = []
   for (let de = 0; ; de += PAGINA_APURACAO) {
-    const { data, error } = await supabase
+    const ler = () => supabase
       .from('pep_apuracao_mensal')
-      .select('prestador_nome, paciente_nome, valor_bruto, valor_liquido, valor_robo, valor_humano, ajuste_recorrentes_valor, ajuste_semestrais_valor, devolucao_valor, saldo_remanescente_anterior, saldo_remanescente_novo, estado, modo_teste')
+      .select(semColunasOrigem ? CAMPOS_COMPETENCIA : `${CAMPOS_COMPETENCIA}, valor_robo, valor_humano`)
       .eq('competencia', competencia)
       .order('id')
       .range(de, de + PAGINA_APURACAO - 1)
+    let { data, error } = await ler()
+    if (error && !semColunasOrigem && faltaColunaOrigem(error)) {
+      semColunasOrigem = true
+      ;({ data, error } = await ler())
+    }
     if (error) {
       console.error('Erro getApuracaoCompetencia:', error)
       return { data: [], error }
     }
-    const pagina = (data ?? []) as PepApuracaoLinhaCompetencia[]
+    const pagina = ((data ?? []) as unknown as PepApuracaoLinhaCompetencia[])
+      .map(l => ({ ...l, valor_robo: l.valor_robo ?? 0, valor_humano: l.valor_humano ?? 0 }))
     linhas.push(...pagina)
     if (pagina.length < PAGINA_APURACAO) break
   }
@@ -241,7 +258,7 @@ async function upsertApuracaoMensal(
 ): Promise<{ error: unknown }> {
   const supabase = getSupabaseClient()
   const { data: { user } } = await supabase.auth.getUser()
-  const { error } = await supabase
+  const gravar = (comOrigem: boolean) => supabase
     .from('pep_apuracao_mensal')
     .upsert({
       paciente_nome: row.paciente_nome,
@@ -256,13 +273,17 @@ async function upsertApuracaoMensal(
       saldo_remanescente_anterior: row.saldo_remanescente_anterior,
       devolucao_valor: row.devolucao_valor,
       valor_liquido: row.valor_liquido,
-      valor_robo: row.valor_robo,
-      valor_humano: row.valor_humano,
+      ...(comOrigem ? { valor_robo: row.valor_robo, valor_humano: row.valor_humano } : {}),
       saldo_remanescente_novo: row.saldo_remanescente_novo,
       modo_teste: row.modo_teste,
       calculado_em: new Date().toISOString(),
       calculado_por: user?.id ?? null,
     }, { onConflict: 'paciente_nome,competencia' })
+  let { error } = await gravar(!semColunasOrigem)
+  if (error && !semColunasOrigem && faltaColunaOrigem(error)) {
+    semColunasOrigem = true
+    ;({ error } = await gravar(false))
+  }
   if (error) console.error('Erro upsertApuracaoMensal:', error)
   return { error }
 }

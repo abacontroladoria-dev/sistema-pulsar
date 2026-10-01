@@ -1,8 +1,8 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useSearchParams } from "next/navigation"
-import { Paperclip, Check, AlertTriangle, CalendarPlus, X, Trash2, History, Loader2, LayoutDashboard, ExternalLink, FlaskConical } from "lucide-react"
+import { Paperclip, Check, AlertTriangle, CalendarPlus, X, Trash2, History, Loader2, LayoutDashboard, ExternalLink } from "lucide-react"
 import { useHeader } from "@/contexts/HeaderContext"
 import { useRemuneracaoRPContext } from "@/contexts/RemuneracaoRPContext"
 import { useParametrosGerais } from "@/hooks/useParametrosGerais"
@@ -20,12 +20,10 @@ import { analistasDaGrade, pacientesCCDoProfissional } from "@/lib/remuneracao/v
 import { COMPETENCIA_TESTE_PEP, calcularAjusteRecorrentes } from "@/lib/remuneracao/calculoPEP"
 import type { PepCatalogoItem, PepEvidencia, PepPlanejamentoSemestral, PepRegistroEntrega, PepStatusEntrega } from "@/types/pep"
 import toast from "react-hot-toast"
-import { useUsuarioAtual } from "@/hooks/useUsuarioAtual"
 import { usePepSharepoint } from "@/hooks/usePepSharepoint"
 import { EvidenciasSharepoint, type AvaliacaoSugestao } from "./pep/EvidenciasSharepoint"
 import { ChipOrigem, LegendaOrigem, ORIGEM, SeloUnidade, contarOrigem, origemDaUnidade } from "./pep/origem"
 import { RoboNaPep } from "@/components/admin/roboSharepoint/RoboNaPep"
-import { carregarAnalistasDeTeste, ehProfissionalDeTeste, type AnalistaTeste } from "@/lib/roboSharepoint/homologacao"
 import { resolverItem, reverterEntregaRobo } from "@/services/roboSharepoint.service"
 import type { SpItem } from "@/types/roboSharepoint"
 
@@ -207,29 +205,9 @@ export function PepEntregasTab() {
   // pacientes — a mesma regra da visão geral (lib/remuneracao/visaoGeralPep.ts).
   const analistasGrade = useMemo(() => analistasDaGrade(resultado ?? []), [resultado])
 
-  // Modo teste (homologação do robô SharePoint), só para admin: acrescenta o
-  // par "Profissional/Paciente Teste Robô PEP", que o cálculo compartilhado
-  // esconde de propósito. Nada dele entra na apuração (ver pacientesApuracao).
-  const { role } = useUsuarioAtual()
-  const ehAdmin = role === "admin"
-  const [modoTeste, setModoTeste] = useState(false)
-  const [analistasTesteCarregados, setAnalistasTesteCarregados] = useState<AnalistaTeste[]>([])
-  const testeVisivel = ehAdmin && modoTeste
-  useEffect(() => {
-    if (!testeVisivel) return
-    let vivo = true
-    carregarAnalistasDeTeste(competencia).then(l => { if (vivo) setAnalistasTesteCarregados(l) })
-    return () => { vivo = false }
-  }, [testeVisivel, competencia])
-  const analistasTeste = useMemo(
-    () => (testeVisivel ? analistasTesteCarregados : []),
-    [testeVisivel, analistasTesteCarregados]
-  )
-
-  const analistas = useMemo(
-    () => [...analistasGrade.map(a => a.nome), ...analistasTeste.map(a => a.nome)],
-    [analistasGrade, analistasTeste]
-  )
+  // O "Modo teste" (par de homologação do robô SharePoint) saiu em 02/10/2026:
+  // a homologação acabou e o interruptor só confundia nas duas visões.
+  const analistas = useMemo(() => analistasGrade.map(a => a.nome), [analistasGrade])
 
   // Deep link vindo de outra tela (ex.: "Abrir Entregas PEP" no modal de
   // Rem. Mês - Total): ?competencia=YYYY-MM&prestador=Nome. Aplica só uma vez
@@ -271,12 +249,10 @@ export function PepEntregasTab() {
     setPrestador(prestadorParam)
   }
 
-  const prestadorDeTeste = ehProfissionalDeTeste(prestador)
   const pacientes = useMemo(() => {
-    if (prestadorDeTeste) return analistasTeste.find(a => a.nome === prestador)?.pacientes ?? []
     const p = (resultado ?? []).find(r => r.prof === prestador)
     return p ? pacientesCCDoProfissional(p) : []
-  }, [resultado, prestador, prestadorDeTeste, analistasTeste])
+  }, [resultado, prestador])
 
   const {
     itensRecorrentes, itensSemestrais, registros, recarregar: recarregarEntregas,
@@ -286,15 +262,9 @@ export function PepEntregasTab() {
     excluirRegistro, excluirPlanejamento,
   } = usePepEntregas(prestador, competencia, pacientes)
 
-  const { parametros } = useParametrosGerais()
+  const { parametros, loading: parametrosLoading } = useParametrosGerais()
   const valorMensalPorPaciente = parametros?.cc_pe_default ?? 0
-  // Par de teste não é apurado: com a lista vazia, apurarESalvarPEP não grava
-  // nenhuma linha em pep_apuracao_mensal — nada chega à Visão geral nem à
-  // remuneração.
-  const pacientesApuracao = useMemo(
-    () => (prestadorDeTeste ? [] : pacientes.map(nome => ({ nome }))),
-    [pacientes, prestadorDeTeste]
-  )
+  const pacientesApuracao = useMemo(() => pacientes.map(nome => ({ nome })), [pacientes])
   const { resultados: resultadosApuracao, resultadoDe, totalPrestador, loading: apuracaoLoading, recalcular: recalcularApuracao, liberado, liberar, reabrir } = usePepApuracao(
     prestador, competencia, pacientesApuracao, valorMensalPorPaciente
   )
@@ -351,12 +321,41 @@ export function PepEntregasTab() {
     return calcularAjusteRecorrentes(entregas, valorMensalPorPaciente).reduce((soma, a) => soma + a.valor, 0)
   }, [itensGerais, semanasCalendario, registroDe, valorMensalPorPaciente])
 
+  // Carga única da visão geral (pedido de 02/10/2026): a grade, os parâmetros,
+  // os blocos do robô e a apuração do mês carregam em paralelo e a tela só
+  // aparece quando todos terminaram — no lugar, um indicador discreto. Vale
+  // para a primeira abertura; trocas de mês depois mostram cada carregamento
+  // no próprio bloco. Rede de segurança: depois de 15 s, mostra o que houver.
+  const [roboPronto, setRoboPronto] = useState(false)
+  const [visaoPronta, setVisaoPronta] = useState(false)
+  const [primeiraCargaFeita, setPrimeiraCargaFeita] = useState(false)
+  const marcarRoboPronto = useCallback(() => setRoboPronto(true), [])
+  const marcarVisaoPronta = useCallback(() => setVisaoPronta(true), [])
+  const gradePronta = !gradeLoading && (resultado != null || !!gradeErroResumo)
+  const tudoCarregado = roboPronto && gradePronta && !parametrosLoading && (analistas.length === 0 || visaoPronta)
+  if (tudoCarregado && !primeiraCargaFeita) setPrimeiraCargaFeita(true)
+  useEffect(() => {
+    if (primeiraCargaFeita) return
+    const id = setTimeout(() => setPrimeiraCargaFeita(true), 15000)
+    return () => clearTimeout(id)
+  }, [primeiraCargaFeita])
+  const visaoGeralVisivel = primeiraCargaFeita || tudoCarregado
+
   // Tela inicial, antes de escolher um analista: a visão do mês inteiro
   // (VisaoGeralPep, só leitura). Antes era só "Selecione um Analista…", e nem
   // o mês dava para trocar daqui.
   if (!prestador) {
     return (
       <div className="space-y-5">
+        {!visaoGeralVisivel && (
+          <div className="flex min-h-[40vh] items-center justify-center" role="status" aria-live="polite">
+            <span className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 size={16} className="animate-spin motion-reduce:animate-none" aria-hidden /> Carregando Entregas PEP…
+            </span>
+          </div>
+        )}
+        {/* Tudo monta escondido (para os dados carregarem em paralelo) e aparece de uma vez. */}
+        <div className={visaoGeralVisivel ? "space-y-5" : "hidden"}>
         <BarraCompetencia
           competencia={competencia}
           onMudarMes={(ano, mes) => carregarGradeDoBanco(periodoDoMes(ano, mes))}
@@ -369,9 +368,8 @@ export function PepEntregasTab() {
           </p>
         )}
         <SeletorPrestador analistas={analistas} prestador={prestador} onChange={setPrestador} onHistoricoGeral={() => setHistoricoAberto("geral")} carregando={gradeLoading} />
-        {ehAdmin && <InterruptorModoTeste ligado={modoTeste} onMudar={setModoTeste} encontrados={analistasTeste.length} />}
         {/* Robô SharePoint: o que ele leu e o que precisa de uma pessoa (veio de /admin/robo-sharepoint). */}
-        <RoboNaPep />
+        <RoboNaPep onCarregado={marcarRoboPronto} />
         {gradeLoading || analistas.length === 0 ? (
           <div className="rounded-xl border border-border bg-card p-10 text-center text-sm text-muted-foreground">
             {gradeLoading
@@ -384,8 +382,10 @@ export function PepEntregasTab() {
             analistas={analistasGrade}
             valorPorPaciente={valorMensalPorPaciente}
             onSelecionar={setPrestador}
+            onCarregado={marcarVisaoPronta}
           />
         )}
+        </div>
         {historicoAberto === "geral" && (
           <PepHistoricoModal catalogo={catalogoCompleto} onClose={() => setHistoricoAberto(null)} />
         )}
@@ -554,7 +554,6 @@ export function PepEntregasTab() {
         onVisaoGeral={() => setPrestador("")}
         carregando={gradeLoading}
       />
-      {ehAdmin && <InterruptorModoTeste ligado={modoTeste} onMudar={setModoTeste} encontrados={analistasTeste.length} />}
 
       <SecaoTitulo numero={2}>Entregas mensais</SecaoTitulo>
       <div className="space-y-4">
@@ -1061,25 +1060,6 @@ function SeletorPrestador({ analistas, prestador, onChange, onHistoricoGeral, on
         disabled={carregando && analistas.length === 0}
       />
     </div>
-  )
-}
-
-// Só aparece para admin. Liga o par de teste da homologação do robô
-// SharePoint na lista de analistas; o resto do sistema continua sem vê-lo.
-function InterruptorModoTeste({ ligado, onMudar, encontrados }: {
-  ligado: boolean
-  onMudar: (v: boolean) => void
-  encontrados: number
-}) {
-  return (
-    <label className="flex min-h-11 cursor-pointer items-center gap-2.5 rounded-xl border border-dashed border-border px-4 py-2 text-sm text-muted-foreground">
-      <input type="checkbox" checked={ligado} onChange={e => onMudar(e.target.checked)} className="h-4 w-4 accent-slate-700" />
-      <FlaskConical size={14} aria-hidden />
-      <span>
-        Modo teste (só admin): mostrar o analista de teste do robô SharePoint
-        {ligado && <span className="ml-1 font-medium text-foreground">· {encontrados ? `${encontrados} encontrado(s) na Grade` : "nenhum na Grade deste mês"}</span>}
-      </span>
-    </label>
   )
 }
 

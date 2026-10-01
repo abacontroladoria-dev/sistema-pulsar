@@ -12,7 +12,7 @@
 // entrega faltando, âmbar = não apurado/parcial (falta fazer), azul = apurado
 // aguardando liberação, cinza = não aberto.
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { AlertTriangle, Bot, CalendarDays, ChevronRight, ClipboardList, FileCheck2, Loader2, PieChart, Search, Undo2, User, Users } from "lucide-react"
 
 import { fmt } from "@/lib/remuneracao/formatacao"
@@ -125,15 +125,18 @@ interface Props {
   valorPorPaciente: number
   /** Abre o analista na própria página (troca de estado, sem navegação). */
   onSelecionar: (nome: string) => void
+  /** Chamado quando a apuração do mês terminou de carregar (a tela espera por ele). */
+  onCarregado?: () => void
 }
 
-export function VisaoGeralPep({ competencia, analistas, valorPorPaciente, onSelecionar }: Props) {
+export function VisaoGeralPep({ competencia, analistas, valorPorPaciente, onSelecionar, onCarregado }: Props) {
   const toneColor = useToneColor()
   // Monta só enquanto ninguém está selecionado: ao voltar de um analista (que
   // pode ter apurado ou liberado algo), remonta e lê de novo.
   // Antes de ler, reapura só os analistas em que o robô SharePoint entregou ou
   // desfez algo desde o último cálculo (pep_apuracao_recalcular).
   const { linhas, indices, loading, erro } = usePepVisaoGeral(competencia, analistas, valorPorPaciente)
+  useEffect(() => { if (!loading) onCarregado?.() }, [loading, onCarregado])
   const idx = useMemo(() => indices.reduce((t, i) => ({
     roboAprovou: t.roboAprovou + i.robo_aprovou,
     roboVigentes: t.roboVigentes + i.robo_vigentes,
