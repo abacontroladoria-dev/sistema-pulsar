@@ -97,7 +97,7 @@ export function EvidenciasSharepoint({ itens, catalogo, avaliar, onConfirmar, on
 
   return (
     <section className="tema-robo overflow-hidden rounded-2xl border border-border bg-card shadow-sm" aria-labelledby="titulo-robo-mes">
-      <div className="h-1 w-full bg-gradient-to-r from-violet-600 to-blue-600" aria-hidden />
+      <div className="flex h-1 w-full" aria-hidden><span className="w-1/2 bg-violet-600" /><span className="w-1/2 bg-blue-600" /></div>
       <div className="space-y-4 p-4 sm:p-5">
         <div className="flex flex-wrap items-start gap-3">
           <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300">
