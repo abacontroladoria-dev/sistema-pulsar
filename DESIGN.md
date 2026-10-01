@@ -234,6 +234,16 @@ No new hue. The surface has one action repeated on every row ("Assinar"), and te
 - **The patient card is white.** The initials sit on `blue-100`. Brand hue never tints the section.
 - The summary filter cards follow the KpiCards recipe with a `-300` border, not `-400`, because `-400` has no pair in the dark shim.
 
+#### Extension: Entregas PEP — quem marcou (2026-10-01)
+
+On `/relacionamento-prestador/pep` (and the PEP history), a delivery carries a **second axis besides its status: who marked it**. The user asked for it explicitly: the SharePoint robot's marks are **violet**, a person's marks are **blue**.
+
+- **Violet = robô, blue = pessoa, on this surface only.** It is not the `/auditoria-assim` glosa violet: the two surfaces never share a screen, and here violet always comes with the `Bot` icon and the word "Robô". Blue always comes with `User` and "Pessoa".
+- **One check per unit.** A recurring cell (`TAP 2/2`) draws one round check per expected unit, in the color of whoever marked it. An empty dashed circle means pending. The cell's border still says complete (slate), partial (amber) or nothing.
+- **Blue is spent.** To keep blue meaning "a person did it", the semestral matrix moved "Entrega pendente" from blue to slate and "Reprogramado" from sky to dashed slate.
+- **Money follows the same colors.** The overview splits Apurado into robot and person shares with a violet/blue bar.
+- Tokens live in one place, `components/cronograma/remuneracao/pep/origem.tsx` (`ORIGEM`, `SeloUnidade`, `LegendaOrigem`). Any new PEP piece reuses them, never its own violet or blue.
+
 ### Neutral
 
 - **Ink** (`#1e293b` / slate-800): Primary text. Therapist names, patient names, any primary label.

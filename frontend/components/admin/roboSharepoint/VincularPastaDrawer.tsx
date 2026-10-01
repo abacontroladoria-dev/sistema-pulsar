@@ -12,8 +12,10 @@ import type { SpPendenciaPasta } from '@/types/roboSharepoint'
 // atrás da pasta, e continua valendo se a pasta for renomeada (o vínculo é pelo
 // id do SharePoint). Só rp/admin gravam — a RPC confere.
 
-export function VincularPastaDrawer({ pendencia, onClose, onVinculado }: {
+export function VincularPastaDrawer({ pendencia, titulo, onClose, onVinculado }: {
   pendencia: SpPendenciaPasta
+  /** Título da ação, no verbo do motivo ("Escolher o cadastro certo"). */
+  titulo?: string
   onClose: () => void
   onVinculado: () => void
 }) {
@@ -62,11 +64,12 @@ export function VincularPastaDrawer({ pendencia, onClose, onVinculado }: {
 
   return (
     <Drawer
-      title={ehPrestador ? 'Vincular pasta a um prestador' : 'Vincular pasta a um paciente'}
+      title={titulo ?? (ehPrestador ? 'Vincular pasta a um prestador' : 'Vincular pasta a um paciente')}
       subtitle={<>Pasta “{pendencia.nome_pasta}” · {rotuloMotivo(pendencia.motivo)}</>}
       onClose={onClose}
       width={460}
     >
+      <div className="tema-robo">
       <label htmlFor="busca-vinculo" className="text-xs font-semibold text-slate-600">
         {ehPrestador ? 'Prestador (como está em Contratos)' : 'Paciente (cadastro do Pulsar)'}
       </label>
@@ -105,6 +108,7 @@ export function VincularPastaDrawer({ pendencia, onClose, onVinculado }: {
         O vínculo vale acima do reconhecimento automático e fica registrado com o seu nome.
         {!ehPrestador && ' Os arquivos ainda precisam de uma sessão de Coordenador de Caso no mês para virar sugestão.'}
       </p>
+      </div>
     </Drawer>
   )
 }

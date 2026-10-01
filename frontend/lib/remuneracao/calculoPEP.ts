@@ -19,6 +19,10 @@ export type EntregaRecorrente = {
   pesoMensal: number       // fração de V, ex.: 0.30 (Supervisão)
   quantidadeEsperada: number // já ajustada pelo calendário parametrizado (Seção 9.11)
   quantidadeEntregue: number
+  // Quantas das entregues o robô SharePoint marcou (pep_registros_entrega.
+  // quantidade_robo). Só divide o crédito entre robô e pessoa — não muda o
+  // valor apurado.
+  quantidadeRobo?: number
 }
 
 export type PendenciaSemestral = {
@@ -37,6 +41,10 @@ export type ResultadoPEPPaciente = {
   ajusteSemestrais: AjusteLinha[]
   ajusteRecorrentesValor: number
   ajusteSemestraisValor: number
+  // Valor das entregas recorrentes (V − ajusteRecorrentesValor) dividido por
+  // quem marcou cada unidade. valorRobo + valorHumano = V − ajusteRecorrentesValor.
+  valorRobo: number
+  valorHumano: number
   saldoRemanescenteAnteriorAplicado: number
   valorLiquido: number
   saldoRemanescenteNovo: number
@@ -52,6 +60,21 @@ export function calcularAjusteRecorrentes(entregas: EntregaRecorrente[], valorBr
     const percentual = Math.min(e.pesoMensal, faltantes * pesoUnitario)
     return { itemCodigo: e.itemCodigo, percentual, valor: arredondar(percentual * valorBruto) }
   })
+}
+
+// Crédito por unidade (decisão do usuário, 01/10/2026): cada unidade entregue
+// vale peso ÷ esperado × V e é creditada a quem a marcou. As unidades do robô
+// contam primeiro até o esperado; o resto do valor das entregas é da pessoa —
+// assim robô + pessoa fecha exatamente com V − ajuste dos recorrentes.
+export function calcularCreditoPorOrigem(entregas: EntregaRecorrente[], valorBruto: number): { valorRobo: number; valorHumano: number } {
+  const valorEntregas = arredondar(valorBruto - calcularAjusteRecorrentes(entregas, valorBruto).reduce((s, a) => s + a.valor, 0))
+  const robo = entregas.reduce((soma, e) => {
+    if (e.quantidadeEsperada <= 0) return soma
+    const unidades = Math.min(e.quantidadeRobo ?? 0, e.quantidadeEntregue, e.quantidadeEsperada)
+    return soma + Math.max(0, unidades) * (e.pesoMensal / e.quantidadeEsperada) * valorBruto
+  }, 0)
+  const valorRobo = Math.min(arredondar(robo), valorEntregas)
+  return { valorRobo, valorHumano: arredondar(valorEntregas - valorRobo) }
 }
 
 // Seção 9.3/9.5 — cada semestral vencido e não entregue aplica seu % sobre V,
@@ -99,11 +122,13 @@ export function calcularPEPPaciente(input: {
 
   const ajusteRecorrentesValor = arredondar(ajusteRecorrentes.reduce((s, a) => s + a.valor, 0))
   const ajusteSemestraisValor = arredondar(ajusteSemestrais.reduce((s, a) => s + a.valor, 0))
+  const { valorRobo, valorHumano } = calcularCreditoPorOrigem(input.entregasRecorrentes, valorBruto)
 
   if (modoTeste) {
     return {
       valorBruto, ajusteRecorrentes, ajusteSemestrais,
       ajusteRecorrentesValor, ajusteSemestraisValor,
+      valorRobo, valorHumano,
       saldoRemanescenteAnteriorAplicado: 0,
       valorLiquido: arredondar(valorBruto),
       saldoRemanescenteNovo: 0,
@@ -118,6 +143,7 @@ export function calcularPEPPaciente(input: {
   return {
     valorBruto, ajusteRecorrentes, ajusteSemestrais,
     ajusteRecorrentesValor, ajusteSemestraisValor,
+    valorRobo, valorHumano,
     saldoRemanescenteAnteriorAplicado,
     valorLiquido,
     saldoRemanescenteNovo,

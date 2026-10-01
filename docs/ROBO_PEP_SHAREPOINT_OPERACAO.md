@@ -12,16 +12,23 @@ Roteiro de 01/10/2026 para colocar no ar o robô planejado em `docs/ESTUDO_ROBO_
 | Cadastro da máquina do robô | `supabase/snippets/20261001_cadastrar_maquina_robo_pep.sql` |
 | Limpeza dos dados de teste | `supabase/snippets/20261001_limpar_dados_teste_robo_pep.sql` |
 | Painel ao vivo | `/admin/robo-sharepoint` (Administração → Robô SharePoint) |
-| Sugestões na PEP | `/relacionamento-prestador/pep` → cartão "Evidências do SharePoint" |
+| Entregas do robô na PEP | `/relacionamento-prestador/pep` → cartão "O que o robô fez neste mês" (roxo = robô, azul = pessoa) |
+| O que o robô leu e o que precisa de você | `/relacionamento-prestador/pep` → Visão geral (antes de escolher o analista). O painel do robô ficou com a parte técnica. |
 | Configuração local (fora do repositório) | `C:\Users\Maquina001\.pulsar-sharepoint\robo.env` |
 
 **Como o robô decide:**
 
 1. **Prestador:** pelo CNPJ da planilha, que tem de estar em Contratos.
 2. **Paciente:** a pasta dele tem de estar na aba "Pacientes" do mesmo prestador; dali sai o CPF, que é procurado no cadastro, e o nome precisa ser compatível.
-3. **Arquivo:** só vira sugestão quando há sessão de Coordenador de Caso daquele prestador com aquele paciente no mês. O que falhar vai para "Não reconhecidos", com o motivo.
+3. **Arquivo:** só vira sugestão quando há sessão de Coordenador de Caso daquele prestador com aquele paciente no mês. O que falhar vai para "O que precisa de você", com o motivo.
+4. **Nome do arquivo** (desde 20261002100000): só conta quem segue o padrão — Geral `SIGLA-NN-MMAAAA` (`STC-01-092026`), paciente `SIGLA-PACIENTE-MMAAAA` (`PIC-JOAO SILVA-092026`), TAP com número `TAP-NN-PACIENTE-MMAAAA`, reprogramação `REP-SIGLA-PACIENTE-MMAAAA` (só referência). O paciente do nome tem de ser compatível com o da pasta. Repetidos contam uma vez.
 
-O robô **nunca grava entrega**: quem confirma é o RP.
+**Entrega automática** (chave em `/admin/robo-sharepoint`, só admin; nasce desligada): ligada, o robô **marca a entrega** de todo arquivo reconhecido e no padrão, com as mesmas regras da tela (mês liberado não muda; recorrente até o esperado; semestral só com planejamento, e antecipada reprograma +6 meses). O RP desfaz quando ele errar — pelo botão "Desfazer", desmarcando a caixa ou excluindo; em todos os casos o arquivo fica "desfeito" e o robô não insiste. Índices em `vw_pep_indices_robo`; dinheiro em `pep_apuracao_mensal.valor_robo/valor_humano`. Desligada, o robô só sugere, como antes.
+
+### Ligar a entrega automática
+1. Aplicar `supabase/migrations/20261002100000_robo_pep_entrega_automatica.sql` (não liga nada; o padrão de nome já aparece nos índices).
+2. Publicar o frontend da `feat/robo-entrega-automatica`. O robô no Coolify **não** muda.
+3. Ligar pela tela ou por `supabase/snippets/20261002_ATIVAR_entrega_automatica_robo_pep.sql` (com trava). Ligar reprocessa todo mês ainda não liberado.
 
 ## Ordem dos passos
 
@@ -157,10 +164,10 @@ Agenda: **uma vez por dia, às 03:00**. Perto do dia de pagamento, o reforço é
 | Token do robô vazar | Guardado só como hash; `update maquinas set token_revogado_em = now()` o derruba na hora (fim do snippet). |
 | Robô alcançável pela internet | Sem domínio nem porta publicada. O "Executar agora" passa pelo servidor do Pulsar, que confere a permissão, e usa um segredo no cabeçalho. |
 | Dado de paciente em log ou disco | O log só tem contagens. A planilha é lida em memória. O inventário é agregado. `.gitignore` e `.dockerignore` barram `*.pem`, `*.env` e `*.xlsx`. |
-| Robô gravar entrega errada | Ele só sugere. Confirmar exige o papel `rp`/`admin` e respeita o mês liberado, na tela e também no banco. |
+| Robô gravar entrega errada | Só entrega o que segue o padrão de nome, nunca em mês liberado, e só com a chave ligada (admin). Toda entrega dele é roxa, tem "Desfazer" e fica no histórico com `ator = robo`; o índice "pessoas desfizeram" mede o erro. Desligar a chave para tudo na hora. |
 
 ## Pendente com o RP (seção F do estudo)
 - Nome e organização dos arquivos dentro de cada subpasta.
-- De onde sai a competência. Hoje: do nome, se estiver no padrão `…-MMAAAA`; senão, da data de envio. A pessoa confirma.
+- De onde sai a competência. Desde 20261002100000, só conta arquivo com o mês no nome (`…-MMAAAA`); fora do padrão, a data de envio aparece só como referência.
 - Quem pode alterar a planilha de planejamento.
 - Se o envio feito por outra pessoa conta como entrega do prestador.

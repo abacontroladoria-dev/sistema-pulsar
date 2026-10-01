@@ -2,7 +2,8 @@ import { getSupabaseClient } from '@/lib/supabase/client'
 import { resumoAlteracao } from '@/lib/remuneracao/pepAuditoriaFormat'
 
 export type PepTrilhaTabela = 'registro_entrega' | 'planejamento_semestral' | 'apuracao_mensal' | 'calendario_competencia'
-export type PepTrilhaAcao = 'criar' | 'editar' | 'excluir'
+// 'reverter' = entrega do robô desfeita (20261002100000), gravada pelo banco.
+export type PepTrilhaAcao = 'criar' | 'editar' | 'excluir' | 'reverter'
 
 export type PepTrilhaAuditoria = {
   id: string
@@ -22,6 +23,8 @@ export type PepTrilhaAuditoria = {
   criado_em_brasilia: string | null
   /** Resumo em uma linha ("Status: Pendente → Entregue"), calculado no insert — pra ler direto na planilha do Supabase, sem abrir o JSON. */
   resumo: string | null
+  /** Quem fez: o robô SharePoint (gravado pelo banco) ou uma pessoa (default). */
+  ator?: 'robo' | 'humano'
 }
 
 // PRD Seção 11.4 — toda alteração manual fica em trilha de auditoria

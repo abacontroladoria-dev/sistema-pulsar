@@ -108,6 +108,7 @@ export function HistoricoCompletoDrawer({ idUltimaGravada, ultimaCompleta, onClo
         </div>
       }
     >
+      <div className="tema-robo">
       <div className="mb-4 flex flex-wrap gap-x-6 gap-y-2">
         <Filtro rotulo="Situação" valor={status} onMudar={v => { setStatus(v); setPagina(0) }}
           opcoes={[{ valor: 'todos', rotulo: 'Todas' }, { valor: 'concluido', rotulo: 'Concluídas' }, { valor: 'erro', rotulo: 'Falharam' }]} />
@@ -187,6 +188,7 @@ export function HistoricoCompletoDrawer({ idUltimaGravada, ultimaCompleta, onClo
           onClose={() => setDetalhe(null)}
         />
       )}
+      </div>
     </Drawer>
   )
 }

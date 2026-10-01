@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { apurarESalvarPEP, liberarFaturamento, reabrirFaturamento, type ResultadoApuracaoPaciente } from "@/services/pepApuracao.service"
+import { apurarESalvarPEP, liberarFaturamento, limparRecalculo, reabrirFaturamento, type ResultadoApuracaoPaciente } from "@/services/pepApuracao.service"
 
 // Roda o motor de cálculo da PEP (calculoPEP.ts) contra os dados reais
 // registrados em pep_registros_entrega/pep_planejamento_semestral e persiste
@@ -29,6 +29,8 @@ export function usePepApuracao(
       prestadorNome, competencia, pacientes, valorMensalPorPaciente,
     })
     if (apuracaoError) setError("Não foi possível apurar a PEP deste prestador.")
+    // Recalculado agora: a pendência deixada pelo robô SharePoint está resolvida.
+    else void limparRecalculo(prestadorNome, competencia)
     setResultados(novosResultados)
     setTotalPrestador(novoTotal)
     setLoading(false)

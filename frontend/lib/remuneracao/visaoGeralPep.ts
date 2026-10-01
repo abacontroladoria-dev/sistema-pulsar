@@ -65,6 +65,9 @@ export type AnalistaPep = {
   naoApurado: number
   /** apurado ÷ teto, em %; null quando não há teto. */
   pctTeto: number | null
+  /** Parte do valor das entregas creditada a unidades do robô / de pessoas. */
+  valorRobo: number
+  valorHumano: number
   pacientesSemApuracao: string[]
   status: StatusApuracaoAnalista
 }
@@ -90,6 +93,13 @@ export type ResumoPep = {
     devolucao: number
   }
   naoApurado: number
+  /**
+   * De onde veio o Apurado (20261002100000). robo + humano = valor das
+   * entregas recorrentes; ajustes = apurado − robo − humano (descontos
+   * semestrais e saldo abatido, negativos; devolução e mês de teste, positivos).
+   * apurado = robo + humano + ajustes, por construção.
+   */
+  origem: { robo: number; humano: number; ajustes: number }
   pacientesNaoApurados: number
   porStatus: Record<StatusApuracaoAnalista, number>
   /** Uma linha por analista, na ORDEM_STATUS e depois por nome. */
@@ -113,10 +123,11 @@ export function resumoPepCompetencia({ analistas, linhas, valorPorPaciente, comp
   const descontos = { total: 0, recorrentes: 0, semestrais: 0, saldoAnterior: 0, devolucao: 0 }
   const porStatus: Record<StatusApuracaoAnalista, number> = { nao_aberto: 0, parcial: 0, apurado: 0, liberado: 0 }
   let teto = 0, apurado = 0, naoApurado = 0, pacientesNaoApurados = 0
+  let roboTotal = 0, humanoTotal = 0
 
   const porAnalista: AnalistaPep[] = analistas.map(a => {
     const tetoA = a.pacientes.length * valorPorPaciente
-    let brutoA = 0, apuradoA = 0, liberadas = 0
+    let brutoA = 0, apuradoA = 0, liberadas = 0, roboA = 0, humanoA = 0
     const semApuracao: string[] = []
     for (const paciente of a.pacientes) {
       const k = chave(a.nome, paciente)
@@ -125,6 +136,16 @@ export function resumoPepCompetencia({ analistas, linhas, valorPorPaciente, comp
       casadas.add(k)
       brutoA += n(l.valor_bruto)
       apuradoA += n(l.valor_liquido)
+      // Linha apurada antes da divisão robô × pessoa (ou com a migration
+      // 20261002100000 ainda não aplicada): robô e pessoa vêm 0. Nessa época
+      // o robô não entregava nada, então todo o valor das entregas é de
+      // pessoas — V menos o desconto dos recorrentes, a mesma conta de
+      // calcularCreditoPorOrigem.
+      const roboL = n(l.valor_robo), humanoL = n(l.valor_humano)
+      roboA += roboL
+      humanoA += roboL === 0 && humanoL === 0
+        ? Math.max(0, n(l.valor_bruto) - n(l.ajuste_recorrentes_valor))
+        : humanoL
       descontos.recorrentes += n(l.ajuste_recorrentes_valor)
       descontos.semestrais += n(l.ajuste_semestrais_valor)
       descontos.saldoAnterior += n(l.saldo_remanescente_anterior)
@@ -140,6 +161,8 @@ export function resumoPepCompetencia({ analistas, linhas, valorPorPaciente, comp
 
     teto += tetoA
     apurado += apuradoA
+    roboTotal += roboA
+    humanoTotal += humanoA
     descontos.total += brutoA - apuradoA
     naoApurado += tetoA - brutoA
     pacientesNaoApurados += semApuracao.length
@@ -154,6 +177,8 @@ export function resumoPepCompetencia({ analistas, linhas, valorPorPaciente, comp
       descontos: brutoA - apuradoA,
       naoApurado: tetoA - brutoA,
       pctTeto: tetoA > 0 ? (apuradoA / tetoA) * 100 : null,
+      valorRobo: roboA,
+      valorHumano: humanoA,
       pacientesSemApuracao: semApuracao,
       status,
     }
@@ -186,6 +211,7 @@ export function resumoPepCompetencia({ analistas, linhas, valorPorPaciente, comp
     apurado,
     descontos,
     naoApurado,
+    origem: { robo: roboTotal, humano: humanoTotal, ajustes: apurado - roboTotal - humanoTotal },
     pacientesNaoApurados,
     porStatus,
     porAnalista,

@@ -924,6 +924,66 @@ html {
 .dark .hover\:border-orange-300:hover { border-color: oklch(0.38 0.06  50); }
 
 /* ══════════════════════════════════════════════════════════════════════════
+   .tema-robo — modo escuro do robô SharePoint e dos blocos dele na PEP
+   ══════════════════════════════════════════════════════════════════════════
+
+   Pedido de 02/10/2026 ("dark mode péssimo" em /admin/robo-sharepoint e
+   /relacionamento-prestador/pep). Os componentes do robô usam classes que o
+   token system acima não cobre: tintas com opacidade (bg-slate-50/70), o azul
+   da marca (bg-brand-surface, text-brand-fg), textos -800/-900 e anéis -200.
+   Fica num ESCOPO (a raiz de cada tela/painel do robô ganha .tema-robo) para
+   não mexer no resto do sistema. */
+
+/* Azul da marca no escuro. O @theme é `inline`: as classes brand-* levam o
+   valor literal (não var()), então cada classe usada no robô é trocada aqui. */
+.dark .tema-robo .text-brand-fg { color: oklch(0.80 0.09 217); }
+.dark .tema-robo .bg-brand-surface { background-color: oklch(0.27 0.035 217); }
+.dark .tema-robo .bg-brand-surface\/40 { background-color: oklch(0.27 0.035 217 / 0.45); }
+.dark .tema-robo .bg-brand-surface\/60 { background-color: oklch(0.27 0.035 217 / 0.6); }
+.dark .tema-robo .bg-brand-surface\/70 { background-color: oklch(0.27 0.035 217 / 0.75); }
+.dark .tema-robo .hover\:bg-brand-surface:hover,
+.dark .tema-robo .hover\:bg-brand-surface\/60:hover,
+.dark .tema-robo .hover\:bg-brand-surface\/70:hover { background-color: oklch(0.31 0.04 217); }
+.dark .tema-robo .border-brand\/25, .dark .tema-robo .border-brand\/30 { border-color: oklch(0.45 0.06 217 / 0.6); }
+.dark .tema-robo .border-brand\/40, .dark .tema-robo .border-brand\/50 { border-color: oklch(0.55 0.08 217 / 0.7); }
+.dark .tema-robo .ring-brand\/25 { --tw-ring-color: oklch(0.45 0.06 217 / 0.6); }
+.dark .tema-robo .ring-brand\/50 { --tw-ring-color: oklch(0.55 0.08 217 / 0.8); }
+/* Botão que vira "steel cheio" no hover: fundo steel escuro, texto branco. */
+.dark .tema-robo .hover\:bg-brand-fg:hover,
+.dark .tema-robo .group:hover .group-hover\:bg-brand-fg { background-color: oklch(0.48 0.092 217); }
+.dark .tema-robo .hover\:border-brand-fg:hover,
+.dark .tema-robo .hover\:border-brand-fg\/50:hover,
+.dark .tema-robo .group:hover .group-hover\:border-brand-fg { border-color: oklch(0.55 0.08 217); }
+.dark .tema-robo .hover\:text-white:hover,
+.dark .tema-robo .group:hover .group-hover\:text-white { color: #fff; }
+
+/* Tintas com opacidade */
+.dark .tema-robo .bg-slate-50\/60, .dark .tema-robo .bg-slate-50\/70 { background-color: oklch(0.22 0 0 / 0.7); }
+.dark .tema-robo .bg-amber-50\/50 { background-color: oklch(0.25 0.045 80 / 0.6); }
+.dark .tema-robo .bg-rose-50\/50  { background-color: oklch(0.25 0.045 10 / 0.6); }
+
+/* Texto -800/-900 (números e rótulos sobre tinta) */
+.dark .tema-robo .text-amber-800   { color: oklch(0.82 0.12 80); }
+.dark .tema-robo .text-amber-900   { color: oklch(0.87 0.11 80); }
+.dark .tema-robo .text-emerald-800,
+.dark .tema-robo .text-emerald-900 { color: oklch(0.80 0.12 160); }
+.dark .tema-robo .text-emerald-800\/80 { color: oklch(0.80 0.12 160 / 0.8); }
+.dark .tema-robo .text-rose-800,
+.dark .tema-robo .text-rose-900    { color: oklch(0.80 0.12 10); }
+.dark .tema-robo .text-sky-800     { color: oklch(0.80 0.09 220); }
+.dark .tema-robo .text-violet-800,
+.dark .tema-robo .text-violet-900  { color: oklch(0.82 0.10 290); }
+
+/* Bordas e anéis claros */
+.dark .tema-robo .border-sky-200, .dark .tema-robo .border-sky-300 { border-color: oklch(0.35 0.05 220); }
+.dark .tema-robo .ring-amber-200,  .dark .tema-robo .ring-amber-300  { --tw-ring-color: oklch(0.38 0.06 80); }
+.dark .tema-robo .ring-emerald-200 { --tw-ring-color: oklch(0.38 0.06 160); }
+.dark .tema-robo .ring-rose-200,   .dark .tema-robo .ring-rose-300   { --tw-ring-color: oklch(0.38 0.06 10); }
+.dark .tema-robo .ring-sky-200     { --tw-ring-color: oklch(0.36 0.05 220); }
+.dark .tema-robo .ring-violet-200  { --tw-ring-color: oklch(0.36 0.05 290); }
+.dark .tema-robo .ring-slate-200   { --tw-ring-color: var(--border); }
+
+/* ══════════════════════════════════════════════════════════════════════════
    KpiCard — design tokens via data-kpi attribute
    ══════════════════════════════════════════════════════════════════════════ */
 [data-kpi="blue"]   { --kpi-icon-bg: #EFF6FF; --kpi-chip-bg: #F8FAFC; --kpi-chip-border: rgba(37,99,235,0.12);  --kpi-card-border: rgba(37,99,235,0.19);  }

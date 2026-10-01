@@ -8,7 +8,7 @@ import {
   listarPendenciasDePasta,
   obterSaude,
 } from '@/services/roboSharepoint.service'
-import type { RoboExecucao, RoboSaude, SpItem, SpPendenciaPasta } from '@/types/roboSharepoint'
+import type { RoboExecucao, RoboSaude, SpFilaPendencias, SpItem } from '@/types/roboSharepoint'
 
 const DEBOUNCE_MS = 250
 
@@ -18,9 +18,12 @@ const DEBOUNCE_MS = 250
  * A saúde do container (de pé? próxima execução?) vem da rota do servidor,
  * que pergunta ao próprio robô — não ao banco — a cada minuto.
  */
-export function useRoboSharepoint() {
+export function useRoboSharepoint(opcoes: { comSaude?: boolean } = {}) {
+  // Na tela Entregas PEP não há o que fazer com a saúde do container (só o
+  // painel do robô mostra e usa): sem ela, nada de chamar a rota do servidor.
+  const comSaude = opcoes.comSaude ?? true
   const [execucoes, setExecucoes] = useState<RoboExecucao[]>([])
-  const [pendencias, setPendencias] = useState<SpPendenciaPasta[]>([])
+  const [pendencias, setPendencias] = useState<SpFilaPendencias>({ semPlanilha: [], pastas: [] })
   const [itensPresos, setItensPresos] = useState<SpItem[]>([])
   const [saude, setSaude] = useState<RoboSaude | null>(null)
   const [carregando, setCarregando] = useState(true)
@@ -54,12 +57,13 @@ export function useRoboSharepoint() {
   }, [carregarPendencias])
 
   const carregarSaude = useCallback(async () => {
+    if (!comSaude) return
     try {
       setSaude(await obterSaude())
     } catch {
       setSaude({ configurado: true, online: false })
     }
-  }, [])
+  }, [comSaude])
 
   const recarregar = useCallback(async () => {
     await Promise.all([carregarExecucoes(), carregarPendencias(), carregarSaude()])

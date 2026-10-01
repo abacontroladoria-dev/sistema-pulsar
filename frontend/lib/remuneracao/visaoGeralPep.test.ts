@@ -18,7 +18,7 @@ const linha = (
   prestador: string, paciente: string, extra: Partial<PepApuracaoLinhaCompetencia> = {}
 ): PepApuracaoLinhaCompetencia => ({
   prestador_nome: prestador, paciente_nome: paciente,
-  valor_bruto: 100, valor_liquido: 100,
+  valor_bruto: 100, valor_liquido: 100, valor_robo: 0, valor_humano: 100,
   ajuste_recorrentes_valor: 0, ajuste_semestrais_valor: 0, devolucao_valor: 0,
   saldo_remanescente_anterior: 0, saldo_remanescente_novo: 0,
   estado: "apurado", modo_teste: false,
@@ -151,5 +151,34 @@ describe("getApuracaoCompetencia", () => {
     expect(error).toBeNull()
     expect(data).toHaveLength(1200)
     expect(ranges).toEqual([[0, 999], [1000, 1999]])
+  })
+})
+
+describe("resumoPepCompetencia — origem do apurado (robô × pessoa)", () => {
+  test("linha antiga sem divisão (robô e pessoa 0) conta tudo como pessoa", () => {
+    const r = resumoPepCompetencia({
+      competencia: "2026-09", valorPorPaciente: 100,
+      analistas: [{ nome: "Ana", pacientes: ["A1"] }],
+      linhas: [linha("Ana", "A1", { valor_liquido: 80, valor_robo: 0, valor_humano: 0, ajuste_recorrentes_valor: 15, ajuste_semestrais_valor: 5 })],
+    })
+    expect(r.origem.robo).toBe(0)
+    expect(r.origem.humano).toBe(85)
+    expect(r.origem.robo + r.origem.humano + r.origem.ajustes).toBe(r.apurado)
+  })
+
+  test("apurado = robô + pessoa + ajustes, por construção", () => {
+    const r = resumoPepCompetencia({
+      competencia: "2026-09", valorPorPaciente: 100,
+      analistas: [{ nome: "Ana", pacientes: ["A1", "A2"] }],
+      linhas: [
+        linha("Ana", "A1", { valor_liquido: 80, valor_robo: 60, valor_humano: 30, ajuste_semestrais_valor: 10 }),
+        linha("Ana", "A2", { valor_liquido: 100, valor_robo: 100, valor_humano: 0 }),
+      ],
+    })
+    expect(r.origem.robo).toBe(160)
+    expect(r.origem.humano).toBe(30)
+    expect(r.origem.ajustes).toBe(-10)
+    expect(r.origem.robo + r.origem.humano + r.origem.ajustes).toBe(r.apurado)
+    expect(r.porAnalista[0].valorRobo).toBe(160)
   })
 })

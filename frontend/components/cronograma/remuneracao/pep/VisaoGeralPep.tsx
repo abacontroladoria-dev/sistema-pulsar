@@ -12,8 +12,8 @@
 // entrega faltando, âmbar = não apurado/parcial (falta fazer), azul = apurado
 // aguardando liberação, cinza = não aberto.
 
-import { useMemo, useState } from "react"
-import { AlertTriangle, CalendarDays, ChevronRight, ClipboardList, Loader2, PieChart, Search, Users } from "lucide-react"
+import { useEffect, useMemo, useState } from "react"
+import { AlertTriangle, Bot, CalendarDays, ChevronRight, ClipboardList, FileCheck2, Loader2, PieChart, Search, Undo2, User, Users } from "lucide-react"
 
 import { fmt } from "@/lib/remuneracao/formatacao"
 import { B } from "@/lib/cronograma/constants"
@@ -26,6 +26,11 @@ import { BarraEmpilhada, Card, Legenda, Metric, num, pct1 } from "../visaoGeral/
 import {
   resumoPepCompetencia, type AnalistaDaGrade, type StatusApuracaoAnalista,
 } from "@/lib/remuneracao/visaoGeralPep"
+import { LegendaOrigem, ORIGEM } from "./origem"
+
+// Roxo = robô, azul = pessoa (./origem). Hex para as barras, que pintam por style.
+const COR_ROBO = "#7c3aed"
+const COR_PESSOA = "#2563eb"
 
 const normKey = (v: unknown): string =>
   String(v ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim()
@@ -120,13 +125,28 @@ interface Props {
   valorPorPaciente: number
   /** Abre o analista na própria página (troca de estado, sem navegação). */
   onSelecionar: (nome: string) => void
+  /** Chamado quando a apuração do mês terminou de carregar (a tela espera por ele). */
+  onCarregado?: () => void
 }
 
-export function VisaoGeralPep({ competencia, analistas, valorPorPaciente, onSelecionar }: Props) {
+export function VisaoGeralPep({ competencia, analistas, valorPorPaciente, onSelecionar, onCarregado }: Props) {
   const toneColor = useToneColor()
   // Monta só enquanto ninguém está selecionado: ao voltar de um analista (que
   // pode ter apurado ou liberado algo), remonta e lê de novo.
-  const { linhas, loading, erro } = usePepVisaoGeral(competencia)
+  // Antes de ler, reapura só os analistas em que o robô SharePoint entregou ou
+  // desfez algo desde o último cálculo (pep_apuracao_recalcular).
+  const { linhas, indices, loading, erro } = usePepVisaoGeral(competencia, analistas, valorPorPaciente)
+  useEffect(() => { if (!loading) onCarregado?.() }, [loading, onCarregado])
+  const idx = useMemo(() => indices.reduce((t, i) => ({
+    roboAprovou: t.roboAprovou + i.robo_aprovou,
+    roboVigentes: t.roboVigentes + i.robo_vigentes,
+    pessoaAprovou: t.pessoaAprovou + i.humano_aprovou,
+    pessoaDesfez: t.pessoaDesfez + i.humano_reverteu,
+    segue: t.segue + i.segue_padrao,
+    fora: t.fora + i.fora_padrao,
+    repetidos: t.repetidos + i.duplicados,
+  }), { roboAprovou: 0, roboVigentes: 0, pessoaAprovou: 0, pessoaDesfez: 0, segue: 0, fora: 0, repetidos: 0 }), [indices])
+  const acerto = idx.roboAprovou > 0 ? Math.round((idx.roboVigentes / idx.roboAprovou) * 100) : null
   const r = useMemo(
     () => resumoPepCompetencia({ analistas, linhas, valorPorPaciente, competencia }),
     [analistas, linhas, valorPorPaciente, competencia]
@@ -212,6 +232,56 @@ export function VisaoGeralPep({ competencia, analistas, valorPorPaciente, onSele
               O valor da PEP por paciente não está configurado em Parâmetros Gerais — sem ele não há teto nem valor não apurado.
             </p>
           )}
+        </div>
+      </section>
+
+      {/* ── Quem fez o apurado: robô × pessoas ──────────────────────── */}
+      <section className="tema-robo rounded-2xl border border-border bg-card p-4 shadow-sm md:p-5" aria-labelledby="titulo-quem-fez">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h3 id="titulo-quem-fez" className="flex items-center gap-2 text-sm font-bold text-foreground">
+            <FileCheck2 size={15} aria-hidden /> Quem fez o apurado
+          </h3>
+          <LegendaOrigem />
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className={`rounded-xl border p-3 ${ORIGEM.robo.tinta}`}>
+            <p className="flex items-center gap-1.5 text-xs font-semibold"><Bot size={14} aria-hidden /> Robô SharePoint</p>
+            <p className={`mt-1 text-2xl font-black tabular-nums ${loading ? "opacity-40" : ""}`}>{fmt(r.origem.robo)}</p>
+            <p className="text-[11px] opacity-80">{num(idx.roboVigentes)} {idx.roboVigentes === 1 ? "entrega marcada" : "entregas marcadas"} pelo robô</p>
+          </div>
+          <div className={`rounded-xl border p-3 ${ORIGEM.humano.tinta}`}>
+            <p className="flex items-center gap-1.5 text-xs font-semibold"><User size={14} aria-hidden /> Pessoas da equipe</p>
+            <p className={`mt-1 text-2xl font-black tabular-nums ${loading ? "opacity-40" : ""}`}>{fmt(r.origem.humano)}</p>
+            <p className="text-[11px] opacity-80">{num(idx.pessoaAprovou)} {idx.pessoaAprovou === 1 ? "entrega marcada" : "entregas marcadas"} à mão</p>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+            <p className="flex items-center gap-1.5 text-xs font-semibold"><Undo2 size={14} aria-hidden /> Pessoas desfizeram</p>
+            <p className="mt-1 text-2xl font-black tabular-nums">{num(idx.pessoaDesfez)}</p>
+            <p className="text-[11px] opacity-80">
+              {acerto != null ? `o robô acertou ${acerto}% do que entregou` : "o robô ainda não entregou nada neste mês"}
+            </p>
+          </div>
+        </div>
+
+        {r.origem.robo + r.origem.humano > 0 && (
+          <div className="mt-3">
+            <BarraEmpilhada partes={[
+              { valor: r.origem.robo, cor: COR_ROBO, rotulo: "Robô" },
+              { valor: r.origem.humano, cor: COR_PESSOA, rotulo: "Pessoas" },
+            ]} />
+            <p className="mt-1.5 text-[11px] leading-snug text-muted-foreground">
+              Cada entrega vale a parte dela no valor do paciente e conta para quem a marcou.
+              {Math.abs(r.origem.ajustes) >= 0.01 && <> Apurado = robô + pessoas {r.origem.ajustes < 0 ? "−" : "+"} {fmt(Math.abs(r.origem.ajustes))} de {r.origem.ajustes < 0 ? "descontos semestrais e saldo" : "devolução ou mês de teste"}.</>}
+            </p>
+          </div>
+        )}
+
+        <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3 text-xs">
+          <span className="font-semibold text-foreground">Arquivos no SharePoint neste mês:</span>
+          <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 font-semibold text-emerald-800 ring-1 ring-emerald-200 dark:bg-emerald-950 dark:text-emerald-200 dark:ring-emerald-900">{num(idx.segue)} seguem o padrão de nome</span>
+          <span className="rounded-full bg-amber-50 px-2.5 py-0.5 font-semibold text-amber-900 ring-1 ring-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-900">{num(idx.fora)} fora do padrão (não contam)</span>
+          {idx.repetidos > 0 && <span className="rounded-full bg-slate-100 px-2.5 py-0.5 font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">{num(idx.repetidos)} repetidos</span>}
         </div>
       </section>
 
@@ -324,6 +394,12 @@ export function VisaoGeralPep({ competencia, analistas, valorPorPaciente, onSele
                       {a.status === "parcial" && (
                         <span className={`block text-[11px] ${TONE_CHIP.amber.text}`}>
                           {a.pacientesSemApuracao.length} de {a.pacientes} sem apuração
+                        </span>
+                      )}
+                      {a.valorRobo + a.valorHumano > 0 && (
+                        <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] tabular-nums">
+                          <span className={`inline-flex items-center gap-1 font-semibold ${ORIGEM.robo.texto}`}><Bot size={11} aria-hidden /> {fmt(a.valorRobo)}</span>
+                          <span className={`inline-flex items-center gap-1 font-semibold ${ORIGEM.humano.texto}`}><User size={11} aria-hidden /> {fmt(a.valorHumano)}</span>
                         </span>
                       )}
                       {/* Mobile: os números descem para uma segunda linha. */}

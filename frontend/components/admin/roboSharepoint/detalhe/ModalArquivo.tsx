@@ -19,6 +19,7 @@ const SITUACAO: Record<SpItemStatus, { rotulo: string; tom: 'green' | 'amber' | 
   nao_reconhecido: { rotulo: 'não reconhecido', tom: 'amber' },
   ignorado: { rotulo: 'ignorada pelo RP', tom: 'gray' },
   removido: { rotulo: 'apagado do SharePoint', tom: 'gray' },
+  revertido: { rotulo: 'entrega do robô desfeita por pessoa', tom: 'gray' },
 }
 
 const mesBR = (c: string | null | undefined) => (c ? c.split('-').reverse().join('/') : '—')
@@ -83,6 +84,7 @@ export function ModalArquivo({ arquivo: a, zIndex, onClose }: { arquivo: Arquivo
         </div>
       }
     >
+      <div className="tema-robo">
       <div className="space-y-6">
         {/* Identidade */}
         <div className="flex items-start gap-4 rounded-2xl border border-border bg-card p-4">
@@ -154,6 +156,7 @@ export function ModalArquivo({ arquivo: a, zIndex, onClose }: { arquivo: Arquivo
             <p className="mt-2 text-sm text-amber-800 dark:text-amber-300">Motivo no Pulsar: {rotuloMotivo(a.motivo_pulsar)}</p>
           )}
         </section>
+      </div>
       </div>
     </ScheduleModal>
   )

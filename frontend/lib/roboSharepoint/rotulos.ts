@@ -39,7 +39,76 @@ export const MOTIVOS: Record<string, string> = {
   fora_padrao: 'Fora do padrão de pastas',
 }
 
-export const rotuloMotivo = (m: string | null | undefined) => (m ? MOTIVOS[m] ?? MOTIVOS_IGNORADO[m] ?? m.replace(/_/g, ' ') : '—')
+// A fila "O que precisa de você" fala com quem nem sabe o que é PEP: cada
+// motivo de pasta vira um título em português comum, uma frase de porquê e o
+// verbo do botão. Planilha ausente não está aqui de propósito: só a planilha
+// resolve, e ela tem a própria tarefa ("Pedir a planilha").
+export type GrupoMotivo = { titulo: string; porque: string; botao: string }
+
+export const GRUPOS_MOTIVO: Record<string, GrupoMotivo> = {
+  paciente_fora_da_planilha: {
+    titulo: 'O paciente não está na planilha',
+    porque: 'O nome desta pasta não aparece na lista de pacientes que o prestador mandou. Diga quem é o paciente.',
+    botao: 'Escolher o paciente',
+  },
+  cpf_duplicado_no_pulsar: {
+    titulo: 'Dois cadastros com o mesmo CPF',
+    porque: 'Há duas fichas do mesmo paciente no Pulsar. Diga qual é a certa e depois peça para juntar as duas.',
+    botao: 'Escolher o cadastro certo',
+  },
+  cpf_nao_encontrado: {
+    titulo: 'Paciente sem cadastro com esse CPF',
+    porque: 'O CPF da planilha não bate com nenhuma ficha. Encontre o paciente pelo nome.',
+    botao: 'Escolher o paciente',
+  },
+  cpf_ausente: {
+    titulo: 'Paciente sem CPF na planilha',
+    porque: 'A planilha traz o nome, mas não o CPF. Encontre o paciente pelo nome.',
+    botao: 'Escolher o paciente',
+  },
+  cpf_invalido: {
+    titulo: 'CPF da planilha está errado',
+    porque: 'O CPF escrito na planilha não é um CPF válido. Encontre o paciente pelo nome.',
+    botao: 'Escolher o paciente',
+  },
+  nome_divergente: {
+    titulo: 'O nome da pasta não bate com o cadastro',
+    porque: 'O CPF achou uma pessoa com outro nome. Confira de quem é a pasta.',
+    botao: 'Escolher o paciente',
+  },
+  cnpj_ausente: {
+    titulo: 'Planilha sem CNPJ',
+    porque: 'Sem o CNPJ, o robô não sabe de qual contrato é a pasta. Diga quem é o prestador.',
+    botao: 'Escolher o prestador',
+  },
+  cnpj_invalido: {
+    titulo: 'CNPJ da planilha está errado',
+    porque: 'O CNPJ escrito na planilha não é válido. Diga quem é o prestador.',
+    botao: 'Escolher o prestador',
+  },
+  cnpj_nao_cadastrado: {
+    titulo: 'CNPJ que não está em Contratos',
+    porque: 'Nenhum contrato tem esse CNPJ. Diga quem é o prestador, ou cadastre o CNPJ no contrato.',
+    botao: 'Escolher o prestador',
+  },
+  cnpj_duplicado: {
+    titulo: 'CNPJ em dois contratos',
+    porque: 'Dois contratos usam o mesmo CNPJ. Diga qual é o certo.',
+    botao: 'Escolher o prestador',
+  },
+}
+
+export const grupoMotivo = (m: string | null | undefined): GrupoMotivo =>
+  (m && GRUPOS_MOTIVO[m]) || { titulo: rotuloMotivo(m), porque: 'Diga de quem é esta pasta.', botao: 'Escolher' }
+
+/** Texto pronto para mandar ao prestador (WhatsApp/e-mail). Sem a palavra PEP. */
+export function mensagemPedirPlanilha(nomeCurto: string, pacientes: number) {
+  const primeiro = nomeCurto.trim().split(/\s+/)[0] || nomeCurto
+  const quantos = pacientes > 0 ? ` dos seus ${pacientes} ${pacientes === 1 ? 'paciente' : 'pacientes'}` : ''
+  return `Olá, ${primeiro}! Tudo bem? Na sua pasta do SharePoint da Universo ABA, a pasta "1. Planejamento - Prestador de Serviço" ainda está sem a planilha de planejamento (arquivo .xlsx). Sem ela não conseguimos registrar os documentos${quantos}. Pode colocar a planilha lá, por favor? Obrigado!`
+}
+
+export const rotuloMotivo =(m: string | null | undefined) => (m ? MOTIVOS[m] ?? MOTIVOS_IGNORADO[m] ?? m.replace(/_/g, ' ') : '—')
 
 // Por que um arquivo lido não é evidência do PEP (robo-pep-sharepoint/lib/mapeamento.js).
 export const MOTIVOS_IGNORADO: Record<string, string> = {
@@ -127,4 +196,45 @@ export function haQuanto(iso: string | null | undefined, agora = Date.now()) {
   const h = Math.round(min / 60)
   if (h < 24) return `há ${h} h`
   return `há ${Math.round(h / 24)} dia(s)`
+}
+
+// ── Padrão de nome e entrega automática (20261002100000) ─────────────────────
+
+// Por que o nome do arquivo fere o padrão (sp_pep_itens.padrao_motivo).
+export const MOTIVOS_PADRAO: Record<string, string> = {
+  sigla_diferente_da_pasta: 'A sigla no nome não é a da pasta',
+  sem_competencia: 'Falta o mês no fim do nome (MMAAAA)',
+  tap_sem_sequencial: 'TAP precisa do número: TAP-01-PACIENTE-MMAAAA',
+  geral_sem_sequencial: 'Falta o número: SIGLA-01-MMAAAA',
+  formato_desconhecido: 'Nome fora do padrão',
+  paciente_diferente_da_pasta: 'O paciente no nome não é o da pasta',
+  repetido: 'Repetido: outro arquivo igual já conta',
+}
+
+// Por que o robô não entregou um arquivo que segue o padrão (sp_pep_itens.robo_obs).
+export const MOTIVOS_ROBO: Record<string, string> = {
+  mes_liberado: 'Mês já liberado: reabra para registrar',
+  excedente: 'O mês já tem todas as unidades deste item',
+  sem_planejamento: 'Sem planejamento semestral: planeje o item antes',
+  fora_do_ciclo: 'Arquivo de um ciclo anterior ao planejamento',
+  ja_entregue_no_ciclo: 'Já existe entrega deste item no ciclo',
+  arquivo_removido: 'O arquivo foi apagado do SharePoint',
+}
+
+/** Por que um arquivo sugerido está esperando uma pessoa, em uma frase. */
+export function porQueEsperando(i: { padrao?: string | null; padrao_motivo?: string | null; robo_obs?: string | null }): string {
+  if (i.padrao === 'rep') return 'Reprogramação (REP-): registre na matriz semestral'
+  if (i.padrao === 'fora' || i.padrao === 'duplicado') return MOTIVOS_PADRAO[i.padrao_motivo ?? ''] ?? 'Nome fora do padrão'
+  if (i.robo_obs) return MOTIVOS_ROBO[i.robo_obs] ?? i.robo_obs.replace(/_/g, ' ')
+  return 'Segue o padrão: o robô entrega na próxima leitura'
+}
+
+/** Nome que o arquivo deveria ter: "PIC-ADRIAN COSTA-092026", "STC-01-092026", "TAP-01-JOAO-092026". */
+export function nomeEsperado(sigla: string | null | undefined, paciente: string | null | undefined, competencia: string | null | undefined) {
+  if (!sigla) return null
+  const [ano, mes] = (competencia ?? '').split('-')
+  const mmaaaa = ano && mes ? `${mes}${ano}` : 'MMAAAA'
+  if (sigla === 'STC' || sigla === 'ETC') return `${sigla}-01-${mmaaaa}`
+  const pac = (paciente ?? 'PACIENTE').toLocaleUpperCase('pt-BR')
+  return sigla === 'TAP' ? `TAP-01-${pac}-${mmaaaa}` : `${sigla}-${pac}-${mmaaaa}`
 }

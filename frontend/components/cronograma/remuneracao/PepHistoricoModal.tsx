@@ -17,6 +17,7 @@ import { TONE_SOLID } from "@/components/cronograma/ui/tones"
 import { camposAlterados, camposSnapshot, nomeItemDaTrilha } from "@/lib/remuneracao/pepAuditoriaFormat"
 import { getTrilhaAuditoria, type PepTrilhaAcao, type PepTrilhaAuditoria, type PepTrilhaTabela } from "@/services/pepAuditoria.service"
 import type { PepCatalogoItem } from "@/types/pep"
+import { ChipOrigem } from "./pep/origem"
 
 interface Props {
   prestadorNome?: string
@@ -24,8 +25,8 @@ interface Props {
   onClose: () => void
 }
 
-const ACAO_LABEL: Record<PepTrilhaAcao, string> = { criar: "Criação", editar: "Edição", excluir: "Exclusão" }
-const ACAO_TONE: Record<PepTrilhaAcao, keyof typeof TONE_SOLID> = { criar: "green", editar: "blue", excluir: "red" }
+const ACAO_LABEL: Record<PepTrilhaAcao, string> = { criar: "Criação", editar: "Edição", excluir: "Exclusão", reverter: "Desfeito" }
+const ACAO_TONE: Record<PepTrilhaAcao, keyof typeof TONE_SOLID> = { criar: "green", editar: "blue", excluir: "red", reverter: "slate" }
 const TABELA_LABEL: Record<PepTrilhaTabela, string> = {
   registro_entrega: "Entrega",
   planejamento_semestral: "Planejamento",
@@ -105,6 +106,7 @@ export function PepHistoricoModal({ prestadorNome, catalogo, onClose }: Props) {
               >
                 {temDetalhe ? (expandido ? <ChevronDown size={14} className="shrink-0 text-muted-foreground" /> : <ChevronRight size={14} className="shrink-0 text-muted-foreground" />) : <span className="w-3.5 shrink-0" />}
                 <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-bold ${tone.bg} ${tone.text}`}>{ACAO_LABEL[item.acao]}</span>
+                <ChipOrigem origem={item.ator === "robo" ? "robo" : "humano"} />
                 <span className="shrink-0 text-[11px] font-semibold text-muted-foreground">{TABELA_LABEL[item.tabela]}</span>
                 <span className="flex-1 truncate text-sm font-semibold text-foreground">{nomeContextual(item, catalogo)}</span>
                 <span className="shrink-0 text-right text-[11px] text-muted-foreground">

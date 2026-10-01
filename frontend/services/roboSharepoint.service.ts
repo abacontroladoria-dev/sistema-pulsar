@@ -1,7 +1,7 @@
 import { getSupabaseClient } from '@/lib/supabase/client'
 import type {
   ArquivoLido, ArquivoLidoCompleto, ArvorePastas, MatrizEvidencias, PacienteDetalhe, ResumoExecucao, RoboExecucao, RoboSaude,
-  SituacaoReconhecimento, SpItem, SpItemStatus, SpPendenciaPasta, TipoArquivoLido,
+  PepIndicesRobo, SituacaoReconhecimento, SpFilaPendencias, SpItem, SpItemStatus, SpPendenciaPasta, TipoArquivoLido,
 } from '@/types/roboSharepoint'
 
 // Leitura das tabelas sp_pep_* (RLS: robo_sharepoint / relacionamento_prestador_pep)
@@ -143,15 +143,41 @@ export async function listarPlanilhasLidas(execucaoId: string): Promise<ArquivoL
  * Pastas que o robô não conseguiu reconhecer (prestador ou paciente), com
  * quantos arquivos estão presos atrás de cada uma. Poucas dezenas no máximo.
  */
-export async function listarPendenciasDePasta(): Promise<SpPendenciaPasta[]> {
+// A fila separa a CAUSA dos sintomas. Prestador sem planilha prende ele mesmo,
+// todas as pastas de paciente dele e os arquivos delas, todos com o motivo
+// planilha_ausente — e nenhum vínculo manual resolve, porque o CPF dos
+// pacientes vem da planilha. Por isso esses viram uma linha por prestador, sem
+// botão; só os outros motivos vão para "Vincular". (1ª leitura real, 01/10/2026:
+// 9 prestadores sem planilha prendiam 144 das 150 pastas.)
+// Link da pasta "1. Planejamento" de cada prestador, onde a planilha tem de
+// entrar; sem ela, a pasta do prestador. web_url chega com o robô 0.3
+// (20261001140000). Consulta à parte e tolerante: sem link, a fila funciona.
+async function linksDePlanejamento(prestadores: string[]): Promise<Map<string, string>> {
+  const links = new Map<string, string>()
+  if (prestadores.length === 0) return links
   const sb = getSupabaseClient()
-  const [prest, pac, pastas, itens] = await Promise.all([
+  const [proprias, filhas] = await Promise.all([
+    sb.from('sp_pep_pastas').select('id, web_url').in('id', prestadores),
+    sb.from('sp_pep_pastas').select('pai_id, nome, web_url').in('pai_id', prestadores),
+  ])
+  if (proprias.error || filhas.error) return links
+  for (const p of proprias.data ?? []) if (p.web_url) links.set(p.id as string, p.web_url as string)
+  for (const f of filhas.data ?? []) {
+    if (f.web_url && /^0*1\s*[.)\-–]/.test(String(f.nome ?? '').trim())) links.set(f.pai_id as string, f.web_url as string)
+  }
+  return links
+}
+
+export async function listarPendenciasDePasta(): Promise<SpFilaPendencias> {
+  const sb = getSupabaseClient()
+  const [prest, semPlanilha, pac, pastas, itens] = await Promise.all([
     sb.from('sp_pep_prestadores').select('pasta_id, motivo').eq('status', 'nao_reconhecido'),
+    sb.from('sp_pep_prestadores').select('pasta_id, origem').is('planilha_sp_id', null),
     sb.from('sp_pep_pacientes').select('pasta_id, prestador_pasta_id, motivo').eq('status', 'nao_reconhecido'),
     sb.from('sp_pep_pastas').select('id, nome').not('papel', 'is', null),
     sb.from('sp_pep_itens').select('prestador_pasta_id, paciente_pasta_id').eq('status', 'nao_reconhecido'),
   ])
-  for (const r of [prest, pac, pastas, itens]) if (r.error) throw r.error
+  for (const r of [prest, semPlanilha, pac, pastas, itens]) if (r.error) throw r.error
 
   const nome = new Map((pastas.data ?? []).map(p => [p.id as string, p.nome as string]))
   const presosPorPasta = new Map<string, number>()
@@ -161,7 +187,16 @@ export async function listarPendenciasDePasta(): Promise<SpPendenciaPasta[]> {
     }
   }
 
-  return [
+  const linkPlanejamento = await linksDePlanejamento((semPlanilha.data ?? []).map(p => p.pasta_id as string))
+
+  const pacientesPresos = new Map<string, number>()
+  for (const p of pac.data ?? []) {
+    if (p.motivo === 'planilha_ausente' && p.prestador_pasta_id) {
+      pacientesPresos.set(p.prestador_pasta_id, (pacientesPresos.get(p.prestador_pasta_id) ?? 0) + 1)
+    }
+  }
+
+  const pastasComPessoa: SpPendenciaPasta[] = [
     ...(prest.data ?? []).map(p => ({
       pasta_id: p.pasta_id as string, tipo: 'prestador' as const, nome_pasta: nome.get(p.pasta_id) ?? '(pasta)',
       prestador_pasta_nome: null, motivo: p.motivo as string | null, arquivos: presosPorPasta.get(p.pasta_id) ?? 0,
@@ -171,7 +206,21 @@ export async function listarPendenciasDePasta(): Promise<SpPendenciaPasta[]> {
       prestador_pasta_nome: p.prestador_pasta_id ? nome.get(p.prestador_pasta_id) ?? null : null,
       motivo: p.motivo as string | null, arquivos: presosPorPasta.get(p.pasta_id) ?? 0,
     })),
-  ].sort((a, b) => b.arquivos - a.arquivos || a.nome_pasta.localeCompare(b.nome_pasta))
+  ]
+
+  return {
+    semPlanilha: (semPlanilha.data ?? []).map(p => ({
+      pasta_id: p.pasta_id as string,
+      nome_pasta: nome.get(p.pasta_id) ?? '(pasta)',
+      vinculado_a_mao: p.origem === 'manual',
+      pastas_paciente: pacientesPresos.get(p.pasta_id) ?? 0,
+      arquivos: presosPorPasta.get(p.pasta_id) ?? 0,
+      web_url: linkPlanejamento.get(p.pasta_id) ?? null,
+    })).sort((a, b) => b.arquivos - a.arquivos || b.pastas_paciente - a.pastas_paciente || a.nome_pasta.localeCompare(b.nome_pasta)),
+    pastas: pastasComPessoa
+      .filter(p => p.motivo !== 'planilha_ausente')
+      .sort((a, b) => b.arquivos - a.arquivos || a.nome_pasta.localeCompare(b.nome_pasta)),
+  }
 }
 
 export async function listarItensNaoReconhecidos(limite = 200): Promise<SpItem[]> {
@@ -192,7 +241,7 @@ export async function listarItensDoPrestador(prestadorNome: string, competencia:
     .select('*')
     .eq('prestador_nome', prestadorNome)
     .eq('competencia', competencia)
-    .in('status', ['sugerido', 'confirmado'])
+    .in('status', ['sugerido', 'confirmado', 'revertido'])
     .order('criado_em_sp', { ascending: true })
   if (error) throw error
   return (data ?? []) as SpItem[]
@@ -268,4 +317,78 @@ export async function executarAgora(): Promise<void> {
   if (r.status === 202) return
   const corpo = await r.json().catch(() => ({}))
   throw new Error(corpo?.error ?? `HTTP ${r.status}`)
+}
+
+// ── Entrega automática (20261002100000) ─────────────────────────────────────
+
+/** "Desfazer" uma entrega do robô. Motivo obrigatório; vale só para mês aberto. */
+export async function reverterEntregaRobo(spId: string, motivo: string): Promise<SpItem> {
+  const { data, error } = await getSupabaseClient().rpc('sp_pep_reverter_entrega_robo', {
+    p_sp_id: spId, p_motivo: motivo,
+  })
+  if (error) throw error
+  return data as SpItem
+}
+
+/** Índices robô × pessoa × padrão da competência (todos os prestadores). Tolerante: [] se a view não existir. */
+export async function getIndicesRobo(competencia: string): Promise<PepIndicesRobo[]> {
+  const { data, error } = await getSupabaseClient()
+    .from('vw_pep_indices_robo')
+    .select('*')
+    .eq('competencia', competencia)
+  if (error) {
+    // Sem a migration 20261002100000 a view não existe. O robô ainda não
+    // entregava nada, então as entregas do mês são todas de pessoas: conta
+    // direto em pep_registros_entrega (recorrente = quantidade; semestral = 1).
+    console.warn('vw_pep_indices_robo indisponível, contando só entregas de pessoas:', error)
+    const { data: regs, error: e2 } = await getSupabaseClient()
+      .from('pep_registros_entrega')
+      .select('prestador_nome, quantidade_entregue, status')
+      .eq('competencia', competencia)
+    if (e2) return []
+    const porPrestador = new Map<string, number>()
+    for (const r of regs ?? []) {
+      const qtd = r.quantidade_entregue ?? (r.status === 'entregue' ? 1 : 0)
+      porPrestador.set(r.prestador_nome as string, (porPrestador.get(r.prestador_nome as string) ?? 0) + Number(qtd))
+    }
+    return [...porPrestador].map(([prestador_nome, humano_aprovou]) => ({
+      competencia, prestador_nome, humano_aprovou,
+      robo_aprovou: 0, robo_vigentes: 0, humano_reverteu: 0, unidades_robo: 0,
+      segue_padrao: 0, fora_padrao: 0, duplicados: 0, reprogramacao: 0,
+    }))
+  }
+  return (data ?? []) as PepIndicesRobo[]
+}
+
+export type EstadoEntregaAutomatica = { ligada: boolean; por: string | null; em: string | null }
+
+export async function obterEntregaAutomatica(): Promise<EstadoEntregaAutomatica | null> {
+  const { data, error } = await getSupabaseClient()
+    .from('sp_pep_estado')
+    .select('entrega_automatica, entrega_automatica_por_nome, entrega_automatica_em')
+    .eq('id', 1)
+    .maybeSingle()
+  if (error) return null // migration ainda não aplicada
+  return {
+    ligada: !!data?.entrega_automatica,
+    por: (data?.entrega_automatica_por_nome as string | null) ?? null,
+    em: (data?.entrega_automatica_em as string | null) ?? null,
+  }
+}
+
+/** Só admin. Ligar já reprocessa o que está em aberto (o robô entrega na hora). */
+export async function definirEntregaAutomatica(ligar: boolean): Promise<{ ligada: boolean; resultado: Record<string, unknown> }> {
+  const { data, error } = await getSupabaseClient().rpc('sp_pep_definir_entrega_automatica', { p_ligar: ligar })
+  if (error) throw error
+  return data as { ligada: boolean; resultado: Record<string, unknown> }
+}
+
+/** Quantas evidências seguem / ferem o padrão de nome (todas as competências, sem os apagados). */
+export async function contarPadrao(): Promise<{ ok: number; fora: number; duplicado: number; rep: number } | null> {
+  const sb = getSupabaseClient()
+  const contar = (padrao: string) => sb.from('sp_pep_itens').select('sp_id', { count: 'exact', head: true })
+    .eq('tipo', 'evidencia').eq('padrao', padrao).neq('status', 'removido')
+  const [ok, fora, duplicado, rep] = await Promise.all([contar('ok'), contar('fora'), contar('duplicado'), contar('rep')])
+  if (ok.error || fora.error || duplicado.error || rep.error) return null // migration ainda não aplicada
+  return { ok: ok.count ?? 0, fora: fora.count ?? 0, duplicado: duplicado.count ?? 0, rep: rep.count ?? 0 }
 }

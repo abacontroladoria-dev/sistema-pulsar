@@ -50,6 +50,7 @@ const SITUACAO: Record<SpItemStatus, { rotulo: string; tom: 'green' | 'amber' | 
   nao_reconhecido: { rotulo: 'não reconhecido', tom: 'amber' },
   ignorado: { rotulo: 'ignorada', tom: 'gray' },
   removido: { rotulo: 'apagado', tom: 'gray' },
+  revertido: { rotulo: 'desfeita por pessoa', tom: 'gray' },
 }
 
 const mesBR = (c: string | null | undefined) => (c ? c.split('-').reverse().join('/') : '—')
