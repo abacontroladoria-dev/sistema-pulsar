@@ -1,14 +1,14 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Bot, CalendarClock, CheckCircle2, ClipboardList, FlaskConical, Gauge, History, Loader2, Play, ShieldCheck, TriangleAlert, XCircle } from 'lucide-react'
+import { Bot, CalendarClock, CheckCircle2, ClipboardList, FlaskConical, FolderSearch, Gauge, History, Loader2, Play, ShieldCheck, TriangleAlert, Wrench, XCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 import { useHeader } from '@/contexts/HeaderContext'
 import { ComoFunciona } from '@/components/admin/roboSharepoint/ComoFunciona'
 import { EntregaAutomatica } from '@/components/admin/roboSharepoint/EntregaAutomatica'
 import { useUsuarioAtual } from '@/hooks/useUsuarioAtual'
-import { LinhaDoTempo } from '@/components/admin/roboSharepoint/LinhaDoTempo'
+import { CartaoEtapa, LinhaDoTempo } from '@/components/admin/roboSharepoint/LinhaDoTempo'
 import { HistoricoExecucoes } from '@/components/admin/roboSharepoint/HistoricoExecucoes'
 import { FilaNaoReconhecidos, resumoPendencias } from '@/components/admin/roboSharepoint/FilaNaoReconhecidos'
 import { CustoExecucao } from '@/components/admin/roboSharepoint/CustoExecucao'
@@ -164,28 +164,25 @@ export default function RoboSharepointShell() {
 
       <EntregaAutomatica ehAdmin={role === 'admin'} />
 
-      <ComoFunciona />
-
-      <section className={cartao} aria-labelledby="titulo-linha">
-        <Titulo icone={Gauge} extra={ultima && (
-          <span className="text-xs text-slate-500">
-            {dataHora(ultima.iniciado_em)} · {GATILHOS[ultima.gatilho]}{ultima.solicitado_por_nome ? ` por ${ultima.solicitado_por_nome}` : ''}
-          </span>
+      {/* Cópia avulsa do card "2 · Listar o SharePoint" (pedido de 01/10/2026):
+          o mesmo componente e o mesmo dado (ultima) da linha do tempo em
+          "Informações técnicas", então as duas nunca divergem. */}
+      <section className={cartao} aria-labelledby="titulo-listar">
+        <Titulo icone={FolderSearch} extra={ultima && (
+          <span className="text-xs text-slate-500">{executando ? 'lendo agora' : dataHora(ultima.iniciado_em)}</span>
         )}>
-          <span id="titulo-linha">{executando ? 'O robô está lendo agora' : 'Resultado da última leitura'}</span>
+          <span id="titulo-listar">O que o robô encontrou no SharePoint</span>
         </Titulo>
-        <LinhaDoTempo execucao={ultima} onAbrir={etapa => ultima && setDetalhe({ execucao: ultima, etapa })} />
+        <div className="grid gap-4 md:grid-cols-[minmax(0,20rem)_1fr] md:items-center">
+          <CartaoEtapa execucao={ultima} etapa="listar" onAbrir={etapa => ultima && setDetalhe({ execucao: ultima, etapa })} />
+          <p className="text-sm leading-relaxed text-slate-600">
+            Quantos arquivos novos ou alterados e quantas pastas o robô viu na última leitura do site.
+            {' '}Toque em <strong className="font-semibold text-slate-800">Ver o que foi lido</strong> para abrir a lista, arquivo por arquivo.
+          </p>
+        </div>
       </section>
 
-      <section className={cartao}>
-        <Titulo icone={ShieldCheck} extra={
-          <div className="flex flex-wrap items-center gap-3">
-            {ultimaConcluida && <span className="text-xs text-slate-500">execução de {dataHora(ultimaConcluida.iniciado_em)}</span>}
-            <button type="button" onClick={() => setHistoricoAberto(true)} className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-brand-fg hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"><History className="h-4 w-4" aria-hidden /> Custo de todas as execuções</button>
-          </div>
-        }>Custo para o Pulsar</Titulo>
-        <CustoExecucao execucao={ultimaConcluida} />
-      </section>
+      <ComoFunciona />
 
       <section className={cartao}>
         <Titulo icone={ClipboardList} extra={<span className="text-xs text-slate-500">{resumoPendencias(pendencias, itensPresos)}</span>}>
@@ -194,9 +191,38 @@ export default function RoboSharepointShell() {
         <FilaNaoReconhecidos fila={pendencias} itens={itensPresos} onAtualizar={carregarPendencias} />
       </section>
 
-      <section className={cartao}>
-        <Titulo icone={History} extra={<button type="button" onClick={() => setHistoricoAberto(true)} className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-brand-fg hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"><History className="h-4 w-4" aria-hidden /> Histórico completo</button>}>Últimas 30 execuções</Titulo>
-        <HistoricoExecucoes execucoes={execucoes} />
+      {/* Informações técnicas: o detalhe para quem acompanha o robô. Só muda a
+          posição destas três seções; conteúdo, botões e drawers são os mesmos. */}
+      <section className="space-y-4 border-t border-slate-200 pt-6" aria-labelledby="titulo-tecnico">
+        <Titulo icone={Wrench}>
+          <span id="titulo-tecnico">Informações técnicas</span>
+        </Titulo>
+
+        <section className={cartao} aria-labelledby="titulo-linha">
+          <Titulo icone={Gauge} extra={ultima && (
+            <span className="text-xs text-slate-500">
+              {dataHora(ultima.iniciado_em)} · {GATILHOS[ultima.gatilho]}{ultima.solicitado_por_nome ? ` por ${ultima.solicitado_por_nome}` : ''}
+            </span>
+          )}>
+            <span id="titulo-linha">{executando ? 'O robô está lendo agora' : 'Resultado da última leitura'}</span>
+          </Titulo>
+          <LinhaDoTempo execucao={ultima} onAbrir={etapa => ultima && setDetalhe({ execucao: ultima, etapa })} />
+        </section>
+
+        <section className={cartao}>
+          <Titulo icone={ShieldCheck} extra={
+            <div className="flex flex-wrap items-center gap-3">
+              {ultimaConcluida && <span className="text-xs text-slate-500">execução de {dataHora(ultimaConcluida.iniciado_em)}</span>}
+              <button type="button" onClick={() => setHistoricoAberto(true)} className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-brand-fg hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"><History className="h-4 w-4" aria-hidden /> Custo de todas as execuções</button>
+            </div>
+          }>Custo para o Pulsar</Titulo>
+          <CustoExecucao execucao={ultimaConcluida} />
+        </section>
+
+        <section className={cartao}>
+          <Titulo icone={History} extra={<button type="button" onClick={() => setHistoricoAberto(true)} className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-brand-fg hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"><History className="h-4 w-4" aria-hidden /> Histórico completo</button>}>Últimas 30 execuções</Titulo>
+          <HistoricoExecucoes execucoes={execucoes} />
+        </section>
       </section>
 
       {historicoAberto && <HistoricoCompletoDrawer idUltimaGravada={idUltimaGravada} ultimaCompleta={ultimaCompleta} onClose={() => setHistoricoAberto(false)} />}

@@ -59,6 +59,96 @@ const TOM = {
   pendente: { faixa: 'bg-slate-200', selo: 'bg-slate-50 text-slate-500 ring-slate-200', texto: 'aguardando', Icone: Circle },
 } as const
 
+/**
+ * Um cartão de etapa da execução — o mesmo nos 5 da linha do tempo e na cópia
+ * avulsa de "Listar o SharePoint" no topo do painel (pedido de 01/10/2026).
+ * Lê tudo de `execucao`, então as cópias nunca divergem; a etapa rodando ganha
+ * o cronômetro local. Sem execução: estado "aguardando" com a explicação.
+ */
+export function CartaoEtapa({ execucao, etapa, onAbrir }: {
+  execucao: RoboExecucao | null
+  etapa: RoboEtapaNome
+  onAbrir?: (etapa: RoboEtapaNome) => void
+}) {
+  const rodando = execucao?.status === 'executando'
+  const agora = useAgora(rodando)
+  const i = ETAPAS.findIndex(x => x.etapa === etapa)
+  const { rotulo, explica } = ETAPAS[i]
+  const e = execucao?.etapas.find(x => x.etapa === etapa)
+  const bruto = e?.status ?? (rodando ? 'pendente' : execucao?.status === 'erro' ? 'pulada' : 'pendente')
+  const estado = bruto === 'concluida' || bruto === 'executando' || bruto === 'erro' ? bruto : 'pendente'
+  const tom = TOM[estado]
+  const ms = e?.status === 'executando' && e.inicio ? agora - new Date(e.inicio).getTime() : e?.duracao_ms ?? null
+  const det = e ? numerosDetalhe(e) : null
+  const erroTexto = e && typeof (e.detalhe as { erro?: unknown } | null)?.erro === 'string' ? String((e.detalhe as { erro: string }).erro) : null
+
+  const abrivel = !!onAbrir && (estado === 'concluida' || estado === 'erro')
+  const corpo = (
+    <>
+      <span className={`block h-1 w-full ${tom.faixa} ${estado === 'executando' ? 'animate-pulse motion-reduce:animate-none' : ''}`} aria-hidden />
+      <span className="flex flex-1 flex-col p-4">
+        <span className="flex items-start justify-between gap-2">
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-800 text-[11px] font-bold tabular-nums text-white">{i + 1}</span>
+            <span className="truncate text-sm font-bold text-slate-800">{rotulo}</span>
+          </span>
+          {abrivel && (
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 text-brand-fg transition-colors group-hover:border-brand-fg group-hover:bg-brand-fg group-hover:text-white motion-reduce:transition-none" aria-hidden>
+              <ArrowUpRight className="h-4 w-4" />
+            </span>
+          )}
+        </span>
+
+        <span className="mt-3 flex items-end justify-between gap-2">
+          <span className="text-[28px] font-black leading-none tabular-nums text-slate-800">
+            {ms != null ? segundos(ms, 2) : <span className="text-slate-300">—</span>}
+          </span>
+          <span className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${tom.selo}`}>
+            <tom.Icone className={`h-3 w-3 ${estado === 'executando' ? 'animate-spin motion-reduce:animate-none' : ''}`} aria-hidden />{tom.texto}
+          </span>
+        </span>
+
+        {!e && <span className="mt-2 block text-xs leading-snug text-slate-500">{explica}</span>}
+
+        {erroTexto ? (
+          <span className="mt-3 block rounded-lg bg-rose-50 px-2.5 py-2 text-xs leading-snug text-rose-800">{erroTexto}</span>
+        ) : det && det.numeros.length > 0 ? (
+          <span className={`mt-3 grid divide-x divide-slate-200 border-t border-slate-100 pt-3 ${
+            det.numeros.length === 1 ? 'grid-cols-1' : det.numeros.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+            {det.numeros.map(x => (
+              <span key={x.rotulo} className="min-w-0 px-2 first:pl-0">
+                <span className={`block text-lg font-black leading-none tabular-nums ${x.atencao ? 'text-amber-700' : 'text-slate-800'}`}>{numero(x.valor)}</span>
+                <span className="mt-1 block text-[10px] leading-tight text-slate-500">{x.rotulo}</span>
+              </span>
+            ))}
+          </span>
+        ) : null}
+        {det?.nota && <span className="mt-2 block text-[11px] font-medium text-slate-500">{det.nota}</span>}
+      </span>
+
+      {abrivel && (
+        <span className="mt-auto flex items-center justify-between border-t border-slate-100 bg-brand-surface/60 px-4 py-2.5 text-xs font-bold text-brand-fg transition-colors group-hover:bg-brand-fg group-hover:text-white motion-reduce:transition-none">
+          Ver o que foi lido
+          <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-1 motion-reduce:transform-none" aria-hidden />
+        </span>
+      )}
+    </>
+  )
+
+  return abrivel ? (
+    <button
+      type="button"
+      onClick={() => onAbrir!(etapa)}
+      aria-label={`${rotulo}: ${tom.texto}, ${ms != null ? segundos(ms, 2) : ''}. Ver o que foi lido`}
+      className="group flex w-full cursor-pointer flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white text-left transition-colors hover:border-brand-fg/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 motion-reduce:transition-none"
+    >
+      {corpo}
+    </button>
+  ) : (
+    <div className={`flex w-full flex-col overflow-hidden rounded-2xl border bg-white ${estado === 'executando' ? 'border-sky-300' : 'border-slate-200'}`}>{corpo}</div>
+  )
+}
+
 export function LinhaDoTempo({ execucao, onAbrir }: {
   execucao: RoboExecucao | null
   /** Clique num card de etapa concluída → "O que o robô leu" naquela etapa. */
@@ -75,7 +165,6 @@ export function LinhaDoTempo({ execucao, onAbrir }: {
     )
   }
 
-  const porEtapa = new Map(execucao.etapas.map(e => [e.etapa, e]))
   const totalMs = rodando
     ? agora - new Date(execucao.iniciado_em).getTime()
     : execucao.duracao_ms ?? execucao.metricas?.duracao_ms ?? null
@@ -94,92 +183,17 @@ export function LinhaDoTempo({ execucao, onAbrir }: {
       </div>
 
       <ol className="mt-4 grid gap-3 md:grid-cols-5">
-        {ETAPAS.map(({ etapa, rotulo, explica }, i) => {
-          const e = porEtapa.get(etapa)
-          const bruto = e?.status ?? (rodando ? 'pendente' : execucao.status === 'erro' ? 'pulada' : 'pendente')
-          const estado = bruto === 'concluida' || bruto === 'executando' || bruto === 'erro' ? bruto : 'pendente'
-          const tom = TOM[estado]
-          const ms = e?.status === 'executando' && e.inicio ? agora - new Date(e.inicio).getTime() : e?.duracao_ms ?? null
-          const det = e ? numerosDetalhe(e) : null
-          const erroTexto = e && typeof (e.detalhe as { erro?: unknown } | null)?.erro === 'string' ? String((e.detalhe as { erro: string }).erro) : null
-          const ultimo = i === ETAPAS.length - 1
-
-          const abrivel = !!onAbrir && (estado === 'concluida' || estado === 'erro')
-          const corpo = (
-            <>
-              <span className={`block h-1 w-full ${tom.faixa} ${estado === 'executando' ? 'animate-pulse motion-reduce:animate-none' : ''}`} aria-hidden />
-              <span className="flex flex-1 flex-col p-4">
-                <span className="flex items-start justify-between gap-2">
-                  <span className="flex min-w-0 items-center gap-2">
-                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-800 text-[11px] font-bold tabular-nums text-white">{i + 1}</span>
-                    <span className="truncate text-sm font-bold text-slate-800">{rotulo}</span>
-                  </span>
-                  {abrivel && (
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 text-brand-fg transition-colors group-hover:border-brand-fg group-hover:bg-brand-fg group-hover:text-white motion-reduce:transition-none" aria-hidden>
-                      <ArrowUpRight className="h-4 w-4" />
-                    </span>
-                  )}
-                </span>
-
-                <span className="mt-3 flex items-end justify-between gap-2">
-                  <span className="text-[28px] font-black leading-none tabular-nums text-slate-800">
-                    {ms != null ? segundos(ms, 2) : <span className="text-slate-300">—</span>}
-                  </span>
-                  <span className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${tom.selo}`}>
-                    <tom.Icone className={`h-3 w-3 ${estado === 'executando' ? 'animate-spin motion-reduce:animate-none' : ''}`} aria-hidden />{tom.texto}
-                  </span>
-                </span>
-
-                {!e && <span className="mt-2 block text-xs leading-snug text-slate-500">{explica}</span>}
-
-                {erroTexto ? (
-                  <span className="mt-3 block rounded-lg bg-rose-50 px-2.5 py-2 text-xs leading-snug text-rose-800">{erroTexto}</span>
-                ) : det && det.numeros.length > 0 ? (
-                  <span className={`mt-3 grid divide-x divide-slate-200 border-t border-slate-100 pt-3 ${
-                    det.numeros.length === 1 ? 'grid-cols-1' : det.numeros.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
-                    {det.numeros.map(x => (
-                      <span key={x.rotulo} className="min-w-0 px-2 first:pl-0">
-                        <span className={`block text-lg font-black leading-none tabular-nums ${x.atencao ? 'text-amber-700' : 'text-slate-800'}`}>{numero(x.valor)}</span>
-                        <span className="mt-1 block text-[10px] leading-tight text-slate-500">{x.rotulo}</span>
-                      </span>
-                    ))}
-                  </span>
-                ) : null}
-                {det?.nota && <span className="mt-2 block text-[11px] font-medium text-slate-500">{det.nota}</span>}
+        {ETAPAS.map(({ etapa }, i) => (
+          <li key={etapa} className="relative flex">
+            <CartaoEtapa execucao={execucao} etapa={etapa} onAbrir={onAbrir} />
+            {/* seta de uma etapa para a próxima */}
+            {i < ETAPAS.length - 1 && (
+              <span className="pointer-events-none absolute -right-[18px] top-[4.25rem] z-10 hidden h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 md:flex" aria-hidden>
+                <ChevronRight className="h-3.5 w-3.5" />
               </span>
-
-              {abrivel && (
-                <span className="mt-auto flex items-center justify-between border-t border-slate-100 bg-brand-surface/60 px-4 py-2.5 text-xs font-bold text-brand-fg transition-colors group-hover:bg-brand-fg group-hover:text-white motion-reduce:transition-none">
-                  Ver o que foi lido
-                  <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-1 motion-reduce:transform-none" aria-hidden />
-                </span>
-              )}
-            </>
-          )
-
-          return (
-            <li key={etapa} className="relative flex">
-              {abrivel ? (
-                <button
-                  type="button"
-                  onClick={() => onAbrir!(etapa)}
-                  aria-label={`${rotulo}: ${tom.texto}, ${ms != null ? segundos(ms, 2) : ''}. Ver o que foi lido`}
-                  className="group flex w-full cursor-pointer flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white text-left transition-colors hover:border-brand-fg/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 motion-reduce:transition-none"
-                >
-                  {corpo}
-                </button>
-              ) : (
-                <div className={`flex w-full flex-col overflow-hidden rounded-2xl border bg-white ${estado === 'executando' ? 'border-sky-300' : 'border-slate-200'}`}>{corpo}</div>
-              )}
-              {/* seta de uma etapa para a próxima */}
-              {!ultimo && (
-                <span className="pointer-events-none absolute -right-[18px] top-[4.25rem] z-10 hidden h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 md:flex" aria-hidden>
-                  <ChevronRight className="h-3.5 w-3.5" />
-                </span>
-              )}
-            </li>
-          )
-        })}
+            )}
+          </li>
+        ))}
       </ol>
 
       {execucao.status === 'erro' && execucao.erro && (
