@@ -236,7 +236,7 @@ export function VisaoGeralPep({ competencia, analistas, valorPorPaciente, onSele
       </section>
 
       {/* ── Quem fez o apurado: robô × pessoas ──────────────────────── */}
-      <section className="rounded-2xl border border-border bg-card p-4 shadow-sm md:p-5" aria-labelledby="titulo-quem-fez">
+      <section className="tema-robo rounded-2xl border border-border bg-card p-4 shadow-sm md:p-5" aria-labelledby="titulo-quem-fez">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h3 id="titulo-quem-fez" className="flex items-center gap-2 text-sm font-bold text-foreground">
             <FileCheck2 size={15} aria-hidden /> Quem fez o apurado

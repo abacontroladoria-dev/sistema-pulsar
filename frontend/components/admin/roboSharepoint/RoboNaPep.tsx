@@ -20,7 +20,7 @@ import type { RoboEtapaNome, RoboExecucao } from '@/types/roboSharepoint'
 
 const cartao = 'rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-6'
 
-export function RoboNaPep({ onCarregado }: { onCarregado?: () => void } = {}) {
+export function RoboNaPep({ onCarregado, competencia }: { onCarregado?: () => void; competencia?: string } = {}) {
   const { execucoes, pendencias, itensPresos, carregando, erro, carregarPendencias } = useRoboSharepoint({ comSaude: false })
   // A tela PEP só aparece quando tudo carregou: avisa assim que os dados chegam.
   useEffect(() => { if (!carregando) onCarregado?.() }, [carregando, onCarregado])
@@ -31,7 +31,7 @@ export function RoboNaPep({ onCarregado }: { onCarregado?: () => void } = {}) {
   if (erro && execucoes.length === 0) return null
 
   return (
-    <div className="space-y-4">
+    <div className="tema-robo space-y-4">
       <DestaqueLeitura execucao={ultima} onAbrir={etapa => ultima && setDetalhe({ execucao: ultima, etapa })} />
 
       <section className={cartao} aria-labelledby="titulo-precisa-de-voce">
@@ -52,6 +52,8 @@ export function RoboNaPep({ onCarregado }: { onCarregado?: () => void } = {}) {
           ultimaCompleta={ultimaCompleta}
           onAbrirExecucao={(execucao, etapa) => setDetalhe({ execucao, etapa })}
           onClose={() => setDetalhe(null)}
+          simples
+          competencia={competencia}
         />
       )}
     </div>

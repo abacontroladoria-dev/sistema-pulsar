@@ -1,10 +1,13 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, ExternalLink, FileSpreadsheet, FileText, Folder, FolderOpen, Loader2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, ExternalLink, FileDown, FileSpreadsheet, FileText, Folder, FolderOpen, Loader2 } from 'lucide-react'
+import toast from 'react-hot-toast'
 import { StatusChip, TONE_CHIP } from '@/components/ui/tones'
 import { dataHora, nomeCurtoPrestador, numero, rotuloMotivo } from '@/lib/roboSharepoint/rotulos'
 import { obterArvorePastas } from '@/services/roboSharepoint.service'
+import { carregarRelatorioPrestador, competenciaAtual } from '@/services/relatorioPrestadorPep.service'
+import { rotuloMes } from '@/lib/roboSharepoint/relatorioPrestador'
 import type { ArvorePastas, NoPasta, ResumoPrestadorLido } from '@/types/roboSharepoint'
 import { Barra, corBarra, Sigla, TOM } from './Blocos'
 
@@ -99,8 +102,48 @@ function No({ execucaoId, no, nivel, forcar }: { execucaoId: string; no: NoPasta
   )
 }
 
+/**
+ * PDF "o que está nas pastas e o que falta entregar" do prestador, no mês de
+ * atendimento (pedido de 02/10/2026). Lê do banco na hora do clique e gera no
+ * navegador; pdf-lib só carrega quando alguém pede o PDF.
+ */
+function BotaoPdfPrestador({ no, competencia }: { no: NoPasta; competencia: string }) {
+  const [gerando, setGerando] = useState(false)
+  const nome = nomeCurtoPrestador(no.nome)
+
+  async function gerar() {
+    setGerando(true)
+    try {
+      const [{ gerarPdfRelatorio, baixarPdf }, relatorio] = await Promise.all([
+        import('@/lib/roboSharepoint/relatorioPrestadorPdf'),
+        carregarRelatorioPrestador(no.id, no.nome, competencia),
+      ])
+      const bytes = await gerarPdfRelatorio(relatorio)
+      const slug = nome.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '')
+      baixarPdf(bytes, `PEP-${slug}-${competencia}.pdf`)
+      toast.success(`PDF de ${nome} (${rotuloMes(competencia)}) baixado.`)
+    } catch (e) {
+      toast.error(e instanceof Error ? `Não foi possível gerar o PDF: ${e.message}` : 'Não foi possível gerar o PDF')
+    } finally {
+      setGerando(false)
+    }
+  }
+
+  return (
+    <button type="button" onClick={gerar} disabled={gerando}
+      title={`Baixar PDF: o que está nas pastas e o que falta ${nome} entregar em ${rotuloMes(competencia)}`}
+      aria-label={`Baixar PDF do que falta ${nome} entregar em ${rotuloMes(competencia)}`}
+      className="flex w-full shrink-0 items-center justify-center gap-2 border-t border-border px-4 py-3 text-sm font-semibold text-rose-700 transition-colors hover:bg-rose-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:opacity-60 dark:text-rose-300 dark:hover:bg-rose-950/40 xl:w-28 xl:flex-col xl:gap-1 xl:border-l xl:border-t-0 xl:px-2">
+      {gerando
+        ? <Loader2 className="h-6 w-6 animate-spin motion-reduce:animate-none" aria-hidden />
+        : <FileDown className="h-6 w-6" aria-hidden />}
+      <span className="text-xs font-bold">{gerando ? 'Gerando…' : 'Baixar PDF'}</span>
+    </button>
+  )
+}
+
 /** Uma linha-cartão por prestador (padrão CardRemunRP), que abre a árvore dele. */
-function CartaoPrestador({ execucaoId, no, resumo, apagado }: { execucaoId: string; no: NoPasta; resumo?: ResumoPrestadorLido; apagado: boolean }) {
+function CartaoPrestador({ execucaoId, no, resumo, apagado, competencia }: { execucaoId: string; no: NoPasta; resumo?: ResumoPrestadorLido; apagado: boolean; competencia: string }) {
   const [aberto, setAberto] = useState(false)
   const [tudo, setTudo] = useState(false)
   const [filhos, setFilhos] = useState<ArvorePastas | null>(null)
@@ -116,8 +159,9 @@ function CartaoPrestador({ execucaoId, no, resumo, apagado }: { execucaoId: stri
   const temPlanilha = resumo?.tem_planilha
   return (
     <li className={`overflow-hidden rounded-2xl border bg-card transition-opacity ${aberto ? 'border-foreground/20 shadow-sm' : 'border-border'} ${apagado ? 'opacity-35' : ''}`}>
+      <div className="flex flex-col xl:flex-row xl:items-stretch">
       <button type="button" aria-expanded={aberto} onClick={() => setAberto(v => !v)}
-        className="flex w-full flex-col gap-4 p-4 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:flex-row xl:items-center">
+        className="flex min-w-0 flex-1 flex-col gap-4 p-4 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:flex-row xl:items-center">
         <span className="flex min-w-0 flex-1 items-center gap-4">
           <span className={`flex size-16 shrink-0 flex-col items-center justify-center rounded-xl ${TONE_CHIP[tom].bg} ${TONE_CHIP[tom].text}`}>
             <span className="text-2xl font-black leading-none tabular-nums">{numero(no.arquivos)}</span>
@@ -152,6 +196,8 @@ function CartaoPrestador({ execucaoId, no, resumo, apagado }: { execucaoId: stri
         </span>
         <ChevronDown className={`hidden h-5 w-5 shrink-0 text-muted-foreground transition-transform xl:block ${aberto ? 'rotate-180' : ''}`} aria-hidden />
       </button>
+      <BotaoPdfPrestador no={no} competencia={competencia} />
+      </div>
 
       {aberto && (
         <div className="border-t border-border/70 bg-muted/20 px-2 pb-3 pt-2 sm:px-4">
@@ -181,8 +227,10 @@ function CartaoPrestador({ execucaoId, no, resumo, apagado }: { execucaoId: stri
   )
 }
 
-export function ExploradorPastas({ execucaoId, resumoPrestadores, filtroPrestador }: {
+export function ExploradorPastas({ execucaoId, resumoPrestadores, filtroPrestador, competencia }: {
   execucaoId: string
+  /** Mês de atendimento do PDF por prestador ('AAAA-MM'); padrão: o mês atual. */
+  competencia?: string
   resumoPrestadores: ResumoPrestadorLido[]
   /** 'com' = só prestadores com arquivo; 'sem' = só os vazios; null = todos */
   filtroPrestador?: 'com' | 'sem' | null
@@ -206,7 +254,7 @@ export function ExploradorPastas({ execucaoId, resumoPrestadores, filtroPrestado
   return (
     <ul className="space-y-2">
       {ordenados.map(no => (
-        <CartaoPrestador key={no.id} execucaoId={execucaoId} no={no} resumo={porId.get(no.id)}
+        <CartaoPrestador key={no.id} execucaoId={execucaoId} no={no} resumo={porId.get(no.id)} competencia={competencia ?? competenciaAtual()}
           apagado={filtroPrestador === 'com' ? no.arquivos === 0 : filtroPrestador === 'sem' ? no.arquivos > 0 : false} />
       ))}
     </ul>

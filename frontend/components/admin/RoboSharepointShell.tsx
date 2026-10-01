@@ -149,7 +149,7 @@ export default function RoboSharepointShell() {
   }, [setRightContent, pedirExecucao, podeExecutar, pedindo, executando, configurado])
 
   return (
-    <div className="space-y-6">
+    <div className="tema-robo space-y-6">
 
       {erro && <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{erro}</p>}
 

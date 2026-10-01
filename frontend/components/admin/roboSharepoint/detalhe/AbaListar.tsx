@@ -11,7 +11,13 @@ import { ListaArquivos, type FiltroArquivos } from './ListaArquivos'
 // Listar = o passeio pelo site: onde o robô andou, o que achou em cada
 // prestador, e a lista inteira, arquivo por arquivo.
 
-export function AbaListar({ execucao, etapa, resumo }: { execucao: RoboExecucao; etapa?: RoboEtapa; resumo: ResumoExecucao }) {
+export function AbaListar({ execucao, etapa, resumo, competencia, simples = false }: {
+  execucao: RoboExecucao; etapa?: RoboEtapa; resumo: ResumoExecucao
+  /** Mês do PDF por prestador. */
+  competencia?: string
+  /** Tela PEP: sem tempo, sem números técnicos (chamadas, KB) e sem a composição das pastas. */
+  simples?: boolean
+}) {
   const d = (etapa?.detalhe ?? {}) as Record<string, number | string>
   const completa = d.leitura === 'completa'
   const [filtro, setFiltro] = useState<FiltroArquivos>({})
@@ -38,10 +44,11 @@ export function AbaListar({ execucao, etapa, resumo }: { execucao: RoboExecucao;
       <Lead>
         {completa ? 'Leitura completa: ' : 'Só o que mudou desde a leitura anterior: '}
         o robô percorreu <strong className="font-semibold text-foreground">{numero(pastasTotal)} pastas</strong> e encontrou{' '}
-        <strong className="font-semibold text-foreground">{numero(resumo.total)} arquivo(s)</strong> em {segundos(etapa?.duracao_ms, 2)}.
+        <strong className="font-semibold text-foreground">{numero(resumo.total)} arquivo(s)</strong>{simples ? '' : ` em ${segundos(etapa?.duracao_ms, 2)}`}.
         Nada é baixado nesta etapa: ele lê só nome, pasta, data e autor de cada arquivo.
       </Lead>
 
+      {!simples && <>
       <Ladrilhos>
         <Ladrilho icone={FolderTree} tom="gray" valor={pastasTotal} rotulo="pastas percorridas" />
         <Ladrilho icone={Files} tom="blue" valor={resumo.total} rotulo="arquivos encontrados" sub={completa ? 'leitura completa' : 'só o que mudou'} />
@@ -69,6 +76,7 @@ export function AbaListar({ execucao, etapa, resumo }: { execucao: RoboExecucao;
           ))}
         </ul>
       </Bloco>
+      </>}
 
       <Bloco icone={FolderOpen} titulo="Todas as pastas, prestador por prestador"
         subtitulo="abra um prestador e desça até cada pasta de paciente e suas 7 subpastas"
@@ -85,7 +93,7 @@ export function AbaListar({ execucao, etapa, resumo }: { execucao: RoboExecucao;
             ))}
           </div>
         </div>
-        <ExploradorPastas execucaoId={execucao.id} resumoPrestadores={resumo.prestadores} filtroPrestador={destaque} />
+        <ExploradorPastas execucaoId={execucao.id} resumoPrestadores={resumo.prestadores} filtroPrestador={destaque} competencia={competencia} />
       </Bloco>
 
       <Bloco icone={Users} titulo="Onde estão os arquivos" subtitulo="toque num prestador para ver só os arquivos dele na lista abaixo" contagem={`${numero(resumo.total)} arquivos`}>

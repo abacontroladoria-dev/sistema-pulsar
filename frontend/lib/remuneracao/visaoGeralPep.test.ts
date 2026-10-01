@@ -155,6 +155,17 @@ describe("getApuracaoCompetencia", () => {
 })
 
 describe("resumoPepCompetencia — origem do apurado (robô × pessoa)", () => {
+  test("linha antiga sem divisão (robô e pessoa 0) conta tudo como pessoa", () => {
+    const r = resumoPepCompetencia({
+      competencia: "2026-09", valorPorPaciente: 100,
+      analistas: [{ nome: "Ana", pacientes: ["A1"] }],
+      linhas: [linha("Ana", "A1", { valor_liquido: 80, valor_robo: 0, valor_humano: 0, ajuste_recorrentes_valor: 15, ajuste_semestrais_valor: 5 })],
+    })
+    expect(r.origem.robo).toBe(0)
+    expect(r.origem.humano).toBe(85)
+    expect(r.origem.robo + r.origem.humano + r.origem.ajustes).toBe(r.apurado)
+  })
+
   test("apurado = robô + pessoa + ajustes, por construção", () => {
     const r = resumoPepCompetencia({
       competencia: "2026-09", valorPorPaciente: 100,

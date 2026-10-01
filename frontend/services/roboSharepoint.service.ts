@@ -337,8 +337,25 @@ export async function getIndicesRobo(competencia: string): Promise<PepIndicesRob
     .select('*')
     .eq('competencia', competencia)
   if (error) {
-    console.warn('vw_pep_indices_robo indisponível:', error)
-    return []
+    // Sem a migration 20261002100000 a view não existe. O robô ainda não
+    // entregava nada, então as entregas do mês são todas de pessoas: conta
+    // direto em pep_registros_entrega (recorrente = quantidade; semestral = 1).
+    console.warn('vw_pep_indices_robo indisponível, contando só entregas de pessoas:', error)
+    const { data: regs, error: e2 } = await getSupabaseClient()
+      .from('pep_registros_entrega')
+      .select('prestador_nome, quantidade_entregue, status')
+      .eq('competencia', competencia)
+    if (e2) return []
+    const porPrestador = new Map<string, number>()
+    for (const r of regs ?? []) {
+      const qtd = r.quantidade_entregue ?? (r.status === 'entregue' ? 1 : 0)
+      porPrestador.set(r.prestador_nome as string, (porPrestador.get(r.prestador_nome as string) ?? 0) + Number(qtd))
+    }
+    return [...porPrestador].map(([prestador_nome, humano_aprovou]) => ({
+      competencia, prestador_nome, humano_aprovou,
+      robo_aprovou: 0, robo_vigentes: 0, humano_reverteu: 0, unidades_robo: 0,
+      segue_padrao: 0, fora_padrao: 0, duplicados: 0, reprogramacao: 0,
+    }))
   }
   return (data ?? []) as PepIndicesRobo[]
 }

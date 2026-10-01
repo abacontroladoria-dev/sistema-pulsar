@@ -69,6 +69,7 @@ export function VincularPastaDrawer({ pendencia, titulo, onClose, onVinculado }:
       onClose={onClose}
       width={460}
     >
+      <div className="tema-robo">
       <label htmlFor="busca-vinculo" className="text-xs font-semibold text-slate-600">
         {ehPrestador ? 'Prestador (como está em Contratos)' : 'Paciente (cadastro do Pulsar)'}
       </label>
@@ -107,6 +108,7 @@ export function VincularPastaDrawer({ pendencia, titulo, onClose, onVinculado }:
         O vínculo vale acima do reconhecimento automático e fica registrado com o seu nome.
         {!ehPrestador && ' Os arquivos ainda precisam de uma sessão de Coordenador de Caso no mês para virar sugestão.'}
       </p>
+      </div>
     </Drawer>
   )
 }

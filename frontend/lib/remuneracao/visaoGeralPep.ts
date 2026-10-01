@@ -136,8 +136,16 @@ export function resumoPepCompetencia({ analistas, linhas, valorPorPaciente, comp
       casadas.add(k)
       brutoA += n(l.valor_bruto)
       apuradoA += n(l.valor_liquido)
-      roboA += n(l.valor_robo)
-      humanoA += n(l.valor_humano)
+      // Linha apurada antes da divisão robô × pessoa (ou com a migration
+      // 20261002100000 ainda não aplicada): robô e pessoa vêm 0. Nessa época
+      // o robô não entregava nada, então todo o valor das entregas é de
+      // pessoas — V menos o desconto dos recorrentes, a mesma conta de
+      // calcularCreditoPorOrigem.
+      const roboL = n(l.valor_robo), humanoL = n(l.valor_humano)
+      roboA += roboL
+      humanoA += roboL === 0 && humanoL === 0
+        ? Math.max(0, n(l.valor_bruto) - n(l.ajuste_recorrentes_valor))
+        : humanoL
       descontos.recorrentes += n(l.ajuste_recorrentes_valor)
       descontos.semestrais += n(l.ajuste_semestrais_valor)
       descontos.saldoAnterior += n(l.saldo_remanescente_anterior)

@@ -39,7 +39,7 @@ function Metrica({ valor, rotulo, formato }: { valor: number; rotulo: string; fo
   )
 }
 
-export function DetalheExecucaoDrawer({ execucao, etapaInicial, ehUltima, ultimaCompleta, onAbrirExecucao, zIndex = Z_DRAWER, onClose }: {
+export function DetalheExecucaoDrawer({ execucao, etapaInicial, ehUltima, ultimaCompleta, onAbrirExecucao, zIndex = Z_DRAWER, onClose, simples = false, competencia }: {
   execucao: RoboExecucao
   etapaInicial: RoboEtapaNome
   ehUltima: boolean
@@ -48,8 +48,16 @@ export function DetalheExecucaoDrawer({ execucao, etapaInicial, ehUltima, ultima
   onAbrirExecucao?: (e: RoboExecucao, etapa: RoboEtapaNome) => void
   zIndex?: number
   onClose: () => void
+  /**
+   * Tela PEP (pedido de 02/10/2026): só "Listar o SharePoint" — sem o trilho
+   * das 5 etapas, sem tempo, sem "evidências"/"sugestões" no cabeçalho. Fica
+   * só o que a lista embaixo mostra: os arquivos e as pastas.
+   */
+  simples?: boolean
+  /** Mês de atendimento do PDF por prestador ('AAAA-MM'); padrão: o mês atual. */
+  competencia?: string
 }) {
-  const [etapa, setEtapa] = useState<RoboEtapaNome>(etapaInicial)
+  const [etapa, setEtapa] = useState<RoboEtapaNome>(simples ? 'listar' : etapaInicial)
   const [resumo, setResumo] = useState<ResumoExecucao | null>(null)
   const [erroResumo, setErroResumo] = useState<string | null>(null)
   const topoRef = useRef<HTMLDivElement | null>(null)
@@ -85,6 +93,7 @@ export function DetalheExecucaoDrawer({ execucao, etapaInicial, ehUltima, ultima
     >
       {/* Modais abertos de dentro do painel (arquivo) ficam uma camada acima dele. */}
       <CamadaModal.Provider value={zIndex + 10}>
+      <div className="tema-robo">
       <div ref={topoRef} className="-mt-4 h-0" aria-hidden />
 
       {/* Resumo da execução */}
@@ -102,14 +111,15 @@ export function DetalheExecucaoDrawer({ execucao, etapaInicial, ehUltima, ultima
           </div>
           <div className="flex divide-x divide-border">
             <Metrica valor={Number(listar.pastas ?? 0)} rotulo="pastas" />
-            <Metrica valor={resumo?.por_tipo.evidencia ?? 0} rotulo="evidências" />
-            <Metrica valor={execucao.resumo?.sugeridos ?? 0} rotulo="sugestões" />
-            <Metrica valor={execucao.duracao_ms ?? 0} rotulo="no total" formato={n => segundos(n)} />
+            {!simples && <Metrica valor={resumo?.por_tipo.evidencia ?? 0} rotulo="evidências" />}
+            {!simples && <Metrica valor={execucao.resumo?.sugeridos ?? 0} rotulo="sugestões" />}
+            {!simples && <Metrica valor={execucao.duracao_ms ?? 0} rotulo="no total" formato={n => segundos(n)} />}
           </div>
         </div>
       </section>
 
-      {/* Trilho das etapas */}
+      {/* Trilho das etapas (fora da tela PEP) */}
+      {!simples && (
       <div className="sticky -top-4 z-10 -mx-5 mb-5 bg-card px-5 py-2">
         <div role="tablist" aria-label="Etapas da execução" className="flex gap-1 overflow-x-auto rounded-xl border border-border bg-muted/40 p-1">
           {ETAPAS.map(({ etapa: nome, rotulo }, i) => {
@@ -134,6 +144,7 @@ export function DetalheExecucaoDrawer({ execucao, etapaInicial, ehUltima, ultima
           })}
         </div>
       </div>
+      )}
 
       <div role="tabpanel" aria-label={ETAPAS.find(e => e.etapa === etapa)?.rotulo}>
         {atual?.status === 'erro' && (
@@ -166,10 +177,11 @@ export function DetalheExecucaoDrawer({ execucao, etapaInicial, ehUltima, ultima
           </Aviso>
         )}
 
-        {resumo && comRegistro && !vazio && etapa === 'listar' && <AbaListar execucao={execucao} etapa={atual} resumo={resumo} />}
+        {resumo && comRegistro && !vazio && etapa === 'listar' && <AbaListar execucao={execucao} etapa={atual} resumo={resumo} competencia={competencia} simples={simples} />}
         {resumo && comRegistro && !vazio && etapa === 'classificar' && <AbaClassificar execucao={execucao} resumo={resumo} />}
         {resumo && comRegistro && !vazio && etapa === 'planilhas' && <AbaPlanilhas execucao={execucao} etapa={atual} resumo={resumo} />}
         {resumo && etapa === 'enviar' && <AbaReconhecer execucao={execucao} etapa={atual} ehUltima={ehUltima} />}
+      </div>
       </div>
       </CamadaModal.Provider>
     </Drawer>
