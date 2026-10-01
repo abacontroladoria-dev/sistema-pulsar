@@ -181,7 +181,7 @@ function Ramo({ no, ultimo, prefixo }: { no: NoArvore; ultimo: boolean; prefixo:
 
 function OQueEnxerga() {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-5">
       <p className="flex items-center gap-2 text-sm font-bold text-slate-800"><FolderTree className="h-4 w-4 text-brand-fg" aria-hidden /> O que o robô enxerga</p>
       <p className="mt-1 text-xs text-slate-500">A pasta define o item do PEP; o nome do arquivo confirma o paciente e o mês. O robô não abre PDF nenhum.</p>
       <div className="mt-3 overflow-x-auto">
@@ -210,7 +210,7 @@ const SINAIS = [
 
 function TresSinais() {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-5">
       <p className="flex items-center gap-2 text-sm font-bold text-slate-800"><ScanSearch className="h-4 w-4 text-brand-fg" aria-hidden /> Como um arquivo vira entrega</p>
       <p className="mt-1 text-xs text-slate-500">Os quatro sinais precisam bater. Faltando um, o arquivo não conta e espera uma pessoa, com o motivo.</p>
 
@@ -290,10 +290,6 @@ export function ComoFunciona() {
         {aberto && (
           <div className="mt-5 space-y-4">
             <Linha />
-            <div className="grid gap-4 xl:grid-cols-2">
-              <OQueEnxerga />
-              <TresSinais />
-            </div>
             <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
               {GARANTIAS.map(g => (
                 <li key={g.titulo} className="flex items-start gap-2.5 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
@@ -309,5 +305,20 @@ export function ComoFunciona() {
         )}
       </div>
     </section>
+  )
+}
+
+/**
+ * "O que o robô enxerga" + "Como um arquivo vira entrega", fora do cartão
+ * "Como o robô funciona" (pedido de 02/10/2026): dois cartões lado a lado,
+ * sempre visíveis, logo abaixo dele.
+ */
+export function OQueEnxergaEComoDecide() {
+  return (
+    <div className="grid gap-4 xl:grid-cols-2">
+      <style>{ESTILO}</style>
+      <OQueEnxerga />
+      <TresSinais />
+    </div>
   )
 }

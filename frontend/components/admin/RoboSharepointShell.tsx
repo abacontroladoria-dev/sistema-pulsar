@@ -5,7 +5,7 @@ import { Bot, CalendarClock, CheckCircle2, ChevronDown, ClipboardList, FlaskConi
 import toast from 'react-hot-toast'
 
 import { useHeader } from '@/contexts/HeaderContext'
-import { ComoFunciona } from '@/components/admin/roboSharepoint/ComoFunciona'
+import { ComoFunciona, OQueEnxergaEComoDecide } from '@/components/admin/roboSharepoint/ComoFunciona'
 import { EntregaAutomatica } from '@/components/admin/roboSharepoint/EntregaAutomatica'
 import { useUsuarioAtual } from '@/hooks/useUsuarioAtual'
 import { LinhaDoTempo } from '@/components/admin/roboSharepoint/LinhaDoTempo'
@@ -172,6 +172,8 @@ export default function RoboSharepointShell() {
       <EntregaAutomatica ehAdmin={role === 'admin'} />
 
       <ComoFunciona />
+
+      <OQueEnxergaEComoDecide />
 
       <section className={cartao}>
         <Titulo icone={ClipboardList} extra={<span className="text-xs text-slate-500">{resumoPendencias(pendencias, itensPresos)}</span>}>
