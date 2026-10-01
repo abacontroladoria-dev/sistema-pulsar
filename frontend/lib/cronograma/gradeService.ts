@@ -64,6 +64,18 @@ export async function buscarGradeComoCSVRows(dataInicio: string, dataFim: string
   })
 }
 
+/** Última data com grade sincronizada na unidade 280 (ISO), ou null se vazia. */
+export async function buscarUltimaDataDaGrade(): Promise<string | null> {
+  const r = await buscarGrade<{ data: string | null }>({
+    campos: "data",
+    fonte: "base",
+    unidade: 280,
+    ordem: [{ coluna: "data", desc: true }],
+    limite: 1,
+  })
+  return r[0]?.data ?? null
+}
+
 /**
  * Busca sessões de csv_grades_profissionais pra comparativo entre períodos —
  * sem filtro de unidade (o Comparativo de Sessões precisa de TODAS as
