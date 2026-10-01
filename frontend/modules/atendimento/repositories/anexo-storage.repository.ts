@@ -13,6 +13,12 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 // PRIVADO. Quem exibe é uma URL assinada de curta duração, emitida depois de a
 // rota conferir sessão e organização. Ver a migration 20260921160000 para por
 // que público não era opção aqui.
+//
+// SÓ SERVICE ROLE. Desde a 20261001170000 o bucket não tem policy para
+// `authenticated`: o navegador não lista, não baixa e não grava nada nele.
+// Por isso este repositório não confere acesso — quem o chama confere ANTES,
+// lendo a conversa ou o anexo com o client do usuário (RLS das tabelas), e
+// passa um path montado a partir dessas linhas, nunca da requisição.
 // ============================================================================
 
 const BUCKET = 'central-anexos'

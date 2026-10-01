@@ -405,9 +405,11 @@ export class MessageService {
   // O endereço temporário que a bolha consome. Duas responsabilidades, e as
   // duas precisam estar aqui e não na rota:
   //
-  //  • CONFERIR A ORGANIZAÇÃO. A RLS do bucket já isola por org, mas depender
-  //    só dela faria um anexo de outra organização virar um erro de storage
-  //    ilegível em vez de um 404 honesto.
+  //  • CONFERIR O ACESSO. O bucket é lido com service role e não confere nada:
+  //    o portão é o `buscarAnexo` com o client do usuário (RLS de
+  //    message_attachments: admin/director ou membro da caixa) mais a
+  //    conferência de organização, que transforma "não é seu" num 404 honesto.
+  //    Nada aqui pode tocar no bucket antes dessa leitura.
   //  • BAIXAR SOB DEMANDA. Um anexo 'pending' é mídia recebida que ninguém
   //    trouxe da Meta ainda. Em vez de mostrar "indisponível" e esperar um
   //    worker, busca na hora: quem abriu a conversa está olhando para ela.

@@ -15,9 +15,10 @@ import { createMessageService } from '@/modules/atendimento/services'
 // POR QUE NÃO O PATH
 //
 // O bucket é privado e o `storage_path` nunca vai ao cliente. Se fosse, um
-// cliente poderia montar caminhos de outras conversas — a policy os barraria,
-// mas o padrão do path já contaria quantas conversas a organização tem e
-// quando aconteceram. A URL assinada não revela nada além do que ela serve.
+// cliente poderia montar caminhos de outras conversas — o bucket os barraria
+// (não tem policy para `authenticated`, só service role o lê), mas o padrão do
+// path já contaria quantas conversas a organização tem e quando aconteceram. A
+// URL assinada não revela nada além do que ela serve.
 //
 // O DOWNLOAD SOB DEMANDA
 //

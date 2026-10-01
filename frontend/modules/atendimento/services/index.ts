@@ -131,12 +131,22 @@ export function createMessageService(userClient: SupabaseClient): MessageService
     // repositório: dois clientes diferentes para a mesma conversa poderiam ver
     // estados distintos dentro de uma única chamada de send().
     new ConversationService(convRepo, auditRepo, caEventBus),
-    // O bucket dos anexos vai com o client do USUÁRIO: as policies de
-    // storage.objects isolam por `central.current_organization_id()`, que só
-    // existe quando há sessão. Com service role elas seriam contornadas, e o
-    // isolamento por organização passaria a depender exclusivamente do path
-    // que o nosso código monta — uma proteção a menos, de graça.
-    new AnexoStorageRepository(userClient),
+    // O bucket dos anexos vai com SERVICE ROLE, e não há outro jeito: desde a
+    // 20261001170000 ele não tem policy nenhuma para `authenticated`.
+    //
+    // As policies antigas isolavam só por organização, e TODO usuário do
+    // Pulsar tem a organização da Central (default de usuarios.organization_id)
+    // — terapeuta e recepção sem papel na Central listavam, baixavam e
+    // sobrescreviam laudo e áudio direto do navegador.
+    //
+    // Quem decide o acesso agora é a RLS das TABELAS, lida com o client do
+    // usuário ANTES de qualquer operação no bucket:
+    //   • enviarMidia: conv.findById + o INSERT da mensagem (messages_insert);
+    //   • urlDoAnexo:  msg.buscarAnexo (message_attachments_select*, que exige
+    //     admin/director ou ser membro da caixa da conversa).
+    // O path sai de linhas que só service role grava (message_attachments não
+    // tem INSERT/UPDATE para `authenticated`), nunca da requisição.
+    new AnexoStorageRepository(supabaseService),
   )
 }
 
@@ -174,12 +184,10 @@ export function createSystemServices(): {
       // com `sentByAi: true` e sem `sentByUserId`, e send() exige os dois
       // invertidos. É a Maia respondendo — ela não assume conversa nenhuma.
       conversationService,
-      // Com service role: aqui não há sessão de usuário, então
-      // `central.current_organization_id()` é nulo e as policies do bucket
-      // barrariam tudo. O isolamento por organização continua garantido pelo
-      // path, que o service monta a partir da conversa — nunca de entrada do
-      // cliente. É o mesmo raciocínio que já vale para `central.messages` neste
-      // caminho.
+      // Com service role, como em createMessageService: o bucket só aceita
+      // service role. O isolamento por organização é garantido pelo path, que
+      // o service monta a partir da conversa — nunca de entrada do cliente. É o
+      // mesmo raciocínio que já vale para `central.messages` neste caminho.
       new AnexoStorageRepository(supabaseService),
     ),
   }
