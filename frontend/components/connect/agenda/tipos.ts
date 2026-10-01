@@ -12,7 +12,8 @@ import type { AppointmentType } from '@/modules/atendimento/types/central.types'
 // Disciplina de cor: um matiz = um significado.
 //   âmbar   → triagem (primeira vez, precisa de atenção da recepção)
 //   cyan    → retorno (paciente em tratamento, fluxo normal)
-//   sky     → reunião com responsável/equipe
+//   violeta → reunião com responsável/equipe (era sky; no bloco preenchido da
+//             grade horária sky e cyan não se distinguem)
 //   slate   → followup administrativo
 //   emerald → demo (lead comercial, raro)
 // ============================================================================
@@ -30,20 +31,21 @@ export const TIPOS_ORDENADOS: AppointmentType[] = [
   'triagem', 'retorno', 'reuniao', 'followup', 'demo', 'other',
 ]
 
-// Classes para o "chip" do evento dentro do calendário.
+// Cor do tipo no calendário: `ponto` marca o tipo na lista (mês, "Próximos",
+// filtro, detalhe) e `suave` preenche o bloco na grade horária.
 //
-// A tinta é declarada nos DOIS temas de propósito. O fundo é `/10` — quase
-// transparente —, então quem dá contraste é o texto: o `-200` que funciona sobre
-// o escuro fica ilegível sobre o branco (roda 1.2:1). O par é `-700` no claro,
-// `-200` no escuro, mantendo a mesma família de cor dos dois lados, que é o que
-// faz o chip continuar dizendo "triagem" pela cor e não só pelo rótulo.
-export const TIPO_CHIP: Record<AppointmentType, string> = {
-  triagem:  'bg-amber-500/10   text-amber-700   dark:text-amber-200   border-amber-500/25   hover:bg-amber-500/20',
-  retorno:  'bg-cyan-500/10    text-cyan-700    dark:text-cyan-200    border-cyan-500/25    hover:bg-cyan-500/20',
-  reuniao:  'bg-sky-500/10     text-sky-700     dark:text-sky-200     border-sky-500/25     hover:bg-sky-500/20',
-  followup: 'bg-slate-500/10   text-slate-700   dark:text-slate-200   border-slate-500/25   hover:bg-slate-500/20',
-  demo:     'bg-emerald-500/10 text-emerald-700 dark:text-emerald-200 border-emerald-500/25 hover:bg-emerald-500/20',
-  other:    'bg-slate-500/10   text-slate-700   dark:text-slate-200   border-slate-500/25   hover:bg-slate-500/20',
+// A tinta é declarada nos DOIS temas de propósito, e o fundo leva modificador
+// de opacidade: o shim de tema escuro do globals.css remapeia `bg-*-100` e
+// brigaria com o `dark:`. Texto `-950` sobre o fundo `/15` no claro, `-50`
+// sobre `/20` no escuro — a mesma família dos dois lados, que é o que faz o
+// bloco continuar dizendo "triagem" pela cor e não só pelo rótulo.
+export const TIPO_COR: Record<AppointmentType, { ponto: string; suave: string }> = {
+  triagem:  { ponto: 'bg-amber-500',   suave: 'bg-amber-500/15   text-amber-950   hover:bg-amber-500/25   dark:bg-amber-400/20   dark:text-amber-50   dark:hover:bg-amber-400/30' },
+  retorno:  { ponto: 'bg-cyan-500',    suave: 'bg-cyan-500/15    text-cyan-950    hover:bg-cyan-500/25    dark:bg-cyan-400/20    dark:text-cyan-50    dark:hover:bg-cyan-400/30' },
+  reuniao:  { ponto: 'bg-violet-500',  suave: 'bg-violet-500/15  text-violet-950  hover:bg-violet-500/25  dark:bg-violet-400/20  dark:text-violet-50  dark:hover:bg-violet-400/30' },
+  followup: { ponto: 'bg-slate-500',   suave: 'bg-slate-500/15   text-slate-950   hover:bg-slate-500/25   dark:bg-slate-400/20   dark:text-slate-50   dark:hover:bg-slate-400/30' },
+  demo:     { ponto: 'bg-emerald-500', suave: 'bg-emerald-500/15 text-emerald-950 hover:bg-emerald-500/25 dark:bg-emerald-400/20 dark:text-emerald-50 dark:hover:bg-emerald-400/30' },
+  other:    { ponto: 'bg-slate-500',   suave: 'bg-slate-500/15   text-slate-950   hover:bg-slate-500/25   dark:bg-slate-400/20   dark:text-slate-50   dark:hover:bg-slate-400/30' },
 }
 
 export const STATUS_LABEL: Record<string, string> = {
@@ -85,6 +87,47 @@ export function horaFim(inicio: string | null, duracaoMin: number | null): strin
   const [h, m] = inicio.split(':').map(Number)
   const total = h * 60 + m + (duracaoMin ?? 0)
   return `${String(Math.floor(total / 60) % 24).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`
+}
+
+// 'HH:MM' → minutos desde 00:00
+export function minutosDoDia(hora: string | null): number {
+  const [h, m] = (hora ?? '00:00').slice(0, 5).split(':').map(Number)
+  return h * 60 + (m || 0)
+}
+
+// Sessão terapêutica tem 40 min; é a duração assumida quando o registro não traz.
+export const DURACAO_PADRAO = 40
+
+export function duracaoPorExtenso(min: number): string {
+  if (min < 60) return `${min} min`
+  const h = Math.floor(min / 60)
+  const resto = min % 60
+  return resto ? `${h}h${String(resto).padStart(2, '0')}` : `${h}h`
+}
+
+export function isoParaData(iso: string): Date {
+  const [ano, mes, dia] = iso.split('-').map(Number)
+  return new Date(ano, mes - 1, dia)
+}
+
+export function somarDias(d: Date, dias: number): Date {
+  const nova = new Date(d)
+  nova.setDate(nova.getDate() + dias)
+  return nova
+}
+
+// Domingo da semana de `d`, à meia-noite.
+export function inicioDaSemana(d: Date): Date {
+  return somarDias(new Date(d.getFullYear(), d.getMonth(), d.getDate()), -d.getDay())
+}
+
+export function capitalizar(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1)
+}
+
+// "Quarta-feira, 1 de outubro"
+export function dataPorExtenso(iso: string): string {
+  return capitalizar(isoParaData(iso).toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' }))
 }
 
 // Primeira terapia de uma lista separada por vírgula.

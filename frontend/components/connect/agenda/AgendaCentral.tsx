@@ -1,17 +1,20 @@
 'use client'
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Bot, Calendar as CalendarIcon, ChevronLeft, ChevronRight,
-  Columns, LayoutGrid, List, Loader2, Plus, RefreshCw,
+  Bot, Calendar as CalendarIcon, CalendarX2, ChevronLeft, ChevronRight,
+  Loader2, Plus, RefreshCw,
 } from 'lucide-react'
-import { toast } from 'sonner'
 import { Button } from '@/components/nina/Button'
+import { cn } from '@/lib/utils'
 import type { Appointment } from '@/modules/atendimento/types/central.types'
 import { AgendamentoApiError, listarAgendamentos } from '@/services/connect/agendamentos'
 import ReservarVagaModal from './ReservarVagaModal'
 import DetalheAgendamento from './DetalheAgendamento'
-import { dataParaISO, horaCurta, TIPO_CHIP, TIPO_LABEL, terapiaCurta } from './tipos'
+import {
+  capitalizar, dataParaISO, DURACAO_PADRAO, horaCurta, horaFim, inicioDaSemana,
+  isoParaData, minutosDoDia, somarDias, TIPO_COR, TIPO_LABEL, TIPOS_ORDENADOS,
+} from './tipos'
 
 // ============================================================================
 // AgendaCentral
@@ -23,6 +26,13 @@ import { dataParaISO, horaCurta, TIPO_CHIP, TIPO_LABEL, terapiaCurta } from './t
 // espelhada em csv_grades_profissionais. Esta tela mostra o que ESTE canal
 // prometeu, e usa a grade apenas como fonte de vagas ofertáveis.
 //
+// Layout no molde da agenda do Integra Connect (/scheduling): coluna lateral
+// com minicalendário, filtros e "Próximos"; à direita o calendário com a barra
+// Hoje / ‹ › / período / Mês-Semana-Dia e, em semana e dia, grade horária com
+// os blocos posicionados pela duração. Lá a cor e o filtro são por pessoa da
+// equipe; aqui o agendamento não tem responsável, então a cor segue o tipo
+// (vocabulário de tipos.ts) e o filtro é por tipo e por profissional.
+//
 // Diferenças em relação ao componente herdado do Nina, todas deliberadas:
 //   - dados reais via /api/central/appointments (antes: api.fetchAppointments
 //     era um stub que devolvia [] e o "Salvar" não gravava nada)
@@ -30,34 +40,68 @@ import { dataParaISO, horaCurta, TIPO_CHIP, TIPO_LABEL, terapiaCurta } from './t
 //     em GMT-3 devolve o dia anterior antes das 21h
 //   - sem subscription de realtime: ela apontava para public.appointments, que
 //     não existe. central.appointments não está na publicação de realtime, então
-//     a atualização aqui é por refetch (ao trocar de janela, ao voltar o foco e
+//     a atualização aqui é por refetch (ao trocar de mês, ao voltar o foco e
 //     depois de cada mutação)
 // ============================================================================
 
 type Visao = 'mes' | 'semana' | 'dia'
 
+const VISOES: { valor: Visao; rotulo: string; tecla: string }[] = [
+  { valor: 'mes',    rotulo: 'Mês',    tecla: 'M' },
+  { valor: 'semana', rotulo: 'Semana', tecla: 'S' },
+  { valor: 'dia',    rotulo: 'Dia',    tecla: 'D' },
+]
+
 const DIAS_CURTOS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
-// A clínica opera 08:00–12:00 e 13:00–17:40 em sessões de 40 min. A faixa
-// exibida vai um pouco além nas duas pontas para caber compromisso
-// administrativo fora do horário de atendimento.
-const HORA_INICIO = 7
-const HORA_FIM    = 19
+
+// 1 px por minuto: a sessão de 40 min ganha 40 px, o bastante para título e
+// horário em duas linhas.
+const ALTURA_HORA = 60
+const HORAS = Array.from({ length: 24 }, (_, h) => h)
+
+// Chave do filtro para compromisso administrativo (sem profissional).
+const SEM_PROFISSIONAL = ''
+
+// Na visão de mês, quantos itens cabem numa célula: altura da linha menos o
+// número do dia, dividida pela altura de um item.
+const ALTURA_NUMERO_DIA = 38
+const ALTURA_ITEM_MES   = 24
+
+const encerrado = (a: Appointment) => a.status === 'completed' || a.status === 'no_show'
 
 export default function AgendaCentral() {
   const [referencia, setReferencia] = useState(() => new Date())
-  const [visao, setVisao]           = useState<Visao>('mes')
+  // No celular a grade de mês não cabe; a recepção abre direto no dia. Ler
+  // `window` aqui é seguro só porque o ConnectShell monta a tela no cliente,
+  // depois de conferir a sessão — renderizada no servidor, daria hidratação
+  // divergente.
+  const [visao, setVisao] = useState<Visao>(() =>
+    typeof window !== 'undefined' && window.innerWidth < 640 ? 'dia' : 'mes',
+  )
   const [agendamentos, setAgend]    = useState<Appointment[]>([])
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro]             = useState<string | null>(null)
+  // Da semana corrente em diante, independente do mês na tela: alimenta o
+  // resumo do cabeçalho e "Próximos" mesmo quando se navega para o passado.
+  const [aFrente, setAFrente] = useState<Appointment[]>([])
+
+  const [tiposOcultos, setTiposOcultos] = useState<Set<string>>(() => new Set())
+  const [profsOcultos, setProfsOcultos] = useState<Set<string>>(() => new Set())
 
   const [dataParaCriar, setDataParaCriar] = useState<string | null>(null)
   const [selecionado, setSelecionado]     = useState<Appointment | null>(null)
 
   const hojeISO = useMemo(() => dataParaISO(new Date()), [])
 
-  // Janela de busca conforme a visão. Sempre um pouco maior que a exibida para
-  // que navegar um mês para frente não pisque vazio antes do refetch.
-  const janela = useMemo(() => calcularJanela(referencia, visao), [referencia, visao])
+  // A janela é sempre o mês da referência com uma semana de folga em cada
+  // ponta: cobre a semana que atravessa a virada do mês e os pontos do
+  // minicalendário, e navegar dentro do mês não refaz a busca.
+  const ano = referencia.getFullYear()
+  const mes = referencia.getMonth()
+  const janela = useMemo(() => ({
+    de:  dataParaISO(new Date(ano, mes, 1 - 7)),
+    ate: dataParaISO(new Date(ano, mes + 1, 7)),
+  }), [ano, mes])
 
   const buscar = useCallback(async () => {
     setCarregando(true)
@@ -74,19 +118,40 @@ export default function AgendaCentral() {
     }
   }, [janela.de, janela.ate])
 
+  const buscarAFrente = useCallback(async () => {
+    const hoje = new Date()
+    try {
+      const dados = await listarAgendamentos({
+        from: dataParaISO(inicioDaSemana(hoje)),
+        to:   dataParaISO(somarDias(hoje, 60)),
+      })
+      setAFrente(dados)
+    } catch {
+      // Painel auxiliar: se falhar, o erro que importa já aparece no calendário.
+      setAFrente([])
+    }
+  }, [])
+
   useEffect(() => { void buscar() }, [buscar])
+  useEffect(() => { void buscarAFrente() }, [buscarAFrente])
 
   // Sem realtime na tabela, o refetch ao voltar o foco é o que mantém a tela
   // honesta quando a atendente virtual marca algo enquanto a aba está aberta.
   useEffect(() => {
-    function aoFocar() { void buscar() }
+    function aoFocar() { void buscar(); void buscarAFrente() }
     window.addEventListener('focus', aoFocar)
     return () => window.removeEventListener('focus', aoFocar)
-  }, [buscar])
+  }, [buscar, buscarAFrente])
+
+  const visivel = useCallback(
+    (a: Appointment) => !tiposOcultos.has(a.type) && !profsOcultos.has(a.profissional_nome ?? SEM_PROFISSIONAL),
+    [tiposOcultos, profsOcultos],
+  )
 
   const porDia = useMemo(() => {
     const mapa = new Map<string, Appointment[]>()
     for (const a of agendamentos) {
+      if (!visivel(a)) continue
       const lista = mapa.get(a.date)
       if (lista) lista.push(a)
       else mapa.set(a.date, [a])
@@ -95,129 +160,282 @@ export default function AgendaCentral() {
       lista.sort((x, y) => (x.time ?? '').localeCompare(y.time ?? ''))
     }
     return mapa
+  }, [agendamentos, visivel])
+
+  const doDia = useCallback((iso: string) => porDia.get(iso) ?? [], [porDia])
+
+  // Os filtros só listam o que existe no mês carregado.
+  const tiposPresentes = useMemo(() => {
+    const presentes = new Set(agendamentos.map(a => a.type))
+    return TIPOS_ORDENADOS.filter(t => presentes.has(t))
   }, [agendamentos])
 
-  function navegar(direcao: number) {
-    const nova = new Date(referencia)
-    if (visao === 'mes')        nova.setMonth(nova.getMonth() + direcao)
-    else if (visao === 'semana') nova.setDate(nova.getDate() + direcao * 7)
-    else                         nova.setDate(nova.getDate() + direcao)
-    setReferencia(nova)
+  const profsPresentes = useMemo(() => {
+    const nomes = new Set(agendamentos.map(a => a.profissional_nome ?? SEM_PROFISSIONAL))
+    const lista = [...nomes].filter(n => n !== SEM_PROFISSIONAL).sort((x, y) => x.localeCompare(y, 'pt-BR'))
+    return nomes.has(SEM_PROFISSIONAL) ? [...lista, SEM_PROFISSIONAL] : lista
+  }, [agendamentos])
+
+  const resumo = useMemo(() => {
+    const semana = new Set(Array.from({ length: 7 }, (_, i) => dataParaISO(somarDias(inicioDaSemana(new Date()), i))))
+    let hoje = 0
+    let naSemana = 0
+    for (const a of aFrente) {
+      if (a.date === hojeISO) hoje++
+      if (semana.has(a.date)) naSemana++
+    }
+    return { hoje, naSemana }
+  }, [aFrente, hojeISO])
+
+  const proximos = useMemo(() => {
+    const agora = new Date()
+    const minutoAgora = agora.getHours() * 60 + agora.getMinutes()
+    return aFrente
+      .filter(a => (a.status === 'scheduled' || a.status === 'confirmed') && visivel(a))
+      .filter(a => a.date > hojeISO || (a.date === hojeISO && minutosDoDia(a.time) + (a.duration || DURACAO_PADRAO) > minutoAgora))
+      .sort((x, y) => x.date.localeCompare(y.date) || (x.time ?? '').localeCompare(y.time ?? ''))
+      .slice(0, 5)
+  }, [aFrente, visivel, hojeISO])
+
+  const navegar = useCallback((direcao: number) => {
+    setReferencia(r =>
+      visao === 'mes'
+        ? new Date(r.getFullYear(), r.getMonth() + direcao, 1)
+        : somarDias(r, direcao * (visao === 'semana' ? 7 : 1)),
+    )
+  }, [visao])
+
+  function abrirDia(d: Date) {
+    setReferencia(d)
+    setVisao('dia')
   }
+
+  // Na visão de mês "agendar" parte de hoje; nas outras, do dia em foco.
+  const novoAgendamento = useCallback(() => {
+    setDataParaCriar(visao === 'mes' ? hojeISO : dataParaISO(referencia))
+  }, [visao, hojeISO, referencia])
+
+  const modalAberto = dataParaCriar !== null || selecionado !== null
+
+  // Atalhos da referência: T hoje, M/S/D visão, N novo, ←/→ navega.
+  useEffect(() => {
+    function aoTeclar(e: KeyboardEvent) {
+      if (modalAberto || e.ctrlKey || e.metaKey || e.altKey) return
+      if ((e.target as HTMLElement | null)?.closest('input, textarea, select, [contenteditable="true"]')) return
+      const tecla = e.key.toLowerCase()
+      if (tecla === 't') setReferencia(new Date())
+      else if (tecla === 'm') setVisao('mes')
+      else if (tecla === 's') setVisao('semana')
+      else if (tecla === 'd') setVisao('dia')
+      else if (tecla === 'n') { e.preventDefault(); novoAgendamento() }
+      else if (e.key === 'ArrowLeft') navegar(-1)
+      else if (e.key === 'ArrowRight') navegar(1)
+    }
+    window.addEventListener('keydown', aoTeclar)
+    return () => window.removeEventListener('keydown', aoTeclar)
+  }, [modalAberto, navegar, novoAgendamento])
 
   function aoCriar(novo: Appointment) {
     // Insere localmente para resposta imediata e revalida contra o servidor.
     setAgend(prev => [...prev, novo])
     void buscar()
+    void buscarAFrente()
   }
 
   function aoAlterar(alterado: Appointment) {
-    setAgend(prev => {
-      // Cancelado sai da lista: a visão default do calendário não mostra
-      // cancelados, senão o dia parece cheio com vagas que já foram liberadas.
-      if (alterado.status === 'cancelled') return prev.filter(a => a.id !== alterado.id)
-      return prev.map(a => (a.id === alterado.id ? alterado : a))
-    })
+    // Cancelado sai da lista: a visão default do calendário não mostra
+    // cancelados, senão o dia parece cheio com vagas que já foram liberadas.
+    const aplicar = (prev: Appointment[]) =>
+      alterado.status === 'cancelled'
+        ? prev.filter(a => a.id !== alterado.id)
+        : prev.map(a => (a.id === alterado.id ? alterado : a))
+    setAgend(aplicar)
+    setAFrente(aplicar)
     setSelecionado(sel => (sel && sel.id === alterado.id ? alterado : sel))
   }
 
+  function alternar(setter: React.Dispatch<React.SetStateAction<Set<string>>>, chave: string) {
+    setter(prev => {
+      const novo = new Set(prev)
+      if (novo.has(chave)) novo.delete(chave)
+      else novo.add(chave)
+      return novo
+    })
+  }
+
+  const diasVisiveis = useMemo(
+    () => (visao === 'dia' ? [referencia] : Array.from({ length: 7 }, (_, i) => somarDias(inicioDaSemana(referencia), i))),
+    [visao, referencia],
+  )
+
   return (
-    <div className="p-6 h-full flex flex-col bg-background text-foreground">
+    <div className="h-full flex flex-col gap-4 p-4 sm:p-6 bg-background text-foreground min-h-0">
       {/* Cabeçalho */}
-      <div className="flex flex-col xl:flex-row items-start xl:items-center justify-between mb-5 gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
-            <CalendarIcon className="w-7 h-7 text-cyan-500" />
-            Agendamentos
-          </h2>
-          <p className="text-muted-foreground text-sm mt-1">
-            O que o atendimento — humano e virtual — marcou na grade da clínica.
-          </p>
-        </div>
-
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full xl:w-auto">
-          <div className="flex bg-card p-1 rounded-lg border border-border">
-            <BotaoVisao ativa={visao === 'mes'}    onClick={() => setVisao('mes')}    icone={<LayoutGrid className="w-3.5 h-3.5" />} rotulo="Mês" />
-            <BotaoVisao ativa={visao === 'semana'} onClick={() => setVisao('semana')} icone={<Columns className="w-3.5 h-3.5" />}    rotulo="Semana" />
-            <BotaoVisao ativa={visao === 'dia'}    onClick={() => setVisao('dia')}    icone={<List className="w-3.5 h-3.5" />}       rotulo="Dia" />
-          </div>
-
-          <div className="flex items-center bg-card border border-border rounded-lg p-1">
-            <button onClick={() => navegar(-1)} className="p-2 hover:bg-muted rounded-md text-muted-foreground hover:text-foreground transition-colors" aria-label="Anterior">
-              <ChevronLeft className="w-5 h-5" />
-            </button>
-            <button
-              onClick={() => setReferencia(new Date())}
-              className="flex flex-col items-center justify-center w-48 px-2 hover:bg-muted rounded-md py-1 transition-colors"
-              title="Ir para hoje"
-            >
-              <span className="text-sm font-bold text-foreground capitalize">{rotuloPeriodo(referencia, visao)}</span>
-            </button>
-            <button onClick={() => navegar(1)} className="p-2 hover:bg-muted rounded-md text-muted-foreground hover:text-foreground transition-colors" aria-label="Próximo">
-              <ChevronRight className="w-5 h-5" />
-            </button>
-          </div>
-
-          <div className="flex gap-2">
-            <Button variant="outline" size="icon" onClick={() => void buscar()} title="Recarregar" disabled={carregando}>
-              <RefreshCw className={`w-4 h-4 ${carregando ? 'animate-spin' : ''}`} />
-            </Button>
-            <Button onClick={() => setDataParaCriar(hojeISO)}>
-              <Plus className="w-4 h-4 mr-2" />
-              Agendar
-            </Button>
-          </div>
-        </div>
+      <div>
+        <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
+          <CalendarIcon className="w-7 h-7 text-cyan-500" aria-hidden="true" />
+          Agendamentos
+        </h2>
+        <p className="text-muted-foreground text-sm mt-1 tabular-nums">
+          {carregando && aFrente.length === 0
+            ? 'Carregando…'
+            : `${resumo.hoje} ${resumo.hoje === 1 ? 'agendamento' : 'agendamentos'} hoje · ${resumo.naSemana} nesta semana`}
+        </p>
       </div>
 
-      {/* Área do calendário */}
-      <div className="flex-1 bg-card border border-border rounded-xl overflow-hidden shadow-2xl flex flex-col min-h-0">
-        {erro ? (
-          <div className="flex-1 flex flex-col items-center justify-center gap-3 p-6 text-center">
-            <p className="text-sm text-rose-700 dark:text-rose-200 max-w-md">{erro}</p>
-            <Button variant="outline" onClick={() => void buscar()}>Tentar de novo</Button>
-          </div>
-        ) : carregando && agendamentos.length === 0 ? (
-          <div className="flex-1 flex items-center justify-center">
-            <Loader2 className="w-8 h-8 animate-spin text-cyan-500" />
-          </div>
-        ) : visao === 'mes' ? (
-          <VisaoMes
-            referencia={referencia}
-            porDia={porDia}
-            hojeISO={hojeISO}
-            onClicarDia={setDataParaCriar}
-            onClicarAgendamento={setSelecionado}
-          />
-        ) : visao === 'semana' ? (
-          <VisaoSemana
-            referencia={referencia}
-            porDia={porDia}
-            hojeISO={hojeISO}
-            onClicarDia={setDataParaCriar}
-            onClicarAgendamento={setSelecionado}
-          />
-        ) : (
-          <VisaoDia
-            referencia={referencia}
-            porDia={porDia}
-            onClicarDia={setDataParaCriar}
-            onClicarAgendamento={setSelecionado}
-          />
-        )}
-      </div>
+      <div className="flex-1 min-h-0 flex gap-3">
+        {/* Coluna lateral — só no desktop */}
+        <aside className="hidden lg:flex w-68 shrink-0 flex-col gap-3 min-h-0 overflow-y-auto">
+          <Button size="lg" onClick={novoAgendamento} className="self-start shrink-0 px-6" title="Novo agendamento (N)">
+            <Plus className="w-5 h-5 mr-2" aria-hidden="true" />
+            Agendar
+          </Button>
 
-      {/* Rodapé com contagem — dá noção de volume sem abrir nada */}
-      <div className="mt-3 flex items-center gap-4 text-xs text-muted-foreground/70">
-        <span className="tabular-nums">
-          {agendamentos.length} {agendamentos.length === 1 ? 'agendamento' : 'agendamentos'} na janela
-        </span>
-        {agendamentos.some(a => a.created_by_ai) && (
-          <span className="flex items-center gap-1.5 text-cyan-400">
-            <Bot className="w-3.5 h-3.5" />
-            {agendamentos.filter(a => a.created_by_ai).length} pela atendente virtual
-          </span>
-        )}
+          <div className="rounded-lg bg-card border border-border p-3">
+            <MiniCalendario
+              selecionada={referencia}
+              ocupados={porDia}
+              hojeISO={hojeISO}
+              onSelecionar={d => { setReferencia(d); if (visao === 'mes') setVisao('dia') }}
+            />
+          </div>
+
+          {tiposPresentes.length > 0 && (
+            <ListaFiltro
+              titulo="Tipos"
+              itens={tiposPresentes.map(t => ({ chave: t, rotulo: TIPO_LABEL[t], cor: TIPO_COR[t].ponto }))}
+              ocultos={tiposOcultos}
+              onAlternar={chave => alternar(setTiposOcultos, chave)}
+            />
+          )}
+
+          {profsPresentes.length > 0 && (
+            <ListaFiltro
+              titulo="Profissionais"
+              itens={profsPresentes.map(p => ({ chave: p, rotulo: p || 'Administrativo', cor: 'bg-cyan-600' }))}
+              ocultos={profsOcultos}
+              onAlternar={chave => alternar(setProfsOcultos, chave)}
+            />
+          )}
+
+          <div className="rounded-lg bg-card border border-border py-3">
+            <h3 className="px-4 pb-1 text-sm font-medium text-cyan-700 dark:text-cyan-300">Próximos</h3>
+            {proximos.length === 0 ? (
+              <p className="px-4 py-2 text-sm text-muted-foreground">Nada marcado daqui para frente.</p>
+            ) : (
+              <ul>
+                {proximos.map(a => (
+                  <li key={a.id}>
+                    <button
+                      type="button"
+                      onClick={() => setSelecionado(a)}
+                      className="w-full flex items-start gap-3 px-4 py-2 text-left hover:bg-muted transition-colors"
+                    >
+                      <span className={cn('w-2 h-2 mt-1.5 rounded-full shrink-0', TIPO_COR[a.type].ponto)} aria-hidden="true" />
+                      <span className="min-w-0">
+                        <span className="block text-sm text-foreground truncate">
+                          {a.title}
+                          {a.created_by_ai && (
+                            <Bot className="inline w-3 h-3 ml-1 -mt-0.5 text-muted-foreground" aria-label="Marcado pela atendente virtual" />
+                          )}
+                        </span>
+                        <span className="block text-xs text-muted-foreground tabular-nums">
+                          {quandoCurto(a.date, hojeISO)}{a.time ? ` · ${horaCurta(a.time)}` : ''}
+                        </span>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </aside>
+
+        {/* Calendário */}
+        <section
+          aria-label="Calendário"
+          className="flex-1 min-w-0 min-h-0 rounded-lg bg-card border border-border overflow-hidden flex flex-col"
+        >
+          <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-border bg-muted/40">
+            <Button variant="outline" size="sm" onClick={() => setReferencia(new Date())} title="Hoje (T)">
+              Hoje
+            </Button>
+            <div className="flex">
+              <BotaoRedondo onClick={() => navegar(-1)} rotulo="Anterior" atalho="←">
+                <ChevronLeft className="w-5 h-5" aria-hidden="true" />
+              </BotaoRedondo>
+              <BotaoRedondo onClick={() => navegar(1)} rotulo="Próximo" atalho="→">
+                <ChevronRight className="w-5 h-5" aria-hidden="true" />
+              </BotaoRedondo>
+            </div>
+            <h3 className="text-lg text-foreground truncate min-w-0 flex-1" aria-live="polite">
+              {visao === 'dia' ? (
+                <>
+                  <span className="sm:hidden">{capitalizar(referencia.toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric', month: 'short' }).replace(/\./g, ''))}</span>
+                  <span className="hidden sm:inline">{rotuloPeriodo(referencia, visao)}</span>
+                </>
+              ) : rotuloPeriodo(referencia, visao)}
+            </h3>
+            <BotaoRedondo onClick={() => { void buscar(); void buscarAFrente() }} rotulo="Recarregar" desabilitado={carregando}>
+              <RefreshCw className={cn('w-4 h-4', carregando && 'animate-spin')} aria-hidden="true" />
+            </BotaoRedondo>
+            <div role="radiogroup" aria-label="Visualização" className="flex p-0.5 rounded-full bg-muted border border-border">
+              {VISOES.map(v => (
+                <button
+                  key={v.valor}
+                  type="button"
+                  role="radio"
+                  aria-checked={visao === v.valor}
+                  onClick={() => setVisao(v.valor)}
+                  title={`${v.rotulo} (${v.tecla})`}
+                  className={cn(
+                    'px-3 sm:px-4 h-8 rounded-full text-sm transition-colors',
+                    visao === v.valor
+                      ? 'bg-card text-foreground font-medium shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  {v.rotulo}
+                </button>
+              ))}
+            </div>
+            <Button size="sm" onClick={novoAgendamento} className="lg:hidden" aria-label="Novo agendamento">
+              <Plus className="w-4 h-4 sm:mr-1" aria-hidden="true" />
+              <span className="hidden sm:inline">Agendar</span>
+            </Button>
+          </div>
+
+          {erro ? (
+            <div className="flex-1 flex flex-col items-center justify-center gap-3 p-6 text-center">
+              <CalendarX2 className="w-10 h-10 text-muted-foreground/40" aria-hidden="true" />
+              <p className="text-base text-foreground">Não foi possível carregar a agenda</p>
+              <p className="text-sm text-muted-foreground max-w-md">{erro}</p>
+              <Button variant="outline" onClick={() => void buscar()}>Tentar de novo</Button>
+            </div>
+          ) : carregando && agendamentos.length === 0 ? (
+            <div className="flex-1 flex flex-col items-center justify-center gap-3">
+              <Loader2 className="w-6 h-6 animate-spin text-cyan-500" aria-hidden="true" />
+              <span className="text-sm text-muted-foreground">Carregando agenda…</span>
+            </div>
+          ) : visao === 'mes' ? (
+            <VisaoMes
+              referencia={referencia}
+              doDia={doDia}
+              hojeISO={hojeISO}
+              onCriar={setDataParaCriar}
+              onAbrirDia={abrirDia}
+              onAbrir={setSelecionado}
+            />
+          ) : (
+            <GradeHoraria
+              dias={diasVisiveis}
+              doDia={doDia}
+              onCriar={setDataParaCriar}
+              onAbrirDia={abrirDia}
+              onAbrir={setSelecionado}
+            />
+          )}
+        </section>
       </div>
 
       {dataParaCriar && (
@@ -240,204 +458,424 @@ export default function AgendaCentral() {
 }
 
 // ----------------------------------------------------------------------------
+// Coluna lateral
+// ----------------------------------------------------------------------------
+
+function MiniCalendario({ selecionada, ocupados, hojeISO, onSelecionar }: {
+  selecionada:  Date
+  ocupados:     Map<string, Appointment[]>
+  hojeISO:      string
+  onSelecionar: (d: Date) => void
+}) {
+  const selISO = dataParaISO(selecionada)
+  const [mesVisto, setMesVisto] = useState(() => new Date(selecionada.getFullYear(), selecionada.getMonth(), 1))
+  // Volta ao mês da data em foco sempre que ela muda por fora (Hoje, setas,
+  // atalho). Ajuste durante o render, não em efeito — padrão da doc do React.
+  const [selAnterior, setSelAnterior] = useState(selISO)
+  if (selAnterior !== selISO) {
+    setSelAnterior(selISO)
+    setMesVisto(new Date(selecionada.getFullYear(), selecionada.getMonth(), 1))
+  }
+
+  const mudarMes = (d: number) => setMesVisto(m => new Date(m.getFullYear(), m.getMonth() + d, 1))
+
+  return (
+    <div>
+      <div className="flex items-center justify-between pl-2 mb-1">
+        <span className="text-sm font-medium text-foreground">
+          {capitalizar(mesVisto.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }))}
+        </span>
+        <div className="flex">
+          <BotaoRedondo onClick={() => mudarMes(-1)} rotulo="Mês anterior" pequeno>
+            <ChevronLeft className="w-4 h-4" aria-hidden="true" />
+          </BotaoRedondo>
+          <BotaoRedondo onClick={() => mudarMes(1)} rotulo="Próximo mês" pequeno>
+            <ChevronRight className="w-4 h-4" aria-hidden="true" />
+          </BotaoRedondo>
+        </div>
+      </div>
+      <div className="grid grid-cols-7 text-center">
+        {DIAS_CURTOS.map(d => (
+          <span key={d} className="h-7 flex items-center justify-center text-[11px] text-muted-foreground">
+            {d.charAt(0)}
+          </span>
+        ))}
+        {celulasDoMes(mesVisto).map(d => {
+          const iso = dataParaISO(d)
+          const foraDoMes = d.getMonth() !== mesVisto.getMonth()
+          const ehHoje = iso === hojeISO
+          const ehSelecionado = iso === selISO
+          return (
+            <button
+              key={iso}
+              type="button"
+              onClick={() => onSelecionar(d)}
+              aria-label={d.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
+              aria-current={ehHoje ? 'date' : undefined}
+              className={cn(
+                'relative mx-auto w-8 h-8 rounded-full text-xs tabular-nums flex items-center justify-center transition-colors',
+                ehHoje
+                  ? 'bg-cyan-600 text-white font-semibold'
+                  : ehSelecionado
+                    ? 'bg-cyan-500/15 text-cyan-900 dark:text-cyan-100 font-semibold'
+                    : foraDoMes
+                      ? 'text-muted-foreground/60 hover:bg-muted'
+                      : 'text-foreground hover:bg-muted',
+              )}
+            >
+              {d.getDate()}
+              {ocupados.has(iso) && !ehHoje && (
+                <span className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-cyan-600" aria-hidden="true" />
+              )}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function ListaFiltro({ titulo, itens, ocultos, onAlternar }: {
+  titulo:     string
+  itens:      { chave: string; rotulo: string; cor: string }[]
+  ocultos:    Set<string>
+  onAlternar: (chave: string) => void
+}) {
+  return (
+    <div className="rounded-lg bg-card border border-border py-3">
+      <h3 className="px-4 pb-1 text-sm font-medium text-cyan-700 dark:text-cyan-300">{titulo}</h3>
+      <ul>
+        {itens.map(item => {
+          const marcado = !ocultos.has(item.chave)
+          return (
+            <li key={item.chave || 'sem'}>
+              <button
+                type="button"
+                role="checkbox"
+                aria-checked={marcado}
+                onClick={() => onAlternar(item.chave)}
+                className="w-full flex items-center gap-3 px-4 h-9 text-left text-sm hover:bg-muted transition-colors"
+              >
+                <span className={cn(
+                  'w-4 h-4 rounded shrink-0 flex items-center justify-center border-2 transition-colors',
+                  marcado ? cn(item.cor, 'border-transparent') : 'border-muted-foreground/50',
+                )}>
+                  {marcado && (
+                    <svg viewBox="0 0 12 12" className="w-3 h-3 text-white" aria-hidden="true">
+                      <path d="M2.5 6.2 5 8.5l4.5-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  )}
+                </span>
+                <span className={cn('truncate', marcado ? 'text-foreground' : 'text-muted-foreground')}>
+                  {item.rotulo}
+                </span>
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}
+
+// ----------------------------------------------------------------------------
 // Visões
 // ----------------------------------------------------------------------------
 
 interface VisaoProps {
-  referencia:          Date
-  porDia:              Map<string, Appointment[]>
-  hojeISO?:            string
-  onClicarDia:         (iso: string) => void
-  onClicarAgendamento: (a: Appointment) => void
+  doDia:      (iso: string) => Appointment[]
+  onCriar:    (iso: string) => void
+  onAbrirDia: (d: Date) => void
+  onAbrir:    (a: Appointment) => void
 }
 
-function VisaoMes({ referencia, porDia, hojeISO, onClicarDia, onClicarAgendamento }: VisaoProps) {
-  const ano = referencia.getFullYear()
-  const mes = referencia.getMonth()
-  const diasNoMes    = new Date(ano, mes + 1, 0).getDate()
-  const primeiroDia  = new Date(ano, mes, 1).getDay()
-  // 6 linhas x 7 colunas cobrem qualquer mês; o resto fica como célula vazia.
-  const celulasVazias = 42 - (diasNoMes + primeiroDia)
+function VisaoMes({ referencia, hojeISO, doDia, onCriar, onAbrirDia, onAbrir }: VisaoProps & {
+  referencia: Date
+  hojeISO:    string
+}) {
+  const celulas = celulasDoMes(referencia)
+  const linhas = celulas.length / 7
+  const grade = useRef<HTMLDivElement>(null)
+  const [altura, setAltura] = useState(0)
+
+  // Quantos itens cabem depende da altura real da célula — o mês de 6 linhas
+  // num notebook comporta menos que o de 5 num monitor grande.
+  useEffect(() => {
+    const el = grade.current
+    if (!el) return
+    const obs = new ResizeObserver(([entrada]) => setAltura(entrada.contentRect.height))
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [])
+  const cabem = altura ? Math.max(1, Math.floor((altura / linhas - ALTURA_NUMERO_DIA) / ALTURA_ITEM_MES)) : 3
 
   return (
-    <div className="flex-1 flex flex-col min-h-0">
-      <div className="grid grid-cols-7 border-b border-border bg-card shrink-0">
+    <div className="flex-1 min-h-0 flex flex-col">
+      <div className="grid grid-cols-7 border-b border-border">
         {DIAS_CURTOS.map(d => (
-          <div key={d} className="py-2.5 text-center text-xs font-semibold text-muted-foreground/70 uppercase tracking-wider">
-            {d}
-          </div>
+          <div key={d} className="py-2 text-center text-xs font-medium text-muted-foreground">{d}</div>
         ))}
       </div>
 
-      <div className="grid grid-cols-7 flex-1 auto-rows-fr overflow-y-auto">
-        {Array.from({ length: primeiroDia }).map((_, i) => (
-          <div key={`v-${i}`} className="border-b border-r border-border bg-background min-h-[96px]" />
-        ))}
-
-        {Array.from({ length: diasNoMes }).map((_, i) => {
-          const dia = i + 1
-          const iso = `${ano}-${String(mes + 1).padStart(2, '0')}-${String(dia).padStart(2, '0')}`
-          const doDia = porDia.get(iso) ?? []
+      <div
+        ref={grade}
+        className="grid grid-cols-7 flex-1 min-h-0 overflow-hidden"
+        style={{ gridTemplateRows: `repeat(${linhas}, minmax(0, 1fr))` }}
+      >
+        {celulas.map((d, i) => {
+          const iso = dataParaISO(d)
+          const foraDoMes = d.getMonth() !== referencia.getMonth()
           const ehHoje = iso === hojeISO
+          const itens = doDia(iso)
+          const limite = itens.length > cabem ? cabem - 1 : cabem
+          const mostrados = itens.slice(0, limite)
+          const resto = itens.length - mostrados.length
 
           return (
             <div
               key={iso}
-              onClick={() => onClicarDia(iso)}
-              className={`border-b border-r border-border p-2 min-h-[96px] cursor-pointer transition-colors hover:bg-muted group ${ehHoje ? 'bg-cyan-950/10' : ''}`}
+              onClick={() => onCriar(iso)}
+              className={cn(
+                'group relative min-h-0 overflow-hidden flex flex-col gap-0.5 p-1 border-border cursor-pointer transition-colors hover:bg-muted/50',
+                i % 7 !== 6 && 'border-r',
+                i < celulas.length - 7 && 'border-b',
+                foraDoMes && 'bg-muted/30',
+              )}
             >
-              <span className={`text-xs font-medium w-6 h-6 flex items-center justify-center rounded-full mb-1.5 tabular-nums ${
-                ehHoje ? 'bg-cyan-500 text-white shadow-lg shadow-cyan-500/30' : 'text-muted-foreground group-hover:text-foreground'
-              }`}>
-                {dia}
-              </span>
-              <div className="space-y-1">
-                {doDia.slice(0, 3).map(a => (
+              <button
+                type="button"
+                onClick={e => { e.stopPropagation(); onAbrirDia(d) }}
+                aria-label={`Ver ${d.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}`}
+                aria-current={ehHoje ? 'date' : undefined}
+                className={cn(
+                  'self-center sm:self-start min-w-7 h-7 shrink-0 rounded-full text-[13px] tabular-nums flex items-center justify-center transition-colors',
+                  ehHoje
+                    ? 'bg-cyan-600 text-white font-semibold'
+                    : foraDoMes
+                      ? 'text-muted-foreground/60 hover:bg-muted'
+                      : 'text-foreground hover:bg-muted',
+                )}
+              >
+                {d.getDate() === 1 && !ehHoje ? (
+                  <span className="px-1 whitespace-nowrap">
+                    {d.getDate()} {d.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '')}
+                  </span>
+                ) : d.getDate()}
+              </button>
+
+              {/* Celular: só pontos — o texto não cabe numa coluna de 50 px */}
+              {itens.length > 0 && (
+                <div className="flex sm:hidden justify-center gap-0.5 flex-wrap" aria-label={`${itens.length} agendamentos`}>
+                  {itens.slice(0, 4).map(a => (
+                    <span key={a.id} className={cn('w-1.5 h-1.5 rounded-full', TIPO_COR[a.type].ponto)} />
+                  ))}
+                </div>
+              )}
+
+              <div className="hidden sm:flex flex-col gap-0.5 min-h-0">
+                {mostrados.map(a => (
                   <button
                     key={a.id}
-                    onClick={e => { e.stopPropagation(); onClicarAgendamento(a) }}
-                    className={`w-full text-left text-[10px] px-1.5 py-1 rounded border truncate font-medium transition-colors flex items-center gap-1 ${TIPO_CHIP[a.type]}`}
+                    type="button"
+                    onClick={e => { e.stopPropagation(); onAbrir(a) }}
+                    title={`${horaCurta(a.time)} · ${a.title}`}
+                    className={cn(
+                      'w-full flex items-center gap-1.5 px-1.5 h-5.5 rounded text-xs text-left hover:bg-muted',
+                      encerrado(a) && 'opacity-60',
+                    )}
                   >
-                    {a.created_by_ai && <Bot className="w-2.5 h-2.5 shrink-0" />}
-                    <span className="tabular-nums">{horaCurta(a.time)}</span>
-                    <span className="truncate">{a.profissional_nome ?? a.title}</span>
+                    <span className={cn('w-2 h-2 rounded-full shrink-0', TIPO_COR[a.type].ponto)} aria-hidden="true" />
+                    {a.time && <span className="text-muted-foreground tabular-nums shrink-0">{horaCurta(a.time)}</span>}
+                    <span className={cn('truncate text-foreground', encerrado(a) && 'line-through')}>{a.title}</span>
+                    {a.created_by_ai && (
+                      <Bot className="w-3 h-3 shrink-0 text-muted-foreground" aria-label="Marcado pela atendente virtual" />
+                    )}
                   </button>
                 ))}
-                {doDia.length > 3 && (
-                  <span className="block text-[10px] text-muted-foreground/70 pl-1.5">
-                    +{doDia.length - 3} mais
-                  </span>
+                {resto > 0 && (
+                  <button
+                    type="button"
+                    onClick={e => { e.stopPropagation(); onAbrirDia(d) }}
+                    className="w-full text-left px-1.5 h-5.5 rounded text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+                  >
+                    +{resto} {resto === 1 ? 'outro' : 'outros'}
+                  </button>
                 )}
               </div>
             </div>
           )
         })}
-
-        {Array.from({ length: Math.max(0, celulasVazias) }).map((_, i) => (
-          <div key={`r-${i}`} className="border-b border-r border-border bg-background" />
-        ))}
       </div>
     </div>
   )
 }
 
-function VisaoSemana({ referencia, porDia, hojeISO, onClicarDia, onClicarAgendamento }: VisaoProps) {
-  const inicio = inicioDaSemana(referencia)
-  const dias = Array.from({ length: 7 }).map((_, i) => {
-    const d = new Date(inicio)
-    d.setDate(d.getDate() + i)
-    return d
-  })
-  const horas = Array.from({ length: HORA_FIM - HORA_INICIO + 1 }).map((_, i) => i + HORA_INICIO)
+// Semana e dia: a mesma grade horária com 7 colunas ou 1.
+function GradeHoraria({ dias, doDia, onCriar, onAbrirDia, onAbrir }: VisaoProps & { dias: Date[] }) {
+  const rolagem = useRef<HTMLDivElement>(null)
+  const [agora, setAgora] = useState(() => new Date())
+  useEffect(() => {
+    const t = setInterval(() => setAgora(new Date()), 60_000)
+    return () => clearInterval(t)
+  }, [])
+
+  const umDia = dias.length === 1
+  const primeiroISO = dataParaISO(dias[0])
+  const quantidade = dias.length
+  const agoraISO = dataParaISO(agora)
+  const minutoAgora = agora.getHours() * 60 + agora.getMinutes()
+
+  // Ao trocar de período: se hoje está na tela, rola para perto da hora atual;
+  // senão, para as 07:00 (a clínica abre às 08:00).
+  useEffect(() => {
+    const el = rolagem.current
+    if (!el) return
+    const instante = new Date()
+    const hoje = dataParaISO(instante)
+    const ultimoISO = dataParaISO(somarDias(isoParaData(primeiroISO), quantidade - 1))
+    const contemHoje = hoje >= primeiroISO && hoje <= ultimoISO
+    const alvo = contemHoje ? Math.max(0, instante.getHours() * 60 + instante.getMinutes() - 90) : 7 * 60
+    el.scrollTop = (alvo / 60) * ALTURA_HORA
+  }, [primeiroISO, quantidade])
+
+  // Agendamento sem horário não tem onde cair na grade: vai para a faixa de
+  // cima, como as tarefas do dia na referência.
+  const semHorario = dias.map(d => doDia(dataParaISO(d)).filter(a => !a.time))
+  const temSemHorario = semHorario.some(l => l.length > 0)
+  const colunas = { gridTemplateColumns: `56px repeat(${dias.length}, minmax(0, 1fr))` }
 
   return (
-    <div className="flex-1 overflow-auto bg-card">
-      <div className="grid grid-cols-8 border-b border-border sticky top-0 bg-card z-10">
-        <div className="p-3 text-[10px] font-medium text-muted-foreground/70 border-r border-border">GMT-3</div>
-        {dias.map(d => {
-          const iso = dataParaISO(d)
-          const ehHoje = iso === hojeISO
-          return (
-            <div key={iso} className={`p-2 text-center border-r border-border ${ehHoje ? 'bg-cyan-950/20' : ''}`}>
-              <div className={`text-[10px] uppercase font-semibold ${ehHoje ? 'text-cyan-400' : 'text-muted-foreground/70'}`}>
-                {DIAS_CURTOS[d.getDay()]}
-              </div>
-              <div className={`text-lg font-bold tabular-nums ${ehHoje ? 'text-cyan-500' : 'text-muted-foreground'}`}>
-                {d.getDate()}
-              </div>
-            </div>
-          )
-        })}
-      </div>
-
-      {horas.map(hora => (
-        <div key={hora} className="grid grid-cols-8 min-h-[64px]">
-          <div className="border-r border-b border-border p-2 text-[10px] text-muted-foreground/70 text-right tabular-nums">
-            {String(hora).padStart(2, '0')}:00
-          </div>
+    <div className="flex-1 min-h-0 flex flex-col">
+      <div className="border-b border-border overflow-hidden scrollbar-gutter-stable">
+        <div className="grid" style={colunas}>
+          <div />
           {dias.map(d => {
             const iso = dataParaISO(d)
-            const naHora = (porDia.get(iso) ?? []).filter(a => a.time && parseInt(a.time.slice(0, 2), 10) === hora)
+            const ehHoje = iso === agoraISO
             return (
-              <div
-                key={`${iso}-${hora}`}
-                onClick={() => onClicarDia(iso)}
-                className="border-r border-b border-border p-1 transition-colors hover:bg-muted cursor-pointer space-y-1"
-              >
-                {naHora.map(a => (
-                  <button
-                    key={a.id}
-                    onClick={e => { e.stopPropagation(); onClicarAgendamento(a) }}
-                    className={`w-full text-left p-1.5 rounded text-[10px] border transition-colors ${TIPO_CHIP[a.type]}`}
-                  >
-                    <span className="flex items-center gap-1 font-bold truncate">
-                      {a.created_by_ai && <Bot className="w-2.5 h-2.5 shrink-0" />}
-                      <span className="tabular-nums">{horaCurta(a.time)}</span>
-                    </span>
-                    <span className="block truncate opacity-90">{terapiaCurta(a.terapia_nome) || a.title}</span>
-                  </button>
-                ))}
+              <div key={iso} className={cn('py-2 flex flex-col items-center gap-0.5', umDia && 'items-start pl-3')}>
+                <span className={cn('text-[11px] font-medium uppercase', ehHoje ? 'text-cyan-700 dark:text-cyan-300' : 'text-muted-foreground')}>
+                  {d.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '')}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onAbrirDia(d)}
+                  disabled={umDia}
+                  aria-label={`Ver ${d.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}`}
+                  aria-current={ehHoje ? 'date' : undefined}
+                  className={cn(
+                    'w-10 h-10 rounded-full text-[22px] leading-none tabular-nums flex items-center justify-center transition-colors disabled:cursor-default',
+                    ehHoje ? 'bg-cyan-600 text-white' : 'text-foreground hover:bg-muted disabled:hover:bg-transparent',
+                  )}
+                >
+                  {d.getDate()}
+                </button>
               </div>
             )
           })}
         </div>
-      ))}
-    </div>
-  )
-}
 
-function VisaoDia({ referencia, porDia, onClicarDia, onClicarAgendamento }: VisaoProps) {
-  const iso = dataParaISO(referencia)
-  const doDia = porDia.get(iso) ?? []
-  const horas = Array.from({ length: HORA_FIM - HORA_INICIO + 1 }).map((_, i) => i + HORA_INICIO)
-
-  return (
-    <div className="flex-1 overflow-auto bg-card">
-      <div className="p-4 border-b border-border bg-card sticky top-0 z-10 flex items-center justify-between gap-3">
-        <h3 className="text-lg font-bold text-foreground capitalize">
-          {referencia.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
-        </h3>
-        <span className="text-xs text-muted-foreground/70 tabular-nums">
-          {doDia.length} {doDia.length === 1 ? 'agendamento' : 'agendamentos'}
-        </span>
-      </div>
-
-      <div className="p-4">
-        {horas.map(hora => {
-          const naHora = doDia.filter(a => a.time && parseInt(a.time.slice(0, 2), 10) === hora)
-          return (
-            <div key={hora} className="flex border-b border-border min-h-[72px] group hover:bg-card transition-colors">
-              <div className="w-16 py-3 pr-4 text-right text-xs font-medium text-muted-foreground/70 border-r border-border tabular-nums shrink-0">
-                {String(hora).padStart(2, '0')}:00
-              </div>
-              <div className="flex-1 p-2 space-y-2 cursor-pointer" onClick={() => onClicarDia(iso)}>
-                {naHora.map(a => (
+        {temSemHorario && (
+          <div className="grid" style={colunas}>
+            <div className="text-[10px] text-muted-foreground text-right pr-2 pt-1.5">Sem horário</div>
+            {dias.map((d, i) => (
+              <div key={dataParaISO(d)} className="p-1 flex flex-col gap-0.5 min-w-0 border-l border-border">
+                {semHorario[i].map(a => (
                   <button
                     key={a.id}
-                    onClick={e => { e.stopPropagation(); onClicarAgendamento(a) }}
-                    className={`w-full text-left p-3 rounded-lg border flex flex-wrap justify-between items-center gap-2 transition-colors ${TIPO_CHIP[a.type]}`}
+                    type="button"
+                    onClick={() => onAbrir(a)}
+                    title={a.title}
+                    className={cn(
+                      'w-full px-1.5 h-5.5 rounded text-xs text-left truncate',
+                      TIPO_COR[a.type].suave,
+                      encerrado(a) && 'opacity-60 line-through',
+                    )}
                   >
-                    <span className="min-w-0">
-                      <span className="flex items-center gap-1.5 font-bold text-sm">
-                        {a.created_by_ai && <Bot className="w-3.5 h-3.5 shrink-0" />}
-                        {a.title}
-                      </span>
-                      <span className="block text-xs opacity-80 mt-0.5 truncate">
-                        {[a.profissional_nome, a.sala_nome].filter(Boolean).join(' · ') || 'Administrativo'}
-                      </span>
-                    </span>
-                    <span className="text-right shrink-0">
-                      <span className="block font-mono text-sm tabular-nums">{horaCurta(a.time)}</span>
-                      <span className="block text-[10px] uppercase tracking-wider font-bold opacity-75">
-                        {TIPO_LABEL[a.type]}
-                      </span>
-                    </span>
+                    {a.title}
                   </button>
                 ))}
               </div>
-            </div>
-          )
-        })}
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div ref={rolagem} className="flex-1 min-h-0 overflow-y-auto scrollbar-gutter-stable">
+        <div className="grid relative" style={{ ...colunas, height: 24 * ALTURA_HORA }}>
+          <div className="relative">
+            {HORAS.slice(1).map(h => (
+              <span
+                key={h}
+                className="absolute right-2 -translate-y-1/2 text-[11px] text-muted-foreground tabular-nums"
+                style={{ top: h * ALTURA_HORA }}
+              >
+                {String(h).padStart(2, '0')}:00
+              </span>
+            ))}
+          </div>
+
+          {dias.map(d => {
+            const iso = dataParaISO(d)
+            const blocos = distribuirColunas(doDia(iso).filter(a => a.time))
+            const ehHoje = iso === agoraISO
+            return (
+              <div
+                key={iso}
+                onClick={() => onCriar(iso)}
+                className="relative border-l border-border cursor-pointer"
+                style={{
+                  backgroundImage: `repeating-linear-gradient(to bottom, transparent 0, transparent ${ALTURA_HORA - 1}px, var(--border) ${ALTURA_HORA - 1}px, var(--border) ${ALTURA_HORA}px)`,
+                }}
+              >
+                {blocos.map(({ a, inicio, fim, coluna, colunas: total }) => {
+                  const altura = Math.max(((fim - inicio) / 60) * ALTURA_HORA - 2, 20)
+                  const compacto = altura < 36
+                  // O título já é "Terapia — Profissional"; no dia sobra largura para a sala.
+                  const detalhe = umDia ? a.sala_nome : null
+                  return (
+                    <button
+                      key={a.id}
+                      type="button"
+                      onClick={e => { e.stopPropagation(); onAbrir(a) }}
+                      title={`${horaCurta(a.time)}–${horaFim(a.time, a.duration || DURACAO_PADRAO)} · ${a.title}`}
+                      className={cn(
+                        'absolute rounded-md px-2 text-left overflow-hidden ring-1 ring-card transition-colors z-1',
+                        compacto ? 'py-0.5 flex items-center gap-1.5' : 'py-0.5',
+                        TIPO_COR[a.type].suave,
+                        encerrado(a) && 'opacity-60',
+                      )}
+                      style={{
+                        top:    (inicio / 60) * ALTURA_HORA + 1,
+                        height: altura,
+                        left:   `calc(${(coluna / total) * 100}% + 2px)`,
+                        width:  `calc(${100 / total}% - 4px)`,
+                      }}
+                    >
+                      <span className={cn('block truncate text-xs leading-4 font-semibold', encerrado(a) && 'line-through')}>
+                        {a.created_by_ai && <Bot className="inline w-3 h-3 mr-1 -mt-0.5" aria-label="Marcado pela atendente virtual" />}
+                        {a.title}
+                      </span>
+                      <span className={cn('block truncate text-[11px] leading-3.5 opacity-80 tabular-nums', compacto && 'shrink-0')}>
+                        {horaCurta(a.time)}
+                        {compacto ? '' : ` – ${horaFim(a.time, a.duration || DURACAO_PADRAO)}`}
+                        {!compacto && detalhe ? ` · ${detalhe}` : ''}
+                      </span>
+                    </button>
+                  )
+                })}
+
+                {ehHoje && (
+                  <div className="absolute left-0 right-0 z-2 pointer-events-none" style={{ top: (minutoAgora / 60) * ALTURA_HORA }} aria-hidden="true">
+                    <div className="relative h-0.5 bg-red-500">
+                      <span className="absolute -left-1.5 -top-1.25 w-3 h-3 rounded-full bg-red-500" />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
       </div>
     </div>
   )
@@ -447,59 +885,104 @@ function VisaoDia({ referencia, porDia, onClicarDia, onClicarAgendamento }: Visa
 // Helpers
 // ----------------------------------------------------------------------------
 
-function BotaoVisao({ ativa, onClick, icone, rotulo }: {
-  ativa: boolean; onClick: () => void; icone: React.ReactNode; rotulo: string
+function BotaoRedondo({ onClick, rotulo, atalho, pequeno, desabilitado, children }: {
+  onClick:       () => void
+  rotulo:        string
+  atalho?:       string
+  pequeno?:      boolean
+  desabilitado?: boolean
+  children:      React.ReactNode
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
-      className={`px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-2 transition-all ${
-        ativa ? 'bg-muted text-foreground shadow-sm' : 'text-muted-foreground/70 hover:text-muted-foreground'
-      }`}
+      disabled={desabilitado}
+      aria-label={rotulo}
+      title={atalho ? `${rotulo} (${atalho})` : rotulo}
+      className={cn(
+        'rounded-full flex items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-50',
+        pequeno ? 'w-8 h-8' : 'w-9 h-9',
+      )}
     >
-      {icone} {rotulo}
+      {children}
     </button>
   )
 }
 
-function inicioDaSemana(d: Date): Date {
-  const inicio = new Date(d)
-  inicio.setDate(inicio.getDate() - inicio.getDay())
-  inicio.setHours(0, 0, 0, 0)
-  return inicio
+// Semanas completas (domingo a sábado) que cobrem o mês: 4, 5 ou 6 linhas.
+function celulasDoMes(d: Date): Date[] {
+  const primeiro = new Date(d.getFullYear(), d.getMonth(), 1)
+  const diasNoMes = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()
+  const semanas = Math.ceil((primeiro.getDay() + diasNoMes) / 7)
+  const inicio = inicioDaSemana(primeiro)
+  return Array.from({ length: semanas * 7 }, (_, i) => somarDias(inicio, i))
 }
 
-// Janela buscada no servidor. Margem de alguns dias em cada ponta para que a
-// visão de mês já tenha os dias das semanas que invadem o mês vizinho.
-function calcularJanela(referencia: Date, visao: Visao): { de: string; ate: string } {
-  if (visao === 'mes') {
-    const primeiro = new Date(referencia.getFullYear(), referencia.getMonth(), 1)
-    const ultimo   = new Date(referencia.getFullYear(), referencia.getMonth() + 1, 0)
-    primeiro.setDate(primeiro.getDate() - 7)
-    ultimo.setDate(ultimo.getDate() + 7)
-    return { de: dataParaISO(primeiro), ate: dataParaISO(ultimo) }
+interface Bloco {
+  a:       Appointment
+  inicio:  number
+  fim:     number
+  coluna:  number
+  colunas: number
+}
+
+// Encaixe de horários sobrepostos lado a lado. Os blocos que se encostam em
+// cadeia formam um grupo; dentro dele cada bloco ocupa a primeira coluna livre,
+// e todos dividem a largura pelo número de colunas que o grupo precisou.
+function distribuirColunas(lista: Appointment[]): Bloco[] {
+  const blocos: Bloco[] = lista
+    .map(a => {
+      const inicio = minutosDoDia(a.time)
+      return { a, inicio, fim: Math.max(inicio + (a.duration || DURACAO_PADRAO), inicio + 15), coluna: 0, colunas: 1 }
+    })
+    .sort((x, y) => x.inicio - y.inicio || y.fim - x.fim)
+
+  const saida: Bloco[] = []
+  let grupo: Bloco[] = []
+  let fimPorColuna: number[] = []
+  let fimDoGrupo = -1
+
+  const fechar = () => {
+    for (const b of grupo) b.colunas = fimPorColuna.length
+    saida.push(...grupo)
+    grupo = []
+    fimPorColuna = []
   }
-  if (visao === 'semana') {
-    const inicio = inicioDaSemana(referencia)
-    const fim = new Date(inicio)
-    fim.setDate(fim.getDate() + 6)
-    return { de: dataParaISO(inicio), ate: dataParaISO(fim) }
+
+  for (const b of blocos) {
+    if (b.inicio >= fimDoGrupo && grupo.length) fechar()
+    let c = fimPorColuna.findIndex(fim => fim <= b.inicio)
+    if (c < 0) { c = fimPorColuna.length; fimPorColuna.push(b.fim) }
+    else fimPorColuna[c] = b.fim
+    b.coluna = c
+    grupo.push(b)
+    fimDoGrupo = Math.max(fimDoGrupo, b.fim)
   }
-  const iso = dataParaISO(referencia)
-  return { de: iso, ate: iso }
+  fechar()
+  return saida
 }
 
 function rotuloPeriodo(referencia: Date, visao: Visao): string {
   if (visao === 'mes') {
-    return referencia.toLocaleString('pt-BR', { month: 'long', year: 'numeric' })
+    return capitalizar(referencia.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }))
   }
-  if (visao === 'semana') {
-    const inicio = inicioDaSemana(referencia)
-    const fim = new Date(inicio)
-    fim.setDate(fim.getDate() + 6)
-    const mesInicio = inicio.toLocaleString('pt-BR', { month: 'short' })
-    const mesFim    = fim.toLocaleString('pt-BR', { month: 'short' })
-    return `${inicio.getDate()} ${mesInicio} – ${fim.getDate()} ${mesFim}`
+  if (visao === 'dia') {
+    return capitalizar(referencia.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }))
   }
-  return referencia.toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric', month: 'long' })
+  const inicio = inicioDaSemana(referencia)
+  const fim = somarDias(inicio, 6)
+  const mesCurto = (d: Date) => d.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '')
+  return inicio.getMonth() === fim.getMonth()
+    ? `${inicio.getDate()} – ${fim.getDate()} de ${mesCurto(fim)} de ${fim.getFullYear()}`
+    : `${inicio.getDate()} ${mesCurto(inicio)} – ${fim.getDate()} ${mesCurto(fim)} de ${fim.getFullYear()}`
+}
+
+// "Hoje", "Amanhã" ou "Qua, 8 out"
+function quandoCurto(iso: string, hojeISO: string): string {
+  if (iso === hojeISO) return 'Hoje'
+  if (iso === dataParaISO(somarDias(isoParaData(hojeISO), 1))) return 'Amanhã'
+  return capitalizar(
+    isoParaData(iso).toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric', month: 'short' }).replace(/\./g, ''),
+  )
 }

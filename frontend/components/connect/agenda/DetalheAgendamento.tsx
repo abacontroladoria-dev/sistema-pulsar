@@ -1,12 +1,21 @@
 'use client'
 
 import React, { useState } from 'react'
-import { Bot, CalendarDays, Clock, Link2, MapPin, Stethoscope, User, UserCircle, X } from 'lucide-react'
+import Link from 'next/link'
+import {
+  AlignLeft, Bot, Briefcase, Check, Clock, Link2, Loader2, MapPin,
+  MessageCircle, Stethoscope, User, UserX, Users, XCircle,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/nina/Button'
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
+import { cn } from '@/lib/utils'
 import type { Appointment } from '@/modules/atendimento/types/central.types'
 import { AgendamentoApiError, cancelarAgendamento, atualizarAgendamento } from '@/services/connect/agendamentos'
-import { horaCurta, horaFim, isoParaBR, STATUS_LABEL, TIPO_CHIP, TIPO_LABEL } from './tipos'
+import {
+  dataPorExtenso, duracaoPorExtenso, DURACAO_PADRAO, horaCurta, horaFim,
+  STATUS_LABEL, TIPO_COR, TIPO_LABEL,
+} from './tipos'
 
 // ============================================================================
 // DetalheAgendamento
@@ -15,6 +24,9 @@ import { horaCurta, horaFim, isoParaBR, STATUS_LABEL, TIPO_CHIP, TIPO_LABEL } fr
 // para /meeting/{id} — rota que não existe neste app (404). Numa clínica
 // presencial o dado equivalente é onde a sessão acontece: profissional, sala,
 // unidade. É isso que este painel mostra.
+//
+// Forma no molde do detalhe da agenda do Integra Connect: título grande com o
+// quadrado da cor, linhas com ícone e a barra de ações no rodapé.
 //
 // Cancelar não apaga: muda status para 'cancelled', o que devolve a vaga à
 // grade (o predicado de uq_appointments_slot_ocupada exclui cancelados) e
@@ -27,14 +39,31 @@ interface Props {
   onAlterado:  (a: Appointment) => void
 }
 
+type Acao = 'cancelar' | Appointment['status']
+
+const STATUS_SELO: Record<string, string> = {
+  scheduled: 'bg-muted text-muted-foreground',
+  confirmed: 'bg-sky-500/15 text-sky-800 dark:text-sky-200',
+  completed: 'bg-emerald-500/15 text-emerald-800 dark:text-emerald-200',
+  no_show:   'bg-amber-500/15 text-amber-800 dark:text-amber-200',
+  cancelled: 'bg-rose-500/15 text-rose-800 dark:text-rose-200',
+}
+
 export default function DetalheAgendamento({ agendamento: a, onFechar, onAlterado }: Props) {
-  const [ocupado, setOcupado] = useState(false)
+  const [emAndamento, setEmAndamento] = useState<Acao | null>(null)
+  // O modal abre por estado, sem DialogTrigger, e o radix não devolve o foco
+  // nesse arranjo: guarda quem estava focado (o bloco clicado) para devolver.
+  const [gatilho] = useState(() =>
+    typeof document !== 'undefined' ? (document.activeElement as HTMLElement | null) : null,
+  )
 
   const ocupaVaga = a.profissional_id != null
+  const duracao = a.duration || DURACAO_PADRAO
+  const fechado = a.status === 'completed' || a.status === 'no_show'
 
   async function cancelar() {
     if (!confirm('Cancelar este agendamento? A vaga volta a ficar disponível na grade.')) return
-    setOcupado(true)
+    setEmAndamento('cancelar')
     try {
       const atualizado = await cancelarAgendamento(a.id)
       toast.success('Agendamento cancelado — vaga liberada')
@@ -43,12 +72,12 @@ export default function DetalheAgendamento({ agendamento: a, onFechar, onAlterad
     } catch (err) {
       toast.error(err instanceof AgendamentoApiError ? err.message : 'Não foi possível cancelar')
     } finally {
-      setOcupado(false)
+      setEmAndamento(null)
     }
   }
 
   async function mudarStatus(status: Appointment['status']) {
-    setOcupado(true)
+    setEmAndamento(status)
     try {
       const atualizado = await atualizarAgendamento(a.id, { status })
       toast.success(`Marcado como ${STATUS_LABEL[status] ?? status}`)
@@ -56,147 +85,171 @@ export default function DetalheAgendamento({ agendamento: a, onFechar, onAlterad
     } catch (err) {
       toast.error(err instanceof AgendamentoApiError ? err.message : 'Não foi possível atualizar')
     } finally {
-      setOcupado(false)
+      setEmAndamento(null)
     }
   }
 
+  const ocupado = emAndamento !== null
+  const girando = (acao: Acao, icone: React.ReactNode) =>
+    emAndamento === acao ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" aria-hidden="true" /> : icone
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-      <div className="bg-card border border-border rounded-xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-        {/* Cabeçalho */}
-        <div className="p-5 border-b border-border">
-          <div className="flex justify-between items-start mb-3 gap-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase border ${TIPO_CHIP[a.type]}`}>
-                {TIPO_LABEL[a.type]}
-              </span>
-              <span className="px-2 py-1 rounded text-[10px] font-bold uppercase border bg-muted text-muted-foreground border-border">
-                {STATUS_LABEL[a.status] ?? a.status}
-              </span>
-              {a.created_by_ai && (
-                <span className="px-2 py-1 rounded text-[10px] font-bold uppercase border bg-cyan-500/10 text-cyan-700 dark:text-cyan-200 border-cyan-500/30 flex items-center gap-1">
-                  <Bot className="w-3 h-3" /> Atendente virtual
+    <Dialog open onOpenChange={aberto => { if (!aberto && !ocupado) onFechar() }}>
+      <DialogContent
+        className="sm:max-w-md p-0 gap-0 overflow-hidden bg-card"
+        onCloseAutoFocus={e => {
+          if (!gatilho?.isConnected) return
+          e.preventDefault()
+          gatilho.focus()
+        }}
+      >
+        <div className="max-h-[85vh] overflow-y-auto">
+          {/* Cabeçalho */}
+          <div className="px-6 pt-6 pb-4 pr-12 flex items-start gap-4">
+            <span className={cn('w-4 h-4 mt-1.5 rounded shrink-0', TIPO_COR[a.type].ponto)} aria-hidden="true" />
+            <div className="min-w-0">
+              <DialogTitle className={cn(
+                'text-[22px] leading-tight font-normal text-foreground wrap-break-word',
+                (fechado || a.status === 'cancelled') && 'line-through text-muted-foreground',
+              )}>
+                {a.title}
+              </DialogTitle>
+              <DialogDescription className="mt-1 text-sm text-muted-foreground tabular-nums">
+                {dataPorExtenso(a.date)} · {horaCurta(a.time)}
+                {a.time ? ` – ${horaFim(a.time, duracao)}` : ''}
+              </DialogDescription>
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                <span className="px-2 h-6 rounded-full text-xs font-medium flex items-center bg-muted text-foreground">
+                  {TIPO_LABEL[a.type]}
+                </span>
+                <span className={cn('px-2 h-6 rounded-full text-xs font-medium flex items-center', STATUS_SELO[a.status] ?? STATUS_SELO.scheduled)}>
+                  {STATUS_LABEL[a.status] ?? a.status}
+                </span>
+                {a.created_by_ai && (
+                  <span className="px-2 h-6 rounded-full text-xs font-medium flex items-center gap-1 bg-cyan-500/15 text-cyan-800 dark:text-cyan-200">
+                    <Bot className="w-3 h-3" aria-hidden="true" /> Atendente virtual
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Corpo */}
+          <div className="px-6 pb-5 space-y-4">
+            <Linha icone={Clock}>{duracaoPorExtenso(duracao)}</Linha>
+
+            {/* Onde e com quem — o que substitui a "sala de reunião" do CRM */}
+            {ocupaVaga ? (
+              <>
+                <Linha icone={User}>
+                  <span className="text-muted-foreground">Profissional: </span>
+                  {a.profissional_nome ?? '—'}
+                </Linha>
+                <Linha icone={Stethoscope}>{a.terapia_nome ?? '—'}</Linha>
+                {a.sala_nome && <Linha icone={MapPin}>{a.sala_nome}</Linha>}
+              </>
+            ) : (
+              <Linha icone={Briefcase}>
+                <span className="text-muted-foreground">
+                  Compromisso administrativo — não ocupa vaga de terapia na grade.
+                </span>
+              </Linha>
+            )}
+
+            {a.conversation_id && (
+              <Linha icone={MessageCircle}>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">Conversa no atendimento</span>
+                  <Link
+                    href={`/connect/inbox?c=${a.conversation_id}`}
+                    className="shrink-0 inline-flex items-center h-8 px-3 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                  >
+                    Abrir conversa
+                  </Link>
+                </div>
+              </Linha>
+            )}
+
+            {a.attendees && a.attendees.length > 0 && (
+              <Linha icone={Users}>{a.attendees.join(', ')}</Linha>
+            )}
+
+            {a.description && (
+              <Linha icone={AlignLeft}>
+                <p className="whitespace-pre-wrap wrap-break-word">{a.description}</p>
+              </Linha>
+            )}
+
+            {/* Vínculo com o TiTa
+                tita_session_id só é preenchido depois que a sessão é criada lá.
+                Enquanto for nulo, este agendamento é uma promessa nossa que ainda
+                não existe na agenda oficial — a recepção precisa ver isso. */}
+            <Linha icone={Link2}>
+              {a.tita_session_id != null ? (
+                <span className="text-emerald-700 dark:text-emerald-200">
+                  Sessão {a.tita_session_id} vinculada no TiTa
+                </span>
+              ) : (
+                <span className="text-amber-700 dark:text-amber-200">
+                  Ainda não lançado no TiTa — precisa ser criado lá para valer na agenda oficial.
                 </span>
               )}
-            </div>
-            <button onClick={onFechar} className="text-muted-foreground hover:text-foreground transition-colors shrink-0" aria-label="Fechar">
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-
-          <h3 className="text-xl font-bold text-foreground mb-3">{a.title}</h3>
-
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm text-muted-foreground">
-            <span className="flex items-center gap-1.5">
-              <CalendarDays className="w-4 h-4 text-cyan-500" />
-              {isoParaBR(a.date)}
-            </span>
-            <span className="flex items-center gap-1.5 tabular-nums">
-              <Clock className="w-4 h-4 text-cyan-500" />
-              {horaCurta(a.time)}
-              {a.duration ? ` – ${horaFim(a.time, a.duration)} (${a.duration}min)` : ''}
-            </span>
-          </div>
-        </div>
-
-        {/* Corpo */}
-        <div className="p-5 space-y-5">
-          {/* Onde e com quem — o que substitui a "sala de reunião" do CRM */}
-          {ocupaVaga ? (
-            <div className="space-y-2">
-              <h4 className="text-xs font-bold uppercase text-muted-foreground/70 tracking-wider">Sessão</h4>
-              <div className="bg-background border border-border rounded-lg divide-y divide-border">
-                <Linha icone={<User className="w-4 h-4 text-cyan-500" />} rotulo="Profissional" valor={a.profissional_nome} />
-                <Linha icone={<Stethoscope className="w-4 h-4 text-cyan-500" />} rotulo="Terapia" valor={a.terapia_nome} />
-                <Linha icone={<MapPin className="w-4 h-4 text-cyan-500" />} rotulo="Sala" valor={a.sala_nome} />
-              </div>
-            </div>
-          ) : (
-            <p className="text-xs text-muted-foreground/70 bg-background border border-border rounded-lg p-3">
-              Compromisso administrativo — não ocupa vaga de terapia na grade.
-            </p>
-          )}
-
-          {a.description && (
-            <div className="space-y-2">
-              <h4 className="text-xs font-bold uppercase text-muted-foreground/70 tracking-wider">Observações</h4>
-              <p className="text-sm text-muted-foreground leading-relaxed bg-background p-3 rounded-lg border border-border">
-                {a.description}
-              </p>
-            </div>
-          )}
-
-          {a.attendees && a.attendees.length > 0 && (
-            <div className="space-y-2">
-              <h4 className="text-xs font-bold uppercase text-muted-foreground/70 tracking-wider">Participantes</h4>
-              <div className="flex flex-wrap gap-2">
-                {a.attendees.map((p, i) => (
-                  <span key={i} className="flex items-center gap-1.5 bg-muted px-2.5 py-1 rounded-full border border-border text-xs text-foreground">
-                    <UserCircle className="w-3.5 h-3.5 text-muted-foreground" />
-                    {p}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Vínculo com o TiTa
-              tita_session_id só é preenchido depois que a sessão é criada lá.
-              Enquanto for nulo, este agendamento é uma promessa nossa que ainda
-              não existe na agenda oficial — a recepção precisa ver isso. */}
-          <div className="space-y-2">
-            <h4 className="text-xs font-bold uppercase text-muted-foreground/70 tracking-wider">Registro no TiTa</h4>
-            {a.tita_session_id != null ? (
-              <p className="flex items-center gap-2 text-sm text-emerald-700 dark:text-emerald-200 bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-3">
-                <Link2 className="w-4 h-4 shrink-0" />
-                Sessão {a.tita_session_id} vinculada
-              </p>
-            ) : (
-              <p className="flex items-center gap-2 text-sm text-amber-700 dark:text-amber-200 bg-amber-500/5 border border-amber-500/20 rounded-lg p-3">
-                <Link2 className="w-4 h-4 shrink-0" />
-                Ainda não lançado no TiTa — precisa ser criado lá para valer na agenda oficial.
-              </p>
-            )}
+            </Linha>
           </div>
 
           {/* Ações */}
           {a.status !== 'cancelled' && (
-            <div className="space-y-2 pt-1">
-              <div className="grid grid-cols-2 gap-2">
+            <div className="px-4 py-3 flex flex-wrap items-center gap-1 border-t border-border bg-muted/40">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={ocupado}
+                onClick={cancelar}
+                title="Cancela e devolve a vaga à grade"
+                className="hover:bg-red-500/10 hover:text-red-600"
+              >
+                {girando('cancelar', <XCircle className="w-4 h-4 mr-1.5" aria-hidden="true" />)}
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={ocupado}
+                onClick={() => mudarStatus('no_show')}
+                title="Registrar falta também libera o horário"
+              >
+                {girando('no_show', <UserX className="w-4 h-4 mr-1.5" aria-hidden="true" />)}
+                Falta
+              </Button>
+              <div className="ml-auto flex items-center gap-1">
                 {a.status !== 'confirmed' && (
-                  <Button type="button" variant="outline" disabled={ocupado} onClick={() => mudarStatus('confirmed')}>
+                  <Button type="button" variant="outline" size="sm" disabled={ocupado} onClick={() => mudarStatus('confirmed')}>
+                    {girando('confirmed', null)}
                     Confirmar
                   </Button>
                 )}
                 {a.status !== 'completed' && (
-                  <Button type="button" variant="outline" disabled={ocupado} onClick={() => mudarStatus('completed')}>
+                  <Button type="button" size="sm" disabled={ocupado} onClick={() => mudarStatus('completed')}>
+                    {girando('completed', <Check className="w-4 h-4 mr-1.5" aria-hidden="true" />)}
                     Marcar realizado
                   </Button>
                 )}
-                <Button type="button" variant="outline" disabled={ocupado} onClick={() => mudarStatus('no_show')}>
-                  Registrar falta
-                </Button>
-                <Button type="button" variant="danger" disabled={ocupado} onClick={cancelar}>
-                  Cancelar
-                </Button>
               </div>
-              <p className="text-[11px] text-muted-foreground/70">
-                Cancelar devolve a vaga à grade. Registrar falta também libera o horário.
-              </p>
             </div>
           )}
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 
-function Linha({ icone, rotulo, valor }: { icone: React.ReactNode; rotulo: string; valor: string | null }) {
+function Linha({ icone: Icone, children }: { icone: React.ElementType; children: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-3 p-3">
-      <span className="shrink-0">{icone}</span>
-      <span className="text-[11px] uppercase tracking-wider text-muted-foreground/70 w-24 shrink-0">{rotulo}</span>
-      <span className="text-sm text-foreground min-w-0 flex-1">{valor ?? '—'}</span>
+    <div className="flex items-start gap-4">
+      <Icone className="w-5 h-5 mt-0.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+      <div className="flex-1 min-w-0 text-[15px] text-foreground">{children}</div>
     </div>
   )
 }
