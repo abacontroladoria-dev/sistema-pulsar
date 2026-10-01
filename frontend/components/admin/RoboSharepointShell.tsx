@@ -1,14 +1,15 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Bot, CalendarClock, CheckCircle2, ChevronDown, ClipboardList, FlaskConical, FolderSearch, Gauge, History, Loader2, Play, ShieldCheck, TriangleAlert, Wrench, XCircle } from 'lucide-react'
+import { Bot, CalendarClock, CheckCircle2, ChevronDown, ClipboardList, FlaskConical, Gauge, History, Loader2, Play, ShieldCheck, TriangleAlert, Wrench, XCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 import { useHeader } from '@/contexts/HeaderContext'
 import { ComoFunciona } from '@/components/admin/roboSharepoint/ComoFunciona'
 import { EntregaAutomatica } from '@/components/admin/roboSharepoint/EntregaAutomatica'
 import { useUsuarioAtual } from '@/hooks/useUsuarioAtual'
-import { CartaoEtapa, LinhaDoTempo } from '@/components/admin/roboSharepoint/LinhaDoTempo'
+import { LinhaDoTempo } from '@/components/admin/roboSharepoint/LinhaDoTempo'
+import { DestaqueLeitura } from '@/components/admin/roboSharepoint/DestaqueLeitura'
 import { HistoricoExecucoes } from '@/components/admin/roboSharepoint/HistoricoExecucoes'
 import { FilaNaoReconhecidos, resumoPendencias } from '@/components/admin/roboSharepoint/FilaNaoReconhecidos'
 import { CustoExecucao } from '@/components/admin/roboSharepoint/CustoExecucao'
@@ -160,29 +161,15 @@ export default function RoboSharepointShell() {
 
       {erro && <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{erro}</p>}
 
+      {/* 1ª coisa da página: o resultado da leitura do SharePoint, sem o
+          tempo da etapa (esse fica na linha do tempo, em Informações técnicas). */}
+      {!carregando && <DestaqueLeitura execucao={ultima} onAbrir={etapa => ultima && setDetalhe({ execucao: ultima, etapa })} />}
+
       <section className={cartao}>
         {carregando ? <p className="text-sm text-slate-500">Carregando…</p> : <EstadoAgora saude={saude} ultima={ultima} />}
       </section>
 
       <EntregaAutomatica ehAdmin={role === 'admin'} />
-
-      {/* Cópia avulsa do card "2 · Listar o SharePoint" (pedido de 01/10/2026):
-          o mesmo componente e o mesmo dado (ultima) da linha do tempo em
-          "Informações técnicas", então as duas nunca divergem. */}
-      <section className={cartao} aria-labelledby="titulo-listar">
-        <Titulo icone={FolderSearch} extra={ultima && (
-          <span className="text-xs text-slate-500">{executando ? 'lendo agora' : dataHora(ultima.iniciado_em)}</span>
-        )}>
-          <span id="titulo-listar">O que o robô encontrou no SharePoint</span>
-        </Titulo>
-        <div className="grid gap-4 md:grid-cols-[minmax(0,20rem)_1fr] md:items-center">
-          <CartaoEtapa execucao={ultima} etapa="listar" onAbrir={etapa => ultima && setDetalhe({ execucao: ultima, etapa })} />
-          <p className="text-sm leading-relaxed text-slate-600">
-            Quantos arquivos novos ou alterados e quantas pastas o robô viu na última leitura do site.
-            {' '}Toque em <strong className="font-semibold text-slate-800">Ver o que foi lido</strong> para abrir a lista, arquivo por arquivo.
-          </p>
-        </div>
-      </section>
 
       <ComoFunciona />
 
