@@ -1,9 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { ClipboardList } from 'lucide-react'
 import { DestaqueLeitura } from './DestaqueLeitura'
-import { FilaNaoReconhecidos, resumoPendencias } from './FilaNaoReconhecidos'
+import { FilaNaoReconhecidos } from './FilaNaoReconhecidos'
 import { DetalheExecucaoDrawer } from './detalhe/DetalheExecucaoDrawer'
 import { AvisosEvidencias } from './historico/AvisosEvidencias'
 import { useRoboSharepoint } from '@/hooks/useRoboSharepoint'
@@ -70,13 +69,8 @@ export function RoboNaPep({ onCarregado, competencia, analistas }: { onCarregado
           : null} />
       <AvisosEvidencias cartao={cartao} />
 
+      {/* O título, o "?" e o progresso moram dentro da fila (redesenho de 02/10/2026). */}
       <section className={cartao} aria-labelledby="titulo-precisa-de-voce">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-          <h2 id="titulo-precisa-de-voce" className="flex items-center gap-2 text-base font-bold text-slate-800">
-            <ClipboardList className="h-4 w-4 text-brand-fg" aria-hidden /> O que precisa de você
-          </h2>
-          <span className="text-xs text-slate-500">{resumoPendencias(pendencias, itensPresos)}</span>
-        </div>
         <FilaNaoReconhecidos fila={pendencias} itens={itensPresos} onAtualizar={carregarPendencias} />
       </section>
 
