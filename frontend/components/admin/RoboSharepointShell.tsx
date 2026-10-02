@@ -8,6 +8,8 @@ import Link from 'next/link'
 import { useHeader } from '@/contexts/HeaderContext'
 import { ComoFunciona, OQueEnxergaEComoDecide } from '@/components/admin/roboSharepoint/ComoFunciona'
 import { EntregaAutomatica } from '@/components/admin/roboSharepoint/EntregaAutomatica'
+import { AlertaFreio } from '@/components/admin/roboSharepoint/historico/AlertaFreio'
+import { HistoricoMudancas } from '@/components/admin/roboSharepoint/historico/HistoricoMudancas'
 import { useUsuarioAtual } from '@/hooks/useUsuarioAtual'
 import { LinhaDoTempo } from '@/components/admin/roboSharepoint/LinhaDoTempo'
 import { execucoesDeReferencia } from '@/lib/roboSharepoint/referencias'
@@ -83,7 +85,7 @@ function EstadoAgora({ saude, ultima }: { saude: RoboSaude | null; ultima: RoboE
         <div>
           <dt className="text-xs text-slate-500">Execução</dt>
           <dd className="font-semibold text-slate-800">
-            Diariamente, às 03:00 (GMT-3)
+            Diariamente, às 03:00 (GMT-3), lendo o site inteiro
             {saude?.proxima && <span className="block text-xs font-normal text-slate-500">próxima: {dataHora(saude.proxima)}</span>}
           </dd>
         </div>
@@ -161,11 +163,16 @@ export default function RoboSharepointShell() {
         <ArrowRight className="h-4 w-4 shrink-0 text-brand-fg transition-transform group-hover:translate-x-0.5 motion-reduce:transform-none" aria-hidden />
       </Link>
 
+      <AlertaFreio ehAdmin={role === 'admin'} recarregarEm={ultimaConcluida?.id ?? null} />
+
       <section className={cartao}>
         {carregando ? <p className="text-sm text-slate-500">Carregando…</p> : <EstadoAgora saude={saude} ultima={ultima} />}
       </section>
 
-      <EntregaAutomatica ehAdmin={role === 'admin'} />
+      {/* O que mudou nas evidências (o retrato fica na tela Entregas PEP). */}
+      <HistoricoMudancas />
+
+      <EntregaAutomatica />
 
       <ComoFunciona />
 
@@ -239,8 +246,8 @@ export default function RoboSharepointShell() {
       <p className="flex items-start gap-2 text-xs leading-relaxed text-slate-500">
         <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
         O robô só lê um site do SharePoint (permissão Sites.Selected, papel leitura), entra com certificado e fala com o
-        Pulsar por um token próprio, revogável. Com a entrega automática ligada, ele marca a entrega de quem segue o padrão de
-        nome (em roxo, na tela Entregas PEP); o RP desfaz quando ele errar, e tudo fica no histórico.
+        Pulsar por um token próprio, revogável. Ele marca a entrega de quem segue o padrão de nome (em roxo, na tela Entregas
+        PEP); o RP desfaz quando ele errar. Se a evidência sair da pasta, a entrega acompanha — e tudo fica no histórico.
       </p>
     </div>
   )
