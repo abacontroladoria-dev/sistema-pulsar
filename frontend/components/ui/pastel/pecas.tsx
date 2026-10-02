@@ -89,22 +89,31 @@ export function avisoFeito(texto: string) {
 
 // ── Anel de progresso ────────────────────────────────────────────────────────
 
-export function AnelProgresso({ feitas, total }: { feitas: number; total: number }) {
+export function AnelProgresso({ feitas, total, rotulo = 'feitas', texto, t = 'verde' }: {
+  feitas: number
+  total: number
+  /** Linha pequena embaixo do número. */
+  rotulo?: string
+  /** No lugar de "X/Y" (ex.: "62%"). */
+  texto?: string
+  t?: Tom
+}) {
   const R = 26
   const C = 2 * Math.PI * R
-  const frac = total > 0 ? Math.min(1, feitas / total) : 0
+  const frac = total > 0 ? Math.min(1, Math.max(0, feitas / total)) : 0
+  const principal = texto ?? `${numero(feitas)}/${numero(total)}`
   return (
-    <div className="flex items-center gap-3" role="img" aria-label={`${feitas} de ${total} feitas`}>
+    <div className={`${tom(t)} flex items-center gap-3`} role="img" aria-label={texto ? `${texto} ${rotulo}` : `${feitas} de ${total} ${rotulo}`}>
       <svg width="60" height="60" viewBox="0 0 60 60" className="pp-anel -rotate-90" aria-hidden>
         <circle cx="30" cy="30" r={R} fill="none" stroke="var(--pp-muted)" strokeWidth="8" />
         <circle
-          cx="30" cy="30" r={R} fill="none" stroke="var(--pp-verde)" strokeWidth="8" strokeLinecap="round"
+          cx="30" cy="30" r={R} fill="none" stroke={t === 'verde' ? 'var(--pp-verde)' : 'var(--c-medio)'} strokeWidth="8" strokeLinecap="round"
           strokeDasharray={C} strokeDashoffset={C * (1 - frac)}
         />
       </svg>
       <div className="leading-none">
-        <p className="text-[22px] font-extrabold tabular-nums">{numero(feitas)}/{numero(total)}</p>
-        <p className="mt-1 text-xs font-semibold text-[var(--pp-ink-muted)]">feitas</p>
+        <p className="text-[22px] font-extrabold tabular-nums">{principal}</p>
+        <p className="mt-1 text-xs font-semibold text-[var(--pp-ink-muted)]">{rotulo}</p>
       </div>
     </div>
   )
