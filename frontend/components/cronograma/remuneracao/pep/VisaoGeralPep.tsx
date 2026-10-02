@@ -26,7 +26,6 @@ import {
 import { fmt } from "@/lib/remuneracao/formatacao"
 import type { Tone } from "@/hooks/useToneColor"
 import { usePepVisaoGeral } from "@/hooks/usePepVisaoGeral"
-import { StatusChip } from "@/components/ui/tones"
 import { SeletorMesPrevisao } from "@/components/cronograma/indicadores/SeletorMesPrevisao"
 import {
   AnelProgresso, BarraPastel, CabecalhoPastel, NumeroPastel, SecaoPastel, iniciais, tom,
@@ -128,8 +127,8 @@ export function faturamentoDaCompetencia(competencia: string) {
 export function NotaFaturamento({ competencia }: { competencia: string }) {
   const f = faturamentoDaCompetencia(competencia)
   return (
-    <span className="text-xs text-muted-foreground">
-      → faturamento em <span className="font-semibold text-foreground">{f.mesFaturamento}</span>
+    <span className="text-xs text-[var(--pp-ink-muted)]">
+      → faturamento em <span className="font-semibold text-[var(--pp-ink)]">{f.mesFaturamento}</span>
       <span className="hidden sm:inline"> · liberar até {f.limiteLiberacao}</span>
     </span>
   )
@@ -151,17 +150,17 @@ export function BarraCompetencia({ competencia, onMudarMes, carregando, modoTest
   const [ano, mes] = competencia.split("-").map(Number)
   const emAndamento = competencia === competenciaAtual()
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-border bg-card px-4 py-3 shadow-sm md:px-5">
-      <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Mês de atendimento</span>
+    <div className="pp flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-[var(--pp-border)] bg-[var(--pp-surface)] px-4 py-3 shadow-[var(--pp-sombra)] md:px-5">
+      <span className="text-xs font-semibold uppercase tracking-wider text-[var(--pp-ink-muted)]">Mês de atendimento</span>
       <SeletorMesPrevisao ano={ano} mes={mes} onChange={onMudarMes} />
       <NotaFaturamento competencia={competencia} />
-      <StatusChip tone={emAndamento ? "blue" : "gray"}>
+      <span className={`${tom(emAndamento ? "pessoa" : "cinza")} pp-selo`}>
         <CalendarDays size={11} aria-hidden />
         {emAndamento ? "Atendimentos em andamento" : "Atendimentos encerrados"}
-      </StatusChip>
-      {modoTeste && <StatusChip tone="amber">Modo teste</StatusChip>}
+      </span>
+      {modoTeste && <span className={`${tom("amber")} pp-selo`}>Modo teste</span>}
       {carregando && (
-        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <span className="flex items-center gap-1.5 text-xs text-[var(--pp-ink-muted)]">
           <Loader2 size={12} className="animate-spin" aria-hidden /> Carregando grade…
         </span>
       )}

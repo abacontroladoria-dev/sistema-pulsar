@@ -16,6 +16,7 @@ import { DatePicker } from "@/components/ui/date-picker"
 import { PepHistoricoModal } from "./PepHistoricoModal"
 import { BarraCompetencia, NotaFaturamento, VisaoGeralPep, faturamentoDaCompetencia } from "./pep/VisaoGeralPep"
 import { ExplicacaoPepTooltip } from "./pep/ExplicacaoPepTooltip"
+import { tom } from "@/components/ui/pastel/pecas"
 import { analistasDaGrade, pacientesCCDoProfissional } from "@/lib/remuneracao/visaoGeralPep"
 import { COMPETENCIA_TESTE_PEP, calcularAjusteRecorrentes } from "@/lib/remuneracao/calculoPEP"
 import type { PepCatalogoItem, PepEvidencia, PepPlanejamentoSemestral, PepRegistroEntrega, PepStatusEntrega } from "@/types/pep"
@@ -28,6 +29,7 @@ import { resolverItem, reverterEntregaRobo } from "@/services/roboSharepoint.ser
 import { conferirMes, listarConferencias } from "@/services/pepSituacao.service"
 import type { ConferenciaMes } from "@/lib/remuneracao/situacaoEntregasPep"
 import type { SpItem } from "@/types/roboSharepoint"
+import { AnelProgresso, tom } from "@/components/ui/pastel/pecas"
 
 // Motivo gravado na trilha de auditoria quando a entrega vem de uma sugestão
 // do robô SharePoint (a pessoa que clicou em "Confirmar" é quem fica como autora).
@@ -961,22 +963,10 @@ export function PepEntregasTab() {
 
 function IndicadorProgresso({ completos, total }: { completos: number; total: number }) {
   if (total === 0) return null
-  const pct = Math.round((completos / total) * 100)
   const tudoPronto = completos === total
   return (
-    <div className="min-w-[190px]">
-      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-        Itens completos
-      </p>
-      <p className="text-lg font-bold text-foreground">
-        {completos} <span className="text-sm font-medium text-muted-foreground">de {total}</span>
-      </p>
-      <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted">
-        <div
-          className={`h-full rounded-full transition-all ${tudoPronto ? "bg-emerald-600 dark:bg-emerald-500" : "bg-[#222847] dark:bg-slate-400"}`}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
+    <div className="min-w-[160px] pr-4 border-r border-[var(--pp-border)]">
+      <AnelProgresso feitas={completos} total={total} rotulo="itens completos" t={tudoPronto ? "verde" : "azul"} />
     </div>
   )
 }
@@ -1011,9 +1001,9 @@ function CabecalhoEntregasMensais({
 }) {
   const errosVisiveis = erros.filter(Boolean)
   return (
-    <div className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 bg-muted/30 px-5 py-2.5">
-        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+    <div className="pp rounded-2xl border border-[var(--pp-border)] bg-[var(--pp-surface)] shadow-[var(--pp-sombra)] overflow-hidden">
+      <div className={`${tom("cinza")} flex flex-wrap items-center gap-x-3 gap-y-1.5 bg-[var(--c-suave)] px-5 py-2.5`}>
+        <span className="text-[13px] font-extrabold text-[var(--pp-ink-muted)]">
           Mês de atendimento
         </span>
         <SeletorMesPrevisao
@@ -1023,46 +1013,46 @@ function CabecalhoEntregasMensais({
         />
         <NotaFaturamento competencia={competencia} />
         {carregandoLabel && (
-          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Loader2 size={12} className="animate-spin" />
+          <span className="flex items-center gap-1.5 text-xs text-[var(--pp-ink-muted)]">
+            <Loader2 size={12} className="animate-spin motion-reduce:animate-none" />
             {carregandoLabel}
           </span>
         )}
       </div>
 
       {(progresso.total > 0 || mostrarValores) && (
-      <div className="flex flex-wrap items-center gap-x-8 gap-y-4 border-t border-border px-5 py-4">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-4 border-t border-[var(--pp-border)] px-5 py-4">
         <IndicadorProgresso completos={progresso.completos} total={progresso.total} />
         {mostrarValores && (
           <>
             <div>
-              <p className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              <p className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-widest text-[var(--pp-ink-muted)]">
                 Potencial do mês
-                {apuracaoLoading && <Loader2 size={11} className="animate-spin" />}
+                {apuracaoLoading && <Loader2 size={11} className="animate-spin motion-reduce:animate-none" />}
               </p>
-              <p className={`text-lg font-bold text-foreground transition-opacity ${apuracaoLoading ? "opacity-40" : ""}`}>
+              <p className={`text-[22px] font-extrabold tabular-nums text-[var(--pp-ink)] transition-opacity ${apuracaoLoading ? "opacity-40" : ""}`}>
                 {money(potencial)}
               </p>
             </div>
             <div>
-              <p className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              <p className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-widest text-[var(--pp-ink-muted)]">
                 Alcançado (apurado)
-                {apuracaoLoading && <Loader2 size={11} className="animate-spin" />}
+                {apuracaoLoading && <Loader2 size={11} className="animate-spin motion-reduce:animate-none" />}
               </p>
-              <p className={`text-lg font-bold text-emerald-600 dark:text-emerald-400 transition-opacity ${apuracaoLoading ? "opacity-40" : ""}`}>
+              <p className={`text-[22px] font-extrabold tabular-nums text-[var(--pp-verde-tinta)] transition-opacity ${apuracaoLoading ? "opacity-40" : ""}`}>
                 {money(alcancado)}
               </p>
             </div>
             <div className="ml-auto flex items-center gap-3">
               {liberado ? (
                 <>
-                  <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                  <span className={`${tom("verde")} pp-selo`}>
                     <Check size={13} /> Faturamento liberado
                   </span>
                   <button
                     type="button"
                     onClick={onReabrir}
-                    className="px-3 py-1.5 rounded-lg text-xs font-bold border border-border text-foreground bg-background hover:bg-muted/50"
+                    className={`${tom("cinza")} pp-btn pp-btn-suave !h-8 !px-3 !text-[12px]`}
                   >
                     Reabrir
                   </button>
@@ -1070,9 +1060,9 @@ function CabecalhoEntregasMensais({
               ) : (
                 <>
                 {conferencia ? (
-                  <span className="inline-flex flex-wrap items-center gap-2 rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-800 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-300">
+                  <span className={`${tom("verde")} pp-selo`}>
                     <Check size={13} /> Conferido{conferencia.conferido_por_nome ? ` por ${conferencia.conferido_por_nome}` : ""} em {new Date(conferencia.conferido_em).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}
-                    <button type="button" disabled={conferindo} onClick={() => onConferir(false)} className="font-bold underline disabled:opacity-50">Desfazer</button>
+                    <button type="button" disabled={conferindo} onClick={() => onConferir(false)} className="ml-2 font-bold underline disabled:opacity-50">Desfazer</button>
                   </span>
                 ) : (
                   <button
@@ -1080,7 +1070,7 @@ function CabecalhoEntregasMensais({
                     disabled={conferindo}
                     title={conferenciaInvalidada ? "Uma entrega mudou depois da última conferência" : "Registra que você conferiu as entregas deste analista no mês"}
                     onClick={() => onConferir(true)}
-                    className="min-h-11 px-3 py-1.5 rounded-lg text-xs font-bold border border-sky-300 text-sky-800 bg-background hover:bg-sky-50 disabled:opacity-50 dark:border-sky-800 dark:text-sky-300 dark:hover:bg-sky-950"
+                    className={`${tom("pessoa")} pp-btn pp-btn-suave !h-8 !px-3 !text-[12px]`}
                   >
                     {conferindo ? "Salvando…" : conferenciaInvalidada ? "Conferir de novo" : "Marcar como conferido"}
                   </button>
@@ -1090,7 +1080,7 @@ function CabecalhoEntregasMensais({
                   disabled={apuracaoLoading}
                   title={apuracaoLoading ? "Aguarde a apuração terminar de calcular" : undefined}
                   onClick={onLiberar}
-                  className="px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-emerald-600 hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:opacity-40"
+                  className={`${tom("verde")} pp-btn !h-8 !px-3 !text-[12px]`}
                 >
                   Liberar Faturamento
                 </button>
@@ -1103,15 +1093,15 @@ function CabecalhoEntregasMensais({
       )}
 
       {modoTeste && (
-        <p className="border-t border-amber-300 bg-amber-50 px-5 py-2.5 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
-          <span className="font-bold">Modo teste (PRD Seção 13.7):</span> {COMPETENCIA_TESTE_PEP} apura e demonstra os ajustes, mas paga 100% do potencial — por isso &quot;Alcançado&quot; ainda não reflete pendências. Os ajustes passam a valer a partir do mês seguinte.
-        </p>
+        <div className={`${tom("amber")} border-t border-[var(--c-linha)] bg-[var(--c-suave)] px-5 py-3 text-xs text-[var(--c-tinta)]`}>
+          <span className="font-extrabold">Modo teste (PRD Seção 13.7):</span> {COMPETENCIA_TESTE_PEP} apura e demonstra os ajustes, mas paga 100% do potencial — por isso &quot;Alcançado&quot; ainda não reflete pendências. Os ajustes passam a valer a partir do mês seguinte.
+        </div>
       )}
 
       {errosVisiveis.length > 0 && (
-        <div className="border-t border-border px-5 py-2.5 space-y-1">
+        <div className={`${tom("vermelho")} border-t border-[var(--c-linha)] bg-[var(--c-suave)] px-5 py-3 space-y-1`}>
           {errosVisiveis.map((e, i) => (
-            <p key={i} className="text-sm text-red-600 dark:text-red-400">{e}</p>
+            <p key={i} className="text-sm font-semibold text-[var(--c-tinta)]">{e}</p>
           ))}
         </div>
       )}
@@ -1130,18 +1120,18 @@ function SeletorPrestador({ analistas, prestador, onChange, onHistoricoGeral, on
   carregando?: boolean
 }) {
   return (
-    <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+    <div className="pp rounded-2xl border border-[var(--pp-border)] bg-[var(--pp-surface)] p-5 shadow-[var(--pp-sombra)]">
       <div className="mb-2 flex items-center justify-between gap-2">
-        <label className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+        <label className="flex items-center gap-1.5 text-[13px] font-extrabold text-[var(--pp-ink-muted)]">
           Analista do Comportamento
-          {carregando && <Loader2 size={11} className="animate-spin" />}
+          {carregando && <Loader2 size={11} className="animate-spin motion-reduce:animate-none" />}
         </label>
         <div className="flex flex-wrap items-center justify-end gap-2">
           {onVisaoGeral && (
             <button
               type="button"
               onClick={onVisaoGeral}
-              className="flex items-center gap-1.5 rounded-lg border border-blue-200 px-2.5 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50 dark:border-blue-900 dark:text-blue-400 dark:hover:bg-blue-950/40"
+              className={`flex items-center gap-1.5 pp-pilula h-8 px-2.5 pl-1.5 text-[12px] ${tom("pessoa")}`}
             >
               <LayoutDashboard size={12} /> Visão geral do mês
             </button>
@@ -1150,7 +1140,7 @@ function SeletorPrestador({ analistas, prestador, onChange, onHistoricoGeral, on
             <button
               type="button"
               onClick={onHistoricoPrestador}
-              className="flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-muted/50"
+              className={`flex items-center gap-1.5 pp-pilula h-8 px-2.5 pl-1.5 text-[12px] ${tom("aco")}`}
             >
               <History size={12} /> Histórico
             </button>
@@ -1158,7 +1148,7 @@ function SeletorPrestador({ analistas, prestador, onChange, onHistoricoGeral, on
           <button
             type="button"
             onClick={onHistoricoGeral}
-            className="flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-muted/50"
+            className={`flex items-center gap-1.5 pp-pilula h-8 px-2.5 pl-1.5 text-[12px] ${tom("aco")}`}
           >
             <History size={12} /> Histórico geral
           </button>
