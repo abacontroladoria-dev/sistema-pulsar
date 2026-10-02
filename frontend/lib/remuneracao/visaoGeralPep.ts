@@ -18,6 +18,7 @@
 import type { ProfRemunReal } from "./calculo"
 import { COMPETENCIA_TESTE_PEP } from "./calculoPEP"
 import type { PepApuracaoLinhaCompetencia } from "@/services/pepApuracao.service"
+import type { SituacaoEntregasAnalista } from "./situacaoEntregasPep"
 
 export const ESPECIALIDADE_PEP = "Coordenador de Caso"
 
@@ -45,10 +46,15 @@ export function analistasDaGrade(resultado: Pick<ProfRemunReal, "prof" | "sessoe
 
 // ─── Resumo da competência ──────────────────────────────────────────────────
 
-export type StatusApuracaoAnalista = "nao_aberto" | "parcial" | "apurado" | "liberado"
+/**
+ * Status do analista no mês = o que as PESSOAS já fizeram com as entregas
+ * (situacaoEntregasPep.ts), e não se o sistema já gravou um cálculo.
+ * "sem_dados" só aparece se as entregas não puderam ser lidas.
+ */
+export type StatusApuracaoAnalista = "sem_dados" | "faltam_entregas" | "entregas_completas" | "conferido" | "liberado"
 
 /** Ordem da tabela: o que falta fazer primeiro. */
-export const ORDEM_STATUS: StatusApuracaoAnalista[] = ["nao_aberto", "parcial", "apurado", "liberado"]
+export const ORDEM_STATUS: StatusApuracaoAnalista[] = ["sem_dados", "faltam_entregas", "entregas_completas", "conferido", "liberado"]
 
 export type AnalistaPep = {
   nome: string
@@ -68,8 +74,11 @@ export type AnalistaPep = {
   /** Parte do valor das entregas creditada a unidades do robô / de pessoas. */
   valorRobo: number
   valorHumano: number
+  /** Pacientes da Grade sem valor calculado ainda — um aviso, não um status. */
   pacientesSemApuracao: string[]
   status: StatusApuracaoAnalista
+  /** O que a situação das entregas encontrou (null sem dados). */
+  situacao: SituacaoEntregasAnalista | null
 }
 
 export type LinhaForaDaGrade = { prestador: string; paciente: string; valorLiquido: number }
@@ -110,18 +119,20 @@ export type ResumoPep = {
 const chave = (prestador: string, paciente: string) => `${prestador}\u0000${paciente}`
 const n = (v: unknown) => Number(v) || 0
 
-export function resumoPepCompetencia({ analistas, linhas, valorPorPaciente, competencia }: {
+export function resumoPepCompetencia({ analistas, linhas, valorPorPaciente, competencia, situacao }: {
   analistas: AnalistaDaGrade[]
   linhas: PepApuracaoLinhaCompetencia[]
   valorPorPaciente: number
   competencia: string
+  /** Situação das entregas por analista (situacaoEntregasPorAnalista). Sem ela, "sem_dados". */
+  situacao?: Map<string, SituacaoEntregasAnalista> | null
 }): ResumoPep {
   const porChave = new Map<string, PepApuracaoLinhaCompetencia>()
   for (const l of linhas) porChave.set(chave(l.prestador_nome, l.paciente_nome), l)
 
   const casadas = new Set<string>()
   const descontos = { total: 0, recorrentes: 0, semestrais: 0, saldoAnterior: 0, devolucao: 0 }
-  const porStatus: Record<StatusApuracaoAnalista, number> = { nao_aberto: 0, parcial: 0, apurado: 0, liberado: 0 }
+  const porStatus: Record<StatusApuracaoAnalista, number> = { sem_dados: 0, faltam_entregas: 0, entregas_completas: 0, conferido: 0, liberado: 0 }
   let teto = 0, apurado = 0, naoApurado = 0, pacientesNaoApurados = 0
   let roboTotal = 0, humanoTotal = 0
 
@@ -153,11 +164,13 @@ export function resumoPepCompetencia({ analistas, linhas, valorPorPaciente, comp
       if (l.estado === "liberado") liberadas++
     }
     const comLinha = a.pacientes.length - semApuracao.length
+    const sit = situacao?.get(a.nome) ?? null
     const status: StatusApuracaoAnalista =
-      comLinha === 0 ? "nao_aberto"
-      : semApuracao.length > 0 ? "parcial"
-      : liberadas === comLinha ? "liberado"
-      : "apurado"
+      comLinha > 0 && semApuracao.length === 0 && liberadas === comLinha ? "liberado"
+      : !sit ? "sem_dados"
+      : sit.conferido ? "conferido"
+      : sit.unidadesFaltando + sit.semestraisVencidas + sit.sugestoesEsperando > 0 ? "faltam_entregas"
+      : "entregas_completas"
 
     teto += tetoA
     apurado += apuradoA
@@ -181,6 +194,7 @@ export function resumoPepCompetencia({ analistas, linhas, valorPorPaciente, comp
       valorHumano: humanoA,
       pacientesSemApuracao: semApuracao,
       status,
+      situacao: sit,
     }
   })
 

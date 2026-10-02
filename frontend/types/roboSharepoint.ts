@@ -155,7 +155,8 @@ export type DetalhePlanilha =
   | { usada: false; motivo: string }
 
 export type ArquivoLido = {
-  execucao_id: string
+  /** null = estado atual da pasta (vw_sp_pep_arquivos_atuais, 20261003100000). */
+  execucao_id: string | null
   sp_id: string
   nome: string
   caminho: string | null
@@ -185,6 +186,8 @@ export type ResumoPrestadorLido = {
 
 export type ResumoExecucao = {
   registrado: boolean
+  /** true = o que está na pasta agora, não o que uma execução leu (20261003100000). */
+  estado_atual?: boolean
   total: number
   por_tipo: Partial<Record<TipoArquivoLido, number>>
   por_sigla: Record<string, number>
@@ -245,6 +248,10 @@ export type ArquivoLidoCompleto = ArquivoLido & {
   resolvido_em: string | null
   visto_primeiro_em: string | null
   novo: boolean | null
+  /** Só no estado atual (20261003100000). */
+  entregue_por?: 'robo' | 'humano' | null
+  padrao?: 'ok' | 'fora' | 'rep' | 'duplicado' | null
+  visto_ultimo_em?: string | null
 }
 
 export type NoPasta = {
@@ -300,4 +307,91 @@ export type RoboSaude = {
   erro_fatal?: string | null
   certificado_dias_restantes?: number | null
   versao?: string
+}
+
+// ── Estado atual e histórico das evidências (migration 20261003100000) ───────
+
+export type EventoEvidenciaTipo =
+  | 'apareceu' | 'sumiu' | 'voltou' | 'renomeou' | 'moveu' | 'deixou_de_ser_evidencia'
+  | 'saiu_do_padrao' | 'entrega_desfeita' | 'mes_liberado_mantido'
+
+/** Uma linha de sp_pep_evidencias_historico: a fotografia da evidência no momento. */
+export type EventoEvidencia = {
+  id: number
+  sp_id: string
+  evento: EventoEvidenciaTipo
+  em: string
+  execucao_id: string | null
+  nome: string | null
+  nome_anterior: string | null
+  caminho: string | null
+  caminho_anterior: string | null
+  web_url: string | null
+  prestador_pasta_id: string | null
+  prestador_nome: string | null
+  paciente_nome: string | null
+  sigla: string | null
+  competencia: string | null
+  criado_em_sp: string | null
+  criado_por: string | null
+  situacao: SpItemStatus | null
+  entregue_por: 'robo' | 'humano' | null
+  entregue_em: string | null
+  registro_entrega_id: string | null
+  unidades_antes: number | null
+  unidades_depois: number | null
+  detalhe: {
+    motivo?: 'arquivo_removido' | 'saiu_da_pasta_do_item'
+    padrao?: string
+    padrao_anterior?: string
+    registro_excluido?: boolean
+    registro_ja_nao_existia?: boolean
+    competencia_liberada?: string
+  } | null
+}
+
+export type PontoHistoricoEvidencias = {
+  /** 'AAAA-MM-DD' (dia) ou 'AAAA-MM' (mês). */
+  periodo: string
+  apareceram: number
+  sumiram: number
+  voltaram: number
+  mudaram: number
+  entregas_desfeitas: number
+  mantidas_mes_liberado: number
+  /** Evidências na pasta no último retrato do período; null = o robô não tirou retrato. */
+  na_pasta: number | null
+  entregues_robo: number | null
+  entregues_pessoa: number | null
+  retrato_dia: string | null
+}
+
+export type HistoricoEvidencias = {
+  grao: 'dia' | 'mes'
+  serie: PontoHistoricoEvidencias[]
+  totais: {
+    apareceram: number
+    sumiram: number
+    voltaram: number
+    mudaram: number
+    entregas_desfeitas: number
+    mantidas_mes_liberado: number
+    sumiram_em_ate_7_dias: number
+    sumiram_depois_de_entregues: number
+  }
+  prestadores: string[]
+  primeiro_retrato: string | null
+  primeiro_evento: string | null
+}
+
+/** Leitura completa que achou sumidos demais: nada foi apagado até um admin confirmar. */
+export type RemocaoSuspensa = {
+  execucao_id: string
+  em: string
+  evidencias: number
+  evidencias_total: number
+  arquivos: number
+  arquivos_total: number
+  pastas: number
+  pastas_total: number
 }

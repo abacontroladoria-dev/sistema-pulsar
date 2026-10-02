@@ -1,7 +1,9 @@
 /**
  * Processo do container no Coolify.
  *
- * - Agenda interna: uma vez por dia, 03:00 de Brasília (HORARIOS).
+ * - Agenda interna: uma vez por dia, 03:00 de Brasília (HORARIOS), lendo o
+ *   site inteiro (LEITURA_COMPLETA_NA_AGENDA). O "Executar agora" lê só o
+ *   que mudou.
  * - Gatilho "Executar agora": POST /executar, chamado SÓ pelo servidor do
  *   Pulsar (rota /api/robo-sharepoint/executar), pela rede interna do Docker.
  *   O container não tem domínio nem porta publicada; o segredo no cabeçalho é
@@ -13,7 +15,7 @@
 
 const http = require('http')
 const crypto = require('crypto')
-const { carregarConfig, proximaExecucao } = require('./lib/config')
+const { carregarConfig, proximaExecucao, leituraCompleta } = require('./lib/config')
 const { criarAutenticador } = require('./lib/auth')
 const { Graph } = require('./lib/graph')
 const { Api } = require('./lib/api')
@@ -46,7 +48,8 @@ async function rodar(gatilho, { solicitadoPorNome = null } = {}) {
   console.log(`▶ execução (${gatilho}) iniciada`)
 
   const graph = new Graph(() => auth.obterToken())
-  executar({ graph, api, config: { ...config, credencial: auth.credencial }, gatilho, solicitadoPorNome })
+  const forcarCompleta = leituraCompleta(gatilho, config)
+  executar({ graph, api, config: { ...config, credencial: auth.credencial, forcarCompleta }, gatilho, solicitadoPorNome })
     .then(r => {
       estado.ultima = { status: r.status, em: new Date(), duracao_ms: r.metricas.duracao_ms }
       const m = r.metricas

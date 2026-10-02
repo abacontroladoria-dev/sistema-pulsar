@@ -86,6 +86,7 @@ Gera `docs/INVENTARIO_SHAREPOINT_PEP.md`: contagens e percentuais, sem nome, CPF
    | `SHAREPOINT_CERT_B64` | certificado de **produção** em base64 (comando abaixo) |
    | `ROBO_TRIGGER_SECRET` | segredo aleatório (comando abaixo) |
    | `HORARIOS` | `03:00` (uma vez por dia, depois da sincronização da Grade das 02:00; é o padrão, pode omitir) |
+   | `LEITURA_COMPLETA_NA_AGENDA` | `sim` (padrão, pode omitir). Desde o robô 0.4.0, a execução agendada lê o site **inteiro** (~10 s): a tela PEP é o retrato da pasta e só a leitura completa enxerga tudo o que sumiu. O "Executar agora" continua lendo só o que mudou. `nao` volta ao delta diário. **Só suba o 0.4.0 depois da migration `20261003100000`**, que tem o freio contra "sumiço em massa". |
    | `SHAREPOINT_SOMENTE_PASTA` | id da pasta de teste **durante a homologação**; apagar para ir a produção |
 
    **Nunca** `SUPABASE_SERVICE_ROLE_KEY` neste recurso.

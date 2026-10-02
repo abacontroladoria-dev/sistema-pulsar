@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { proximaExecucao, lerHorarios } = require('../lib/config')
+const { proximaExecucao, lerHorarios, carregarConfig, leituraCompleta } = require('../lib/config')
 
 const H = lerHorarios('04:00,12:00,15:00')
 
@@ -26,4 +26,15 @@ test('padrão: uma vez por dia, 03:00 de Brasília', () => {
   assert.deepEqual(padrao, [{ h: 3, m: 0 }])
   // 30/09 10:00 BRT → amanhã 03:00 BRT = 06:00 UTC
   assert.equal(proximaExecucao(padrao, new Date('2026-09-30T13:00:00Z')).toISOString(), '2026-10-01T06:00:00.000Z')
+})
+
+test('agenda lê o site inteiro; "Executar agora" e demo leem só o que mudou', () => {
+  const padrao = carregarConfig({})
+  assert.equal(padrao.leituraCompletaNaAgenda, true)
+  assert.equal(leituraCompleta('agenda', padrao), true)
+  assert.equal(leituraCompleta('manual', padrao), false)
+  assert.equal(leituraCompleta('demo', padrao), false)
+  // Volta ao delta diário só se alguém pedir.
+  const delta = carregarConfig({ LEITURA_COMPLETA_NA_AGENDA: 'NAO' })
+  assert.equal(leituraCompleta('agenda', delta), false)
 })

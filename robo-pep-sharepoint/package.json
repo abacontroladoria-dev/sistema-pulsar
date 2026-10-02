@@ -1,6 +1,6 @@
 {
   "name": "robo-pep-sharepoint",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Le o repositorio de documentos dos prestadores no SharePoint (so leitura) e sugere evidencias na tela PEP do Pulsar. Fala com o Supabase apenas pelas RPCs robo_pep_*.",
   "main": "worker.js",
   "private": true,

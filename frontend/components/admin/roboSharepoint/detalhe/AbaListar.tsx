@@ -20,6 +20,8 @@ export function AbaListar({ execucao, etapa, resumo, competencia, simples = fals
 }) {
   const d = (etapa?.detalhe ?? {}) as Record<string, number | string>
   const completa = d.leitura === 'completa'
+  // Estado atual (20261003100000): o retrato da pasta, não uma leitura.
+  const atual = d.leitura === 'atual'
   const [filtro, setFiltro] = useState<FiltroArquivos>({})
   const [destaque, setDestaque] = useState<'com' | 'sem' | null>(null)
   const comArquivo = resumo.prestadores.filter(p => p.arquivos > 0).length
@@ -41,17 +43,25 @@ export function AbaListar({ execucao, etapa, resumo, competencia, simples = fals
 
   return (
     <div className="space-y-5">
-      <Lead>
-        {completa ? 'Leitura completa: ' : 'Só o que mudou desde a leitura anterior: '}
-        o robô percorreu <strong className="font-semibold text-foreground">{numero(pastasTotal)} pastas</strong> e encontrou{' '}
-        <strong className="font-semibold text-foreground">{numero(resumo.total)} arquivo(s)</strong>{simples ? '' : ` em ${segundos(etapa?.duracao_ms, 2)}`}.
-        Nada é baixado nesta etapa: ele lê só nome, pasta, data e autor de cada arquivo.
-      </Lead>
+      {atual ? (
+        <Lead>
+          O que está no SharePoint agora: <strong className="font-semibold text-foreground">{numero(pastasTotal)} pastas</strong> e{' '}
+          <strong className="font-semibold text-foreground">{numero(resumo.total)} arquivo(s)</strong>, de todos os prestadores.
+          É o retrato da última leitura; o que entrou, saiu ou mudou de nome fica no histórico de mudanças.
+        </Lead>
+      ) : (
+        <Lead>
+          {completa ? 'Leitura completa: ' : 'Só o que mudou desde a leitura anterior: '}
+          o robô percorreu <strong className="font-semibold text-foreground">{numero(pastasTotal)} pastas</strong> e encontrou{' '}
+          <strong className="font-semibold text-foreground">{numero(resumo.total)} arquivo(s)</strong>{simples ? '' : ` em ${segundos(etapa?.duracao_ms, 2)}`}.
+          Nada é baixado nesta etapa: ele lê só nome, pasta, data e autor de cada arquivo.
+        </Lead>
+      )}
 
       {!simples && <>
       <Ladrilhos>
         <Ladrilho icone={FolderTree} tom="gray" valor={pastasTotal} rotulo="pastas percorridas" />
-        <Ladrilho icone={Files} tom="blue" valor={resumo.total} rotulo="arquivos encontrados" sub={completa ? 'leitura completa' : 'só o que mudou'} />
+        <Ladrilho icone={Files} tom="blue" valor={resumo.total} rotulo="arquivos encontrados" sub={atual ? 'na pasta agora' : completa ? 'leitura completa' : 'só o que mudou'} />
         <Ladrilho icone={Cloud} tom="gray" valor={execucao.metricas?.chamadas_graph ?? 0} rotulo="chamadas à Microsoft" />
         <Ladrilho icone={Download} tom="gray" valor={kb} rotulo="KB recebidos" formato={n => `${numero(n)}`} />
       </Ladrilhos>

@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { Bot, Check, ExternalLink, Hourglass, Loader2, RotateCcw, Undo2, User, X } from "lucide-react"
+import { Bot, Check, ExternalLink, FileX2, Hourglass, Loader2, RotateCcw, Undo2, User, X } from "lucide-react"
 import { nomeEsperado, porQueEsperando } from "@/lib/roboSharepoint/rotulos"
 import type { PepCatalogoItem } from "@/types/pep"
 import type { SpItem } from "@/types/roboSharepoint"
@@ -14,12 +14,14 @@ import { ORIGEM, SeloUnidade } from "./origem"
 //   • a lista do que o robô entregou, com o arquivo a um clique e "Desfazer";
 //   • o que está esperando uma pessoa (fora do padrão, sem planejamento…),
 //     com o motivo, o nome que o arquivo deveria ter e "Marcar como entrega";
-//   • o que alguém já desfez, com quem e por quê.
+//   • o que alguém já desfez, com quem e por quê;
+//   • as entregas que saíram junto com a evidência apagada do SharePoint
+//     (20261003100000: a entrega acompanha a pasta, do robô ou de pessoa).
 // Roxo = robô, azul = pessoa (./origem).
 
 export type AvaliacaoSugestao = { pode: true } | { pode: false; motivo: string }
 
-type Aba = "robo" | "esperando" | "desfeitas"
+type Aba = "robo" | "esperando" | "desfeitas" | "sairam"
 
 const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
 
@@ -70,13 +72,15 @@ export function EvidenciasSharepoint({ itens, catalogo, avaliar, onConfirmar, on
   const doRobo = useMemo(() => itens.filter(i => i.status === "confirmado" && i.entregue_por === "robo"), [itens])
   const esperando = useMemo(() => itens.filter(i => i.status === "sugerido"), [itens])
   const desfeitas = useMemo(() => itens.filter(i => i.status === "revertido"), [itens])
+  // Entregues e depois apagados do SharePoint: a unidade saiu (o robô retirou).
+  const sairam = useMemo(() => itens.filter(i => i.status === "removido" && !!i.entregue_por), [itens])
   const [escolhida, setEscolhida] = useState<Aba | null>(null)
   const aba: Aba = escolhida ?? (esperando.length > 0 ? "esperando" : "robo")
   const [ocupado, setOcupado] = useState<string | null>(null)
   const [desfazendo, setDesfazendo] = useState<string | null>(null)
   const [motivo, setMotivo] = useState("")
 
-  if (itens.length === 0) return null
+  if (doRobo.length + esperando.length + desfeitas.length + sairam.length === 0) return null
 
   const aprovadas = doRobo.length + desfeitas.length
   const acerto = aprovadas > 0 ? Math.round((doRobo.length / aprovadas) * 100) : null
@@ -93,6 +97,7 @@ export function EvidenciasSharepoint({ itens, catalogo, avaliar, onConfirmar, on
     { id: "robo", rotulo: "Robô entregou", n: doRobo.length, icone: Bot },
     { id: "esperando", rotulo: "Esperando você", n: esperando.length, icone: Hourglass },
     { id: "desfeitas", rotulo: "Desfeitas", n: desfeitas.length, icone: Undo2 },
+    ...(sairam.length ? [{ id: "sairam" as const, rotulo: "Saíram da pasta", n: sairam.length, icone: FileX2 }] : []),
   ]
 
   return (
@@ -147,11 +152,16 @@ export function EvidenciasSharepoint({ itens, catalogo, avaliar, onConfirmar, on
                   <div className="min-w-0">
                     <p className="text-sm font-bold text-foreground">{titulo(i)}</p>
                     <p className="truncate text-xs text-muted-foreground" title={i.nome}>{i.nome}</p>
-                    <p className="text-[11px] text-muted-foreground">Entregue pelo robô em {dataBR(i.resolvido_em)}{i.removido_em ? " · arquivo apagado do SharePoint depois" : ""}</p>
+                    <p className="text-[11px] text-muted-foreground">Entregue pelo robô em {dataBR(i.resolvido_em)}</p>
+                    {i.removido_em && (
+                      <p className="text-[11px] font-semibold text-amber-800 dark:text-amber-300">
+                        Arquivo apagado do SharePoint em {dataBR(i.removido_em)} — o mês está liberado, então a entrega fica.
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <BotaoArquivo url={i.web_url} />
+                  {!i.removido_em && <BotaoArquivo url={i.web_url} />}
                   {!liberado && (
                     <button type="button" onClick={() => { setDesfazendo(desfazendo === i.sp_id ? null : i.sp_id); setMotivo("") }}
                       className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-rose-200 bg-white px-3 text-sm font-semibold text-rose-700 hover:bg-rose-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand dark:border-rose-900 dark:bg-slate-900 dark:text-rose-300">
@@ -245,6 +255,30 @@ export function EvidenciasSharepoint({ itens, catalogo, avaliar, onConfirmar, on
               <BotaoArquivo url={i.web_url} />
             </li>
           ))}
+
+          {aba === "sairam" && sairam.map(i => {
+            const quem = i.entregue_por === "robo" ? "robo" : "humano"
+            return (
+              <li key={i.sp_id} className="flex min-w-0 items-start gap-3 px-4 py-3">
+                <span className="flex size-[22px] shrink-0 items-center justify-center rounded-full bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300"><FileX2 size={13} aria-hidden /></span>
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-foreground">{titulo(i)}</p>
+                  <p className="truncate text-xs text-muted-foreground line-through decoration-slate-400" title={i.nome}>{i.nome}</p>
+                  <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-slate-700 dark:text-slate-300">
+                    <span className={`inline-flex items-center gap-1 font-semibold ${ORIGEM[quem].texto}`}>
+                      {quem === "robo" ? <Bot size={12} aria-hidden /> : <User size={12} aria-hidden />} Entregue por {quem === "robo" ? "robô" : "pessoa"}
+                      {i.resolvido_em ? ` em ${dataBR(i.resolvido_em)}` : ""}
+                    </span>
+                    <span>·</span>
+                    <span>
+                      {i.robo_obs === "saiu_da_pasta_do_item" ? "saiu da pasta do item" : "apagado do SharePoint"}
+                      {i.removido_em ? ` em ${dataBR(i.removido_em)}` : ""}: a unidade saiu da entrega e o valor foi recalculado.
+                    </span>
+                  </p>
+                </div>
+              </li>
+            )
+          })}
         </ul>
       </div>
     </section>

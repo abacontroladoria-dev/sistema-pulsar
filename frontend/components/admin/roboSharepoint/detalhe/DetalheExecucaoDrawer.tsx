@@ -5,6 +5,7 @@ import { Check, Circle, History, X } from 'lucide-react'
 import { Drawer, Z_DRAWER } from '@/components/cronograma/ui/Drawer'
 import { useCountUp } from '@/components/cronograma/remuneracao/RemuneracaoRPDashboard'
 import { dataHora, ETAPAS, GATILHOS, MODOS, numero, segundos } from '@/lib/roboSharepoint/rotulos'
+import { ehEstadoAtual } from '@/lib/roboSharepoint/referencias'
 import { obterResumoExecucao } from '@/services/roboSharepoint.service'
 import type { ResumoExecucao, RoboEtapaNome, RoboExecucao } from '@/types/roboSharepoint'
 import { Aviso, CamadaModal } from './Blocos'
@@ -77,16 +78,21 @@ export function DetalheExecucaoDrawer({ execucao, etapaInicial, ehUltima, ultima
 
   const porEtapa = new Map(execucao.etapas.map(e => [e.etapa, e]))
   const atual = porEtapa.get(etapa)
-  const comRegistro = registraArquivos(execucao.versao) && !erroResumo
+  // Estado atual (20261003100000): o retrato da pasta, sempre registrado arquivo por arquivo.
+  const estadoAtual = ehEstadoAtual(execucao.id)
+  const comRegistro = (estadoAtual || registraArquivos(execucao.versao)) && !erroResumo
   const precisaRegistro = etapa === 'listar' || etapa === 'classificar' || etapa === 'planilhas'
   const vazio = comRegistro && resumo && resumo.total === 0 && (resumo.por_tipo.removido ?? 0) === 0
   const hero = useCountUp(resumo?.total ?? 0)
   const listar = (porEtapa.get('listar')?.detalhe ?? {}) as Record<string, string | number>
+  const pastas = estadoAtual ? (resumo?.pastas.total ?? 0) : Number(listar.pastas ?? 0)
 
   return (
     <Drawer
       title="O que o robô leu"
-      subtitle={<>{dataHora(execucao.iniciado_em)} · {GATILHOS[execucao.gatilho]}{execucao.solicitado_por_nome ? ` por ${execucao.solicitado_por_nome}` : ''}{execucao.modo !== 'producao' ? ` · ${MODOS[execucao.modo]}` : ''}</>}
+      subtitle={estadoAtual
+        ? <>O que está na pasta agora · retrato da leitura de {dataHora(execucao.iniciado_em)}</>
+        : <>{dataHora(execucao.iniciado_em)} · {GATILHOS[execucao.gatilho]}{execucao.solicitado_por_nome ? ` por ${execucao.solicitado_por_nome}` : ''}{execucao.modo !== 'producao' ? ` · ${MODOS[execucao.modo]}` : ''}</>}
       width="min(1320px, 96vw)"
       zIndex={zIndex}
       onClose={onClose}
@@ -102,15 +108,16 @@ export function DetalheExecucaoDrawer({ execucao, etapaInicial, ehUltima, ultima
         <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-end sm:justify-between sm:p-5">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              {listar.leitura === 'completa' ? 'Leitura completa' : 'Só o que mudou'}
+              {estadoAtual ? 'Na pasta agora' : listar.leitura === 'completa' ? 'Leitura completa' : 'Só o que mudou'}
             </p>
             <p className="mt-1 flex items-baseline gap-2">
               <span className="text-4xl font-black leading-none tabular-nums text-foreground sm:text-5xl">{numero(Math.round(hero))}</span>
-              <span className="text-xs font-semibold text-muted-foreground">arquivo(s) lido(s)</span>
+              <span className="text-xs font-semibold text-muted-foreground">{estadoAtual ? 'arquivo(s) na pasta' : 'arquivo(s) lido(s)'}</span>
             </p>
           </div>
           <div className="flex divide-x divide-border">
-            <Metrica valor={Number(listar.pastas ?? 0)} rotulo="pastas" />
+            <Metrica valor={pastas} rotulo="pastas" />
+            {simples && estadoAtual && <Metrica valor={resumo?.por_tipo.evidencia ?? 0} rotulo="evidências" />}
             {!simples && <Metrica valor={resumo?.por_tipo.evidencia ?? 0} rotulo="evidências" />}
             {!simples && <Metrica valor={execucao.resumo?.sugeridos ?? 0} rotulo="sugestões" />}
             {!simples && <Metrica valor={execucao.duracao_ms ?? 0} rotulo="no total" formato={n => segundos(n)} />}
@@ -168,7 +175,11 @@ export function DetalheExecucaoDrawer({ execucao, etapaInicial, ehUltima, ultima
           </Aviso>
         )}
 
-        {resumo && precisaRegistro && comRegistro && vazio && (
+        {resumo && precisaRegistro && comRegistro && vazio && estadoAtual && (
+          <Aviso>Não há nenhum arquivo nas pastas dos prestadores agora.</Aviso>
+        )}
+
+        {resumo && precisaRegistro && comRegistro && vazio && !estadoAtual && (
           <Aviso>
             Nada mudou no SharePoint desde a leitura anterior, então esta execução não precisou ler nenhum arquivo. É o normal no dia a dia.
             {ultimaCompleta && ultimaCompleta.id !== execucao.id && onAbrirExecucao && (
