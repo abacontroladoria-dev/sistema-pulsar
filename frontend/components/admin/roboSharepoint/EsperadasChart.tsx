@@ -27,7 +27,7 @@ function Linha({ rotulo, detalhe, naPasta, esperadas, matiz, destaque = false }:
   const p = pct(naPasta, esperadas)
   return (
     <li
-      className={`pp-tom grid grid-cols-[3.25rem_minmax(0,1fr)] items-center gap-x-3 gap-y-1 sm:grid-cols-[3.25rem_minmax(0,14rem)_minmax(0,1fr)_7.5rem] ${destaque ? 'rounded-2xl bg-[var(--pp-muted)] px-3 py-3' : ''}`}
+      className={`pp-tom grid grid-cols-[3.25rem_minmax(0,1fr)] items-center gap-x-3 gap-y-1 sm:grid-cols-[3.25rem_minmax(0,14rem)_minmax(0,1fr)_7.5rem] ${destaque ? 'mb-2 border-b border-[var(--pp-border)] pb-4' : ''}`}
       style={estiloTom(matiz)}
     >
       <span className="flex h-9 items-center justify-center rounded-xl bg-[var(--c)] text-xs font-extrabold text-[var(--c-sobre)]" aria-hidden>{rotulo}</span>

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { CalendarDays, CalendarRange, Check, FileCheck2, FileX, FolderOpen, Loader2, Target, UserRound, Users } from 'lucide-react'
-import { AnelProgresso, BotaoAjuda, NumeroPastel, PilulaFiltro, tom, type LinhaAjuda } from '@/components/ui/pastel/pecas'
+import { AnelProgresso, BotaoAjuda, NumeroPastel, tom, type LinhaAjuda } from '@/components/ui/pastel/pecas'
 import { MultiSearchCombobox } from '@/components/cronograma/ui/MultiSearchCombobox'
 import { rotuloMes } from '@/lib/roboSharepoint/relatorioPrestador'
 import { nomeCurtoPrestador, numero } from '@/lib/roboSharepoint/rotulos'
@@ -145,11 +145,12 @@ export function ConteudoEsperadas({ competencia, anoNum, periodo, onPeriodo, fil
 }) {
   const pct = resultado && resultado.esperadas > 0 ? Math.round((resultado.naPasta / resultado.esperadas) * 100) : 0
   const ajuda: LinhaAjuda[] = [
-    { t: 'verde', Icone: CalendarDays, texto: <><strong className="font-extrabold">STC e ETC:</strong> uma por semana do mês (3 em mês de recesso).</> },
-    { t: 'amber', Icone: Users, texto: <><strong className="font-extrabold">TAP:</strong> 2 por paciente por mês. <strong className="font-extrabold">TOP:</strong> 1 por paciente por mês.</> },
-    { t: 'teal', Icone: CalendarRange, texto: <><strong className="font-extrabold">PIC, RT e OE:</strong> 1 por planejamento semestral cadastrado{periodo === 'mes' ? ' que já venceu' : ' que vence no ano'}. Sem planejamento, não se espera.</> },
-    { t: 'aco', Icone: UserRound, texto: `Os pacientes de cada profissional são os da Grade de ${rotuloMes(competencia)}.` },
-    { t: 'cinza', Icone: FileCheck2, texto: '“Na pasta” conta só arquivo com o nome no padrão, no máximo o esperado de cada item.' },
+    { t: 'verde', Icone: CalendarDays, texto: <span className="flex flex-col gap-0.5"><strong className="font-extrabold text-[var(--c-tinta)] leading-none">STC e ETC</strong> <span className="text-[12px] text-[var(--pp-ink-muted)]">Uma por semana do mês (3 em mês de recesso).</span></span> },
+    { t: 'amber', Icone: Users, texto: <span className="flex flex-col gap-0.5"><strong className="font-extrabold text-[var(--c-tinta)] leading-none">TAP</strong> <span className="text-[12px] text-[var(--pp-ink-muted)]">2 por paciente por mês.</span></span> },
+    { t: 'amber', Icone: Users, texto: <span className="flex flex-col gap-0.5"><strong className="font-extrabold text-[var(--c-tinta)] leading-none">TOP</strong> <span className="text-[12px] text-[var(--pp-ink-muted)]">1 por paciente por mês.</span></span> },
+    { t: 'teal', Icone: CalendarRange, texto: <span className="flex flex-col gap-0.5"><strong className="font-extrabold text-[var(--c-tinta)] leading-none">PIC, RT e OE</strong> <span className="text-[12px] text-[var(--pp-ink-muted)]">1 por planejamento semestral cadastrado{periodo === 'mes' ? ' que já venceu' : ' que vence no ano'}. Sem planejamento, não se espera.</span></span> },
+    { t: 'aco', Icone: UserRound, texto: <span className="flex flex-col gap-0.5"><strong className="font-extrabold text-[var(--c-tinta)] leading-none">Pacientes</strong> <span className="text-[12px] text-[var(--pp-ink-muted)]">Os pacientes de cada profissional são os da Grade de {rotuloMes(competencia)}.</span></span> },
+    { t: 'cinza', Icone: FileCheck2, texto: <span className="flex flex-col gap-0.5"><strong className="font-extrabold text-[var(--c-tinta)] leading-none">Na pasta</strong> <span className="text-[12px] text-[var(--pp-ink-muted)]">Conta só arquivo com o nome no padrão, no máximo o esperado de cada item.</span></span> },
   ]
 
   return (
@@ -169,9 +170,17 @@ export function ConteudoEsperadas({ competencia, anoNum, periodo, onPeriodo, fil
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center @5xl:shrink-0">
-          <div className="flex gap-2" role="group" aria-label="Período do esperado">
-            <PilulaFiltro t="aco" rotulo={rotuloMes(competencia)} ativo={periodo === 'mes'} onClick={() => onPeriodo('mes')} />
-            <PilulaFiltro t="aco" rotulo={`Ano ${anoNum}`} ativo={periodo === 'ano'} onClick={() => onPeriodo('ano')} />
+          <div className="inline-flex rounded-[14px] bg-[var(--pp-muted)] p-1" role="group" aria-label="Período do esperado">
+            <button type="button" aria-pressed={periodo === 'mes'} onClick={() => onPeriodo('mes')}
+              className={`h-8 rounded-[10px] px-3.5 text-[13px] font-bold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                periodo === 'mes' ? 'bg-[var(--pp-surface)] text-[var(--pp-ink)] shadow-sm' : 'text-[var(--pp-ink-muted)] hover:text-[var(--pp-ink)]'}`}>
+              {rotuloMes(competencia)}
+            </button>
+            <button type="button" aria-pressed={periodo === 'ano'} onClick={() => onPeriodo('ano')}
+              className={`h-8 rounded-[10px] px-3.5 text-[13px] font-bold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                periodo === 'ano' ? 'bg-[var(--pp-surface)] text-[var(--pp-ink)] shadow-sm' : 'text-[var(--pp-ink-muted)] hover:text-[var(--pp-ink)]'}`}>
+              Ano {anoNum}
+            </button>
           </div>
           <div className="sm:w-64">{filtro}</div>
         </div>
