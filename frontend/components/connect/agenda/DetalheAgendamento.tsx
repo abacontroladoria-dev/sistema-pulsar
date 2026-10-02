@@ -13,8 +13,8 @@ import { cn } from '@/lib/utils'
 import type { Appointment } from '@/modules/atendimento/types/central.types'
 import { AgendamentoApiError, cancelarAgendamento, atualizarAgendamento } from '@/services/connect/agendamentos'
 import {
-  dataPorExtenso, duracaoPorExtenso, DURACAO_PADRAO, horaCurta, horaFim,
-  STATUS_LABEL, TIPO_COR, TIPO_LABEL,
+  corDoTipo, dataPorExtenso, duracaoPorExtenso, horaCurta, horaFim,
+  rotuloDoTipo, STATUS_LABEL,
 } from './tipos'
 
 // ============================================================================
@@ -58,7 +58,9 @@ export default function DetalheAgendamento({ agendamento: a, onFechar, onAlterad
   )
 
   const ocupaVaga = a.profissional_id != null
-  const duracao = a.duration || DURACAO_PADRAO
+  // Só a duração gravada. Sem ela, o painel não mostra duração nem horário de
+  // fim: um "40 min" assumido pareceria dado do registro.
+  const duracao = a.duration && a.duration > 0 ? a.duration : null
   const fechado = a.status === 'completed' || a.status === 'no_show'
 
   async function cancelar() {
@@ -106,7 +108,7 @@ export default function DetalheAgendamento({ agendamento: a, onFechar, onAlterad
         <div className="max-h-[85vh] overflow-y-auto">
           {/* Cabeçalho */}
           <div className="px-6 pt-6 pb-4 pr-12 flex items-start gap-4">
-            <span className={cn('w-4 h-4 mt-1.5 rounded shrink-0', TIPO_COR[a.type].ponto)} aria-hidden="true" />
+            <span className={cn('w-4 h-4 mt-1.5 rounded shrink-0', corDoTipo(a.type).ponto)} aria-hidden="true" />
             <div className="min-w-0">
               <DialogTitle className={cn(
                 'text-[22px] leading-tight font-normal text-foreground wrap-break-word',
@@ -115,12 +117,12 @@ export default function DetalheAgendamento({ agendamento: a, onFechar, onAlterad
                 {a.title}
               </DialogTitle>
               <DialogDescription className="mt-1 text-sm text-muted-foreground tabular-nums">
-                {dataPorExtenso(a.date)} · {horaCurta(a.time)}
-                {a.time ? ` – ${horaFim(a.time, duracao)}` : ''}
+                {dataPorExtenso(a.date)} · {a.time ? horaCurta(a.time) : 'sem horário'}
+                {a.time && duracao ? ` – ${horaFim(a.time, duracao)}` : ''}
               </DialogDescription>
               <div className="mt-3 flex flex-wrap gap-1.5">
                 <span className="px-2 h-6 rounded-full text-xs font-medium flex items-center bg-muted text-foreground">
-                  {TIPO_LABEL[a.type]}
+                  {rotuloDoTipo(a.type)}
                 </span>
                 <span className={cn('px-2 h-6 rounded-full text-xs font-medium flex items-center', STATUS_SELO[a.status] ?? STATUS_SELO.scheduled)}>
                   {STATUS_LABEL[a.status] ?? a.status}
@@ -136,7 +138,7 @@ export default function DetalheAgendamento({ agendamento: a, onFechar, onAlterad
 
           {/* Corpo */}
           <div className="px-6 pb-5 space-y-4">
-            <Linha icone={Clock}>{duracaoPorExtenso(duracao)}</Linha>
+            {duracao && <Linha icone={Clock}>{duracaoPorExtenso(duracao)}</Linha>}
 
             {/* Onde e com quem — o que substitui a "sala de reunião" do CRM */}
             {ocupaVaga ? (

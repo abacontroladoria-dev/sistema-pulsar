@@ -3,17 +3,19 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Bot, Calendar as CalendarIcon, CalendarX2, ChevronLeft, ChevronRight,
-  Loader2, Plus, RefreshCw,
+  ListFilter, Loader2, Plus, RefreshCw,
 } from 'lucide-react'
 import { Button } from '@/components/nina/Button'
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
+import { MultiSearchCombobox } from '@/components/cronograma/ui/MultiSearchCombobox'
 import { cn } from '@/lib/utils'
 import type { Appointment } from '@/modules/atendimento/types/central.types'
 import { AgendamentoApiError, listarAgendamentos } from '@/services/connect/agendamentos'
 import ReservarVagaModal from './ReservarVagaModal'
 import DetalheAgendamento from './DetalheAgendamento'
 import {
-  capitalizar, dataParaISO, DURACAO_PADRAO, horaCurta, horaFim, inicioDaSemana,
-  isoParaData, minutosDoDia, somarDias, TIPO_COR, TIPO_LABEL, TIPOS_ORDENADOS,
+  capitalizar, corDoTipo, dataParaISO, DURACAO_PADRAO, horaCurta, horaFim, inicioDaSemana,
+  isoParaData, minutosDoDia, rotuloDoTipo, somarDias, TIPOS_ORDENADOS,
 } from './tipos'
 
 // ============================================================================
@@ -69,6 +71,13 @@ const ALTURA_ITEM_MES   = 24
 
 const encerrado = (a: Appointment) => a.status === 'completed' || a.status === 'no_show'
 
+// Abaixo de `sm` a célula do mês só cabe pontinhos, que não dá para tocar um a
+// um. Ali o toque no dia abre o dia (onde os agendamentos aparecem e o "+"
+// cria), em vez de abrir um agendamento novo por cima.
+const telaLarga = () => typeof window === 'undefined' || window.matchMedia('(min-width: 640px)').matches
+
+type EstadoCarga = 'carregando' | 'ok' | 'erro'
+
 export default function AgendaCentral() {
   const [referencia, setReferencia] = useState(() => new Date())
   // No celular a grade de mês não cabe; a recepção abre direto no dia. Ler
@@ -83,13 +92,26 @@ export default function AgendaCentral() {
   const [erro, setErro]             = useState<string | null>(null)
   // Da semana corrente em diante, independente do mês na tela: alimenta o
   // resumo do cabeçalho e "Próximos" mesmo quando se navega para o passado.
-  const [aFrente, setAFrente] = useState<Appointment[]>([])
+  // Tem estado de carga próprio: "0 agendamentos hoje" só pode aparecer quando
+  // ESTA busca voltou com zero, não enquanto carrega nem quando falhou.
+  const [aFrente, setAFrente]             = useState<Appointment[]>([])
+  const [aFrenteEstado, setAFrenteEstado] = useState<EstadoCarga>('carregando')
 
   const [tiposOcultos, setTiposOcultos] = useState<Set<string>>(() => new Set())
   const [profsOcultos, setProfsOcultos] = useState<Set<string>>(() => new Set())
 
   const [dataParaCriar, setDataParaCriar] = useState<string | null>(null)
   const [selecionado, setSelecionado]     = useState<Appointment | null>(null)
+  // Filtros e "Próximos" no celular, onde a coluna lateral não aparece.
+  const [painelAberto, setPainelAberto]   = useState(false)
+
+  // Número da busca mais recente de cada lista. Navegar rápido (setas, atalho
+  // repetido, volta de foco) dispara buscas que podem responder fora de ordem:
+  // sem isto, a resposta de novembro chegando depois da de dezembro punha os
+  // agendamentos de novembro sob o título "Dezembro", e o `finally` de uma
+  // busca antiga desligava o "carregando" de uma que ainda não tinha voltado.
+  const geracaoMes     = useRef(0)
+  const geracaoAFrente = useRef(0)
 
   const hojeISO = useMemo(() => dataParaISO(new Date()), [])
 
@@ -104,31 +126,43 @@ export default function AgendaCentral() {
   }), [ano, mes])
 
   const buscar = useCallback(async () => {
+    const minha = ++geracaoMes.current
     setCarregando(true)
     setErro(null)
     try {
       const dados = await listarAgendamentos({ from: janela.de, to: janela.ate })
+      if (minha !== geracaoMes.current) return
       setAgend(dados)
     } catch (err) {
+      if (minha !== geracaoMes.current) return
       const msg = err instanceof AgendamentoApiError ? err.message : 'Falha ao carregar agendamentos'
       setErro(msg)
       setAgend([])
     } finally {
-      setCarregando(false)
+      if (minha === geracaoMes.current) setCarregando(false)
     }
   }, [janela.de, janela.ate])
 
   const buscarAFrente = useCallback(async () => {
+    const minha = ++geracaoAFrente.current
     const hoje = new Date()
+    // Num refetch (foco, recarregar) os números de antes continuam na tela até
+    // a resposta chegar; só a primeira carga mostra "Carregando…".
+    setAFrenteEstado(e => (e === 'ok' ? 'ok' : 'carregando'))
     try {
       const dados = await listarAgendamentos({
         from: dataParaISO(inicioDaSemana(hoje)),
         to:   dataParaISO(somarDias(hoje, 60)),
       })
+      if (minha !== geracaoAFrente.current) return
       setAFrente(dados)
+      setAFrenteEstado('ok')
     } catch {
-      // Painel auxiliar: se falhar, o erro que importa já aparece no calendário.
+      if (minha !== geracaoAFrente.current) return
+      // A falha aparece como falha no cabeçalho e em "Próximos" — com lista
+      // vazia e nenhum aviso, a tela afirmaria "0 agendamentos hoje".
       setAFrente([])
+      setAFrenteEstado('erro')
     }
   }, [])
 
@@ -164,17 +198,25 @@ export default function AgendaCentral() {
 
   const doDia = useCallback((iso: string) => porDia.get(iso) ?? [], [porDia])
 
-  // Os filtros só listam o que existe no mês carregado.
+  // Os filtros listam o que existe nas DUAS listas que eles filtram — o mês
+  // carregado e "Próximos" — e também tudo o que está oculto agora. Sem esse
+  // último, desmarcar "Triagem" em outubro e ir para agosto (sem triagens)
+  // tirava a opção da lista e "Próximos" seguia escondendo toda triagem, sem
+  // controle nenhum na tela para desfazer.
   const tiposPresentes = useMemo(() => {
-    const presentes = new Set(agendamentos.map(a => a.type))
-    return TIPOS_ORDENADOS.filter(t => presentes.has(t))
-  }, [agendamentos])
+    const presentes = new Set<string>([...agendamentos, ...aFrente].map(a => a.type))
+    for (const t of tiposOcultos) presentes.add(t)
+    const conhecidos: string[] = TIPOS_ORDENADOS.filter(t => presentes.has(t))
+    const novos = [...presentes].filter(t => !conhecidos.includes(t)).sort()
+    return [...conhecidos, ...novos]
+  }, [agendamentos, aFrente, tiposOcultos])
 
   const profsPresentes = useMemo(() => {
-    const nomes = new Set(agendamentos.map(a => a.profissional_nome ?? SEM_PROFISSIONAL))
+    const nomes = new Set([...agendamentos, ...aFrente].map(a => a.profissional_nome ?? SEM_PROFISSIONAL))
+    for (const p of profsOcultos) nomes.add(p)
     const lista = [...nomes].filter(n => n !== SEM_PROFISSIONAL).sort((x, y) => x.localeCompare(y, 'pt-BR'))
     return nomes.has(SEM_PROFISSIONAL) ? [...lista, SEM_PROFISSIONAL] : lista
-  }, [agendamentos])
+  }, [agendamentos, aFrente, profsOcultos])
 
   const resumo = useMemo(() => {
     const semana = new Set(Array.from({ length: 7 }, (_, i) => dataParaISO(somarDias(inicioDaSemana(new Date()), i))))
@@ -192,7 +234,9 @@ export default function AgendaCentral() {
     const minutoAgora = agora.getHours() * 60 + agora.getMinutes()
     return aFrente
       .filter(a => (a.status === 'scheduled' || a.status === 'confirmed') && visivel(a))
-      .filter(a => a.date > hojeISO || (a.date === hojeISO && minutosDoDia(a.time) + (a.duration || DURACAO_PADRAO) > minutoAgora))
+      // Compromisso de hoje sem horário vale o dia inteiro: lido como 00:00,
+      // ele saía de "Próximos" às 00:40 ainda marcado para hoje.
+      .filter(a => a.date > hojeISO || (a.date === hojeISO && (!a.time || minutosDoDia(a.time) + (a.duration || DURACAO_PADRAO) > minutoAgora)))
       .sort((x, y) => x.date.localeCompare(y.date) || (x.time ?? '').localeCompare(y.time ?? ''))
       .slice(0, 5)
   }, [aFrente, visivel, hojeISO])
@@ -215,25 +259,48 @@ export default function AgendaCentral() {
     setDataParaCriar(visao === 'mes' ? hojeISO : dataParaISO(referencia))
   }, [visao, hojeISO, referencia])
 
-  const modalAberto = dataParaCriar !== null || selecionado !== null
+  const modalAberto = dataParaCriar !== null || selecionado !== null || painelAberto
 
   // Atalhos da referência: T hoje, M/S/D visão, N novo, ←/→ navega.
+  //
+  // Tecla segurada (`e.repeat`) não conta: → segurado por um segundo disparava
+  // umas 20 buscas de mês seguidas.
   useEffect(() => {
     function aoTeclar(e: KeyboardEvent) {
-      if (modalAberto || e.ctrlKey || e.metaKey || e.altKey) return
-      if ((e.target as HTMLElement | null)?.closest('input, textarea, select, [contenteditable="true"]')) return
+      if (modalAberto || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return
+      const alvo = e.target as HTMLElement | null
+      if (alvo?.closest('input, textarea, select, [contenteditable="true"]')) return
       const tecla = e.key.toLowerCase()
       if (tecla === 't') setReferencia(new Date())
       else if (tecla === 'm') setVisao('mes')
       else if (tecla === 's') setVisao('semana')
       else if (tecla === 'd') setVisao('dia')
       else if (tecla === 'n') { e.preventDefault(); novoAgendamento() }
-      else if (e.key === 'ArrowLeft') navegar(-1)
-      else if (e.key === 'ArrowRight') navegar(1)
+      else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        // Dentro do seletor de visão as setas são dele (padrão radiogroup:
+        // trocam Mês/Semana/Dia), não da navegação de período.
+        if (alvo?.closest('[role="radiogroup"]')) return
+        navegar(e.key === 'ArrowLeft' ? -1 : 1)
+      }
     }
     window.addEventListener('keydown', aoTeclar)
     return () => window.removeEventListener('keydown', aoTeclar)
   }, [modalAberto, navegar, novoAgendamento])
+
+  // Setas no seletor de visão, como o padrão radiogroup promete: movem a
+  // seleção e o foco juntos, dando a volta nas pontas.
+  function aoTeclarVisao(e: React.KeyboardEvent<HTMLDivElement>) {
+    const passo =
+      e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1
+        : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1
+          : 0
+    if (!passo) return
+    e.preventDefault()
+    const atual = VISOES.findIndex(v => v.valor === visao)
+    const proxima = VISOES[(atual + passo + VISOES.length) % VISOES.length]
+    setVisao(proxima.valor)
+    e.currentTarget.querySelector<HTMLButtonElement>(`[data-visao="${proxima.valor}"]`)?.focus()
+  }
 
   function aoCriar(novo: Appointment) {
     // Insere localmente para resposta imediata e revalida contra o servidor.
@@ -254,15 +321,6 @@ export default function AgendaCentral() {
     setSelecionado(sel => (sel && sel.id === alterado.id ? alterado : sel))
   }
 
-  function alternar(setter: React.Dispatch<React.SetStateAction<Set<string>>>, chave: string) {
-    setter(prev => {
-      const novo = new Set(prev)
-      if (novo.has(chave)) novo.delete(chave)
-      else novo.add(chave)
-      return novo
-    })
-  }
-
   const diasVisiveis = useMemo(
     () => (visao === 'dia' ? [referencia] : Array.from({ length: 7 }, (_, i) => somarDias(inicioDaSemana(referencia), i))),
     [visao, referencia],
@@ -277,9 +335,11 @@ export default function AgendaCentral() {
           Agendamentos
         </h2>
         <p className="text-muted-foreground text-sm mt-1 tabular-nums">
-          {carregando && aFrente.length === 0
+          {aFrenteEstado === 'carregando'
             ? 'Carregando…'
-            : `${resumo.hoje} ${resumo.hoje === 1 ? 'agendamento' : 'agendamentos'} hoje · ${resumo.naSemana} nesta semana`}
+            : aFrenteEstado === 'erro'
+              ? 'Não foi possível carregar o resumo de hoje e da semana.'
+              : `${resumo.hoje} ${resumo.hoje === 1 ? 'agendamento' : 'agendamentos'} hoje · ${resumo.naSemana} nesta semana`}
         </p>
       </div>
 
@@ -300,55 +360,20 @@ export default function AgendaCentral() {
             />
           </div>
 
-          {tiposPresentes.length > 0 && (
-            <ListaFiltro
-              titulo="Tipos"
-              itens={tiposPresentes.map(t => ({ chave: t, rotulo: TIPO_LABEL[t], cor: TIPO_COR[t].ponto }))}
-              ocultos={tiposOcultos}
-              onAlternar={chave => alternar(setTiposOcultos, chave)}
-            />
-          )}
-
-          {profsPresentes.length > 0 && (
-            <ListaFiltro
-              titulo="Profissionais"
-              itens={profsPresentes.map(p => ({ chave: p, rotulo: p || 'Administrativo', cor: 'bg-cyan-600' }))}
-              ocultos={profsOcultos}
-              onAlternar={chave => alternar(setProfsOcultos, chave)}
-            />
-          )}
-
-          <div className="rounded-lg bg-card border border-border py-3">
-            <h3 className="px-4 pb-1 text-sm font-medium text-cyan-700 dark:text-cyan-300">Próximos</h3>
-            {proximos.length === 0 ? (
-              <p className="px-4 py-2 text-sm text-muted-foreground">Nada marcado daqui para frente.</p>
-            ) : (
-              <ul>
-                {proximos.map(a => (
-                  <li key={a.id}>
-                    <button
-                      type="button"
-                      onClick={() => setSelecionado(a)}
-                      className="w-full flex items-start gap-3 px-4 py-2 text-left hover:bg-muted transition-colors"
-                    >
-                      <span className={cn('w-2 h-2 mt-1.5 rounded-full shrink-0', TIPO_COR[a.type].ponto)} aria-hidden="true" />
-                      <span className="min-w-0">
-                        <span className="block text-sm text-foreground truncate">
-                          {a.title}
-                          {a.created_by_ai && (
-                            <Bot className="inline w-3 h-3 ml-1 -mt-0.5 text-muted-foreground" aria-label="Marcado pela atendente virtual" />
-                          )}
-                        </span>
-                        <span className="block text-xs text-muted-foreground tabular-nums">
-                          {quandoCurto(a.date, hojeISO)}{a.time ? ` · ${horaCurta(a.time)}` : ''}
-                        </span>
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+          <FiltrosEProximos
+            tipos={tiposPresentes}
+            profissionais={profsPresentes}
+            tiposOcultos={tiposOcultos}
+            profsOcultos={profsOcultos}
+            onTiposOcultos={setTiposOcultos}
+            onProfsOcultos={setProfsOcultos}
+            proximos={proximos}
+            estadoProximos={aFrenteEstado}
+            onTentarDeNovo={() => void buscarAFrente()}
+            hojeISO={hojeISO}
+            onAbrir={setSelecionado}
+            portal
+          />
         </aside>
 
         {/* Calendário */}
@@ -379,13 +404,22 @@ export default function AgendaCentral() {
             <BotaoRedondo onClick={() => { void buscar(); void buscarAFrente() }} rotulo="Recarregar" desabilitado={carregando}>
               <RefreshCw className={cn('w-4 h-4', carregando && 'animate-spin')} aria-hidden="true" />
             </BotaoRedondo>
-            <div role="radiogroup" aria-label="Visualização" className="flex p-0.5 rounded-full bg-muted border border-border">
+            <div
+              role="radiogroup"
+              aria-label="Visualização"
+              onKeyDown={aoTeclarVisao}
+              className="flex p-0.5 rounded-full bg-muted border border-border"
+            >
               {VISOES.map(v => (
                 <button
                   key={v.valor}
                   type="button"
                   role="radio"
                   aria-checked={visao === v.valor}
+                  // Foco itinerante: Tab entra no grupo pela opção marcada e as
+                  // setas andam dentro dele.
+                  tabIndex={visao === v.valor ? 0 : -1}
+                  data-visao={v.valor}
                   onClick={() => setVisao(v.valor)}
                   title={`${v.rotulo} (${v.tecla})`}
                   className={cn(
@@ -399,6 +433,9 @@ export default function AgendaCentral() {
                 </button>
               ))}
             </div>
+            <BotaoRedondo onClick={() => setPainelAberto(true)} rotulo="Filtros e próximos" classe="lg:hidden">
+              <ListFilter className="w-4 h-4" aria-hidden="true" />
+            </BotaoRedondo>
             <Button size="sm" onClick={novoAgendamento} className="lg:hidden" aria-label="Novo agendamento">
               <Plus className="w-4 h-4 sm:mr-1" aria-hidden="true" />
               <span className="hidden sm:inline">Agendar</span>
@@ -437,6 +474,41 @@ export default function AgendaCentral() {
           )}
         </section>
       </div>
+
+      {/* Celular e tablet: a coluna lateral vira painel. Os filtros abrem
+          dentro do Dialog (portal={false}), então o Esc da busca fecha só a
+          lista, e o DialogContent não leva overflow-hidden — ver AGENTS.md. */}
+      <Dialog open={painelAberto} onOpenChange={setPainelAberto}>
+        <DialogContent
+          className="sm:max-w-sm p-0 gap-0 bg-card"
+          onEscapeKeyDown={e => {
+            if ((e.target as HTMLElement | null)?.closest?.('[data-multisearch-aberto]')) e.preventDefault()
+          }}
+        >
+          <div className="px-4 pt-5 pb-2 pr-12">
+            <DialogTitle className="text-lg font-medium text-foreground">Filtros e próximos</DialogTitle>
+            <DialogDescription className="text-sm text-muted-foreground">
+              O que aparece no calendário e o que vem pela frente.
+            </DialogDescription>
+          </div>
+          <div className="max-h-[75vh] overflow-y-auto px-4 pb-4 flex flex-col gap-3">
+            <FiltrosEProximos
+              tipos={tiposPresentes}
+              profissionais={profsPresentes}
+              tiposOcultos={tiposOcultos}
+              profsOcultos={profsOcultos}
+              onTiposOcultos={setTiposOcultos}
+              onProfsOcultos={setProfsOcultos}
+              proximos={proximos}
+              estadoProximos={aFrenteEstado}
+              onTentarDeNovo={() => void buscarAFrente()}
+              hojeISO={hojeISO}
+              onAbrir={a => { setPainelAberto(false); setSelecionado(a) }}
+              portal={false}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {dataParaCriar && (
         <ReservarVagaModal
@@ -535,45 +607,152 @@ function MiniCalendario({ selecionada, ocupados, hojeISO, onSelecionar }: {
   )
 }
 
-function ListaFiltro({ titulo, itens, ocultos, onAlternar }: {
-  titulo:     string
-  itens:      { chave: string; rotulo: string; cor: string }[]
-  ocultos:    Set<string>
-  onAlternar: (chave: string) => void
+// Filtros + "Próximos": o miolo da coluna lateral no desktop e do painel no
+// celular. `portal` é false dentro do Dialog do celular (ver
+// MultiSearchCombobox: com portal, a lista abre mas não aceita clique ali).
+function FiltrosEProximos({
+  tipos, profissionais, tiposOcultos, profsOcultos, onTiposOcultos, onProfsOcultos,
+  proximos, estadoProximos, onTentarDeNovo, hojeISO, onAbrir, portal,
+}: {
+  tipos:          string[]
+  profissionais:  string[]
+  tiposOcultos:   Set<string>
+  profsOcultos:   Set<string>
+  onTiposOcultos: (s: Set<string>) => void
+  onProfsOcultos: (s: Set<string>) => void
+  proximos:       Appointment[]
+  estadoProximos: EstadoCarga
+  onTentarDeNovo: () => void
+  hojeISO:        string
+  onAbrir:        (a: Appointment) => void
+  portal:         boolean
 }) {
   return (
-    <div className="rounded-lg bg-card border border-border py-3">
-      <h3 className="px-4 pb-1 text-sm font-medium text-cyan-700 dark:text-cyan-300">{titulo}</h3>
-      <ul>
-        {itens.map(item => {
-          const marcado = !ocultos.has(item.chave)
-          return (
-            <li key={item.chave || 'sem'}>
-              <button
-                type="button"
-                role="checkbox"
-                aria-checked={marcado}
-                onClick={() => onAlternar(item.chave)}
-                className="w-full flex items-center gap-3 px-4 h-9 text-left text-sm hover:bg-muted transition-colors"
-              >
-                <span className={cn(
-                  'w-4 h-4 rounded shrink-0 flex items-center justify-center border-2 transition-colors',
-                  marcado ? cn(item.cor, 'border-transparent') : 'border-muted-foreground/50',
-                )}>
-                  {marcado && (
-                    <svg viewBox="0 0 12 12" className="w-3 h-3 text-white" aria-hidden="true">
-                      <path d="M2.5 6.2 5 8.5l4.5-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  )}
-                </span>
-                <span className={cn('truncate', marcado ? 'text-foreground' : 'text-muted-foreground')}>
-                  {item.rotulo}
-                </span>
-              </button>
+    <>
+      {tipos.length > 0 && (
+        <FiltroMulti
+          titulo="Tipos"
+          itens={tipos.map(t => ({ chave: t, rotulo: rotuloDoTipo(t) }))}
+          ocultos={tiposOcultos}
+          onOcultos={onTiposOcultos}
+          nomePlural="tipos"
+          vazio="Nenhum tipo marcado"
+          portal={portal}
+          legenda={tipos.filter(t => !tiposOcultos.has(t))}
+        />
+      )}
+
+      {profissionais.length > 0 && (
+        <FiltroMulti
+          titulo="Profissionais"
+          itens={profissionais.map(p => ({ chave: p, rotulo: p || 'Administrativo' }))}
+          ocultos={profsOcultos}
+          onOcultos={onProfsOcultos}
+          nomePlural="profissionais"
+          vazio="Nenhum profissional marcado"
+          portal={portal}
+        />
+      )}
+
+      <div className="rounded-lg bg-card border border-border py-3">
+        <h3 className="px-4 pb-1 text-sm font-medium text-cyan-700 dark:text-cyan-300">Próximos</h3>
+        {estadoProximos === 'carregando' ? (
+          <p className="px-4 py-2 text-sm text-muted-foreground">Carregando…</p>
+        ) : estadoProximos === 'erro' ? (
+          <div className="px-4 py-2 flex flex-col items-start gap-2">
+            <p className="text-sm text-muted-foreground">Não foi possível carregar os próximos agendamentos.</p>
+            <Button variant="outline" size="sm" onClick={onTentarDeNovo}>Tentar de novo</Button>
+          </div>
+        ) : proximos.length === 0 ? (
+          <p className="px-4 py-2 text-sm text-muted-foreground">Nada marcado daqui para frente.</p>
+        ) : (
+          <ul>
+            {proximos.map(a => (
+              <li key={a.id}>
+                <button
+                  type="button"
+                  onClick={() => onAbrir(a)}
+                  className="w-full flex items-start gap-3 px-4 py-2 text-left hover:bg-muted transition-colors"
+                >
+                  <span className={cn('w-2 h-2 mt-1.5 rounded-full shrink-0', corDoTipo(a.type).ponto)} aria-hidden="true" />
+                  <span className="min-w-0">
+                    <span className="block text-sm text-foreground truncate">
+                      {a.title}
+                      {a.created_by_ai && (
+                        <Bot className="inline w-3 h-3 ml-1 -mt-0.5 text-muted-foreground" aria-label="Marcado pela atendente virtual" />
+                      )}
+                    </span>
+                    <span className="block text-xs text-muted-foreground tabular-nums">
+                      {quandoCurto(a.date, hojeISO)}{a.time ? ` · ${horaCurta(a.time)}` : ' · sem horário'} · {rotuloDoTipo(a.type)}
+                    </span>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </>
+  )
+}
+
+// Filtro de várias seleções com o componente padrão (AGENTS.md: nada de lista
+// de caixas feita à mão). A agenda guarda o que está OCULTO — o padrão é ver
+// tudo —, e o combobox trabalha com o que está marcado: a conversão é aqui.
+//
+// O combobox só mostra nomes, então a cor de cada tipo, que antes vinha no
+// quadradinho da lista, passou para a legenda embaixo.
+function FiltroMulti({ titulo, itens, ocultos, onOcultos, nomePlural, vazio, portal, legenda }: {
+  titulo:     string
+  itens:      { chave: string; rotulo: string }[]
+  ocultos:    Set<string>
+  onOcultos:  (s: Set<string>) => void
+  nomePlural: string
+  vazio:      string
+  portal:     boolean
+  legenda?:   string[]
+}) {
+  const marcados = useMemo(
+    () => new Set(itens.map(i => i.chave).filter(c => !ocultos.has(c))),
+    [itens, ocultos],
+  )
+
+  function alternar(chave: string) {
+    const novo = new Set(ocultos)
+    if (novo.has(chave)) novo.delete(chave)
+    else novo.add(chave)
+    onOcultos(novo)
+  }
+
+  return (
+    <div className="rounded-lg bg-card border border-border px-4 py-3 flex flex-col gap-2">
+      <h3 className="text-sm font-medium text-cyan-700 dark:text-cyan-300">{titulo}</h3>
+      <MultiSearchCombobox<string>
+        opcoes={itens.map(i => ({ id: i.chave, nome: i.rotulo }))}
+        selecionados={marcados}
+        onToggle={alternar}
+        onMarcarTodos={ids => {
+          const novo = new Set(ocultos)
+          for (const id of ids) novo.delete(id)
+          onOcultos(novo)
+        }}
+        onDesmarcarTodos={() => onOcultos(new Set([...ocultos, ...itens.map(i => i.chave)]))}
+        placeholder={vazio}
+        nomePlural={nomePlural}
+        adjetivoResumo="marcados"
+        ariaLabel={`Filtrar o calendário por ${titulo.toLowerCase()}`}
+        portal={portal}
+      />
+      {legenda && legenda.length > 0 && (
+        <ul className="flex flex-wrap gap-x-3 gap-y-1" aria-label="Cor de cada tipo">
+          {legenda.map(t => (
+            <li key={t} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span className={cn('w-2 h-2 rounded-full', corDoTipo(t).ponto)} aria-hidden="true" />
+              {rotuloDoTipo(t)}
             </li>
-          )
-        })}
-      </ul>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }
@@ -634,7 +813,7 @@ function VisaoMes({ referencia, hojeISO, doDia, onCriar, onAbrirDia, onAbrir }: 
           return (
             <div
               key={iso}
-              onClick={() => onCriar(iso)}
+              onClick={() => (telaLarga() ? onCriar(iso) : onAbrirDia(d))}
               className={cn(
                 'group relative min-h-0 overflow-hidden flex flex-col gap-0.5 p-1 border-border cursor-pointer transition-colors hover:bg-muted/50',
                 i % 7 !== 6 && 'border-r',
@@ -663,11 +842,12 @@ function VisaoMes({ referencia, hojeISO, doDia, onCriar, onAbrirDia, onAbrir }: 
                 ) : d.getDate()}
               </button>
 
-              {/* Celular: só pontos — o texto não cabe numa coluna de 50 px */}
+              {/* Celular: só pontos — o texto não cabe numa coluna de 50 px.
+                  Tocar no dia (a célula toda) abre o dia com a lista. */}
               {itens.length > 0 && (
                 <div className="flex sm:hidden justify-center gap-0.5 flex-wrap" aria-label={`${itens.length} agendamentos`}>
                   {itens.slice(0, 4).map(a => (
-                    <span key={a.id} className={cn('w-1.5 h-1.5 rounded-full', TIPO_COR[a.type].ponto)} />
+                    <span key={a.id} className={cn('w-1.5 h-1.5 rounded-full', corDoTipo(a.type).ponto)} />
                   ))}
                 </div>
               )}
@@ -678,13 +858,14 @@ function VisaoMes({ referencia, hojeISO, doDia, onCriar, onAbrirDia, onAbrir }: 
                     key={a.id}
                     type="button"
                     onClick={e => { e.stopPropagation(); onAbrir(a) }}
-                    title={`${horaCurta(a.time)} · ${a.title}`}
+                    title={`${a.time ? horaCurta(a.time) : 'Sem horário'} · ${rotuloDoTipo(a.type)} · ${a.title}`}
                     className={cn(
                       'w-full flex items-center gap-1.5 px-1.5 h-5.5 rounded text-xs text-left hover:bg-muted',
                       encerrado(a) && 'opacity-60',
                     )}
                   >
-                    <span className={cn('w-2 h-2 rounded-full shrink-0', TIPO_COR[a.type].ponto)} aria-hidden="true" />
+                    <span className={cn('w-2 h-2 rounded-full shrink-0', corDoTipo(a.type).ponto)} aria-hidden="true" />
+                    <span className="sr-only">{rotuloDoTipo(a.type)}:</span>
                     {a.time && <span className="text-muted-foreground tabular-nums shrink-0">{horaCurta(a.time)}</span>}
                     <span className={cn('truncate text-foreground', encerrado(a) && 'line-through')}>{a.title}</span>
                     {a.created_by_ai && (
@@ -785,13 +966,14 @@ function GradeHoraria({ dias, doDia, onCriar, onAbrirDia, onAbrir }: VisaoProps 
                     key={a.id}
                     type="button"
                     onClick={() => onAbrir(a)}
-                    title={a.title}
+                    title={`${rotuloDoTipo(a.type)} · ${a.title}`}
                     className={cn(
                       'w-full px-1.5 h-5.5 rounded text-xs text-left truncate',
-                      TIPO_COR[a.type].suave,
+                      corDoTipo(a.type).suave,
                       encerrado(a) && 'opacity-60 line-through',
                     )}
                   >
+                    <span className="sr-only">{rotuloDoTipo(a.type)}: </span>
                     {a.title}
                   </button>
                 ))}
@@ -831,18 +1013,27 @@ function GradeHoraria({ dias, doDia, onCriar, onAbrirDia, onAbrir }: VisaoProps 
                 {blocos.map(({ a, inicio, fim, coluna, colunas: total }) => {
                   const altura = Math.max(((fim - inicio) / 60) * ALTURA_HORA - 2, 20)
                   const compacto = altura < 36
-                  // O título já é "Terapia — Profissional"; no dia sobra largura para a sala.
-                  const detalhe = umDia ? a.sala_nome : null
+                  // O título já é "Terapia — Profissional"; no dia sobra largura
+                  // para a sala. Sem profissional, é compromisso administrativo,
+                  // e isso é dito por escrito, como na visão antiga.
+                  const detalhe = a.profissional_id == null ? 'Administrativo' : umDia ? a.sala_nome : null
+                  // A altura usa a duração padrão quando falta a gravada; o
+                  // horário de fim, não — só aparece quando é dado do registro.
+                  const fimTexto = a.duration ? horaFim(a.time, a.duration) : null
+                  // O tipo vai por escrito também: só pela cor, quem não
+                  // distingue âmbar de cyan (ou imprime em cinza) não separa
+                  // triagem de retorno.
+                  const tipo = rotuloDoTipo(a.type)
                   return (
                     <button
                       key={a.id}
                       type="button"
                       onClick={e => { e.stopPropagation(); onAbrir(a) }}
-                      title={`${horaCurta(a.time)}–${horaFim(a.time, a.duration || DURACAO_PADRAO)} · ${a.title}`}
+                      title={`${horaCurta(a.time)}${fimTexto ? `–${fimTexto}` : ''} · ${tipo} · ${a.title}`}
                       className={cn(
                         'absolute rounded-md px-2 text-left overflow-hidden ring-1 ring-card transition-colors z-1',
                         compacto ? 'py-0.5 flex items-center gap-1.5' : 'py-0.5',
-                        TIPO_COR[a.type].suave,
+                        corDoTipo(a.type).suave,
                         encerrado(a) && 'opacity-60',
                       )}
                       style={{
@@ -854,11 +1045,13 @@ function GradeHoraria({ dias, doDia, onCriar, onAbrirDia, onAbrir }: VisaoProps 
                     >
                       <span className={cn('block truncate text-xs leading-4 font-semibold', encerrado(a) && 'line-through')}>
                         {a.created_by_ai && <Bot className="inline w-3 h-3 mr-1 -mt-0.5" aria-label="Marcado pela atendente virtual" />}
+                        {compacto && <span className="sr-only">{tipo}: </span>}
                         {a.title}
                       </span>
                       <span className={cn('block truncate text-[11px] leading-3.5 opacity-80 tabular-nums', compacto && 'shrink-0')}>
                         {horaCurta(a.time)}
-                        {compacto ? '' : ` – ${horaFim(a.time, a.duration || DURACAO_PADRAO)}`}
+                        {!compacto && fimTexto ? ` – ${fimTexto}` : ''}
+                        {!compacto ? ` · ${tipo}` : ''}
                         {!compacto && detalhe ? ` · ${detalhe}` : ''}
                       </span>
                     </button>
@@ -885,12 +1078,13 @@ function GradeHoraria({ dias, doDia, onCriar, onAbrirDia, onAbrir }: VisaoProps 
 // Helpers
 // ----------------------------------------------------------------------------
 
-function BotaoRedondo({ onClick, rotulo, atalho, pequeno, desabilitado, children }: {
+function BotaoRedondo({ onClick, rotulo, atalho, pequeno, desabilitado, classe, children }: {
   onClick:       () => void
   rotulo:        string
   atalho?:       string
   pequeno?:      boolean
   desabilitado?: boolean
+  classe?:       string
   children:      React.ReactNode
 }) {
   return (
@@ -903,6 +1097,7 @@ function BotaoRedondo({ onClick, rotulo, atalho, pequeno, desabilitado, children
       className={cn(
         'rounded-full flex items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-50',
         pequeno ? 'w-8 h-8' : 'w-9 h-9',
+        classe,
       )}
     >
       {children}
