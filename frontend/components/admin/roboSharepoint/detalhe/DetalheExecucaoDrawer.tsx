@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Check, Circle, History, X } from 'lucide-react'
+import { Check, Circle, History, X, FolderOpen, Files, FileText, FileSpreadsheet, FileX } from 'lucide-react'
 import { Drawer, Z_DRAWER } from '@/components/cronograma/ui/Drawer'
 import { useCountUp } from '@/components/cronograma/remuneracao/RemuneracaoRPDashboard'
 import { dataHora, ETAPAS, GATILHOS, MODOS, numero, segundos } from '@/lib/roboSharepoint/rotulos'
@@ -14,6 +14,8 @@ import { AbaListar } from './AbaListar'
 import { AbaClassificar } from './AbaClassificar'
 import { AbaPlanilhas } from './AbaPlanilhas'
 import { AbaReconhecer } from './AbaReconhecer'
+
+import { NumeroPastel, tom } from '@/components/ui/pastel/pecas'
 
 // "O que o robô leu": uma execução aberta etapa por etapa. Abre na etapa do
 // card clicado; o trilho de cima troca de etapa sem fechar. Cabeçalho no
@@ -99,31 +101,46 @@ export function DetalheExecucaoDrawer({ execucao, etapaInicial, ehUltima, ultima
     >
       {/* Modais abertos de dentro do painel (arquivo) ficam uma camada acima dele. */}
       <CamadaModal.Provider value={zIndex + 10}>
-      <div className="tema-robo">
+      <div className={simples ? 'pp' : 'tema-robo'}>
       <div ref={topoRef} className="-mt-4 h-0" aria-hidden />
 
       {/* Resumo da execução */}
-      <section className="mb-4 overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-        <div className="h-1 w-full" style={{ background: 'linear-gradient(90deg,#3aaa5c,#2A92C0)' }} />
-        <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-end sm:justify-between sm:p-5">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              {estadoAtual ? 'Na pasta agora' : listar.leitura === 'completa' ? 'Leitura completa' : 'Só o que mudou'}
-            </p>
-            <p className="mt-1 flex items-baseline gap-2">
-              <span className="text-4xl font-black leading-none tabular-nums text-foreground sm:text-5xl">{numero(Math.round(hero))}</span>
-              <span className="text-xs font-semibold text-muted-foreground">{estadoAtual ? 'arquivo(s) na pasta' : 'arquivo(s) lido(s)'}</span>
-            </p>
-          </div>
-          <div className="flex divide-x divide-border">
-            <Metrica valor={pastas} rotulo="pastas" />
-            {simples && estadoAtual && <Metrica valor={resumo?.por_tipo.evidencia ?? 0} rotulo="evidências" />}
-            {!simples && <Metrica valor={resumo?.por_tipo.evidencia ?? 0} rotulo="evidências" />}
-            {!simples && <Metrica valor={execucao.resumo?.sugeridos ?? 0} rotulo="sugestões" />}
-            {!simples && <Metrica valor={execucao.duracao_ms ?? 0} rotulo="no total" formato={n => segundos(n)} />}
+      {simples ? (
+        <div className="mb-6 flex flex-wrap items-center gap-4">
+          <NumeroPastel t="aco" valor={numero(Math.round(hero))} rotulo={estadoAtual ? 'arquivos na pasta' : 'arquivos lidos'} Icone={FolderOpen} compacto />
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={`${tom('cinza')} pp-pilula`}>
+              <span className="pp-pilula-bola">{numero(pastas)}</span> pastas
+            </span>
+            {estadoAtual && (
+              <span className={`${tom('azul')} pp-pilula`}>
+                <span className="pp-pilula-bola">{numero(resumo?.por_tipo.evidencia ?? 0)}</span> evidências
+              </span>
+            )}
           </div>
         </div>
-      </section>
+      ) : (
+        <section className="mb-4 overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+          <div className="h-1 w-full" style={{ background: 'linear-gradient(90deg,#3aaa5c,#2A92C0)' }} />
+          <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-end sm:justify-between sm:p-5">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                {estadoAtual ? 'Na pasta agora' : listar.leitura === 'completa' ? 'Leitura completa' : 'Só o que mudou'}
+              </p>
+              <p className="mt-1 flex items-baseline gap-2">
+                <span className="text-4xl font-black leading-none tabular-nums text-foreground sm:text-5xl">{numero(Math.round(hero))}</span>
+                <span className="text-xs font-semibold text-muted-foreground">{estadoAtual ? 'arquivo(s) na pasta' : 'arquivo(s) lido(s)'}</span>
+              </p>
+            </div>
+            <div className="flex divide-x divide-border">
+              <Metrica valor={pastas} rotulo="pastas" />
+              <Metrica valor={resumo?.por_tipo.evidencia ?? 0} rotulo="evidências" />
+              <Metrica valor={execucao.resumo?.sugeridos ?? 0} rotulo="sugestões" />
+              <Metrica valor={execucao.duracao_ms ?? 0} rotulo="no total" formato={n => segundos(n)} />
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Trilho das etapas (fora da tela PEP) */}
       {!simples && (

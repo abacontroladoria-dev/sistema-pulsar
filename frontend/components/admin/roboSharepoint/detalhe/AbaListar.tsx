@@ -7,6 +7,7 @@ import type { ResumoExecucao, RoboEtapa, RoboExecucao } from '@/types/roboSharep
 import { Bloco, corBarra, Ladrilho, Ladrilhos, Lead, Rotulo } from './Blocos'
 import { ExploradorPastas } from './ExploradorPastas'
 import { ListaArquivos, type FiltroArquivos } from './ListaArquivos'
+import { CabecalhoPastel, PilulaFiltro, tom } from '@/components/ui/pastel/pecas'
 
 // Listar = o passeio pelo site: onde o robô andou, o que achou em cada
 // prestador, e a lista inteira, arquivo por arquivo.
@@ -88,63 +89,119 @@ export function AbaListar({ execucao, etapa, resumo, competencia, simples = fals
       </Bloco>
       </>}
 
-      <Bloco icone={FolderOpen} titulo="Todas as pastas, prestador por prestador"
-        subtitulo="abra um prestador e desça até cada pasta de paciente e suas 7 subpastas"
-        contagem={`${numero(resumo.prestadores.length)} prestadores`}>
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <Rotulo>Pasta cinza e “vazia” = o robô passou por ela e não havia arquivo</Rotulo>
-          <div className="inline-flex rounded-lg border border-border bg-background p-0.5" role="group" aria-label="Quais prestadores destacar">
-            {([[null, 'Todos'], ['com', 'Com arquivo'], ['sem', 'Sem arquivo']] as const).map(([k, r]) => (
-              <button key={r} type="button" aria-pressed={destaque === k} onClick={() => setDestaque(k)}
-                className={`h-9 rounded-md px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                  destaque === k ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`}>
-                {r} <span className="tabular-nums opacity-70">{numero(k === 'com' ? comArquivo : k === 'sem' ? resumo.prestadores.length - comArquivo : resumo.prestadores.length)}</span>
-              </button>
-            ))}
+      {simples ? (
+        <section className="mt-8 space-y-4">
+          <CabecalhoPastel id="h-prestadores" titulo="Todas as pastas, prestador por prestador" Icone={FolderOpen} direita={<span className={`${tom('aco')} pp-selo`}>{numero(resumo.prestadores.length)} prestadores</span>} />
+          <div className="flex flex-wrap gap-2">
+            <PilulaFiltro t="cinza" rotulo="Todos" contagem={resumo.prestadores.length} ativo={destaque === null} onClick={() => setDestaque(null)} />
+            <PilulaFiltro t="azul" rotulo="Com arquivo" contagem={comArquivo} ativo={destaque === 'com'} onClick={() => setDestaque('com')} />
+            <PilulaFiltro t="cinza" rotulo="Sem arquivo" contagem={resumo.prestadores.length - comArquivo} ativo={destaque === 'sem'} onClick={() => setDestaque('sem')} />
           </div>
-        </div>
-        <ExploradorPastas execucaoId={execucao.id} resumoPrestadores={resumo.prestadores} filtroPrestador={destaque} competencia={competencia} />
-      </Bloco>
-
-      <Bloco icone={Users} titulo="Onde estão os arquivos" subtitulo="toque num prestador para ver só os arquivos dele na lista abaixo" contagem={`${numero(resumo.total)} arquivos`}>
-        <ul className="space-y-1">
-          {prestadores.filter(p => p.arquivos > 0).map(p => {
-            const ativo = filtro.prestadorPastaId === p.pasta_id
-            const apagado = !!filtro.prestadorPastaId && !ativo
-            return (
-              <li key={p.pasta_id}>
-                <button type="button" aria-pressed={ativo}
-                  onClick={() => setFiltro(ativo ? {} : { prestadorPastaId: p.pasta_id, rotulo: nomeCurtoPrestador(p.nome) })}
-                  className={`grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5 rounded-lg px-2 py-2 text-left transition hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:grid-cols-[minmax(0,30fr)_minmax(0,50fr)_auto] ${
-                    ativo ? 'bg-muted/60' : ''} ${apagado ? 'opacity-35' : ''}`}>
-                  <span className="truncate text-sm font-semibold text-foreground">{nomeCurtoPrestador(p.nome)}</span>
-                  <span className="col-span-2 flex h-3 overflow-hidden rounded-full bg-muted sm:col-span-1 sm:order-none order-last"
-                    role="img" aria-label={`${p.evidencias} evidências, ${p.ignorados} fora do PEP, ${p.arquivos - p.evidencias - p.ignorados} outros`}>
-                    <span className="h-full bg-sky-500 dark:bg-sky-400" style={{ width: `${(p.evidencias / maxArquivos) * 100}%` }} />
-                    <span className="h-full border-l-2 border-card bg-slate-400 dark:bg-slate-500" style={{ width: `${(p.ignorados / maxArquivos) * 100}%` }} />
-                    <span className="h-full border-l-2 border-card bg-slate-300 dark:bg-slate-600" style={{ width: `${(Math.max(p.arquivos - p.evidencias - p.ignorados, 0) / maxArquivos) * 100}%` }} />
-                  </span>
-                  <span className="text-right text-sm font-black tabular-nums text-foreground">{numero(p.arquivos)}</span>
+          <ExploradorPastas execucaoId={execucao.id} resumoPrestadores={resumo.prestadores} filtroPrestador={destaque} competencia={competencia} pastel={simples} />
+        </section>
+      ) : (
+        <Bloco icone={FolderOpen} titulo="Todas as pastas, prestador por prestador"
+          subtitulo="abra um prestador e desça até cada pasta de paciente e suas 7 subpastas"
+          contagem={`${numero(resumo.prestadores.length)} prestadores`}>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <Rotulo>Pasta cinza e “vazia” = o robô passou por ela e não havia arquivo</Rotulo>
+            <div className="inline-flex rounded-lg border border-border bg-background p-0.5" role="group" aria-label="Quais prestadores destacar">
+              {([[null, 'Todos'], ['com', 'Com arquivo'], ['sem', 'Sem arquivo']] as const).map(([k, r]) => (
+                <button key={r} type="button" aria-pressed={destaque === k} onClick={() => setDestaque(k)}
+                  className={`h-9 rounded-md px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                    destaque === k ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`}>
+                  {r} <span className="tabular-nums opacity-70">{numero(k === 'com' ? comArquivo : k === 'sem' ? resumo.prestadores.length - comArquivo : resumo.prestadores.length)}</span>
                 </button>
-              </li>
-            )
-          })}
-        </ul>
-        <div className="mt-3 flex flex-wrap gap-4 px-2 text-[11px] text-muted-foreground">
-          <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-sky-500 dark:bg-sky-400" aria-hidden />evidências</span>
-          <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-slate-400 dark:bg-slate-500" aria-hidden />fora do PEP</span>
-          <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-slate-300 dark:bg-slate-600" aria-hidden />planilhas e outros</span>
-        </div>
-      </Bloco>
+              ))}
+            </div>
+          </div>
+          <ExploradorPastas execucaoId={execucao.id} resumoPrestadores={resumo.prestadores} filtroPrestador={destaque} competencia={competencia} pastel={simples} />
+        </Bloco>
+      )}
 
-      <Bloco icone={Files} titulo={`Os ${numero(resumo.total)} arquivos, um por um`} subtitulo="toque num arquivo para ver tudo o que o robô sabe dele">
-        <ListaArquivos
-          execucaoId={execucao.id}
-          filtro={filtro}
-          contagens={{ ...resumo.por_tipo, total: resumo.total + (resumo.por_tipo.removido ?? 0) }}
-          onLimparFiltro={() => setFiltro({})}
-        />
-      </Bloco>
+      {simples ? (
+        <section className="mt-8 space-y-4">
+          <CabecalhoPastel id="h-arquivos" titulo="Onde estão os arquivos" Icone={Users} direita={<span className={`${tom('aco')} pp-selo`}>{numero(resumo.total)} arquivos</span>} />
+          <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {prestadores.filter(p => p.arquivos > 0).map(p => {
+              const ativo = filtro.prestadorPastaId === p.pasta_id
+              const apagado = !!filtro.prestadorPastaId && !ativo
+              return (
+                <li key={p.pasta_id}>
+                  <button type="button" aria-pressed={ativo}
+                    onClick={() => setFiltro(ativo ? {} : { prestadorPastaId: p.pasta_id, rotulo: nomeCurtoPrestador(p.nome) })}
+                    className={`pp-cartao w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                      ativo ? 'is-done' : ''} ${apagado ? 'opacity-40' : ''}`}>
+                    <span className="pp-nome">{nomeCurtoPrestador(p.nome)}</span>
+                    <div className="mt-auto flex items-end justify-between">
+                      <span className="text-2xl font-black tabular-nums text-[var(--pp-ink)]">{numero(p.arquivos)}</span>
+                      <div className="flex h-2 w-16 overflow-hidden rounded-full bg-[var(--c-linha)]" role="img" aria-label={`${p.evidencias} evidências, ${p.ignorados} fora do PEP, ${p.arquivos - p.evidencias - p.ignorados} outros`}>
+                        <span className="h-full bg-sky-500" style={{ width: `${(p.evidencias / Math.max(p.arquivos, 1)) * 100}%` }} />
+                        <span className="h-full bg-slate-400" style={{ width: `${(p.ignorados / Math.max(p.arquivos, 1)) * 100}%` }} />
+                        <span className="h-full bg-slate-300" style={{ width: `${(Math.max(p.arquivos - p.evidencias - p.ignorados, 0) / Math.max(p.arquivos, 1)) * 100}%` }} />
+                      </div>
+                    </div>
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        </section>
+      ) : (
+        <Bloco icone={Users} titulo="Onde estão os arquivos" subtitulo="toque num prestador para ver só os arquivos dele na lista abaixo" contagem={`${numero(resumo.total)} arquivos`}>
+          <ul className="space-y-1">
+            {prestadores.filter(p => p.arquivos > 0).map(p => {
+              const ativo = filtro.prestadorPastaId === p.pasta_id
+              const apagado = !!filtro.prestadorPastaId && !ativo
+              return (
+                <li key={p.pasta_id}>
+                  <button type="button" aria-pressed={ativo}
+                    onClick={() => setFiltro(ativo ? {} : { prestadorPastaId: p.pasta_id, rotulo: nomeCurtoPrestador(p.nome) })}
+                    className={`grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5 rounded-lg px-2 py-2 text-left transition hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:grid-cols-[minmax(0,30fr)_minmax(0,50fr)_auto] ${
+                      ativo ? 'bg-muted/60' : ''} ${apagado ? 'opacity-35' : ''}`}>
+                    <span className="truncate text-sm font-semibold text-foreground">{nomeCurtoPrestador(p.nome)}</span>
+                    <span className="col-span-2 flex h-3 overflow-hidden rounded-full bg-muted sm:col-span-1 sm:order-none order-last"
+                      role="img" aria-label={`${p.evidencias} evidências, ${p.ignorados} fora do PEP, ${p.arquivos - p.evidencias - p.ignorados} outros`}>
+                      <span className="h-full bg-sky-500 dark:bg-sky-400" style={{ width: `${(p.evidencias / maxArquivos) * 100}%` }} />
+                      <span className="h-full border-l-2 border-card bg-slate-400 dark:bg-slate-500" style={{ width: `${(p.ignorados / maxArquivos) * 100}%` }} />
+                      <span className="h-full border-l-2 border-card bg-slate-300 dark:bg-slate-600" style={{ width: `${(Math.max(p.arquivos - p.evidencias - p.ignorados, 0) / maxArquivos) * 100}%` }} />
+                    </span>
+                    <span className="text-right text-sm font-black tabular-nums text-foreground">{numero(p.arquivos)}</span>
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+          <div className="mt-3 flex flex-wrap gap-4 px-2 text-[11px] text-muted-foreground">
+            <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-sky-500 dark:bg-sky-400" aria-hidden />evidências</span>
+            <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-slate-400 dark:bg-slate-500" aria-hidden />fora do PEP</span>
+            <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-slate-300 dark:bg-slate-600" aria-hidden />planilhas e outros</span>
+          </div>
+        </Bloco>
+      )}
+
+      {simples ? (
+        <section className="mt-8 space-y-4">
+          <CabecalhoPastel id="h-arquivos-lista" titulo={`Os ${numero(resumo.total)} arquivos, um por um`} Icone={Files} />
+          <ListaArquivos
+            execucaoId={execucao.id}
+            filtro={filtro}
+            contagens={{ ...resumo.por_tipo, total: resumo.total + (resumo.por_tipo.removido ?? 0) }}
+            onLimparFiltro={() => setFiltro({})}
+            pastel={simples}
+          />
+        </section>
+      ) : (
+        <Bloco icone={Files} titulo={`Os ${numero(resumo.total)} arquivos, um por um`} subtitulo="toque num arquivo para ver tudo o que o robô sabe dele">
+          <ListaArquivos
+            execucaoId={execucao.id}
+            filtro={filtro}
+            contagens={{ ...resumo.por_tipo, total: resumo.total + (resumo.por_tipo.removido ?? 0) }}
+            onLimparFiltro={() => setFiltro({})}
+            pastel={simples}
+          />
+        </Bloco>
+      )}
     </div>
   )
 }
