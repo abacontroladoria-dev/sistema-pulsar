@@ -78,16 +78,62 @@ export type EstadoAutorizacao =
  * entre as linhas carregadas. Ler o bloco é o que permite ao cartão dizer "cobre
  * Qui 30/07 14:20" em vez de mostrar um identificador cru.
  *
- * Nulo quando o formato não bate, e isso inclui de propósito os blocos
- * sintéticos de falta (`falta_…`), que nunca recebem vínculo.
+ * O bloco sintético de falta (`falta_…`) é traduzido antes — ver
+ * `blocoRealDaFalta`: `falta_terapeuta` e `substituicao` são gravados nele.
+ * Nulo quando o formato não bate.
  */
 export function sessaoDoBloco(blocoId: string | null): { dia: string; hora: string } | null {
   if (!blocoId) return null
-  const partes = blocoId.split('_')
+  const partes = (blocoRealDaFalta(blocoId) ?? blocoId).split('_')
   if (partes.length !== 4) return null
   const [, dia, , hora] = partes
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dia) || !/^\d{2}:\d{2}/.test(hora)) return null
   return { dia, hora: hora.slice(0, 5) }
+}
+
+/**
+ * A guia carregada foi emitida DEPOIS da triagem que leva o número dela?
+ *
+ * Então é outra guia. O número da ASSIM recicla, e `autorizacoes_assim` tem
+ * `UNIQUE (guia)`: a emissão nova sobrescreve a antiga, e a triagem feita sobre
+ * a antiga passava a vestir a nova — de outro paciente. Medido em 28/09: 4 dos
+ * 27 vínculos ativos, todos de agosto, com o número reemitido em setembro. Uma
+ * guia de ABA emitida em 01/09 saía "Vinculada · Autorização Substituta 03/08
+ * 11:20", apontando para a Psicopedagogia de outra criança.
+ *
+ * Ninguém vincula uma guia que ainda não existe, então a ordem no tempo é
+ * prova suficiente. `data_execucao` vem sem fuso e é hora de Brasília;
+ * `vinculado_em` é timestamptz. Sem um dos dois não há como afirmar: `false`.
+ */
+export function guiaPosteriorAoVinculo(
+  dataExecucao: string | null,
+  vinculadoEm: string | null
+): boolean {
+  if (!dataExecucao || !vinculadoEm) return false
+  const temFuso = /(?:Z|[+-]\d{2}:?\d{2})$/.test(dataExecucao)
+  const emissao = Date.parse(temFuso ? dataExecucao : `${dataExecucao}-03:00`)
+  const triagem = Date.parse(vinculadoEm)
+  if (Number.isNaN(emissao) || Number.isNaN(triagem)) return false
+  return emissao > triagem
+}
+
+/**
+ * O bloco sintético de falta traduzido para o `bloco_id` da sessão real.
+ *
+ * A falta tem chave própria, `falta_<paciente>_<dia>_<hora>_<tuss>` (ordem
+ * diferente da sessão), e é nela que `falta_terapeuta` e `substituicao` são
+ * gravados. Mas a substituição devolve o slot à Conferência como sessão real,
+ * com o `bloco_id` normal `<paciente>_<dia>_<tuss>_<hora>` — e aí o vínculo,
+ * indexado só pela chave da falta, não achava o cartão: a sessão substituída
+ * saía "Liberada" comum, com o nome da titular que faltou (21/09, guia 321907).
+ *
+ * Nulo quando o id não é de falta.
+ */
+export function blocoRealDaFalta(blocoId: string): string | null {
+  const partes = blocoId.split('_')
+  if (partes.length !== 5 || partes[0] !== 'falta') return null
+  const [, paciente, dia, hora, tuss] = partes
+  return `${paciente}_${dia}_${tuss}_${hora}`
 }
 
 /**

@@ -1,9 +1,10 @@
 'use client'
 
 import type { CandidataVinculo, CartaoGrade, LinhaGrade } from '../types'
-import CartaoAtendimento from './CartaoAtendimento'
-import { formatarDia } from './datas'
-import { candidataElegivel, type PapelNaSelecao } from './vinculo'
+import CartaoAtendimento, { sessaoMostraPar } from './CartaoAtendimento'
+import { formatarDia, segundaDe } from './datas'
+import { cartaoPendente } from './grade'
+import { candidataElegivel, guiaPosteriorAoVinculo, type PapelNaSelecao } from './vinculo'
 
 /** O modo de vínculo, visto de dentro da grade. Ausente = grade normal. */
 export type SelecaoNaGrade = {
@@ -55,6 +56,7 @@ export default function GradeSemana({
   chaveAberta,
   onAbrirDetalhe,
   selecao,
+  execucaoDaGuia,
 }: {
   linhas: LinhaGrade[]
   dias: string[]
@@ -76,9 +78,68 @@ export default function GradeSemana({
    * justamente no momento de decidir. Aqui a escolha acontece em cima dela.
    */
   selecao?: SelecaoNaGrade
+  /**
+   * guia → `data_execucao`, das guias do paciente no período carregado (não só
+   * da semana). É a prova que "outra semana" precisa — ver `parNaSemanaDe`.
+   */
+  execucaoDaGuia?: ReadonlyMap<string, string | null>
 }) {
+  /*
+    O par triado num cartão só (Proposta 2b, 2026-09-28): quando a sessão coberta
+    está nesta semana e desenha o par (`sessaoMostraPar`), a guia dela deixa de
+    ter cartão próprio — ela já está escrita dentro da sessão. Era o segundo
+    cartão verde da mesma faixa que fazia a coluna ler como "tudo liberado".
+
+    Só apresentação: `montarGrade` continua devolvendo a guia, e as contagens
+    não passam por aqui. A guia pendente (excedente) continua desenhada, porque
+    ali ela é o assunto; no modo de vínculo nada some, porque a grade é o
+    seletor. O "Desfazer triagem" segue na gaveta da sessão.
+  */
+  const vinculosComPar = new Set<string>()
+  const vinculosComGuia = new Set<string>()
+  for (const linha of linhas) {
+    for (const dia of dias) {
+      for (const c of linha.celulas[dia] ?? []) {
+        if (!c.vinculo) continue
+        if (c.tipo === 'autorizacao') vinculosComGuia.add(c.vinculo.id)
+        else if (sessaoMostraPar(c)) vinculosComPar.add(c.vinculo.id)
+      }
+    }
+  }
+  const escondida = (c: CartaoGrade) =>
+    !selecao &&
+    c.tipo === 'autorizacao' &&
+    c.estado === 'vinculada' &&
+    !!c.vinculo &&
+    vinculosComPar.has(c.vinculo.id) &&
+    !cartaoPendente(c)
+  const cartoesDe = (linha: LinhaGrade, dia: string) =>
+    (linha.celulas[dia] ?? []).filter((c) => !escondida(c))
+
+  /*
+    "Outra semana" só com prova. Não achar o cartão da guia entre os cinco dias
+    desenhados NÃO prova isso: o número pode ter sido reemitido (a guia nova não
+    veste mais a triagem), as autorizações podem não ter carregado, ou a guia
+    pode ter saído num sábado. Em todos esses casos o cartão da sessão dizia
+    "Coberta por 15032 · outra semana", falso.
+
+    A prova é a data de emissão da própria guia, desde que ela seja anterior à
+    triagem (a posterior é outro atendimento com o número reciclado — ver
+    `guiaPosteriorAoVinculo`) e caia numa semana diferente desta. Sem prova,
+    `undefined`: o cartão diz só "Coberta por 15032", que é verdade sempre.
+  */
+  const segundaDaSemana = dias[0] ? segundaDe(dias[0]) : null
+  const parNaSemanaDe = (c: CartaoGrade): boolean | undefined => {
+    if (c.tipo !== 'sessao' || !c.vinculo) return undefined
+    if (vinculosComGuia.has(c.vinculo.id)) return true
+    const execucao = execucaoDaGuia?.get(c.vinculo.guia) ?? null
+    if (!execucao || !segundaDaSemana) return undefined
+    if (guiaPosteriorAoVinculo(execucao, c.vinculo.vinculado_em)) return undefined
+    return segundaDe(execucao.slice(0, 10)) === segundaDaSemana ? undefined : false
+  }
+
   const diasVazios = new Set(
-    dias.filter((dia) => linhas.every((linha) => (linha.celulas[dia] ?? []).length === 0))
+    dias.filter((dia) => linhas.every((linha) => cartoesDe(linha, dia).length === 0))
   )
 
   /**
@@ -175,7 +236,7 @@ export default function GradeSemana({
               </div>
 
               {dias.map((dia) => {
-                const cartoes = linha.celulas[dia] ?? []
+                const cartoes = cartoesDe(linha, dia)
                 return (
                   <div
                     key={dia}
@@ -242,6 +303,7 @@ export default function GradeSemana({
                                 // `falta_` do bloco: a situação é o dado, o
                                 // prefixo é serialização.
                                 ehFaltaNaSelecao={candidata?.situacao === 'FALTA_TERAPEUTA'}
+                                parNaSemana={parNaSemanaDe(cartao)}
                               />
                             </div>
                           )
