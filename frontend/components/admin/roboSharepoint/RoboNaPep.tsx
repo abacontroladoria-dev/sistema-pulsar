@@ -10,7 +10,7 @@ import { useRoboSharepoint } from '@/hooks/useRoboSharepoint'
 import { ESTADO_ATUAL, execucaoEstadoAtual, execucoesDeReferencia } from '@/lib/roboSharepoint/referencias'
 import { estadoAtualDisponivel, obterResumoExecucao } from '@/services/roboSharepoint.service'
 import { carregarDadosSituacao, listarEvidenciasDoMes } from '@/services/pepSituacao.service'
-import { evidenciasEsperadasPorAnalista, type EsperadasAnalista } from '@/lib/remuneracao/situacaoEntregasPep'
+import { esperadasPorEntrega, evidenciasEsperadasPorAnalista, type EsperadasAnalista, type EsperadasPorEntrega } from '@/lib/remuneracao/situacaoEntregasPep'
 import { rotuloMes } from '@/lib/roboSharepoint/relatorioPrestador'
 import type { AnalistaDaGrade } from '@/lib/remuneracao/visaoGeralPep'
 import type { ResumoExecucao, RoboEtapaNome, RoboExecucao } from '@/types/roboSharepoint'
@@ -54,12 +54,17 @@ export function RoboNaPep({ onCarregado, competencia, analistas }: { onCarregado
 
   // Evidências esperadas no mês × na pasta, por analista. Chega depois do resto
   // (não segura a tela); sem a Grade do mês ou sem dados, o bloco não aparece.
-  const [esperadas, setEsperadas] = useState<EsperadasAnalista[] | null>(null)
+  const [esperadas, setEsperadas] = useState<{ analistas: EsperadasAnalista[]; porEntrega: EsperadasPorEntrega[] } | null>(null)
   useEffect(() => {
     if (!competencia || !analistas || analistas.length === 0) return
     let vivo = true
     Promise.all([carregarDadosSituacao(competencia), listarEvidenciasDoMes(competencia)])
-      .then(([dados, evidencias]) => { if (vivo) setEsperadas(dados ? evidenciasEsperadasPorAnalista(analistas, dados, evidencias, competencia) : null) })
+      .then(([dados, evidencias]) => { {
+        if (!vivo) return
+        if (!dados) { setEsperadas(null); return }
+        const lista = evidenciasEsperadasPorAnalista(analistas, dados, evidencias, competencia)
+        setEsperadas({ analistas: lista, porEntrega: esperadasPorEntrega(lista, dados.catalogo) })
+      } })
       .catch(() => { if (vivo) setEsperadas(null) })
     return () => { vivo = false }
   }, [competencia, analistas, idRetrato])
@@ -79,7 +84,7 @@ export function RoboNaPep({ onCarregado, competencia, analistas }: { onCarregado
   return (
     <div className="tema-robo space-y-4">
       <DestaqueLeitura execucao={ultima} estadoAtual={estadoAtual} retratoDe={ultimaConcluida} onAbrir={abrir}
-        esperadas={esperadas && competencia ? { mesRotulo: rotuloMes(competencia), analistas: esperadas } : null} />
+        esperadas={esperadas && competencia ? { mesRotulo: rotuloMes(competencia), ...esperadas } : null} />
 
       <AvisosEvidencias cartao={cartao} />
 

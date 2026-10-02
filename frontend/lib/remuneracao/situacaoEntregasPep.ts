@@ -49,6 +49,8 @@ export type SituacaoEntregasAnalista = {
   unidadesFaltando: number
   /** Semestrais com o mês planejado vencido e sem entrega no ciclo. */
   semestraisVencidas: number
+  /** As mesmas semestrais vencidas, por item do catálogo (item_id → quantas). */
+  semestraisPorItem: Record<string, number>
   /** Sugestões do robô esperando uma pessoa. */
   sugestoesEsperando: number
   /** Conferência que vale: ninguém mexeu nas entregas depois dela. */
@@ -80,6 +82,8 @@ export type EsperadasAnalista = {
   faltam: number
   /** Evidências do mês que a pasta tem mas que ferem o padrão de nome: não contam. */
   foraDoPadrao: number
+  /** O mesmo, por sigla do item (STC, TAP, PIC...). */
+  porSigla: Record<string, { esperadas: number; naPasta: number }>
 }
 
 /**
@@ -103,20 +107,35 @@ export function evidenciasEsperadasPorAnalista(
       mine.filter(e => e.sigla === sigla && (e.paciente_nome ?? null) === paciente && e.padrao === "ok").length
     let esperadasRec = 0
     let naPasta = 0
+    const porSigla: Record<string, { esperadas: number; naPasta: number }> = {}
+    const somar = (sigla: string, esperadas: number, na: number) => {
+      const c = porSigla[sigla] ?? { esperadas: 0, naPasta: 0 }
+      porSigla[sigla] = { esperadas: c.esperadas + esperadas, naPasta: c.naPasta + na }
+    }
     for (const item of itens) {
       if (item.tipo_registro === "GERAL") {
         const esperado = item.periodicidade === "semanal" ? dados.semanasEsperadas : (item.qtd_referencia_mes ?? 1)
+        const na = Math.min(esperado, contar(item.sigla, null))
         esperadasRec += esperado
-        naPasta += Math.min(esperado, contar(item.sigla, null))
+        naPasta += na
+        somar(item.sigla, esperado, na)
       } else {
         const esperado = item.qtd_referencia_mes ?? 1
         for (const p of a.pacientes) {
+          const na = Math.min(esperado, contar(item.sigla, p))
           esperadasRec += esperado
-          naPasta += Math.min(esperado, contar(item.sigla, p))
+          naPasta += na
+          somar(item.sigla, esperado, na)
         }
       }
     }
-    const vencidas = situacao.get(a.nome)?.semestraisVencidas ?? 0
+    const sit = situacao.get(a.nome)
+    const vencidas = sit?.semestraisVencidas ?? 0
+    // Semestral vencida = esperada e sem entrega: conta no esperado, nunca na pasta.
+    for (const [itemId, n] of Object.entries(sit?.semestraisPorItem ?? {})) {
+      const sigla = dados.catalogo.find(c => c.id === itemId)?.sigla
+      if (sigla) somar(sigla, n, 0)
+    }
     const esperadas = esperadasRec + vencidas
     return {
       nome: a.nome,
@@ -124,7 +143,25 @@ export function evidenciasEsperadasPorAnalista(
       naPasta,
       faltam: Math.max(0, esperadas - naPasta),
       foraDoPadrao: mine.filter(e => e.padrao === "fora").length,
+      porSigla,
     }
+  })
+}
+
+export type EsperadasPorEntrega = { sigla: string; nome: string; esperadas: number; naPasta: number; faltam: number }
+
+/** Soma de todos os analistas, por tipo de entrega, na ordem do catálogo (STC, ETC, TAP, TOP...). */
+export function esperadasPorEntrega(analistas: EsperadasAnalista[], catalogo: PepCatalogoItem[]): EsperadasPorEntrega[] {
+  const total = new Map<string, { esperadas: number; naPasta: number }>()
+  for (const a of analistas) {
+    for (const [sigla, v] of Object.entries(a.porSigla)) {
+      const c = total.get(sigla) ?? { esperadas: 0, naPasta: 0 }
+      total.set(sigla, { esperadas: c.esperadas + v.esperadas, naPasta: c.naPasta + v.naPasta })
+    }
+  }
+  return catalogo.filter(i => i.ativo && total.has(i.sigla)).map(i => {
+    const v = total.get(i.sigla)!
+    return { sigla: i.sigla, nome: i.nome, esperadas: v.esperadas, naPasta: v.naPasta, faltam: Math.max(0, v.esperadas - v.naPasta) }
   })
 }
 
@@ -170,13 +207,14 @@ export function situacaoEntregasPorAnalista(
     // Semestral vencida: o mês planejado já chegou e não há entrega no ciclo
     // (5 meses antes do planejado até hoje — a mesma janela do robô).
     let semestraisVencidas = 0
+    const semestraisPorItem: Record<string, number> = {}
     const pacientes = new Set(a.pacientes)
     for (const plano of dados.planos) {
       if (!pacientes.has(plano.paciente_nome) || !semestrais.has(plano.item_id)) continue
       if (plano.competencia_planejada > competencia) continue
       const inicio = somarMeses(plano.competencia_planejada, -5)
       const feitas = entreguesPorPacienteItem.get(`${plano.paciente_nome}\u0000${plano.item_id}`) ?? []
-      if (!feitas.some(c => c >= inicio)) semestraisVencidas++
+      if (!feitas.some(c => c >= inicio)) { semestraisVencidas++; semestraisPorItem[plano.item_id] = (semestraisPorItem[plano.item_id] ?? 0) + 1 }
     }
 
     const sugestoesEsperando = dados.sugestoes.filter(s => s.prestador_nome === a.nome && sugestaoEsperaPessoa(s)).length
@@ -186,6 +224,7 @@ export function situacaoEntregasPorAnalista(
     saida.set(a.nome, {
       unidadesFaltando,
       semestraisVencidas,
+      semestraisPorItem,
       sugestoesEsperando,
       conferido: conf && !mexeuDepois ? { por: conf.conferido_por_nome, em: conf.conferido_em } : null,
       conferenciaInvalidada: !!conf && mexeuDepois,

@@ -2,7 +2,7 @@
 
 import { ArrowRight, Camera, Target, Clock, FileCheck2, FileText, FolderSearch, FolderTree, Loader2, RefreshCw, ScanSearch, TriangleAlert } from 'lucide-react'
 import { dataHora, haQuanto, numero } from '@/lib/roboSharepoint/rotulos'
-import type { EsperadasAnalista } from '@/lib/remuneracao/situacaoEntregasPep'
+import type { EsperadasAnalista, EsperadasPorEntrega } from '@/lib/remuneracao/situacaoEntregasPep'
 import { EsperadasChart } from './EsperadasChart'
 import type { ResumoExecucao, RoboEtapaNome, RoboExecucao } from '@/types/roboSharepoint'
 
@@ -42,14 +42,14 @@ function BotaoVer({ onClick, sub }: { onClick: () => void; sub: string }) {
   )
 }
 
-function Numero({ icone: Icone, valor, rotulo, sub }: { icone: typeof FileText; valor: string; rotulo: string; sub?: string }) {
+function Numero({ icone: Icone, valor, rotulo, sub, compacto = false }: { icone: typeof FileText; valor: string; rotulo: string; sub?: string; compacto?: boolean }) {
   return (
-    <div className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 sm:p-5">
+    <div className={`flex items-center gap-4 rounded-2xl border border-slate-200 bg-slate-50/70 ${compacto ? 'p-3.5' : 'p-4 sm:p-5'}`}>
       <span className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-white text-brand-fg ring-1 ring-slate-200">
         <Icone className="h-6 w-6" aria-hidden />
       </span>
       <span className="min-w-0">
-        <span className="block text-4xl font-black leading-none tabular-nums text-slate-900 sm:text-5xl">{valor}</span>
+        <span className={`block font-black leading-none tabular-nums text-slate-900 ${compacto ? 'text-3xl' : 'text-4xl sm:text-5xl'}`}>{valor}</span>
         <span className="mt-1.5 block text-sm font-semibold text-slate-700">{rotulo}</span>
         {sub && <span className="block text-xs text-slate-500">{sub}</span>}
       </span>
@@ -63,8 +63,8 @@ export function DestaqueLeitura({ execucao, estadoAtual, retratoDe, esperadas, o
   estadoAtual?: ResumoExecucao | null
   /** Leitura que tirou o retrato (a última concluída). */
   retratoDe?: RoboExecucao | null
-  /** Evidências esperadas no mês × na pasta, por analista (null = ainda sem dados). */
-  esperadas?: { mesRotulo: string; analistas: EsperadasAnalista[] } | null
+  /** Evidências esperadas no mês × na pasta, no total e por tipo de entrega (null = ainda sem dados). */
+  esperadas?: { mesRotulo: string; analistas: EsperadasAnalista[]; porEntrega: EsperadasPorEntrega[] } | null
   onAbrir: (etapa: RoboEtapaNome) => void
 }) {
   const etapa = execucao?.etapas.find(e => e.etapa === 'listar')
@@ -81,51 +81,67 @@ export function DestaqueLeitura({ execucao, estadoAtual, retratoDe, esperadas, o
   const totalEsperadas = esperadas?.analistas.reduce((t, a) => ({ esperadas: t.esperadas + a.esperadas, naPasta: t.naPasta + a.naPasta }), { esperadas: 0, naPasta: 0 })
 
   if (atual && !lendo) {
+    const pctEsperadas = totalEsperadas && totalEsperadas.esperadas > 0 ? Math.round((totalEsperadas.naPasta / totalEsperadas.esperadas) * 100) : 0
     return (
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]" aria-labelledby="titulo-destaque">
         <div className="h-1.5 w-full" style={{ background: FAIXA }} aria-hidden />
-        <div className="grid gap-5 p-5 sm:p-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.9fr)] lg:items-center lg:gap-8">
-          <div className="flex items-start gap-4">
-            <span className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-brand-surface text-brand-fg">
-              <FolderTree className="h-7 w-7" aria-hidden />
-            </span>
-            <div className="min-w-0">
-              <h2 id="titulo-destaque" className="text-xl font-bold leading-tight text-slate-900">O que está no SharePoint agora</h2>
-              {quando && (
-                <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-slate-600">
-                  <Clock className="h-4 w-4 text-slate-400" aria-hidden />
-                  retrato da leitura de {dataHora(quando.iniciado_em)} <span className="text-slate-400">·</span> {haQuanto(quando.iniciado_em)}
-                </p>
-              )}
-              <span className="mt-2.5 inline-flex items-center gap-1.5 rounded-full bg-brand-surface px-2.5 py-1 text-xs font-semibold text-brand-fg">
-                <Camera className="h-3.5 w-3.5" aria-hidden />
-                todos os arquivos de todos os prestadores
+        <div className="space-y-5 p-5 sm:p-6">
+          {/* Título à esquerda, a porta para a lista à direita. */}
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between lg:gap-8">
+            <div className="flex min-w-0 items-start gap-4">
+              <span className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-brand-surface text-brand-fg">
+                <FolderTree className="h-7 w-7" aria-hidden />
               </span>
+              <div className="min-w-0">
+                <h2 id="titulo-destaque" className="text-xl font-bold leading-tight text-slate-900">O que está no SharePoint agora</h2>
+                {quando && (
+                  <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-slate-600">
+                    <Clock className="h-4 w-4 text-slate-400" aria-hidden />
+                    retrato da leitura de {dataHora(quando.iniciado_em)} <span className="text-slate-400">·</span> {haQuanto(quando.iniciado_em)}
+                  </p>
+                )}
+                <span className="mt-2.5 inline-flex items-center gap-1.5 rounded-full bg-brand-surface px-2.5 py-1 text-xs font-semibold text-brand-fg">
+                  <Camera className="h-3.5 w-3.5" aria-hidden />
+                  todos os arquivos de todos os prestadores
+                </span>
+              </div>
+            </div>
+            <div className="lg:w-[24rem] lg:shrink-0">
+              <BotaoVer onClick={() => onAbrir('listar')} sub="tudo o que está na pasta, prestador por prestador" />
             </div>
           </div>
 
-          <div className="space-y-3">
-            <div className={`grid gap-3 sm:grid-cols-2 ${esperadas ? 'xl:grid-cols-4' : 'xl:grid-cols-3'}`}>
-              <Numero icone={FileText} valor={numero(atual.total)} rotulo={atual.total === 1 ? 'arquivo na pasta' : 'arquivos na pasta'} />
-              <Numero icone={FileCheck2} valor={numero(atual.por_tipo.evidencia ?? 0)} rotulo="evidências" sub="nas pastas dos itens, de todos os meses" />
-              {esperadas && (
-                <Numero icone={Target} valor={`${numero(totalEsperadas?.naPasta ?? 0)} de ${numero(totalEsperadas?.esperadas ?? 0)}`}
-                  rotulo={`evidências esperadas em ${esperadas.mesRotulo}`} sub="já na pasta, no padrão de nome" />
-              )}
-              <Numero icone={FolderTree} valor={numero(atual.pastas.total)} rotulo="pastas no site" sub="prestadores, seções e pacientes" />
+          <div className={`grid gap-4 ${esperadas ? 'lg:grid-cols-[minmax(0,19rem)_minmax(0,1fr)] lg:items-start' : ''}`}>
+            {/* O retrato: três números, lado a lado no celular e empilhados ao lado do gráfico. */}
+            <div className={`grid gap-3 ${esperadas ? 'sm:grid-cols-3 lg:grid-cols-1' : 'sm:grid-cols-3'}`}>
+              <Numero compacto icone={FileText} valor={numero(atual.total)} rotulo={atual.total === 1 ? 'arquivo na pasta' : 'arquivos na pasta'} />
+              <Numero compacto icone={FileCheck2} valor={numero(atual.por_tipo.evidencia ?? 0)} rotulo="evidências" sub="de todos os meses" />
+              <Numero compacto icone={FolderTree} valor={numero(atual.pastas.total)} rotulo="pastas no site" sub="prestadores, seções e pacientes" />
             </div>
-            <BotaoVer onClick={() => onAbrir('listar')} sub="tudo o que está na pasta, prestador por prestador" />
+
+            {esperadas && totalEsperadas && totalEsperadas.esperadas > 0 && (
+              <div className="rounded-2xl border border-slate-200 p-4 sm:p-5">
+                <div className="mb-4 flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
+                  <div className="min-w-0">
+                    <h3 className="flex items-center gap-2 text-sm font-bold text-slate-800">
+                      <Target className="h-4 w-4 text-brand-fg" aria-hidden /> Evidências esperadas em {esperadas.mesRotulo}
+                    </h3>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      Supervisão e estudo por semana do mês, TAP e TOP por paciente, e semestrais vencidas. Conta só o nome no padrão.
+                    </p>
+                  </div>
+                  <p className="shrink-0 text-right">
+                    <span className="block text-3xl font-black leading-none tabular-nums text-slate-900 sm:text-4xl">
+                      {numero(totalEsperadas.naPasta)} <span className="text-lg font-bold text-slate-500">de {numero(totalEsperadas.esperadas)}</span>
+                    </span>
+                    <span className="mt-1 block text-xs font-semibold text-slate-600">{pctEsperadas}% já na pasta</span>
+                  </p>
+                </div>
+                <EsperadasChart entregas={esperadas.porEntrega} />
+              </div>
+            )}
           </div>
         </div>
-        {esperadas && esperadas.analistas.some(a => a.esperadas > 0) && (
-          <div className="border-t border-slate-200 px-5 pb-5 pt-4 sm:px-6 sm:pb-6">
-            <h3 className="text-sm font-bold text-slate-800">Evidências esperadas × na pasta, por analista — {esperadas.mesRotulo}</h3>
-            <p className="mb-3 mt-0.5 text-xs text-slate-500">
-              Esperado = supervisão e estudo por semana do mês, TAP e TOP por paciente e semestrais vencidas. Quem está mais longe de completar vem primeiro.
-            </p>
-            <EsperadasChart analistas={esperadas.analistas} />
-          </div>
-        )}
       </section>
     )
   }

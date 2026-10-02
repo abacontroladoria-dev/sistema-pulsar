@@ -3,7 +3,7 @@
 //   npx vitest run lib/remuneracao/situacaoEntregasPep.test.ts
 
 import { describe, expect, test } from "vitest"
-import { evidenciasEsperadasPorAnalista, situacaoEntregasPorAnalista, somarMeses, type DadosSituacao } from "./situacaoEntregasPep"
+import { esperadasPorEntrega, evidenciasEsperadasPorAnalista, situacaoEntregasPorAnalista, somarMeses, type DadosSituacao } from "./situacaoEntregasPep"
 import type { PepCatalogoItem } from "@/types/pep"
 
 const item = (id: string, extra: Partial<PepCatalogoItem>): PepCatalogoItem => ({
@@ -93,5 +93,15 @@ describe("evidenciasEsperadasPorAnalista", () => {
 
   test("evidência de outro analista não conta", () => {
     expect(esp([{ prestador_nome: "Beto", paciente_nome: null, sigla: "STC", padrao: "ok" }])).toMatchObject({ naPasta: 0 })
+  })
+
+  test("por entrega: soma dos analistas, com semestral vencida só no esperado", () => {
+    const d = base({ planos: [{ paciente_nome: "P1", item_id: "pic", competencia_planejada: "2026-09" }] })
+    const lista = evidenciasEsperadasPorAnalista(
+      [{ nome: "Ana", pacientes: ["P1"] }, { nome: "Beto", pacientes: [] }], d,
+      [ev("STC", null, "ok"), ev("TAP", "P1", "ok")], "2026-09")
+    const porEntrega = esperadasPorEntrega(lista, d.catalogo)
+    expect(porEntrega.map(e => [e.sigla, e.esperadas, e.naPasta])).toEqual([["STC", 8, 1], ["TAP", 2, 1], ["PIC", 1, 0]])
+    expect(porEntrega.find(e => e.sigla === "PIC")!.faltam).toBe(1)
   })
 })

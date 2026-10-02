@@ -60,7 +60,7 @@ describe("resumoPepCompetencia", () => {
     linha("Beto", "A1", { valor_liquido: 50 }),          // paciente que não é do Beto na Grade
   ]
   const sit = (extra: Partial<SituacaoEntregasAnalista> = {}): SituacaoEntregasAnalista => ({
-    unidadesFaltando: 0, semestraisVencidas: 0, sugestoesEsperando: 0, conferido: null, conferenciaInvalidada: false, ...extra,
+    unidadesFaltando: 0, semestraisVencidas: 0, semestraisPorItem: {}, sugestoesEsperando: 0, conferido: null, conferenciaInvalidada: false, ...extra,
   })
   const situacao = new Map<string, SituacaoEntregasAnalista>([
     ["Ana", sit()],
