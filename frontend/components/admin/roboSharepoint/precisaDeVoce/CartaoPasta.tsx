@@ -6,17 +6,18 @@ import toast from 'react-hot-toast'
 import { grupoMotivo, nomeCurtoPrestador } from '@/lib/roboSharepoint/rotulos'
 import { buscarPacientes, listarNomesDePrestadores, vincularPasta } from '@/services/roboSharepoint.service'
 import type { SpPendenciaPasta } from '@/types/roboSharepoint'
-import { abreviar, avisoFeito, confete, iniciais, tom, type Tom } from './pecas'
+import { abreviar, avisoFeito, confete, iniciais, tom, type Tom } from '@/components/ui/pastel/pecas'
 
 // Uma pasta sem dono. O motivo vira cor + selo curto ("Nome?", "CPF duplo",
-// "CNPJ?"); a frase inteira do motivo fica no title. "Escolher" abre as opções
+// "CNPJ?"); a frase inteira do motivo fica no title. "Nome?" é verde-azulado,
+// não azul: na PEP azul quer dizer pessoa. "Escolher" abre as opções
 // coladas à base do cartão — a mesma busca e a mesma RPC (sp_pep_vincular_pasta)
 // da gaveta de antes.
 
 export type CategoriaPasta = 'nome' | 'cpf' | 'cnpj'
 
 export const CATEGORIAS: Record<CategoriaPasta, { t: Tom; Icone: typeof Folder; rotulo: string; explica: string }> = {
-  nome: { t: 'azul', Icone: UserSearch, rotulo: 'Nome?', explica: 'O nome da pasta não está na planilha do prestador. Escolha o paciente certo.' },
+  nome: { t: 'teal', Icone: UserSearch, rotulo: 'Nome?', explica: 'O nome da pasta não está na planilha do prestador. Escolha o paciente certo.' },
   cpf: { t: 'rosa', Icone: IdCard, rotulo: 'CPF duplo', explica: 'Há duas fichas com o mesmo CPF. Escolha a ficha certa.' },
   cnpj: { t: 'coral', Icone: Building2, rotulo: 'CNPJ?', explica: 'Este CNPJ não está em nenhum contrato. Escolha o prestador.' },
 }

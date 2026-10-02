@@ -9,7 +9,7 @@ import { numero, rotuloMotivo } from '@/lib/roboSharepoint/rotulos'
 import type { SpFilaPendencias, SpItem, SpPendenciaPasta } from '@/types/roboSharepoint'
 import { CartaoPrestador } from './precisaDeVoce/CartaoPrestador'
 import { CATEGORIAS, CartaoPasta, ORDEM_CATEGORIAS, categoriaDa, type CategoriaPasta } from './precisaDeVoce/CartaoPasta'
-import { AnelProgresso, BotaoAjuda, Comemoracao, Fluxo, TudoEmDia, tom, type PassoFluxo, type Tom } from './precisaDeVoce/pecas'
+import { AnelProgresso, BotaoAjuda, Comemoracao, Fluxo, TudoEmDia, tom, type PassoFluxo, type Tom } from '@/components/ui/pastel/pecas'
 
 // "O que precisa de você" — o que o robô não conseguiu resolver sozinho, como
 // TAREFAS para quem nem sabe o que é PEP. Redesenho de 02/10/2026: abas-cartão

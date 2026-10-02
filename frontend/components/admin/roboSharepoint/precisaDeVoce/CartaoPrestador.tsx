@@ -4,7 +4,7 @@ import { Check, Copy, FileText, Flame, Folder, FolderOpen, Hand, Send, User } fr
 import toast from 'react-hot-toast'
 import { mensagemPedirPlanilha, nomeCurtoPrestador, numero } from '@/lib/roboSharepoint/rotulos'
 import type { SpPrestadorSemPlanilha } from '@/types/roboSharepoint'
-import { avisoFeito, confete, copiar, iniciais, tom } from './pecas'
+import { avisoFeito, confete, copiar, iniciais, tom } from '@/components/ui/pastel/pecas'
 
 // Um prestador sem planilha. O número grande é o que destrava (pacientes);
 // a cor diz a urgência (coral = já tem arquivo esperando), o verde diz "avisado".

@@ -1198,6 +1198,11 @@ html {
   .pp-t-coral   { --h: 22;  --k: 1; }
   .pp-t-verde   { --h: 160; --k: 1; }
   .pp-t-violeta { --h: 295; --k: 0.9; }
+  .pp-t-teal     { --h: 190; --k: 0.9; }
+  .pp-t-robo    { --h: 295; --k: 0.9; }   /* = violeta: robô (PEP) */
+  .pp-t-pessoa  { --h: 255; --k: 0.95; }  /* = azul: pessoa (PEP) */
+  .pp-t-vermelho { --h: 12; --k: 1; }     /* descontado */
+  .pp-t-cinza   { --h: 257; --k: 0.12; }  /* neutro, zero, sem conferência */
 
   .pp :focus-visible { outline: 3px solid var(--pp-foco); outline-offset: 2px; }
 
@@ -1230,6 +1235,7 @@ html {
     width: min(380px, calc(100vw - 32px)); padding: 16px; border-radius: 20px;
     background: var(--pp-ink); color: var(--pp-surface); box-shadow: var(--pp-sombra-alta);
   }
+  .pp-ajuda-direita { left: auto; right: 0; }
   .pp-anel circle { transition: stroke-dashoffset .5s cubic-bezier(.34, 1.56, .64, 1); }
 
   /* ── Abas-cartão ── */
@@ -1340,6 +1346,31 @@ html {
     background: var(--pp-surface); color: var(--pp-ink); box-shadow: inset 0 0 0 2px var(--pp-border); border: 0;
   }
   .pp-busca:focus { outline: none; box-shadow: inset 0 0 0 2px var(--c-medio); }
+
+  /* Número grande (NumeroPastel) */
+  .pp-numero {
+    position: relative; display: flex; align-items: center; gap: 14px; padding: 16px 18px; overflow: hidden;
+    border-radius: 20px; background: var(--c-suave); color: var(--pp-ink); box-shadow: inset 0 0 0 1px var(--c-linha);
+  }
+  .pp-numero.is-compacto { gap: 12px; padding: 12px 14px; }
+  .pp-numero-icone {
+    position: relative; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    width: 48px; height: 48px; border-radius: 16px; background: var(--c); color: var(--c-sobre);
+  }
+  .pp-numero.is-compacto .pp-numero-icone { width: 40px; height: 40px; border-radius: 14px; }
+  .pp-numero-valor {
+    display: block; font-size: 34px; line-height: 36px; font-weight: 800; letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums; color: var(--c-tinta);
+  }
+  .pp-numero.is-compacto .pp-numero-valor { font-size: 28px; line-height: 30px; }
+  .pp-numero-rotulo { display: block; margin-top: 4px; font-size: 13px; line-height: 16px; font-weight: 800; color: var(--pp-ink); }
+  .pp-numero-apoio { display: block; margin-top: 2px; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--pp-ink-muted); }
+  .pp-numero-marca { position: absolute; inset: 0; pointer-events: none; }
+  .pp-numero-marca svg {
+    position: absolute; right: -12px; bottom: -18px; width: 92px; height: 92px;
+    opacity: .09; transform: rotate(-12deg); color: var(--c-sobre);
+  }
+  .pp-barra-seg { background: var(--c-medio); border-radius: 999px; }
 
   /* Animações */
   .pp-pop { animation: pp-pop .45s cubic-bezier(.34, 1.56, .64, 1); }
