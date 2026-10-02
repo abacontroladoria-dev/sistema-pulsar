@@ -8,6 +8,7 @@ import { describe, expect, test, vi } from "vitest"
 import {
   analistasDaGrade, pacientesCCDoProfissional, resumoPepCompetencia, type AnalistaDaGrade,
 } from "./visaoGeralPep"
+import type { SituacaoEntregasAnalista } from "./situacaoEntregasPep"
 import type { ProfRemunReal, SessaoComPapel } from "./calculo"
 import type { PepApuracaoLinhaCompetencia } from "@/services/pepApuracao.service"
 
@@ -46,9 +47,9 @@ describe("roster da Grade", () => {
 describe("resumoPepCompetencia", () => {
   const analistas: AnalistaDaGrade[] = [
     { nome: "Ana", pacientes: ["A1", "A2"] },          // liberado
-    { nome: "Beto", pacientes: ["B1", "B2", "B3"] },   // parcial
-    { nome: "Caio", pacientes: ["C1"] },               // não aberto
-    { nome: "Duda", pacientes: ["D1"] },               // apurado, com desconto
+    { nome: "Beto", pacientes: ["B1", "B2", "B3"] },   // faltam entregas (e 2 sem valor calculado)
+    { nome: "Caio", pacientes: ["C1"] },               // entregas completas, sem nenhum valor calculado
+    { nome: "Duda", pacientes: ["D1"] },               // conferido, com desconto
   ]
   const linhas = [
     linha("Ana", "A1", { estado: "liberado" }),
@@ -58,7 +59,16 @@ describe("resumoPepCompetencia", () => {
     linha("Eva", "E1", { valor_liquido: 80 }),           // fora da Grade
     linha("Beto", "A1", { valor_liquido: 50 }),          // paciente que não é do Beto na Grade
   ]
-  const r = resumoPepCompetencia({ analistas, linhas, valorPorPaciente: 100, competencia: "2026-09" })
+  const sit = (extra: Partial<SituacaoEntregasAnalista> = {}): SituacaoEntregasAnalista => ({
+    unidadesFaltando: 0, semestraisVencidas: 0, sugestoesEsperando: 0, conferido: null, conferenciaInvalidada: false, ...extra,
+  })
+  const situacao = new Map<string, SituacaoEntregasAnalista>([
+    ["Ana", sit()],
+    ["Beto", sit({ unidadesFaltando: 3 })],
+    ["Caio", sit()],
+    ["Duda", sit({ conferido: { por: "Rita", em: "2026-09-30T12:00:00Z" } })],
+  ])
+  const r = resumoPepCompetencia({ analistas, linhas, valorPorPaciente: 100, competencia: "2026-09", situacao })
 
   test("totais e a conta do teto fecha", () => {
     expect(r.analistas).toBe(4)
@@ -76,12 +86,12 @@ describe("resumoPepCompetencia", () => {
 
   test("status por analista e a ordem da tabela (o que falta fazer primeiro)", () => {
     expect(r.porAnalista.map(a => [a.nome, a.status])).toEqual([
-      ["Caio", "nao_aberto"],
-      ["Beto", "parcial"],
-      ["Duda", "apurado"],
+      ["Beto", "faltam_entregas"],
+      ["Caio", "entregas_completas"],
+      ["Duda", "conferido"],
       ["Ana", "liberado"],
     ])
-    expect(r.porStatus).toEqual({ nao_aberto: 1, parcial: 1, apurado: 1, liberado: 1 })
+    expect(r.porStatus).toEqual({ sem_dados: 0, faltam_entregas: 1, entregas_completas: 1, conferido: 1, liberado: 1 })
     const beto = r.porAnalista.find(a => a.nome === "Beto")!
     expect(beto).toMatchObject({ pacientes: 3, teto: 300, apurado: 100, naoApurado: 200, pacientesSemApuracao: ["B2", "B3"] })
     expect(beto.pctTeto).toBeCloseTo(100 / 3)
@@ -98,16 +108,17 @@ describe("resumoPepCompetencia", () => {
     const misto = resumoPepCompetencia({
       analistas: [{ nome: "Ana", pacientes: ["A1", "A2"] }],
       linhas: [linha("Ana", "A1", { estado: "liberado" }), linha("Ana", "A2")],
-      valorPorPaciente: 100, competencia: "2026-09",
+      valorPorPaciente: 100, competencia: "2026-09", situacao: new Map([["Ana", sit()]]),
     })
-    expect(misto.porAnalista[0].status).toBe("apurado")
+    // Um valor ainda não liberado: segue a situação das entregas, não o cálculo.
+    expect(misto.porAnalista[0].status).toBe("entregas_completas")
   })
 
   test("analista sem paciente e competência de teste", () => {
     const vazio = resumoPepCompetencia({
       analistas: [{ nome: "Zé", pacientes: [] }], linhas: [], valorPorPaciente: 100, competencia: "2026-08",
     })
-    expect(vazio.porAnalista[0]).toMatchObject({ teto: 0, pctTeto: null, status: "nao_aberto" })
+    expect(vazio.porAnalista[0]).toMatchObject({ teto: 0, pctTeto: null, status: "sem_dados" })
     expect(vazio.modoTeste).toBe(true)
     expect(vazio.teto).toBe(0)
   })

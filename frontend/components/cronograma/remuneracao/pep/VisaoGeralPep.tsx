@@ -8,9 +8,13 @@
 // pep_apuracao_mensal. Nada aqui apura: quem apura é abrir o analista.
 //
 // Tons (docs/padrao-detalhamento-modal.md §3.5 — um tom, um sentido; zero sem
-// cor): verde = apurado/liberado (vai ser pago), vermelho = descontado por
-// entrega faltando, âmbar = não apurado/parcial (falta fazer), azul = apurado
-// aguardando liberação, cinza = não aberto.
+// cor): verde = liberado para pagamento, vermelho = descontado por entrega
+// faltando, âmbar = faltam entregas (e valor não calculado), azul = conferido,
+// cinza = entregas completas, ninguém conferiu ainda.
+//
+// O STATUS do analista diz o que as PESSOAS já fizeram com as entregas
+// (lib/remuneracao/situacaoEntregasPep.ts) — não se o sistema já gravou um
+// cálculo. Valor ainda não calculado é um aviso pequeno, não um status.
 
 import { useEffect, useMemo, useState } from "react"
 import { AlertTriangle, Bot, CalendarDays, ChevronRight, ClipboardList, FileCheck2, Loader2, PieChart, Search, Undo2, User, Users } from "lucide-react"
@@ -26,6 +30,7 @@ import { BarraEmpilhada, Card, Legenda, Metric, num, pct1 } from "../visaoGeral/
 import {
   resumoPepCompetencia, type AnalistaDaGrade, type StatusApuracaoAnalista,
 } from "@/lib/remuneracao/visaoGeralPep"
+import { situacaoEntregasPorAnalista } from "@/lib/remuneracao/situacaoEntregasPep"
 import { LegendaOrigem, ORIGEM } from "./origem"
 
 // Roxo = robô, azul = pessoa (./origem). Hex para as barras, que pintam por style.
@@ -40,11 +45,29 @@ function competenciaAtual(): string {
   return `${h.getFullYear()}-${String(h.getMonth() + 1).padStart(2, "0")}`
 }
 
+// `nota` é o texto de "quando aparece": vai na lista ao lado e no tooltip
+// (title) de cada status — o mesmo texto nos dois lugares.
 const STATUS: Record<StatusApuracaoAnalista, { rotulo: string; tone: Tone; nota: string }> = {
-  nao_aberto: { rotulo: "Não aberto", tone: "gray", nota: "ninguém abriu este analista no mês — nada apurado ainda" },
-  parcial: { rotulo: "Parcial", tone: "amber", nota: "há pacientes da grade ainda sem apuração" },
-  apurado: { rotulo: "Apurado", tone: "blue", nota: "todos os pacientes apurados, faturamento ainda não liberado" },
-  liberado: { rotulo: "Liberado", tone: "green", nota: "faturamento liberado — apuração congelada" },
+  faltam_entregas: { rotulo: "Faltam entregas", tone: "amber", nota: "O mês tem item esperado sem entrega, ou sugestão esperando uma pessoa. Sai dos dados, sem ninguém clicar." },
+  entregas_completas: { rotulo: "Entregas completas", tone: "gray", nota: "Tudo o que era esperado foi entregue, mas ninguém conferiu ainda." },
+  conferido: { rotulo: "Conferido", tone: "blue", nota: "Uma pessoa clicou “Marcar como conferido”. Fica gravado quem e quando." },
+  liberado: { rotulo: "Liberado para pagamento", tone: "green", nota: "É o “Liberado” de hoje. O mês fica travado." },
+  sem_dados: { rotulo: "Sem dados", tone: "gray", nota: "Não foi possível ler as entregas deste mês. Recarregue a página." },
+}
+
+/** Nenhum paciente do analista tem valor calculado ainda. */
+const semCalculo = (a: { pacientes: number; pacientesSemApuracao: string[] }) =>
+  a.pacientes > 0 && a.pacientesSemApuracao.length === a.pacientes
+
+/** O que está faltando, em uma linha curta (sob o nome do analista). */
+function resumoFaltas(s: { unidadesFaltando: number; semestraisVencidas: number; sugestoesEsperando: number } | null): string | null {
+  if (!s) return null
+  const partes = [
+    s.unidadesFaltando > 0 && `${s.unidadesFaltando} ${s.unidadesFaltando === 1 ? "unidade" : "unidades"} faltando`,
+    s.semestraisVencidas > 0 && `${s.semestraisVencidas} ${s.semestraisVencidas === 1 ? "semestral vencida" : "semestrais vencidas"}`,
+    s.sugestoesEsperando > 0 && `${s.sugestoesEsperando} ${s.sugestoesEsperando === 1 ? "sugestão esperando" : "sugestões esperando"} uma pessoa`,
+  ].filter(Boolean)
+  return partes.length ? partes.join(" · ") : null
 }
 
 // ─── Mês de atendimento × mês de faturamento ─────────────────────────────────
@@ -135,7 +158,7 @@ export function VisaoGeralPep({ competencia, analistas, valorPorPaciente, onSele
   // pode ter apurado ou liberado algo), remonta e lê de novo.
   // Antes de ler, reapura só os analistas em que o robô SharePoint entregou ou
   // desfez algo desde o último cálculo (pep_apuracao_recalcular).
-  const { linhas, indices, loading, erro } = usePepVisaoGeral(competencia, analistas, valorPorPaciente)
+  const { linhas, indices, situacao: dadosSituacao, loading, erro } = usePepVisaoGeral(competencia, analistas, valorPorPaciente)
   useEffect(() => { if (!loading) onCarregado?.() }, [loading, onCarregado])
   const idx = useMemo(() => indices.reduce((t, i) => ({
     roboAprovou: t.roboAprovou + i.robo_aprovou,
@@ -148,8 +171,11 @@ export function VisaoGeralPep({ competencia, analistas, valorPorPaciente, onSele
   }), { roboAprovou: 0, roboVigentes: 0, pessoaAprovou: 0, pessoaDesfez: 0, segue: 0, fora: 0, repetidos: 0 }), [indices])
   const acerto = idx.roboAprovou > 0 ? Math.round((idx.roboVigentes / idx.roboAprovou) * 100) : null
   const r = useMemo(
-    () => resumoPepCompetencia({ analistas, linhas, valorPorPaciente, competencia }),
-    [analistas, linhas, valorPorPaciente, competencia]
+    () => resumoPepCompetencia({
+      analistas, linhas, valorPorPaciente, competencia,
+      situacao: dadosSituacao ? situacaoEntregasPorAnalista(analistas, dadosSituacao, competencia) : null,
+    }),
+    [analistas, linhas, valorPorPaciente, competencia, dadosSituacao]
   )
   const apuradoAnimado = useCountUp(r.apurado)
   const [busca, setBusca] = useState("")
@@ -287,23 +313,23 @@ export function VisaoGeralPep({ competencia, analistas, valorPorPaciente, onSele
 
       {/* ── Situação + Para onde vai o teto ─────────────────────────── */}
       <div className="grid gap-4 md:grid-cols-2">
-        <Card titulo="Situação da apuração" icone={<ClipboardList size={15} />}>
+        <Card titulo="Situação das entregas" icone={<ClipboardList size={15} />}>
           <div className="flex items-baseline gap-2">
             <span className="text-3xl font-black tabular-nums leading-none"
               style={{ color: r.porStatus.liberado > 0 ? corApurado : corCinza }}>
               {num(r.porStatus.liberado)}
             </span>
             <span className="text-xs font-semibold text-muted-foreground">
-              de {num(r.analistas)} com faturamento liberado
+              de {num(r.analistas)} liberados para pagamento
             </span>
           </div>
           <div className="mt-3">
-            <BarraEmpilhada partes={(["liberado", "apurado", "parcial", "nao_aberto"] as StatusApuracaoAnalista[])
+            <BarraEmpilhada partes={(["liberado", "conferido", "entregas_completas", "faltam_entregas", "sem_dados"] as StatusApuracaoAnalista[])
               .map(s => ({ valor: r.porStatus[s], cor: toneColor(STATUS[s].tone), rotulo: STATUS[s].rotulo }))} />
           </div>
           <ul className="mt-3 space-y-1.5">
-            {(["nao_aberto", "parcial", "apurado", "liberado"] as StatusApuracaoAnalista[]).map(s => (
-              <li key={s} className="flex items-start gap-2.5">
+            {(["faltam_entregas", "entregas_completas", "conferido", "liberado"] as StatusApuracaoAnalista[]).map(s => (
+              <li key={s} className="flex items-start gap-2.5" title={STATUS[s].nota}>
                 <span className="mt-1 size-2 shrink-0 rounded-full"
                   style={{ background: r.porStatus[s] > 0 ? toneColor(STATUS[s].tone) : "transparent", boxShadow: r.porStatus[s] > 0 ? undefined : "inset 0 0 0 1px currentColor" }}
                   aria-hidden />
@@ -370,7 +396,7 @@ export function VisaoGeralPep({ competencia, analistas, valorPorPaciente, onSele
         }
       >
         <p className="-mt-1 mb-2 text-[11px] text-muted-foreground">
-          Primeiro quem ainda falta apurar. Toque num analista para abrir as entregas dele.
+          Primeiro quem ainda tem entregas faltando. Toque num analista para abrir as entregas dele.
         </p>
         {visiveis.length === 0 ? (
           <p className="py-6 text-center text-xs text-muted-foreground">Nenhum analista encontrado para “{busca}”.</p>
@@ -391,9 +417,20 @@ export function VisaoGeralPep({ competencia, analistas, valorPorPaciente, onSele
                   >
                     <span className="min-w-0">
                       <span className="block truncate text-sm font-semibold text-foreground" title={a.nome}>{a.nome}</span>
-                      {a.status === "parcial" && (
-                        <span className={`block text-[11px] ${TONE_CHIP.amber.text}`}>
-                          {a.pacientesSemApuracao.length} de {a.pacientes} sem apuração
+                      {a.status === "faltam_entregas" && resumoFaltas(a.situacao) && (
+                        <span className={`block text-[11px] ${TONE_CHIP.amber.text}`}>{resumoFaltas(a.situacao)}</span>
+                      )}
+                      {a.status === "conferido" && a.situacao?.conferido && (
+                        <span className="block text-[11px] text-muted-foreground">
+                          Conferido{a.situacao.conferido.por ? ` por ${a.situacao.conferido.por}` : ""} em {new Date(a.situacao.conferido.em).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}
+                        </span>
+                      )}
+                      {a.situacao?.conferenciaInvalidada && (
+                        <span className="block text-[11px] text-muted-foreground">Uma entrega mudou depois da conferência</span>
+                      )}
+                      {a.pacientesSemApuracao.length > 0 && a.pacientes > 0 && (
+                        <span className="block text-[11px] text-muted-foreground">
+                          Valor ainda não calculado: {a.pacientesSemApuracao.length} de {a.pacientes} pacientes
                         </span>
                       )}
                       {a.valorRobo + a.valorHumano > 0 && (
@@ -404,20 +441,22 @@ export function VisaoGeralPep({ competencia, analistas, valorPorPaciente, onSele
                       )}
                       {/* Mobile: os números descem para uma segunda linha. */}
                       <span className="mt-0.5 block text-[11px] tabular-nums text-muted-foreground md:hidden">
-                        {num(a.pacientes)} pac. · teto {semValor ? "—" : fmt(a.teto)} · apurado {a.status === "nao_aberto" ? "—" : fmt(a.apurado)}
+                        {num(a.pacientes)} pac. · teto {semValor ? "—" : fmt(a.teto)} · apurado {semCalculo(a) ? "—" : fmt(a.apurado)}
                       </span>
                     </span>
                     <span className="hidden text-right text-sm tabular-nums text-foreground md:block">{num(a.pacientes)}</span>
                     <span className="hidden text-right text-sm tabular-nums text-muted-foreground md:block">{semValor ? "—" : fmt(a.teto)}</span>
                     <span className="hidden text-right text-sm font-bold tabular-nums md:block"
                       style={a.apurado > 0 ? { color: corApurado } : undefined}>
-                      {a.status === "nao_aberto" ? "—" : fmt(a.apurado)}
+                      {semCalculo(a) ? "—" : fmt(a.apurado)}
                     </span>
                     <span className="hidden text-right text-xs tabular-nums text-muted-foreground md:block">
-                      {a.status === "nao_aberto" || a.pctTeto === null ? "—" : pct1(a.pctTeto)}
+                      {semCalculo(a) || a.pctTeto === null ? "—" : pct1(a.pctTeto)}
                     </span>
                     <span className="flex items-center justify-end gap-1 md:justify-start">
-                      <StatusChip tone={STATUS[a.status].tone} dense>{STATUS[a.status].rotulo}</StatusChip>
+                      <span title={STATUS[a.status].nota}>
+                        <StatusChip tone={STATUS[a.status].tone} dense>{STATUS[a.status].rotulo}</StatusChip>
+                      </span>
                       <ChevronRight size={14} className="shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 md:hidden" aria-hidden />
                     </span>
                     <ChevronRight size={14} className="hidden shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 md:block" aria-hidden />

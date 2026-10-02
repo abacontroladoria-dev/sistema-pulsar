@@ -25,6 +25,8 @@ import { EvidenciasSharepoint, type AvaliacaoSugestao } from "./pep/EvidenciasSh
 import { ChipOrigem, LegendaOrigem, ORIGEM, SeloUnidade, contarOrigem, origemDaUnidade } from "./pep/origem"
 import { RoboNaPep } from "@/components/admin/roboSharepoint/RoboNaPep"
 import { resolverItem, reverterEntregaRobo } from "@/services/roboSharepoint.service"
+import { conferirMes, listarConferencias } from "@/services/pepSituacao.service"
+import type { ConferenciaMes } from "@/lib/remuneracao/situacaoEntregasPep"
 import type { SpItem } from "@/types/roboSharepoint"
 
 // Motivo gravado na trilha de auditoria quando a entrega vem de uma sugestão
@@ -269,6 +271,30 @@ export function PepEntregasTab() {
     prestador, competencia, pacientesApuracao, valorMensalPorPaciente
   )
   const { itens: spItens, carregando: spCarregando, recarregar: recarregarSp } = usePepSharepoint(prestador, competencia)
+
+  // "Conferido" (20261003110000): uma pessoa conferiu as entregas do analista no
+  // mês. Vale até uma entrega dele mudar depois — a visão geral usa a mesma regra.
+  const [conferencia, setConferencia] = useState<ConferenciaMes | null>(null)
+  const [conferindo, setConferindo] = useState(false)
+  const carregarConferencia = useCallback(async () => {
+    if (!prestador || !competencia) { setConferencia(null); return }
+    const todas = await listarConferencias(competencia)
+    setConferencia(todas.find(c => c.prestador_nome === prestador) ?? null)
+  }, [prestador, competencia])
+  useEffect(() => { void carregarConferencia() }, [carregarConferencia])
+  const conferenciaValida = !!conferencia && !registros.some(r => Date.parse(r.updated_at) > Date.parse(conferencia.conferido_em))
+  const alternarConferencia = useCallback(async (conferir: boolean) => {
+    setConferindo(true)
+    try {
+      await conferirMes(prestador, competencia, conferir)
+      await carregarConferencia()
+      toast.success(conferir ? "Entregas marcadas como conferidas." : "Conferência desfeita.")
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não foi possível alterar a conferência.")
+    } finally {
+      setConferindo(false)
+    }
+  }, [prestador, competencia, carregarConferencia])
   const [confirmandoLiberar, setConfirmandoLiberar] = useState(false)
   const [confirmandoReabrir, setConfirmandoReabrir] = useState(false)
   const [motivoReabrir, setMotivoReabrir] = useState("")
@@ -627,6 +653,10 @@ export function PepEntregasTab() {
           alcancado={totalPrestador}
           apuracaoLoading={apuracaoLoading}
           liberado={liberado}
+          conferencia={conferenciaValida ? conferencia : null}
+          conferenciaInvalidada={!!conferencia && !conferenciaValida}
+          conferindo={conferindo}
+          onConferir={alternarConferencia}
           onLiberar={() => setConfirmandoLiberar(true)}
           onReabrir={() => setConfirmandoReabrir(true)}
           modoTeste={competencia === COMPETENCIA_TESTE_PEP}
@@ -958,7 +988,13 @@ function CabecalhoEntregasMensais({
   competencia,
   onMudarMes, carregandoLabel, progresso, mostrarValores, potencial, alcancado,
   apuracaoLoading, liberado, onLiberar, onReabrir, modoTeste, erros,
+  conferencia, conferenciaInvalidada, conferindo, onConferir,
 }: {
+  /** Conferência que vale (ninguém mexeu nas entregas depois). */
+  conferencia: ConferenciaMes | null
+  conferenciaInvalidada: boolean
+  conferindo: boolean
+  onConferir: (conferir: boolean) => void
   competencia: string
   onMudarMes: (ano: number, mes: number) => void
   carregandoLabel: string | null
@@ -1032,6 +1068,23 @@ function CabecalhoEntregasMensais({
                   </button>
                 </>
               ) : (
+                <>
+                {conferencia ? (
+                  <span className="inline-flex flex-wrap items-center gap-2 rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-800 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-300">
+                    <Check size={13} /> Conferido{conferencia.conferido_por_nome ? ` por ${conferencia.conferido_por_nome}` : ""} em {new Date(conferencia.conferido_em).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}
+                    <button type="button" disabled={conferindo} onClick={() => onConferir(false)} className="font-bold underline disabled:opacity-50">Desfazer</button>
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={conferindo}
+                    title={conferenciaInvalidada ? "Uma entrega mudou depois da última conferência" : "Registra que você conferiu as entregas deste analista no mês"}
+                    onClick={() => onConferir(true)}
+                    className="min-h-11 px-3 py-1.5 rounded-lg text-xs font-bold border border-sky-300 text-sky-800 bg-background hover:bg-sky-50 disabled:opacity-50 dark:border-sky-800 dark:text-sky-300 dark:hover:bg-sky-950"
+                  >
+                    {conferindo ? "Salvando…" : conferenciaInvalidada ? "Conferir de novo" : "Marcar como conferido"}
+                  </button>
+                )}
                 <button
                   type="button"
                   disabled={apuracaoLoading}
@@ -1041,6 +1094,7 @@ function CabecalhoEntregasMensais({
                 >
                   Liberar Faturamento
                 </button>
+                </>
               )}
             </div>
           </>
