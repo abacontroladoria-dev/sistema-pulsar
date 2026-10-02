@@ -491,16 +491,16 @@ export function PainelVisaoGeralPep({ competencia, valorPorPaciente, r, idx, ace
                         )}
                         {/* Celular: os números descem para uma segunda linha. */}
                         <span className="mt-0.5 block text-xs font-semibold tabular-nums text-[var(--pp-ink-muted)] @3xl:hidden">
-                          {num(a.pacientes)} pac. · teto {semValor ? "—" : fmt(a.teto)} · apurado {semCalculo(a) ? "—" : fmt(a.apurado)}
+                          {num(a.pacientes)} pac. · teto {semValor ? "—" : fmt(a.teto)} · apurado {fmt(a.apurado)}
                         </span>
                       </span>
                       <span className="hidden text-right text-sm font-semibold tabular-nums @3xl:block">{num(a.pacientes)}</span>
                       <span className="hidden text-right text-sm font-semibold tabular-nums text-[var(--pp-ink-muted)] @3xl:block">{semValor ? "—" : fmt(a.teto)}</span>
                       <span className={`hidden text-right text-sm font-extrabold tabular-nums @3xl:block ${a.apurado > 0 ? "text-[var(--pp-verde-tinta)]" : ""}`}>
-                        {semCalculo(a) ? "—" : fmt(a.apurado)}
+                        {fmt(a.apurado)}
                       </span>
                       <span className="hidden text-right text-xs font-semibold tabular-nums text-[var(--pp-ink-muted)] @3xl:block">
-                        {semCalculo(a) || a.pctTeto === null ? "—" : pct1(a.pctTeto)}
+                        {pct1(a.pctTeto ?? 0)}
                       </span>
                       <span className="hidden @3xl:flex">
                         <span className="pp-selo pp-selo-motivo" title={STATUS[a.status].nota}>{STATUS[a.status].rotulo}</span>
