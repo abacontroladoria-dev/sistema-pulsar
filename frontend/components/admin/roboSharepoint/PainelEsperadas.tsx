@@ -1,15 +1,14 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import { Loader2, Target } from 'lucide-react'
-import { InfoTooltip } from '@/components/cronograma/ui/InfoTooltip'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { CalendarDays, CalendarRange, Check, FileCheck2, FileX, FolderOpen, Loader2, Target, UserRound, Users } from 'lucide-react'
+import { AnelProgresso, BotaoAjuda, NumeroPastel, PilulaFiltro, tom, type LinhaAjuda } from '@/components/ui/pastel/pecas'
 import { MultiSearchCombobox } from '@/components/cronograma/ui/MultiSearchCombobox'
-import { SegmentedTabs } from '@/components/cronograma/ui/SegmentedTabs'
 import { rotuloMes } from '@/lib/roboSharepoint/relatorioPrestador'
 import { nomeCurtoPrestador, numero } from '@/lib/roboSharepoint/rotulos'
 import {
   esperadasDoAno, esperadasPorEntrega, evidenciasEsperadasPorAnalista,
-  type DadosAno, type DadosSituacao, type EvidenciaDoMes,
+  type DadosAno, type DadosSituacao, type EsperadasPorEntrega, type EvidenciaDoMes,
 } from '@/lib/remuneracao/situacaoEntregasPep'
 import type { AnalistaDaGrade } from '@/lib/remuneracao/visaoGeralPep'
 import { carregarDadosAno, carregarDadosSituacao, listarEvidenciasDoMes } from '@/services/pepSituacao.service'
@@ -21,7 +20,7 @@ import { EsperadasChart } from './EsperadasChart'
 // quantos profissionais são os números — "esperado" é a meta do período, não o
 // que já está na pasta.
 
-type Periodo = 'mes' | 'ano'
+export type Periodo = 'mes' | 'ano'
 
 export function PainelEsperadas({ competencia, analistas, idRetrato }: {
   competencia: string
@@ -100,86 +99,106 @@ export function PainelEsperadas({ competencia, analistas, idRetrato }: {
   const quem = escolhidos.size === 0
     ? `todos os ${numero(analistas.length)} profissionais`
     : escolhidos.size === 1 ? nomeCurtoPrestador([...escolhidos][0]) : `${numero(escolhidos.size)} profissionais escolhidos`
-  const pct = resultado && resultado.esperadas > 0 ? Math.round((resultado.naPasta / resultado.esperadas) * 100) : 0
 
   return (
-    <div className="rounded-2xl border border-slate-200 p-4 sm:p-5">
-      <div className="mb-4 flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+    <ConteudoEsperadas
+      competencia={competencia} anoNum={anoNum} periodo={periodo} onPeriodo={setPeriodo}
+      filtro={
+        <MultiSearchCombobox<string>
+          opcoes={opcoes}
+          selecionados={escolhidos}
+          onToggle={id => setEscolhidos(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n })}
+          onDesmarcarTodos={() => setEscolhidos(new Set())}
+          placeholder="Todos os profissionais"
+          ariaLabel="Filtrar o esperado por profissional"
+          nomePlural="profissionais"
+          adjetivoResumo="escolhidos"
+        />
+      }
+      estado={fonte === undefined || !resultado ? 'carregando' : fonte === null ? 'erro' : resultado.esperadas === 0 ? 'vazio' : 'ok'}
+      resultado={resultado} quem={quem} rotuloPeriodo={rotuloPeriodo} rotuloCurto={rotuloCurto}
+    />
+  )
+}
+
+export type ResultadoEsperadas = {
+  porEntrega: EsperadasPorEntrega[]
+  naPastaTotal: number
+  ate: { esperadas: number; naPasta: number } | null
+  esperadas: number
+  naPasta: number
+}
+
+/** O desenho do painel, sem buscar nada (visual pastel, docs/PLANO_PEP_VISUAL_PASTEL.md fase 1). */
+export function ConteudoEsperadas({ competencia, anoNum, periodo, onPeriodo, filtro, estado, resultado, quem, rotuloPeriodo, rotuloCurto }: {
+  competencia: string
+  anoNum: number
+  periodo: Periodo
+  onPeriodo: (p: Periodo) => void
+  /** O filtro de profissionais (MultiSearchCombobox). */
+  filtro: ReactNode
+  estado: 'carregando' | 'erro' | 'vazio' | 'ok'
+  resultado: ResultadoEsperadas | null
+  quem: string
+  rotuloPeriodo: string
+  rotuloCurto: string
+}) {
+  const pct = resultado && resultado.esperadas > 0 ? Math.round((resultado.naPasta / resultado.esperadas) * 100) : 0
+  const ajuda: LinhaAjuda[] = [
+    { t: 'verde', Icone: CalendarDays, texto: <><strong className="font-extrabold">STC e ETC:</strong> uma por semana do mês (3 em mês de recesso).</> },
+    { t: 'amber', Icone: Users, texto: <><strong className="font-extrabold">TAP:</strong> 2 por paciente por mês. <strong className="font-extrabold">TOP:</strong> 1 por paciente por mês.</> },
+    { t: 'teal', Icone: CalendarRange, texto: <><strong className="font-extrabold">PIC, RT e OE:</strong> 1 por planejamento semestral cadastrado{periodo === 'mes' ? ' que já venceu' : ' que vence no ano'}. Sem planejamento, não se espera.</> },
+    { t: 'aco', Icone: UserRound, texto: `Os pacientes de cada profissional são os da Grade de ${rotuloMes(competencia)}.` },
+    { t: 'cinza', Icone: FileCheck2, texto: '“Na pasta” conta só arquivo com o nome no padrão, no máximo o esperado de cada item.' },
+  ]
+
+  return (
+    <div className="rounded-[20px] p-4 shadow-[inset_0_0_0_1px_var(--pp-border)] sm:p-5">
+      <div className="mb-4 flex flex-col gap-3 @5xl:flex-row @5xl:items-start @5xl:justify-between">
         <div className="min-w-0">
-          <h3 className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-bold text-slate-800">
-            <Target className="h-4 w-4 text-brand-fg" aria-hidden />
-            Evidências esperadas
-            <span className="rounded-full bg-slate-800 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white">{rotuloCurto}</span>
-            <InfoTooltip ariaLabel="Como o esperado é calculado" largura={360}>
-              <p className="mb-1.5 text-xs font-bold text-foreground">Como o esperado é calculado</p>
-              <ul className="list-disc space-y-1 pl-4 leading-snug text-muted-foreground">
-                <li><strong className="text-foreground">STC e ETC:</strong> uma por semana do mês (3 em mês de recesso).</li>
-                <li><strong className="text-foreground">TAP:</strong> 2 por paciente por mês. <strong className="text-foreground">TOP:</strong> 1 por paciente por mês.</li>
-                <li><strong className="text-foreground">PIC, RT e OE:</strong> 1 por planejamento semestral cadastrado{periodo === 'mes' ? ' que já venceu' : ' que vence no ano'}. Sem planejamento cadastrado, não se espera.</li>
-                <li>Os pacientes de cada profissional são os da Grade de {rotuloMes(competencia)}.</li>
-                <li>&ldquo;Na pasta&rdquo; conta só arquivo com o nome no padrão, no máximo o esperado de cada item.</li>
-              </ul>
-            </InfoTooltip>
-          </h3>
-          <p className="mt-1 text-xs leading-relaxed text-slate-600">
-            O que se <strong className="font-semibold text-slate-800">espera</strong> para {rotuloPeriodo}, de {quem}, comparado com o que já está na pasta.
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={`${tom('verde')} flex size-9 shrink-0 items-center justify-center rounded-xl bg-[var(--c)] text-[var(--c-sobre)]`} aria-hidden>
+              <Target className="h-[18px] w-[18px]" />
+            </span>
+            <h3 className="text-[17px] font-extrabold">Evidências esperadas</h3>
+            <span className={`${tom('cinza')} pp-selo`}>{rotuloCurto}</span>
+            <BotaoAjuda linhas={ajuda} rotulo="Como o esperado é calculado" />
+          </div>
+          <p className="mt-1.5 text-[13px] font-semibold leading-snug text-[var(--pp-ink-muted)]">
+            O que se espera para {rotuloPeriodo}, de {quem}, e o que já está na pasta.
           </p>
         </div>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center xl:shrink-0">
-          <SegmentedTabs<Periodo> value={periodo} onChange={setPeriodo} ariaLabel="Período do esperado"
-            tabs={[{ value: 'mes', label: rotuloMes(competencia) }, { value: 'ano', label: `Ano ${anoNum}` }]} />
-          <div className="sm:w-64">
-            <MultiSearchCombobox<string>
-              opcoes={opcoes}
-              selecionados={escolhidos}
-              onToggle={id => setEscolhidos(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n })}
-              onDesmarcarTodos={() => setEscolhidos(new Set())}
-              placeholder="Todos os profissionais"
-              ariaLabel="Filtrar o esperado por profissional"
-              nomePlural="profissionais"
-              adjetivoResumo="escolhidos"
-            />
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center @5xl:shrink-0">
+          <div className="flex gap-2" role="group" aria-label="Período do esperado">
+            <PilulaFiltro t="aco" rotulo={rotuloMes(competencia)} ativo={periodo === 'mes'} onClick={() => onPeriodo('mes')} />
+            <PilulaFiltro t="aco" rotulo={`Ano ${anoNum}`} ativo={periodo === 'ano'} onClick={() => onPeriodo('ano')} />
           </div>
+          <div className="sm:w-64">{filtro}</div>
         </div>
       </div>
 
-      {fonte === undefined || !resultado ? (
-        <p className="flex items-center gap-2 py-6 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden /> Calculando o esperado de {rotuloPeriodo}…</p>
-      ) : fonte === null ? (
-        <p className="py-4 text-sm text-slate-600">Não foi possível calcular o esperado de {rotuloPeriodo}.</p>
-      ) : resultado.esperadas === 0 ? (
-        <p className="py-4 text-sm text-slate-600">Nada esperado para {quem} em {rotuloPeriodo}.</p>
+      {estado === 'carregando' || !resultado ? (
+        <p className="flex items-center gap-2 py-6 text-sm font-semibold text-[var(--pp-ink-muted)]"><Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden /> Calculando o esperado de {rotuloPeriodo}…</p>
+      ) : estado === 'erro' ? (
+        <p className="py-4 text-sm font-semibold text-[var(--pp-ink-muted)]">Não foi possível calcular o esperado de {rotuloPeriodo}.</p>
+      ) : estado === 'vazio' ? (
+        <p className="py-4 text-sm font-semibold text-[var(--pp-ink-muted)]">Nada esperado para {quem} em {rotuloPeriodo}.</p>
       ) : (
         <>
-          <div className="mb-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+          <div className="mb-4 grid gap-3 @3xl:grid-cols-[minmax(0,1fr)_auto] @3xl:items-center">
             {/* A conta que explica o total: do que está na pasta, só o nome no padrão conta. */}
-            <dl className="grid grid-cols-3 gap-2 text-xs">
-              <div className="rounded-xl bg-slate-50 p-2.5">
-                <dt className="font-semibold text-slate-500">Na pasta ({rotuloCurto})</dt>
-                <dd className="text-lg font-black tabular-nums text-slate-900">{numero(resultado.naPastaTotal)}</dd>
-              </div>
-              <div className="rounded-xl bg-emerald-50 p-2.5">
-                <dt className="font-semibold text-emerald-800">no padrão (contam)</dt>
-                <dd className="text-lg font-black tabular-nums text-emerald-900">{numero(resultado.naPasta)}</dd>
-              </div>
-              <div className="rounded-xl bg-amber-50 p-2.5">
-                <dt className="font-semibold text-amber-800">não contam</dt>
-                <dd className="text-lg font-black tabular-nums text-amber-900">{numero(Math.max(0, resultado.naPastaTotal - resultado.naPasta))}</dd>
-                <dd className="text-[10px] leading-tight text-amber-800">fora do padrão, repetidas ou além do esperado</dd>
-              </div>
-            </dl>
-            <p className="text-right">
-              <span className="block text-3xl font-black leading-none tabular-nums text-slate-900 sm:text-4xl">
-                {numero(resultado.naPasta)} <span className="text-lg font-bold text-slate-500">de {numero(resultado.esperadas)}</span>
-              </span>
-              <span className="mt-1 block text-xs font-semibold text-slate-600">esperadas em {rotuloCurto} já estão na pasta ({pct}%)</span>
-            </p>
+            <div className="grid gap-2 @md:grid-cols-3">
+              <NumeroPastel compacto t="cinza" Icone={FolderOpen} valor={numero(resultado.naPastaTotal)} rotulo={`na pasta (${rotuloCurto})`} />
+              <NumeroPastel compacto t="verde" Icone={Check} valor={numero(resultado.naPasta)} rotulo="no padrão (contam)" />
+              <NumeroPastel compacto t="amber" Icone={FileX} valor={numero(Math.max(0, resultado.naPastaTotal - resultado.naPasta))} rotulo="não contam"
+                title="Fora do padrão, repetidas ou além do esperado" apoio="fora do padrão ou a mais" />
+            </div>
+            <AnelProgresso feitas={resultado.naPasta} total={resultado.esperadas} rotulo={`esperadas na pasta (${pct}%)`} />
           </div>
           {resultado.ate && (
-            <p className="mb-4 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
-              Do ano, <strong className="font-semibold text-slate-900">{numero(resultado.ate.esperadas)}</strong> já eram exigíveis até {rotuloMes(competencia)} (janeiro até o mês aberto):{' '}
-              <strong className="font-semibold text-slate-900">{numero(resultado.ate.naPasta)} de {numero(resultado.ate.esperadas)}</strong> estão na pasta.
-              O resto é de meses que ainda não chegaram.
+            <p className={`${tom('aco')} mb-4 rounded-2xl bg-[var(--c-suave)] px-4 py-2.5 text-[13px] font-semibold leading-snug shadow-[inset_0_0_0_1px_var(--c-linha)]`}>
+              Até {rotuloMes(competencia)} já eram exigíveis <strong className="font-extrabold">{numero(resultado.ate.esperadas)}</strong>:{' '}
+              <strong className="font-extrabold">{numero(resultado.ate.naPasta)}</strong> estão na pasta. O resto é de meses que ainda não chegaram.
             </p>
           )}
           <EsperadasChart entregas={resultado.porEntrega} />

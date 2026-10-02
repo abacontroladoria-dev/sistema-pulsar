@@ -67,7 +67,7 @@ export function RoboNaPep({ onCarregado, competencia, analistas }: { onCarregado
         painelEsperadas={competencia && analistas && analistas.length > 0
           ? <PainelEsperadas competencia={competencia} analistas={analistas} idRetrato={idRetrato} />
           : null} />
-      <AvisosEvidencias cartao={cartao} />
+      <AvisosEvidencias />
 
       {/* O título, o "?" e o progresso moram dentro da fila (redesenho de 02/10/2026). */}
       <section className={cartao} aria-labelledby="titulo-precisa-de-voce">
