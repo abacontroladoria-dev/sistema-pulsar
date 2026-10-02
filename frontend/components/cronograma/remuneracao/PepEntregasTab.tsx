@@ -446,7 +446,7 @@ export function PepEntregasTab() {
         )}
         <SeletorPrestador analistas={analistas} prestador={prestador} onChange={setPrestador} onHistoricoGeral={() => setHistoricoAberto("geral")} carregando={gradeLoading} />
         {/* Robô SharePoint: o que ele leu e o que precisa de uma pessoa (veio de /admin/robo-sharepoint). */}
-        <RoboNaPep onCarregado={marcarRoboPronto} competencia={competencia} />
+        <RoboNaPep onCarregado={marcarRoboPronto} competencia={competencia} analistas={analistasGrade} />
         {gradeLoading || analistas.length === 0 ? (
           <div className="rounded-xl border border-border bg-card p-10 text-center text-sm text-muted-foreground">
             {gradeLoading

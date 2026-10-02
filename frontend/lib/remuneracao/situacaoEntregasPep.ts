@@ -67,6 +67,67 @@ export function somarMeses(competencia: string, meses: number): string {
 export const sugestaoEsperaPessoa = (s: Pick<SugestaoSituacao, "padrao" | "robo_obs">) =>
   s.padrao !== "ok" || !!s.robo_obs
 
+/** Evidência do mês na pasta do SharePoint (sp_pep_itens, sem as apagadas). */
+export type EvidenciaDoMes = { prestador_nome: string; paciente_nome: string | null; sigla: string | null; padrao: string | null }
+
+export type EsperadasAnalista = {
+  nome: string
+  /** Evidências esperadas no mês: unidades recorrentes + semestrais vencidas. */
+  esperadas: number
+  /** Esperadas que já estão na pasta no padrão de nome (nunca passa do esperado de cada item). */
+  naPasta: number
+  /** Esperadas que ainda não estão na pasta. */
+  faltam: number
+  /** Evidências do mês que a pasta tem mas que ferem o padrão de nome: não contam. */
+  foraDoPadrao: number
+}
+
+/**
+ * Quantas evidências se ESPERAM no mês × quantas estão na pasta. A mesma
+ * regra do PDF por prestador (relatorioPrestador.ts): STC/ETC uma por semana
+ * do mês, TAP 2, TOP 1 por paciente, e cada semestral vencida conta 1.
+ * "Na pasta" só conta nome no padrão (padrao = 'ok'), no máximo o esperado
+ * de cada item e paciente. Fora do padrão e repetido não entram.
+ */
+export function evidenciasEsperadasPorAnalista(
+  analistas: { nome: string; pacientes: string[] }[],
+  dados: DadosSituacao,
+  evidencias: EvidenciaDoMes[],
+  competencia: string,
+): EsperadasAnalista[] {
+  const situacao = situacaoEntregasPorAnalista(analistas, dados, competencia)
+  const itens = dados.catalogo.filter(i => i.ativo && i.classe === "recorrente")
+  return analistas.map(a => {
+    const mine = evidencias.filter(e => e.prestador_nome === a.nome && e.sigla)
+    const contar = (sigla: string, paciente: string | null) =>
+      mine.filter(e => e.sigla === sigla && (e.paciente_nome ?? null) === paciente && e.padrao === "ok").length
+    let esperadasRec = 0
+    let naPasta = 0
+    for (const item of itens) {
+      if (item.tipo_registro === "GERAL") {
+        const esperado = item.periodicidade === "semanal" ? dados.semanasEsperadas : (item.qtd_referencia_mes ?? 1)
+        esperadasRec += esperado
+        naPasta += Math.min(esperado, contar(item.sigla, null))
+      } else {
+        const esperado = item.qtd_referencia_mes ?? 1
+        for (const p of a.pacientes) {
+          esperadasRec += esperado
+          naPasta += Math.min(esperado, contar(item.sigla, p))
+        }
+      }
+    }
+    const vencidas = situacao.get(a.nome)?.semestraisVencidas ?? 0
+    const esperadas = esperadasRec + vencidas
+    return {
+      nome: a.nome,
+      esperadas,
+      naPasta,
+      faltam: Math.max(0, esperadas - naPasta),
+      foraDoPadrao: mine.filter(e => e.padrao === "fora").length,
+    }
+  })
+}
+
 export function situacaoEntregasPorAnalista(
   analistas: { nome: string; pacientes: string[] }[],
   dados: DadosSituacao,

@@ -1,7 +1,7 @@
 import { getSupabaseClient } from '@/lib/supabase/client'
 import { ehMigrationPendente } from '@/lib/supabase/erro'
 import { semanasEsperadas } from '@/lib/remuneracao/semanasCompetencia'
-import { somarMeses, type ConferenciaMes, type DadosSituacao } from '@/lib/remuneracao/situacaoEntregasPep'
+import { somarMeses, type ConferenciaMes, type DadosSituacao, type EvidenciaDoMes } from '@/lib/remuneracao/situacaoEntregasPep'
 import { getFeriados } from '@/services/feriados.service'
 import { getCatalogoItens } from '@/services/pep.service'
 import { getCalendarioCompetencia } from '@/services/pepCalendario.service'
@@ -67,6 +67,18 @@ async function listarSugestoes(competencia: string): Promise<DadosSituacao['suge
       .eq('status', 'sugerido').eq('competencia', competencia).order('sp_id').range(de, ate))
   } catch {
     // Robô não aplicado neste ambiente (ou sem permissão): sem sugestões, a conta segue.
+    return []
+  }
+}
+
+/** Evidências do mês que estão na pasta do SharePoint (sem as apagadas). [] se o robô não está neste ambiente. */
+export async function listarEvidenciasDoMes(competencia: string): Promise<EvidenciaDoMes[]> {
+  try {
+    return await lerTudo<EvidenciaDoMes>((de, ate) => getSupabaseClient().from('sp_pep_itens')
+      .select('prestador_nome, paciente_nome, sigla, padrao')
+      .eq('tipo', 'evidencia').eq('competencia', competencia).is('removido_em', null)
+      .not('prestador_nome', 'is', null).order('sp_id').range(de, ate))
+  } catch {
     return []
   }
 }

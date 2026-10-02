@@ -1,7 +1,9 @@
 'use client'
 
-import { ArrowRight, Camera, Clock, FileCheck2, FileText, FolderSearch, FolderTree, Loader2, RefreshCw, ScanSearch, TriangleAlert } from 'lucide-react'
+import { ArrowRight, Camera, Target, Clock, FileCheck2, FileText, FolderSearch, FolderTree, Loader2, RefreshCw, ScanSearch, TriangleAlert } from 'lucide-react'
 import { dataHora, haQuanto, numero } from '@/lib/roboSharepoint/rotulos'
+import type { EsperadasAnalista } from '@/lib/remuneracao/situacaoEntregasPep'
+import { EsperadasChart } from './EsperadasChart'
 import type { ResumoExecucao, RoboEtapaNome, RoboExecucao } from '@/types/roboSharepoint'
 
 // O topo do painel: "O que o robô encontrou no SharePoint". É a 1ª coisa que
@@ -55,12 +57,14 @@ function Numero({ icone: Icone, valor, rotulo, sub }: { icone: typeof FileText; 
   )
 }
 
-export function DestaqueLeitura({ execucao, estadoAtual, retratoDe, onAbrir }: {
+export function DestaqueLeitura({ execucao, estadoAtual, retratoDe, esperadas, onAbrir }: {
   execucao: RoboExecucao | null
   /** O que está na pasta agora (sp_pep_resumo_execucao(NULL)). Ausente = migration pendente. */
   estadoAtual?: ResumoExecucao | null
   /** Leitura que tirou o retrato (a última concluída). */
   retratoDe?: RoboExecucao | null
+  /** Evidências esperadas no mês × na pasta, por analista (null = ainda sem dados). */
+  esperadas?: { mesRotulo: string; analistas: EsperadasAnalista[] } | null
   onAbrir: (etapa: RoboEtapaNome) => void
 }) {
   const etapa = execucao?.etapas.find(e => e.etapa === 'listar')
@@ -74,6 +78,7 @@ export function DestaqueLeitura({ execucao, estadoAtual, retratoDe, onAbrir }: {
   const pronta = etapa?.status === 'concluida' && !erro
   const atual = estadoAtual ?? null
   const quando = retratoDe ?? execucao
+  const totalEsperadas = esperadas?.analistas.reduce((t, a) => ({ esperadas: t.esperadas + a.esperadas, naPasta: t.naPasta + a.naPasta }), { esperadas: 0, naPasta: 0 })
 
   if (atual && !lendo) {
     return (
@@ -100,14 +105,27 @@ export function DestaqueLeitura({ execucao, estadoAtual, retratoDe, onAbrir }: {
           </div>
 
           <div className="space-y-3">
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className={`grid gap-3 sm:grid-cols-2 ${esperadas ? 'xl:grid-cols-4' : 'xl:grid-cols-3'}`}>
               <Numero icone={FileText} valor={numero(atual.total)} rotulo={atual.total === 1 ? 'arquivo na pasta' : 'arquivos na pasta'} />
-              <Numero icone={FileCheck2} valor={numero(atual.por_tipo.evidencia ?? 0)} rotulo="evidências" sub="nas pastas dos itens do PEP" />
+              <Numero icone={FileCheck2} valor={numero(atual.por_tipo.evidencia ?? 0)} rotulo="evidências" sub="nas pastas dos itens, de todos os meses" />
+              {esperadas && (
+                <Numero icone={Target} valor={`${numero(totalEsperadas?.naPasta ?? 0)} de ${numero(totalEsperadas?.esperadas ?? 0)}`}
+                  rotulo={`evidências esperadas em ${esperadas.mesRotulo}`} sub="já na pasta, no padrão de nome" />
+              )}
               <Numero icone={FolderTree} valor={numero(atual.pastas.total)} rotulo="pastas no site" sub="prestadores, seções e pacientes" />
             </div>
             <BotaoVer onClick={() => onAbrir('listar')} sub="tudo o que está na pasta, prestador por prestador" />
           </div>
         </div>
+        {esperadas && esperadas.analistas.some(a => a.esperadas > 0) && (
+          <div className="border-t border-slate-200 px-5 pb-5 pt-4 sm:px-6 sm:pb-6">
+            <h3 className="text-sm font-bold text-slate-800">Evidências esperadas × na pasta, por analista — {esperadas.mesRotulo}</h3>
+            <p className="mb-3 mt-0.5 text-xs text-slate-500">
+              Esperado = supervisão e estudo por semana do mês, TAP e TOP por paciente e semestrais vencidas. Quem está mais longe de completar vem primeiro.
+            </p>
+            <EsperadasChart analistas={esperadas.analistas} />
+          </div>
+        )}
       </section>
     )
   }

@@ -9,6 +9,10 @@ import { AvisosEvidencias } from './historico/AvisosEvidencias'
 import { useRoboSharepoint } from '@/hooks/useRoboSharepoint'
 import { ESTADO_ATUAL, execucaoEstadoAtual, execucoesDeReferencia } from '@/lib/roboSharepoint/referencias'
 import { estadoAtualDisponivel, obterResumoExecucao } from '@/services/roboSharepoint.service'
+import { carregarDadosSituacao, listarEvidenciasDoMes } from '@/services/pepSituacao.service'
+import { evidenciasEsperadasPorAnalista, type EsperadasAnalista } from '@/lib/remuneracao/situacaoEntregasPep'
+import { rotuloMes } from '@/lib/roboSharepoint/relatorioPrestador'
+import type { AnalistaDaGrade } from '@/lib/remuneracao/visaoGeralPep'
 import type { ResumoExecucao, RoboEtapaNome, RoboExecucao } from '@/types/roboSharepoint'
 
 // O robô SharePoint dentro da tela Entregas PEP (pedido de 02/10/2026): o que
@@ -27,7 +31,7 @@ import type { ResumoExecucao, RoboEtapaNome, RoboExecucao } from '@/types/roboSh
 
 const cartao = 'rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-6'
 
-export function RoboNaPep({ onCarregado, competencia }: { onCarregado?: () => void; competencia?: string } = {}) {
+export function RoboNaPep({ onCarregado, competencia, analistas }: { onCarregado?: () => void; competencia?: string; analistas?: AnalistaDaGrade[] } = {}) {
   const { execucoes, pendencias, itensPresos, carregando, erro, carregarPendencias } = useRoboSharepoint({ comSaude: false })
   const { ultima, ultimaConcluida, idUltimaGravada, ultimaCompleta } = execucoesDeReferencia(execucoes)
   const [detalhe, setDetalhe] = useState<{ execucao: RoboExecucao; etapa: RoboEtapaNome } | null>(null)
@@ -48,6 +52,18 @@ export function RoboNaPep({ onCarregado, competencia }: { onCarregado?: () => vo
     return () => { vivo = false }
   }, [idRetrato])
 
+  // Evidências esperadas no mês × na pasta, por analista. Chega depois do resto
+  // (não segura a tela); sem a Grade do mês ou sem dados, o bloco não aparece.
+  const [esperadas, setEsperadas] = useState<EsperadasAnalista[] | null>(null)
+  useEffect(() => {
+    if (!competencia || !analistas || analistas.length === 0) return
+    let vivo = true
+    Promise.all([carregarDadosSituacao(competencia), listarEvidenciasDoMes(competencia)])
+      .then(([dados, evidencias]) => { if (vivo) setEsperadas(dados ? evidenciasEsperadasPorAnalista(analistas, dados, evidencias, competencia) : null) })
+      .catch(() => { if (vivo) setEsperadas(null) })
+    return () => { vivo = false }
+  }, [competencia, analistas, idRetrato])
+
   const pronto = !carregando && estadoAtual !== undefined
   // A tela PEP só aparece quando tudo carregou: avisa assim que os dados chegam.
   useEffect(() => { if (pronto) onCarregado?.() }, [pronto, onCarregado])
@@ -62,7 +78,8 @@ export function RoboNaPep({ onCarregado, competencia }: { onCarregado?: () => vo
 
   return (
     <div className="tema-robo space-y-4">
-      <DestaqueLeitura execucao={ultima} estadoAtual={estadoAtual} retratoDe={ultimaConcluida} onAbrir={abrir} />
+      <DestaqueLeitura execucao={ultima} estadoAtual={estadoAtual} retratoDe={ultimaConcluida} onAbrir={abrir}
+        esperadas={esperadas && competencia ? { mesRotulo: rotuloMes(competencia), analistas: esperadas } : null} />
 
       <AvisosEvidencias cartao={cartao} />
 

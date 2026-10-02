@@ -3,11 +3,11 @@
 //   npx vitest run lib/remuneracao/situacaoEntregasPep.test.ts
 
 import { describe, expect, test } from "vitest"
-import { situacaoEntregasPorAnalista, somarMeses, type DadosSituacao } from "./situacaoEntregasPep"
+import { evidenciasEsperadasPorAnalista, situacaoEntregasPorAnalista, somarMeses, type DadosSituacao } from "./situacaoEntregasPep"
 import type { PepCatalogoItem } from "@/types/pep"
 
 const item = (id: string, extra: Partial<PepCatalogoItem>): PepCatalogoItem => ({
-  id, codigo: id, sigla: id, nome: id, classe: "recorrente", tipo_registro: "GERAL", periodicidade: "mensal",
+  id, codigo: id, sigla: id.toUpperCase(), nome: id, classe: "recorrente", tipo_registro: "GERAL", periodicidade: "mensal",
   qtd_referencia_mes: 1, peso_mensal: 0.1, ativo: true, ...extra,
 })
 const STC = item("stc", { periodicidade: "semanal", qtd_referencia_mes: 4 })
@@ -70,5 +70,28 @@ describe("situacaoEntregasPorAnalista", () => {
   test("somarMeses atravessa o ano", () => {
     expect(somarMeses("2026-02", -5)).toBe("2025-09")
     expect(somarMeses("2026-11", 3)).toBe("2027-02")
+  })
+})
+
+describe("evidenciasEsperadasPorAnalista", () => {
+  const ev = (sigla: string, paciente: string | null, padrao: string) => ({ prestador_nome: "Ana", paciente_nome: paciente, sigla, padrao })
+  const esp = (evs: ReturnType<typeof ev>[], d = base()) => evidenciasEsperadasPorAnalista(ana, d, evs, "2026-09")[0]
+
+  test("esperadas = STC 4 + TAP 2 do paciente; sem nada na pasta, tudo falta", () => {
+    expect(esp([])).toMatchObject({ esperadas: 6, naPasta: 0, faltam: 6, foraDoPadrao: 0 })
+  })
+
+  test("só o nome no padrão conta, sem passar do esperado do item", () => {
+    const r = esp([ev("STC", null, "ok"), ev("STC", null, "ok"), ev("TAP", "P1", "ok"), ev("TAP", "P1", "ok"), ev("TAP", "P1", "ok"), ev("TAP", "P1", "fora")])
+    expect(r).toMatchObject({ esperadas: 6, naPasta: 4, faltam: 2, foraDoPadrao: 1 })
+  })
+
+  test("semestral vencida entra nas esperadas; sem entrega, nunca na pasta", () => {
+    const d = base({ planos: [{ paciente_nome: "P1", item_id: "pic", competencia_planejada: "2026-09" }] })
+    expect(esp([], d)).toMatchObject({ esperadas: 7, naPasta: 0, faltam: 7 })
+  })
+
+  test("evidência de outro analista não conta", () => {
+    expect(esp([{ prestador_nome: "Beto", paciente_nome: null, sigla: "STC", padrao: "ok" }])).toMatchObject({ naPasta: 0 })
   })
 })
