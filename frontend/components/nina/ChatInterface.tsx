@@ -2,11 +2,12 @@
 
 import React, { useState, useRef, useEffect } from 'react'
 import {
-  Search, MessageSquare, Loader2, Info, Bot, User, Pause, Send, Check, CheckCheck, ShieldAlert, AlertCircle, WifiOff, MailX, Paperclip, Smartphone
+  Search, MessageSquare, Loader2, Info, Bot, User, Pause, Send, Check, CheckCheck, ShieldAlert, AlertCircle, WifiOff, MailX, Paperclip, Smartphone, Trash2
 } from 'lucide-react'
 
 import { ConversationStatus, MessageDirection } from '@/types/nina'
 import { useCentralInbox, type ModoIa } from '@/hooks/nina/useCentralInbox'
+import type { NinaMessage } from './adapters/centralToNina'
 import { usePainelDetalhamento } from '@/hooks/nina/usePainelDetalhamento'
 import { Avatar } from './Avatar'
 import { SeletorEmoji } from './SeletorEmoji'
@@ -15,6 +16,7 @@ import { CanalSeletor } from './CanalSeletor'
 import { PainelDetalhamento } from './detalhamento/PainelDetalhamento'
 import { ModalAgendarRetorno } from './detalhamento/ModalAgendarRetorno'
 import { ModalDesignarTarefa } from './detalhamento/ModalDesignarTarefa'
+import { ModalApagarMensagem } from './ModalApagarMensagem'
 import { Button } from './Button'
 import { toast } from 'sonner'
 
@@ -33,11 +35,12 @@ const TIPOS_ACEITOS = [
 const ChatInterface: React.FC = () => {
   const {
     conversations, activeChat, selectedId, select,
-    loading, erro, enviar, enviando,
+    loading, loadingChat, erro, enviar, enviando,
     modoIa, definirModoIa, salvandoModo,
     detalhe, recarregarDetalhe, marcarComoNaoLida,
     enviarMidia, enviandoMidia,
     canais, canaisSelecionados, alternarCanal, mostrarTodosCanais,
+    atualizandoLista, apagarMensagem,
   } = useCentralInbox()
 
   // Nome do número por id, para a badge da lista. Só aparece quando o usuário
@@ -45,6 +48,10 @@ const ChatInterface: React.FC = () => {
   // toda linha.
   const nomeDoCanal = new Map(canais.map(c => [c.id, c]))
   const variosCanais = canais.length > 1
+
+  // O item da lista que acabou de ser clicado, para o "Abrindo a conversa…"
+  // dizer com quem enquanto o detalhe não chega.
+  const conversaSelecionada = conversations.find(c => c.id === selectedId) ?? null
 
   // Número Evolution é atendimento humano: a Maia não existe nele (trigger
   // trg_evolution_sem_ia). A chave Maia/Atendente some, e no lugar fica dito
@@ -57,6 +64,7 @@ const ChatInterface: React.FC = () => {
   const [salvandoResponsavel, setSalvandoResponsavel] = useState(false)
   const [agendando, setAgendando] = useState(false)
   const [designando, setDesignando] = useState(false)
+  const [apagando, setApagando] = useState<NinaMessage | null>(null)
 
   const [inputText, setInputText] = useState('')
   const [showProfileInfo, setShowProfileInfo] = useState(true)
@@ -337,6 +345,21 @@ const ChatInterface: React.FC = () => {
     }
   }
 
+  // O modal fica ABERTO se falhar: o motivo vai no toast (ex.: o WhatsApp não
+  // apagou), e a pessoa decide ali mesmo se tenta de novo ou desiste.
+  const handleApagarMensagem = async () => {
+    if (!apagando) return
+    try {
+      const { apagadaNoWhatsapp } = await apagarMensagem(apagando.id)
+      setApagando(null)
+      toast.success(apagadaNoWhatsapp
+        ? 'Mensagem apagada para todos.'
+        : 'Mensagem apagada do Pulsar.')
+    } catch (err) {
+      toast.error((err as Error).message)
+    }
+  }
+
   const handleMarcarNaoLida = async () => {
     if (!selectedId) return
     try {
@@ -381,7 +404,14 @@ const ChatInterface: React.FC = () => {
     <div className="flex h-full bg-background overflow-hidden">
       <div className="w-80 lg:w-96 border-r border-border flex flex-col bg-card backdrop-blur-md z-20 flex-shrink-0">
         <div className="p-4 border-b border-border">
-          <h2 className="text-lg font-bold text-foreground mb-4 px-1">Chats Ativos</h2>
+          <h2 className="text-lg font-bold text-foreground mb-4 px-1 flex items-center gap-2">
+            Chats Ativos
+            {/* A lista já foi recortada no clique; isto só diz que o servidor
+                ainda vai completar com o que estava fora das 50 em mãos. */}
+            {atualizandoLista && (
+              <Loader2 className="w-4 h-4 animate-spin text-muted-foreground/70" aria-label="Atualizando a lista" />
+            )}
+          </h2>
           <div className="relative group">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/70 group-focus-within:text-cyan-400 transition-colors" />
             <input
@@ -575,7 +605,7 @@ const ChatInterface: React.FC = () => {
                 activeChat.messages.map((msg) => {
                   const isOutgoing = msg.direction === MessageDirection.OUTGOING
                   return (
-                    <div key={msg.id} className={`flex ${isOutgoing ? 'justify-end' : 'justify-start'}`}>
+                    <div key={msg.id} className={`group flex ${isOutgoing ? 'justify-end' : 'justify-start'}`}>
                       <div className={`flex flex-col max-w-[75%] ${isOutgoing ? 'items-end' : 'items-start'}`}>
                         <div
                           className={`px-5 py-3 rounded-2xl shadow-md relative text-sm leading-relaxed whitespace-pre-wrap ${
@@ -630,6 +660,19 @@ const ChatInterface: React.FC = () => {
                           {msg.emTransito && (
                             <span className="text-muted-foreground/70">Não confirmada</span>
                           )}
+                          {/* Aparece ao passar o mouse na mensagem — uma lixeira
+                              fixa em toda bolha seria ruído na conversa inteira.
+                              Em tela de toque não há "passar o mouse", então lá
+                              fica sempre visível. */}
+                          <button
+                            type="button"
+                            onClick={() => setApagando(msg)}
+                            title={msg.apagaParaTodos ? 'Apagar para todos' : 'Apagar do Pulsar'}
+                            aria-label="Apagar mensagem"
+                            className="p-0.5 rounded text-muted-foreground/70 hover:text-rose-500 hover:bg-rose-500/10 transition-colors opacity-0 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -762,6 +805,26 @@ const ChatInterface: React.FC = () => {
               aoConfirmar={handleDesignarTarefa}
             />
           )}
+
+          {apagando && (
+            <ModalApagarMensagem
+              previa={apagando.content || apagando.anexos.map(a => a.nome ?? a.rotulo).join(', ')}
+              paraTodos={apagando.apagaParaTodos}
+              doContato={apagando.direction === MessageDirection.INCOMING}
+              aoFechar={() => setApagando(null)}
+              aoConfirmar={handleApagarMensagem}
+            />
+          )}
+        </div>
+      ) : selectedId && loadingChat ? (
+        // Entre o clique e a chegada do detalhe. Antes este intervalo mostrava o
+        // vazio "Selecione uma conversa ao lado" — parecia que o clique não
+        // tinha pegado, e quem clica de novo só reinicia a espera.
+        <div className="flex-1 flex flex-col items-center justify-center gap-3 bg-muted dark:bg-[#0B0E14]">
+          <Loader2 className="h-7 w-7 animate-spin text-cyan-500" />
+          <p className="text-sm text-muted-foreground/70">
+            Abrindo a conversa{conversaSelecionada ? ` com ${conversaSelecionada.contactName}` : ''}...
+          </p>
         </div>
       ) : (
         <div className="flex-1 flex flex-col items-center justify-center bg-muted dark:bg-[#0B0E14] relative overflow-hidden">

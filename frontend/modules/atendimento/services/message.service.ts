@@ -27,6 +27,7 @@ import {
 } from '../repositories/anexo-storage.repository'
 import { mapProviderStatus } from '../utils/provider-status'
 import { isUniqueViolation } from '../utils/pg-errors'
+import { apagaParaTodos } from '../utils/apagar-mensagem'
 
 // ============================================================================
 // MessageService
@@ -622,21 +623,72 @@ export class MessageService {
 
   // -------------------------------------------------------------------------
   // softDelete
-  // Mensagem apagada pelo contato via WhatsApp.
-  // Idempotente: se a mensagem não existir (já deletada), retorna sem erro.
+  // O botão "Apagar" da bolha.
+  //
+  // O PORTÃO é o findById com o client do usuário: a RLS de central.messages
+  // só devolve a mensagem a quem enxerga a conversa (admin/director, ou membro
+  // da caixa). Daí em diante as escritas vão com service role — ver
+  // MessageRepository.softDelete.
+  //
+  // Quando a regra de apagaParaTodos vale, apaga PRIMEIRO no WhatsApp. Se o
+  // WhatsApp recusar, a mensagem fica no Pulsar e o erro sobe: esconder aqui
+  // algo que o contato continua lendo seria a pior resposta possível.
+  //
+  // Idempotente: mensagem que não existe, não é visível ou já foi apagada
+  // retorna sem erro.
   // -------------------------------------------------------------------------
-  async softDelete(messageId: string, actorId: string): Promise<void> {
+  async softDelete(
+    messageId: string,
+    actorId:   string,
+    orgId:     string,
+  ): Promise<{ apagadaNoWhatsapp: boolean }> {
     const message = await this.msg.findById(messageId)
-    if (!message) return
+    if (!message || message.organization_id !== orgId || message.deleted_at) {
+      return { apagadaNoWhatsapp: false }
+    }
+
+    let apagadaNoWhatsapp = false
+    if (apagaParaTodos(message)) {
+      const conversation = await this.conv.findById(message.conversation_id)
+      if (!conversation) throw new ConversationNotFoundError(message.conversation_id)
+
+      const channel  = await this.resolveChannel(conversation.channel_id)
+      const provider = this.factory.get(channel.provider)
+
+      if (provider.apagarParaTodos) {
+        const contact = await this.contact.findById(conversation.contact_id)
+        if (!contact?.display_phone) throw new MissingContactPhoneError(conversation.contact_id)
+
+        try {
+          await provider.apagarParaTodos(channel, {
+            externalId: message.external_message_id!,
+            telefone:   contact.display_phone,
+          })
+        } catch (err) {
+          throw err instanceof ProviderError ? err : new ProviderError(channel.provider, err)
+        }
+        apagadaNoWhatsapp = true
+      }
+    }
 
     await this.msg.softDelete(messageId)
+
+    // Depois do soft delete, e sem derrubar a resposta: a mensagem já sumiu da
+    // conversa, e uma prévia que não recalculou é corrigida pela próxima
+    // mensagem que chegar.
+    await this.msg.recalcularPrevia(message.conversation_id).catch(err => {
+      console.error('[MessageService] falha ao recalcular a prévia depois de apagar', {
+        messageId,
+        erro: err instanceof Error ? err.message : String(err),
+      })
+    })
 
     void this.audit.insert({
       organization_id: message.organization_id,
       conversation_id: message.conversation_id,
       event_type:      'message.deleted',
       performed_by:    actorId,
-      payload:         { messageId },
+      payload:         { messageId, apagadaNoWhatsapp },
     })
 
     this.events.emit('message.status_updated', {
@@ -645,6 +697,8 @@ export class MessageService {
       externalId: message.external_message_id ?? '',
       provider:   message.provider             ?? '',
     })
+
+    return { apagadaNoWhatsapp }
   }
 
   // -------------------------------------------------------------------------

@@ -126,6 +126,29 @@ export class EvolutionProvider implements MessagingProvider {
     }
   }
 
+  // "Apagar para todos". O pedido precisa do `remoteJid` EXATO da conversa no
+  // WhatsApp, e o telefone do contato não serve para montá-lo: ele pode estar
+  // com o 9º dígito que o WhatsApp não usa (contato que veio da Maia), e
+  // conversa nova pode estar endereçada por `@lid`. Um jid errado não dá erro —
+  // o WhatsApp manda o pedido para uma conversa que não existe e nada some.
+  //
+  // Por isso a chave sai da própria mensagem guardada na Evolution e, se ela não
+  // a tiver, da mesma resolução de número que o envio usa.
+  async apagarParaTodos(
+    channel: Channel,
+    alvo: { externalId: string; telefone: string },
+  ): Promise<void> {
+    const instancia = await this.resolverInstancia(channel)
+    const remoteJid = await jidDaMensagem(instancia, alvo.externalId)
+      ?? await jidDoNumero(instancia, alvo.telefone)
+
+    await chamarEvolution('DELETE', `/chat/deleteMessageForEveryone/${encodeURIComponent(instancia)}`, {
+      id: alvo.externalId,
+      remoteJid,
+      fromMe: true,
+    })
+  }
+
   async getStatus(channel: Channel): Promise<ChannelStatus> {
     try {
       const instancia = await this.resolverInstancia(channel)
@@ -187,6 +210,42 @@ function resultado(json: { key?: { id?: unknown } }): ProviderSendResult {
     throw new ProviderError('evolution', new Error(`resposta sem key.id: ${JSON.stringify(json).slice(0, 200)}`))
   }
   return { externalId, status: 'sent', sentAt: new Date().toISOString() }
+}
+
+// O jid com que a Evolution guardou a mensagem. Null quando ela não a tem (a
+// instância pode não guardar histórico) — aí quem decide é jidDoNumero.
+// A resposta mudou de forma entre versões: v2 recente devolve
+// `{ messages: { records: [...] } }`; versões antigas, a lista direto.
+async function jidDaMensagem(instancia: string, externalId: string): Promise<string | null> {
+  try {
+    const json = await chamarEvolution<unknown>('POST', `/chat/findMessages/${encodeURIComponent(instancia)}`, {
+      where: { key: { id: externalId } },
+    })
+    const corpo = json as { messages?: { records?: unknown[] } | unknown[] } | unknown[]
+    const lista = Array.isArray(corpo)
+      ? corpo
+      : Array.isArray(corpo?.messages)
+        ? corpo.messages
+        : corpo?.messages?.records ?? []
+    const achada = (lista as { key?: { id?: string; remoteJid?: string } }[])
+      .find(m => m?.key?.id === externalId)
+    return achada?.key?.remoteJid || null
+  } catch {
+    return null
+  }
+}
+
+async function jidDoNumero(instancia: string, telefone: string): Promise<string> {
+  const json = await chamarEvolution<{ exists?: boolean; jid?: string }[]>(
+    'POST',
+    `/chat/whatsappNumbers/${encodeURIComponent(instancia)}`,
+    { numbers: [soDigitos(telefone)] },
+  )
+  const r = Array.isArray(json) ? json[0] : undefined
+  if (!r?.exists || !r.jid) {
+    throw new ProviderError('evolution', new Error('o WhatsApp não encontrou a conversa deste contato para apagar a mensagem.'))
+  }
+  return r.jid
 }
 
 function tipoDeMidia(messageType: string): 'image' | 'video' | 'document' {

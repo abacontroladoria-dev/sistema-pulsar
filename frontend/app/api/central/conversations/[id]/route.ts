@@ -24,13 +24,20 @@ export async function GET(_request: NextRequest, ctx: Ctx) {
     const msgService     = createMessageService(supabase)
     const contactService = createContactService(supabase)
 
-    const conversation = await convService.getById(id)
+    // As mensagens saem junto com a conversa, e não depois: só dependem do id,
+    // e a RLS de central.messages já recorta pelo mesmo acesso à conversa. Esta
+    // rota roda a cada 5s com a conversa aberta — uma ida ao banco a menos por
+    // tique. A conferência de organização continua valendo antes de responder.
+    const [conversation, messages] = await Promise.all([
+      convService.getById(id),
+      msgService.list({ conversationId: id, limit: 20 }),
+    ])
 
     // Garante que a conversa pertence à org do usuário (RLS + check explícito)
     if (conversation.organization_id !== user.orgId) return forbidden()
 
     // Carrega dados relacionados em paralelo
-    const [contact, channelResult, inboxResult, messages, settings] = await Promise.all([
+    const [contact, channelResult, inboxResult, settings] = await Promise.all([
       contactService.getById(user.orgId, conversation.contact_id).catch(() => null),
 
       (supabase as any)
@@ -46,8 +53,6 @@ export async function GET(_request: NextRequest, ctx: Ctx) {
         .select('id, name, description')
         .eq('id', conversation.inbox_id)
         .maybeSingle(),
-
-      msgService.list({ conversationId: id, limit: 20 }),
 
       // O padrão da clínica, para resolver a herança AQUI. A tela precisa saber
       // quem de fato está respondendo: com `ai_mode` NULL na conversa, quem
