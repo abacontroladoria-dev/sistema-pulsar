@@ -30,29 +30,34 @@ export function PainelEsperadas({ competencia, analistas, idRetrato }: {
 }) {
   const [periodo, setPeriodo] = useState<Periodo>('mes')
   const [escolhidos, setEscolhidos] = useState<Set<string>>(new Set())
-  const [mes, setMes] = useState<{ dados: DadosSituacao; evidencias: EvidenciaDoMes[] } | null | undefined>(undefined)
-  const [ano, setAno] = useState<{ dados: DadosAno; evidencias: EvidenciaDoMes[] } | null | undefined>(undefined)
+  // Cada resultado guarda a chave que o pediu: se a chave de agora é outra
+  // (mês trocado, leitura nova), ele ainda está carregando — sem setState no
+  // começo do efeito.
   const anoNum = Number(competencia.split('-')[0])
+  const chaveMes = `${competencia}|${idRetrato ?? ''}`
+  const chaveAno = `${anoNum}|${idRetrato ?? ''}`
+  const [mesLido, setMesLido] = useState<{ chave: string; valor: { dados: DadosSituacao; evidencias: EvidenciaDoMes[] } | null } | null>(null)
+  const [anoLido, setAnoLido] = useState<{ chave: string; valor: { dados: DadosAno; evidencias: EvidenciaDoMes[] } | null } | null>(null)
+  const mes = mesLido?.chave === chaveMes ? mesLido.valor : undefined
+  const ano = anoLido?.chave === chaveAno ? anoLido.valor : undefined
 
   useEffect(() => {
     let vivo = true
-    setMes(undefined)
     Promise.all([carregarDadosSituacao(competencia), listarEvidenciasDoMes(competencia)])
-      .then(([dados, evidencias]) => { if (vivo) setMes(dados ? { dados, evidencias } : null) })
-      .catch(() => { if (vivo) setMes(null) })
+      .then(([dados, evidencias]) => { if (vivo) setMesLido({ chave: chaveMes, valor: dados ? { dados, evidencias } : null }) })
+      .catch(() => { if (vivo) setMesLido({ chave: chaveMes, valor: null }) })
     return () => { vivo = false }
-  }, [competencia, idRetrato])
+  }, [competencia, chaveMes])
 
   // O ano só é lido quando alguém pede (12 calendários + um ano de evidências).
   useEffect(() => {
     if (periodo !== 'ano') return
     let vivo = true
-    setAno(undefined)
     carregarDadosAno(anoNum)
-      .then(r => { if (vivo) setAno(r) })
-      .catch(() => { if (vivo) setAno(null) })
+      .then(r => { if (vivo) setAnoLido({ chave: chaveAno, valor: r }) })
+      .catch(() => { if (vivo) setAnoLido({ chave: chaveAno, valor: null }) })
     return () => { vivo = false }
-  }, [periodo, anoNum, idRetrato])
+  }, [periodo, anoNum, chaveAno])
 
   const filtrados = useMemo(
     () => (escolhidos.size === 0 ? analistas : analistas.filter(a => escolhidos.has(a.nome))),
@@ -138,7 +143,7 @@ export function PainelEsperadas({ competencia, analistas, idRetrato }: {
           <EsperadasChart entregas={resultado.porEntrega} />
           {periodo === 'ano' && (
             <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
-              No ano, os meses que ainda não chegaram entram no esperado e, por isso, aparecem como "ainda falta". Os pacientes de cada profissional são os da Grade do mês aberto.
+              No ano, os meses que ainda não chegaram entram no esperado e, por isso, aparecem como &ldquo;ainda falta&rdquo;. Os pacientes de cada profissional são os da Grade do mês aberto.
             </p>
           )}
         </>
