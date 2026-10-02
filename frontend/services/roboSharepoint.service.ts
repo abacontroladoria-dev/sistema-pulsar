@@ -61,9 +61,15 @@ export async function listarExecucoesPagina(input: {
 /** Id para as RPCs: o estado atual vai como NULL. */
 const idDaLeitura = (execucaoId: string) => (ehEstadoAtual(execucaoId) ? null : execucaoId)
 
-/** A migration 20261003100000 já está no banco? (a view do estado atual existe) */
+/**
+ * A migration 20261003100000 já está no banco? (a view do estado atual existe)
+ *
+ * GET de verdade, nunca `head: true`: o supabase-js trata o 404 SEM corpo de
+ * um HEAD como "204 sem conteúdo" (sem erro). Com a view ausente, a tela
+ * achava que o estado atual existia e mostrava 0 arquivos (02/10/2026).
+ */
 export async function estadoAtualDisponivel(): Promise<boolean> {
-  const { error } = await getSupabaseClient().from('vw_sp_pep_arquivos_atuais').select('sp_id', { head: true, count: 'exact' }).limit(1)
+  const { error } = await getSupabaseClient().from('vw_sp_pep_arquivos_atuais').select('sp_id').limit(1)
   if (error && !ehMigrationPendente(error)) console.warn('estado atual do SharePoint indisponível:', error)
   return !error
 }

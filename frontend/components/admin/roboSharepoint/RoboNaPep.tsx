@@ -40,7 +40,10 @@ export function RoboNaPep({ onCarregado, competencia }: { onCarregado?: () => vo
     let vivo = true
     estadoAtualDisponivel()
       .then(ok => (ok ? obterResumoExecucao(ESTADO_ATUAL) : null))
-      .then(r => { if (vivo) setEstadoAtual(r) })
+      // Segunda trava: só a RPC nova responde estado_atual=true. A antiga,
+      // chamada com NULL, devolveria zero arquivos — melhor o comportamento
+      // de antes do que um retrato vazio.
+      .then(r => { if (vivo) setEstadoAtual(r?.estado_atual ? r : null) })
       .catch(e => { console.warn('estado atual do SharePoint:', e); if (vivo) setEstadoAtual(null) })
     return () => { vivo = false }
   }, [idRetrato])
