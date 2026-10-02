@@ -256,11 +256,13 @@ export function esperadasDoAno(
   dados: DadosAno,
   evidencias: EvidenciaDoMes[],
   ano: number,
+  /** Só conta o que já era exigível até este mês ('AAAA-MM'); sem ele, o ano inteiro. */
+  ate?: string,
 ): EsperadasAnalista[] {
   const itens = dados.catalogo.filter(i => i.ativo)
   const recorrentes = itens.filter(i => i.classe === "recorrente")
   const semestrais = new Map(itens.filter(i => i.classe === "semestral").map(i => [i.id, i]))
-  const meses = Array.from({ length: 12 }, (_, i) => `${ano}-${String(i + 1).padStart(2, "0")}`)
+  const meses = Array.from({ length: 12 }, (_, i) => `${ano}-${String(i + 1).padStart(2, "0")}`).filter(m => !ate || m <= ate)
 
   return analistas.map(a => {
     const mine = evidencias.filter(e => e.prestador_nome === a.nome && e.sigla)
@@ -285,7 +287,7 @@ export function esperadasDoAno(
     const pacientes = new Set(a.pacientes)
     for (const plano of dados.planos) {
       const item = semestrais.get(plano.item_id)
-      if (!item || !pacientes.has(plano.paciente_nome) || !plano.competencia_planejada.startsWith(`${ano}-`)) continue
+      if (!item || !pacientes.has(plano.paciente_nome) || !plano.competencia_planejada.startsWith(`${ano}-`) || (ate && plano.competencia_planejada > ate)) continue
       const inicio = somarMeses(plano.competencia_planejada, -5)
       somar(item.sigla, 1, ok(item.sigla, plano.paciente_nome, c => c >= inicio).length > 0 ? 1 : 0)
     }
@@ -293,7 +295,7 @@ export function esperadasDoAno(
     const naPasta = Object.values(porSigla).reduce((t, v) => t + v.naPasta, 0)
     return {
       nome: a.nome, esperadas, naPasta, faltam: Math.max(0, esperadas - naPasta),
-      foraDoPadrao: mine.filter(e => e.padrao === "fora" && !!e.competencia?.startsWith(`${ano}-`)).length,
+      foraDoPadrao: mine.filter(e => e.padrao === "fora" && !!e.competencia?.startsWith(`${ano}-`) && (!ate || (e.competencia ?? "") <= ate)).length,
       porSigla,
     }
   })

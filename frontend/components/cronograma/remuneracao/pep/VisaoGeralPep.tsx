@@ -31,6 +31,7 @@ import {
   resumoPepCompetencia, type AnalistaDaGrade, type StatusApuracaoAnalista,
 } from "@/lib/remuneracao/visaoGeralPep"
 import { situacaoEntregasPorAnalista } from "@/lib/remuneracao/situacaoEntregasPep"
+import { InfoTooltip } from "@/components/cronograma/ui/InfoTooltip"
 import { LegendaOrigem, ORIGEM } from "./origem"
 
 // Roxo = robô, azul = pessoa (./origem). Hex para as barras, que pintam por style.
@@ -53,6 +54,26 @@ const STATUS: Record<StatusApuracaoAnalista, { rotulo: string; tone: Tone; nota:
   conferido: { rotulo: "Conferido", tone: "blue", nota: "Uma pessoa clicou “Marcar como conferido”. Fica gravado quem e quando." },
   liberado: { rotulo: "Liberado para pagamento", tone: "green", nota: "É o “Liberado” de hoje. O mês fica travado." },
   sem_dados: { rotulo: "Sem dados", tone: "gray", nota: "Não foi possível ler as entregas deste mês. Recarregue a página." },
+}
+
+/** A lâmpada que explica cada status e quando ele aparece (o mesmo texto do tooltip de cada chip). */
+function ExplicacaoStatus() {
+  return (
+    <InfoTooltip ariaLabel="Explicação dos status" largura={340}>
+      <p className="mb-2 text-xs font-bold text-foreground">Status do analista no mês</p>
+      <ul className="space-y-2">
+        {(["faltam_entregas", "entregas_completas", "conferido", "liberado"] as StatusApuracaoAnalista[]).map(s => (
+          <li key={s}>
+            <StatusChip tone={STATUS[s].tone} dense>{STATUS[s].rotulo}</StatusChip>
+            <p className="mt-1 leading-snug text-muted-foreground">{STATUS[s].nota}</p>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-2 border-t border-border pt-2 leading-snug text-muted-foreground">
+        O status mostra o que as pessoas já fizeram com as entregas. Abrir a página do analista não muda o status.
+      </p>
+    </InfoTooltip>
+  )
 }
 
 /** Nenhum paciente do analista tem valor calculado ainda. */
@@ -395,8 +416,9 @@ export function VisaoGeralPep({ competencia, analistas, valorPorPaciente, onSele
           </div>
         }
       >
-        <p className="-mt-1 mb-2 text-[11px] text-muted-foreground">
+        <p className="-mt-1 mb-2 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
           Primeiro quem ainda tem entregas faltando. Toque num analista para abrir as entregas dele.
+          <span className="inline-flex items-center gap-1 font-semibold text-foreground">Status <ExplicacaoStatus /></span>
         </p>
         {visiveis.length === 0 ? (
           <p className="py-6 text-center text-xs text-muted-foreground">Nenhum analista encontrado para “{busca}”.</p>
@@ -404,7 +426,10 @@ export function VisaoGeralPep({ competencia, analistas, valorPorPaciente, onSele
           <>
             <div className="hidden px-2 pb-1 md:grid md:grid-cols-[minmax(0,1fr)_4.5rem_7rem_7rem_4rem_7rem_1rem] md:gap-3">
               {["Analista", "Pacientes", "Teto", "Apurado", "% teto", "Status", ""].map((h, i) => (
-                <span key={i} className={`text-[10px] font-semibold text-muted-foreground/70 ${i >= 1 && i <= 4 ? "text-right" : ""}`}>{h}</span>
+                <span key={i} className={`inline-flex items-center gap-1 text-[10px] font-semibold text-muted-foreground/70 ${i >= 1 && i <= 4 ? "justify-end text-right" : ""}`}>
+                  {h}
+                  {h === "Status" && <ExplicacaoStatus />}
+                </span>
               ))}
             </div>
             <ul className="divide-y divide-border/70">

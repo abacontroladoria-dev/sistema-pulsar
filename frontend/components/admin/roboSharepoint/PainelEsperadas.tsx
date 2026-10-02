@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { Loader2, Target } from 'lucide-react'
+import { InfoTooltip } from '@/components/cronograma/ui/InfoTooltip'
 import { MultiSearchCombobox } from '@/components/cronograma/ui/MultiSearchCombobox'
 import { SegmentedTabs } from '@/components/cronograma/ui/SegmentedTabs'
 import { rotuloMes } from '@/lib/roboSharepoint/relatorioPrestador'
@@ -73,11 +74,22 @@ export function PainelEsperadas({ competencia, analistas, idRetrato }: {
       : esperadasDoAno(filtrados, (fonte as NonNullable<typeof ano>).dados, fonte.evidencias, anoNum)
     const catalogo = periodo === 'mes' ? (fonte as NonNullable<typeof mes>).dados.catalogo : (fonte as NonNullable<typeof ano>).dados.catalogo
     const porEntrega = esperadasPorEntrega(lista, catalogo)
+    // Tudo o que está na pasta no período para estes profissionais (qualquer nome):
+    // é o que reconcilia com as "evidências na pasta" do retrato.
+    const nomes = new Set(filtrados.map(a => a.nome))
+    const naPastaTotal = fonte.evidencias.filter(e => nomes.has(e.prestador_nome)
+      && (periodo === 'mes' || !!e.competencia?.startsWith(`${anoNum}-`))).length
+    // No ano: quanto já era exigível até o mês aberto (meses futuros ainda não são falta).
+    let ate: { esperadas: number; naPasta: number } | null = null
+    if (periodo === 'ano') {
+      const dadosAno = (fonte as NonNullable<typeof ano>).dados
+      const porEntregaAte = esperadasPorEntrega(esperadasDoAno(filtrados, dadosAno, fonte.evidencias, anoNum, competencia), catalogo)
+      ate = { esperadas: porEntregaAte.reduce((s, e) => s + e.esperadas, 0), naPasta: porEntregaAte.reduce((s, e) => s + e.naPasta, 0) }
+    }
     return {
-      porEntrega,
+      porEntrega, naPastaTotal, ate,
       esperadas: porEntrega.reduce((s, e) => s + e.esperadas, 0),
       naPasta: porEntrega.reduce((s, e) => s + e.naPasta, 0),
-      foraDoPadrao: lista.reduce((s, a) => s + a.foraDoPadrao, 0),
     }
   }, [fonte, periodo, filtrados, competencia, anoNum])
 
@@ -98,11 +110,19 @@ export function PainelEsperadas({ competencia, analistas, idRetrato }: {
             <Target className="h-4 w-4 text-brand-fg" aria-hidden />
             Evidências esperadas
             <span className="rounded-full bg-slate-800 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white">{rotuloCurto}</span>
+            <InfoTooltip ariaLabel="Como o esperado é calculado" largura={360}>
+              <p className="mb-1.5 text-xs font-bold text-foreground">Como o esperado é calculado</p>
+              <ul className="list-disc space-y-1 pl-4 leading-snug text-muted-foreground">
+                <li><strong className="text-foreground">STC e ETC:</strong> uma por semana do mês (3 em mês de recesso).</li>
+                <li><strong className="text-foreground">TAP:</strong> 2 por paciente por mês. <strong className="text-foreground">TOP:</strong> 1 por paciente por mês.</li>
+                <li><strong className="text-foreground">PIC, RT e OE:</strong> 1 por planejamento semestral cadastrado{periodo === 'mes' ? ' que já venceu' : ' que vence no ano'}. Sem planejamento cadastrado, não se espera.</li>
+                <li>Os pacientes de cada profissional são os da Grade de {rotuloMes(competencia)}.</li>
+                <li>&ldquo;Na pasta&rdquo; conta só arquivo com o nome no padrão, no máximo o esperado de cada item.</li>
+              </ul>
+            </InfoTooltip>
           </h3>
           <p className="mt-1 text-xs leading-relaxed text-slate-600">
             O que se <strong className="font-semibold text-slate-800">espera</strong> para {rotuloPeriodo}, de {quem}, comparado com o que já está na pasta.
-            {' '}Supervisão e estudo por semana do mês, TAP e TOP por paciente (os da Grade de {rotuloMes(competencia)}), e semestrais com planejamento cadastrado
-            {periodo === 'mes' ? ' que já venceram' : ' que vencem no ano'}. Conta só o nome no padrão.
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center xl:shrink-0">
@@ -131,21 +151,38 @@ export function PainelEsperadas({ competencia, analistas, idRetrato }: {
         <p className="py-4 text-sm text-slate-600">Nada esperado para {quem} em {rotuloPeriodo}.</p>
       ) : (
         <>
-          <p className="mb-4 text-right">
-            <span className="block text-3xl font-black leading-none tabular-nums text-slate-900 sm:text-4xl">
-              {numero(resultado.naPasta)} <span className="text-lg font-bold text-slate-500">de {numero(resultado.esperadas)}</span>
-            </span>
-            <span className="mt-1 block text-xs font-semibold text-slate-600">
-              esperadas em {rotuloCurto} já estão na pasta ({pct}%)
-              {resultado.foraDoPadrao > 0 ? ` · ${numero(resultado.foraDoPadrao)} na pasta fora do padrão de nome não contam` : ''}
-            </span>
-          </p>
-          <EsperadasChart entregas={resultado.porEntrega} />
-          {periodo === 'ano' && (
-            <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
-              No ano, os meses que ainda não chegaram entram no esperado e, por isso, aparecem como &ldquo;ainda falta&rdquo;. Os pacientes de cada profissional são os da Grade do mês aberto.
+          <div className="mb-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+            {/* A conta que explica o total: do que está na pasta, só o nome no padrão conta. */}
+            <dl className="grid grid-cols-3 gap-2 text-xs">
+              <div className="rounded-xl bg-slate-50 p-2.5">
+                <dt className="font-semibold text-slate-500">Na pasta ({rotuloCurto})</dt>
+                <dd className="text-lg font-black tabular-nums text-slate-900">{numero(resultado.naPastaTotal)}</dd>
+              </div>
+              <div className="rounded-xl bg-emerald-50 p-2.5">
+                <dt className="font-semibold text-emerald-800">no padrão (contam)</dt>
+                <dd className="text-lg font-black tabular-nums text-emerald-900">{numero(resultado.naPasta)}</dd>
+              </div>
+              <div className="rounded-xl bg-amber-50 p-2.5">
+                <dt className="font-semibold text-amber-800">não contam</dt>
+                <dd className="text-lg font-black tabular-nums text-amber-900">{numero(Math.max(0, resultado.naPastaTotal - resultado.naPasta))}</dd>
+                <dd className="text-[10px] leading-tight text-amber-800">fora do padrão, repetidas ou além do esperado</dd>
+              </div>
+            </dl>
+            <p className="text-right">
+              <span className="block text-3xl font-black leading-none tabular-nums text-slate-900 sm:text-4xl">
+                {numero(resultado.naPasta)} <span className="text-lg font-bold text-slate-500">de {numero(resultado.esperadas)}</span>
+              </span>
+              <span className="mt-1 block text-xs font-semibold text-slate-600">esperadas em {rotuloCurto} já estão na pasta ({pct}%)</span>
+            </p>
+          </div>
+          {resultado.ate && (
+            <p className="mb-4 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+              Do ano, <strong className="font-semibold text-slate-900">{numero(resultado.ate.esperadas)}</strong> já eram exigíveis até {rotuloMes(competencia)} (janeiro até o mês aberto):{' '}
+              <strong className="font-semibold text-slate-900">{numero(resultado.ate.naPasta)} de {numero(resultado.ate.esperadas)}</strong> estão na pasta.
+              O resto é de meses que ainda não chegaram.
             </p>
           )}
+          <EsperadasChart entregas={resultado.porEntrega} />
         </>
       )}
     </div>

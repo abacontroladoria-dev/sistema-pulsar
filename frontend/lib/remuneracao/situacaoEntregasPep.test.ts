@@ -139,4 +139,11 @@ describe("esperadasDoAno", () => {
     const com = esperadasDoAno(ana, dadosAno({ planos }), [ev("PIC", "P1", "2026-06")], 2026)[0]
     expect(com.porSigla.PIC).toEqual({ esperadas: 1, naPasta: 1 })
   })
+
+  test("até um mês: só o exigível até lá (janeiro a outubro = 10 meses)", () => {
+    const planos = [{ paciente_nome: "P1", item_id: "pic", competencia_planejada: "2026-12" }]
+    const r = esperadasDoAno(ana, dadosAno({ planos }), [], 2026, "2026-10")[0]
+    expect(r.porSigla.STC.esperadas).toBe(40)
+    expect(r.porSigla.PIC).toBeUndefined() // vence em dezembro: ainda não é exigível
+  })
 })

@@ -112,7 +112,7 @@ export function DestaqueLeitura({ execucao, estadoAtual, retratoDe, painelEspera
             {/* O retrato: três números, lado a lado no celular e empilhados ao lado do gráfico. */}
             <div className={`grid gap-3 ${painelEsperadas ? 'sm:grid-cols-3 lg:grid-cols-1' : 'sm:grid-cols-3'}`}>
               <Numero compacto icone={FileText} valor={numero(atual.total)} rotulo={atual.total === 1 ? 'arquivo na pasta' : 'arquivos na pasta'} />
-              <Numero compacto icone={FileCheck2} valor={numero(atual.por_tipo.evidencia ?? 0)} rotulo="evidências" sub="de todos os meses" />
+              <Numero compacto icone={FileCheck2} valor={numero(atual.por_tipo.evidencia ?? 0)} rotulo="evidências na pasta" sub="de todos os meses e profissionais, com qualquer nome" />
               <Numero compacto icone={FolderTree} valor={numero(atual.pastas.total)} rotulo="pastas no site" sub="prestadores, seções e pacientes" />
             </div>
 
