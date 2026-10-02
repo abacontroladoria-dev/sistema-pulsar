@@ -295,6 +295,19 @@ export class ConversationRepository {
     if (error) throw error
   }
 
+  // `ai_context` inteiro, como o caller montou. Quem decide o conteúdo é
+  // agente/vagas-oferecidas.ts (`mesclarAiContext` preserva as outras chaves);
+  // este método só grava, igual updateTags.
+  async updateAiContext(id: string, aiContext: Record<string, unknown>): Promise<void> {
+    const { error } = await (this.supabase as any)
+      .schema('central')
+      .from('conversations')
+      .update({ ai_context: aiContext })
+      .eq('id', id)
+
+    if (error) throw error
+  }
+
   // Campo, não tag (aba Regras, item 5) — coluna própria (20260922100200).
   // Só o matcher de campanha (agente/origem-campanha.ts) grava aqui; a Maia
   // nunca decide este campo.

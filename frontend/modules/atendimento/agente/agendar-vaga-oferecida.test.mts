@@ -24,6 +24,7 @@
 // acionável, e mandar repetir a ação que falhou alimenta o laço.
 
 import { FerramentasAgente } from './ferramentas.js'
+import type { VagaOferecida } from './vagas-oferecidas.js'
 
 let falhas = 0
 function ok(condicao: boolean, oque: string, extra?: unknown) {
@@ -47,7 +48,7 @@ const VAGAS = [
 
 let agendouDeVerdade = 0
 
-function montar() {
+function montar(vagasAnteriores: VagaOferecida[] = []) {
   agendouDeVerdade = 0
   const service = {
     listarVagas: async () => VAGAS,
@@ -65,8 +66,19 @@ function montar() {
     service as never,
     {} as never,
     { orgId: 'o-1', contactId: 'c-1', conversationId: 'cv-1' },
+    null, null, null,
+    vagasAnteriores,
   )
 }
+
+// O que o turno anterior teria guardado em ai_context depois de listar as duas
+// vagas de terça (mesmo formato que `estadoDasVagas` devolve).
+const GUARDADAS: VagaOferecida[] = [
+  { profissionalId: 14497, data: '2026-09-22', hora: '10:00', profissional: 'Germana Santos da Silva',
+    diaSemana: 'terça-feira', terapia: 'Fonoaudiologia', unidade: 'Realengo' },
+  { profissionalId: 8704, data: '2026-09-22', hora: '10:40', profissional: 'Thais Liberato Silva',
+    diaSemana: 'terça-feira', terapia: 'Fonoaudiologia', unidade: 'Realengo' },
+]
 
 // Sem `terapia`: o filtro por especialidade passa pelo catálogo (terapia.ts),
 // que resolve contra o que a grade real devolve — e o objetivo aqui é a
@@ -162,6 +174,49 @@ console.log('\n5. duas consultas no mesmo turno acumulam')
     profissionalId: 8704, data: '2026-09-22', hora: '10:40', tipo: 'triagem', observacao: null,
   })
   ok(r.ok === true, 'a vaga da primeira consulta ainda é aceita na segunda', r)
+}
+
+console.log('\n6. a lista do turno anterior confere o id sem reconsulta (teste do Comercial, 01/10)')
+
+{
+  // O turno do "15h": o responsável escolheu, e este turno NÃO consultou.
+  // Antes, a lista estava vazia e o id inventado ia direto ao banco.
+  const f = montar(GUARDADAS)
+  const r = await f.executar('agendar_sessao', {
+    profissionalId: 1, data: '2026-09-22', hora: '10:40', tipo: 'triagem', observacao: null,
+  })
+  ok(r.ok === false, 'o id inventado é recusado mesmo sem consulta neste turno')
+  ok(agendouDeVerdade === 0, 'sem ida ao banco')
+  ok(/8704/.test((r as { mensagem: string }).mensagem), 'e a recusa diz o id certo, vindo da lista guardada', r)
+
+  const certo = await f.executar('agendar_sessao', {
+    profissionalId: 8704, data: '2026-09-22', hora: '10:40', tipo: 'triagem', observacao: null,
+  })
+  ok(certo.ok === true, 'o id da lista guardada agenda direto', certo)
+}
+
+console.log('\n7. o estado das vagas diz ao worker o que gravar')
+
+{
+  const semMexer = montar(GUARDADAS)
+  ok(semMexer.estadoDasVagas().mudou === false, 'turno que não consultou nem reservou não regrava')
+  ok(semMexer.estadoDasVagas().vagas.length === 2, 'e a lista guardada continua inteira')
+
+  const consultou = montar()
+  await consultou.executar('consultar_horarios_disponiveis', CONSULTA)
+  const e1 = consultou.estadoDasVagas()
+  ok(e1.mudou && e1.consultouNesteTurno, 'consulta marca mudança e renova a data da consulta')
+  ok(e1.vagas.some((v) => v.profissionalId === 8704 && v.unidade === 'Realengo' && v.diaSemana === 'terça-feira'),
+    'e guarda unidade e dia da semana, que o modelo usa para reconhecer "o de terça"', e1.vagas)
+
+  const reservou = montar(GUARDADAS)
+  await reservou.executar('agendar_sessao', {
+    profissionalId: 8704, data: '2026-09-22', hora: '10:40', tipo: 'triagem', observacao: null,
+  })
+  const e2 = reservou.estadoDasVagas()
+  ok(e2.mudou && !e2.consultouNesteTurno, 'reserva marca mudança sem fingir consulta nova')
+  ok(!e2.vagas.some((v) => v.profissionalId === 8704), 'a vaga reservada sai da lista', e2.vagas)
+  ok(e2.vagas.some((v) => v.profissionalId === 14497), 'e a outra fica', e2.vagas)
 }
 
 console.log(falhas === 0 ? '\nTodos os testes passaram.' : `\n${falhas} teste(s) FALHARAM.`)

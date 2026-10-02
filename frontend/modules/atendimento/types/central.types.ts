@@ -156,6 +156,11 @@ export interface Conversation {
   // Maia sempre devolve null aqui. objecao: frase curta do motivo de recuo.
   campanha:         string | null
   objecao:          string | null
+  // Contexto do agente para esta conversa (20260701010000). Hoje só guarda
+  // `vagas_oferecidas` (agente/vagas-oferecidas.ts). `unknown` de propósito: é
+  // jsonb sem schema no banco, e quem lê valida. Opcional porque nem todo
+  // select traz a coluna.
+  ai_context?:      unknown
   last_message_at:  string | null
   // Prévia da última mensagem com fala, mantida por gatilho em central.messages
   // (20260928120000). É o que a LISTA mostra, já que ela não carrega histórico.

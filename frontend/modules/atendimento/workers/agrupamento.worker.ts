@@ -5,6 +5,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { createSystemServices, createAppointmentSystemService } from '../services'
 import { ContactRepository } from '../repositories/contact.repository'
 import { MessageRepository } from '../repositories/message.repository'
+import { ConversationRepository } from '../repositories/conversation.repository'
 import { AppointmentRepository } from '../repositories/appointment.repository'
 import { TagDefinitionRepository } from '../repositories/tag-definition.repository'
 import { CampaignPhraseRepository } from '../repositories/campaign-phrase.repository'
@@ -13,6 +14,7 @@ import { normalizarMensagemMeta } from '../providers/meta-waba.normalizar'
 import { montarContexto, LIMITE_HISTORICO } from '../agente/contexto'
 import { executarTurno } from '../agente/orquestrador'
 import { FerramentasAgente } from '../agente/ferramentas'
+import { lerVagasGuardadas, paraGuardar, mesclarAiContext } from '../agente/vagas-oferecidas'
 import { montarFerramentaRegistrarTags } from '../agente/tags'
 import { casarPrimeiraMensagem } from '../agente/origem-campanha'
 import { openAiProvider } from '../llm/openai.provider'
@@ -333,6 +335,15 @@ async function processarContato(
     console.warn('[worker agrupamento] ficha do paciente indisponível; seguindo sem coleta', err)
   }
 
+  // Os horários que turnos anteriores desta conversa ofereceram (ver
+  // agente/vagas-oferecidas.ts). Só com a agenda pela IA ligada: sem
+  // `agendar_sessao` a lista não serve para nada, e mostrá-la convidaria o
+  // modelo a falar de horário que ele não pode reservar.
+  const agoraISO = new Date().toISOString()
+  const vagasAnteriores = settings.ai_scheduling_enabled
+    ? lerVagasGuardadas(conversation.ai_context, agoraISO)
+    : null
+
   const contexto = montarContexto({
     systemPrompt: settings.system_prompt,
     memoriaContato: (contato as { ai_memory?: unknown }).ai_memory ?? null,
@@ -342,7 +353,8 @@ async function processarContato(
     // fala do turno, que o orquestrador acrescenta. Cortá-la aqui evita que o
     // modelo a leia duas vezes.
     historico: historico.slice(textos.length),
-    agoraISO: new Date().toISOString(),
+    agoraISO,
+    vagasOferecidas: vagasAnteriores,
   })
 
   const ferramentas = new FerramentasAgente(
@@ -361,6 +373,9 @@ async function processarContato(
     // abaixo — precisa estar aqui de novo porque a validação e o merge por
     // grupo em ConversationService.atualizarTags também dependem dele.
     porGrupoTags,
+    // Semeia a conferência de `agendar_sessao` com o que já foi oferecido: é o
+    // que deixa o "15h" do turno seguinte virar reserva sem reconsulta.
+    vagasAnteriores?.vagas ?? [],
   )
 
   // 7. O turno.
@@ -397,6 +412,25 @@ async function processarContato(
       },
     },
   )
+
+  // Regrava a lista de vagas quando o turno mexeu nela (consultou, ou reservou
+  // uma). A falha é isolada pelo mesmo motivo da ficha: não conseguir guardar
+  // não pode calar a resposta, e o pior caso é o turno seguinte reconsultar —
+  // o comportamento de antes desta lista existir.
+  const estadoVagas = ferramentas.estadoDasVagas()
+  if (estadoVagas.mudou) {
+    try {
+      const consultadoEm = estadoVagas.consultouNesteTurno
+        ? agoraISO
+        : (vagasAnteriores?.consultadoEm ?? agoraISO)
+      await new ConversationRepository(supabase).updateAiContext(
+        conversation.id,
+        mesclarAiContext(conversation.ai_context, paraGuardar(estadoVagas.vagas, consultadoEm)),
+      )
+    } catch (err) {
+      console.warn('[worker agrupamento] vagas oferecidas não gravadas; o próximo turno reconsulta', err)
+    }
+  }
 
   // A ferramenta `escalar_para_humano` pode ter mudado quem atende no meio do
   // turno. Isso é lido ANTES do switch porque atravessa os três desfechos: a

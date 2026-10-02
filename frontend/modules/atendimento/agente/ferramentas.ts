@@ -13,6 +13,7 @@ import { horaCurta } from './formato'
 import { UNIDADES, unidadeDaSala, normalizarUnidade, type Unidade } from './unidade'
 import { resolverTerapia, nomesOfertaveis, especialidadesNaGrade } from './terapia'
 import { interpretarArgumentosTags, gruposFaltantesParaLead, ClassificacaoInvalidaError } from './tags'
+import type { VagaOferecida } from './vagas-oferecidas'
 import type { TagDefinition } from '../types/central.types'
 import { TagDesconhecidaError, TagNaoAplicavelPelaMaiaError } from '../types/errors.types'
 
@@ -192,8 +193,10 @@ export const DEFINICOES_FERRAMENTAS = [
       name: 'agendar_sessao',
       description:
         'Reserva uma vaga para o paciente. Os três parâmetros precisam vir EXATAMENTE de um horário devolvido por ' +
-        'consultar_horarios_disponiveis — não monte a combinação por conta própria. ' +
-        'Confirme com o responsável antes de chamar: esta ferramenta grava a reserva.',
+        'consultar_horarios_disponiveis, nesta resposta ou no bloco "Horários que você já ofereceu" do contexto — ' +
+        'não monte a combinação por conta própria. ' +
+        'Chame assim que o responsável escolher ou confirmar o horário: uma confirmação basta, não pergunte de novo. ' +
+        'Esta ferramenta grava a reserva.',
       strict: true,
       parameters: {
         type: 'object',
@@ -459,7 +462,14 @@ export class FerramentasAgente {
     // ConversationService.atualizarTags também dependem dele. Opcional pela
     // mesma razão das demais: sem ele, a ferramenta recusa.
     private readonly porGrupoTags: Map<string, TagDefinition[]> | null = null,
-  ) {}
+    // As vagas que turnos ANTERIORES desta conversa ofereceram, lidas de
+    // `conversations.ai_context` pelo worker (ver vagas-oferecidas.ts). Semeiam
+    // `vagasOferecidas`, e é isso que faz a conferência de `agendar_sessao`
+    // valer no turno do "15h" — antes, a lista daquele turno estava sempre vazia.
+    vagasAnteriores: readonly VagaOferecida[] = [],
+  ) {
+    this.vagasOferecidas = [...vagasAnteriores]
+  }
 
   // A escalada pedida NESTE turno, ou null. Lida pelo worker depois de
   // `executarTurno`.
@@ -479,17 +489,34 @@ export class FerramentasAgente {
   // worker. Não é estado global, e não sobrevive à conversa seguinte.
   private escalouNesteTurno: { motivoEscalada: string } | null = null
 
-  // As vagas que ESTE turno ofereceu ao modelo, para `agendar_sessao` conferir
-  // contra elas. Escopo de turno, como `escalouNesteTurno`: a instância é
-  // construída uma vez por turno no worker.
+  // As vagas oferecidas ao modelo nesta conversa, para `agendar_sessao` conferir
+  // contra elas: as dos turnos anteriores (semeadas pelo construtor) mais as que
+  // ESTE turno consultar.
   //
-  // Guardar o mínimo — a identidade da vaga e o nome de quem atende — porque é
-  // só isso que a conferência precisa devolver numa recusa. O resto da vaga
-  // (sala, terapia, unidade) já foi para o modelo e não ajuda a corrigir um id.
-  private vagasOferecidas: { profissionalId: number; data: string; hora: string; profissional: string | null }[] = []
+  // Além da identidade da vaga e do nome de quem atende — o que a conferência
+  // devolve numa recusa —, guarda dia da semana, terapia e unidade. Antes isso
+  // não precisava: a lista morria com o turno. Agora ela vai para o contexto do
+  // turno seguinte, e é com esses campos que o modelo reconhece "o de terça,
+  // em Realengo" sem consultar de novo.
+  private vagasOferecidas: VagaOferecida[] = []
+
+  // Se a lista mudou neste turno (o worker só regrava quando mudou) e se mudou
+  // por consulta nova (o que renova a data de consulta guardada).
+  private vagasMudaram         = false
+  private consultouVagasNoTurno = false
 
   escaladaPedida(): { motivoEscalada: string } | null {
     return this.escalouNesteTurno
+  }
+
+  // O estado da lista ao fim do turno, para o worker decidir se grava. Lido
+  // depois de `executarTurno`, como `escaladaPedida`.
+  estadoDasVagas(): { vagas: VagaOferecida[]; mudou: boolean; consultouNesteTurno: boolean } {
+    return {
+      vagas:               [...this.vagasOferecidas],
+      mudou:               this.vagasMudaram,
+      consultouNesteTurno: this.consultouVagasNoTurno,
+    }
   }
 
   // Ponto único de entrada. Recebe o nome e os argumentos crus vindos do
@@ -765,10 +792,16 @@ export class FerramentasAgente {
         // agendável e não precisa entrar na conferência — mas cair para '' em
         // vez de null mantém a comparação simples e nunca casa com o que o
         // modelo envia (ele manda 'HH:MM' ou a chamada já falha na guarda).
+        // Ao gravar, `paraGuardar` descarta a vaga sem hora.
         hora:           horaCurta(v.hora_inicial) ?? '',
         profissional:   v.profissional_nome,
+        diaSemana:      v.dia_semana,
+        terapia:        nomeResolvido ?? especialidadesNaGrade([v]).join(', '),
+        unidade:        v.unidade,
       })
     }
+    this.vagasMudaram          = true
+    this.consultouVagasNoTurno = true
 
     return {
       ok: true,
@@ -874,6 +907,16 @@ export class FerramentasAgente {
       titaPacienteId:  this.contexto.titaPacienteId ?? null,
       criadoPorIa:     true,
     }, null)   // actorId null: quem agendou foi o agente, não um operador
+
+    // A vaga reservada sai da lista guardada: no turno seguinte ela não pode
+    // aparecer como "já oferecida" — para um segundo filho, por exemplo, seria
+    // oferecer um horário que acabou de ser ocupado. As outras ficam.
+    const hora = String(args.hora)
+    const data = String(args.data)
+    this.vagasOferecidas = this.vagasOferecidas.filter(
+      (v) => !(v.profissionalId === profissionalId && v.data === data && v.hora === hora),
+    )
+    this.vagasMudaram = true
 
     return {
       ok: true,
@@ -1203,9 +1246,10 @@ export class FerramentasAgente {
     data: string,
     hora: string,
   ): ResultadoFerramenta | null {
-    // Nenhuma consulta neste turno: não há com o que comparar. Deixa passar e o
-    // banco decide — é o comportamento de antes, e vale para o caso legítimo de
-    // o modelo agendar a partir de uma lista de um turno anterior.
+    // Nenhuma vaga conhecida — nem consultada neste turno, nem guardada de um
+    // turno anterior (lista vencida, conversa nova, ou o worker não conseguiu
+    // ler `ai_context`). Não há com o que comparar: deixa passar e o banco
+    // decide, que é o comportamento de antes.
     if (this.vagasOferecidas.length === 0) return null
 
     const exata = this.vagasOferecidas.find(
