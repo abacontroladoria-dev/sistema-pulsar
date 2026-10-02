@@ -1,6 +1,9 @@
 import { getSupabaseClient } from '@/lib/supabase/client'
+import { ehMigrationPendente } from '@/lib/supabase/erro'
+import { ehEstadoAtual } from '@/lib/roboSharepoint/referencias'
 import type {
-  ArquivoLido, ArquivoLidoCompleto, ArvorePastas, MatrizEvidencias, PacienteDetalhe, ResumoExecucao, RoboExecucao, RoboSaude,
+  ArquivoLido, ArquivoLidoCompleto, ArvorePastas, EventoEvidencia, EventoEvidenciaTipo, HistoricoEvidencias, MatrizEvidencias,
+  PacienteDetalhe, RemocaoSuspensa, ResumoExecucao, RoboExecucao, RoboSaude,
   PepIndicesRobo, SituacaoReconhecimento, SpFilaPendencias, SpItem, SpItemStatus, SpPendenciaPasta, TipoArquivoLido,
 } from '@/types/roboSharepoint'
 
@@ -48,9 +51,25 @@ export async function listarExecucoesPagina(input: {
 // ── "O que o robô leu" ───────────────────────────────────────────────────────
 // Agregados vêm por RPC (uma linha jsonb): o PostgREST corta listas em 1000
 // linhas sem avisar, e uma leitura completa pode passar disso.
+//
+// `execucaoId` = ESTADO_ATUAL (lib/roboSharepoint/referencias) lê o que está na
+// pasta agora: as RPCs recebem NULL (20261003100000) e a lista sai de
+// vw_sp_pep_arquivos_atuais. Antes de usar o marcador, a tela confere
+// estadoAtualDisponivel() — com a migration pendente, NULL não daria erro, só
+// uma lista vazia.
+
+/** Id para as RPCs: o estado atual vai como NULL. */
+const idDaLeitura = (execucaoId: string) => (ehEstadoAtual(execucaoId) ? null : execucaoId)
+
+/** A migration 20261003100000 já está no banco? (a view do estado atual existe) */
+export async function estadoAtualDisponivel(): Promise<boolean> {
+  const { error } = await getSupabaseClient().from('vw_sp_pep_arquivos_atuais').select('sp_id', { head: true, count: 'exact' }).limit(1)
+  if (error && !ehMigrationPendente(error)) console.warn('estado atual do SharePoint indisponível:', error)
+  return !error
+}
 
 export async function obterResumoExecucao(execucaoId: string): Promise<ResumoExecucao> {
-  const { data, error } = await getSupabaseClient().rpc('sp_pep_resumo_execucao', { p_execucao_id: execucaoId })
+  const { data, error } = await getSupabaseClient().rpc('sp_pep_resumo_execucao', { p_execucao_id: idDaLeitura(execucaoId) })
   if (error) throw error
   return data as ResumoExecucao
 }
@@ -66,7 +85,8 @@ export type OrdemArquivos = 'caminho' | 'recentes' | 'nome'
 /**
  * Arquivos lidos por UMA execução, com a situação de cada um no Pulsar
  * (vw_sp_pep_arquivos_lidos). Sem a migration 20261001140000 aplicada, cai
- * para a tabela crua — a lista aparece, só sem a situação.
+ * para a tabela crua — a lista aparece, só sem a situação. Com ESTADO_ATUAL,
+ * os arquivos que estão na pasta agora (vw_sp_pep_arquivos_atuais).
  */
 export async function listarArquivosLidos(input: {
   execucaoId: string
@@ -85,8 +105,10 @@ export async function listarArquivosLidos(input: {
 }): Promise<{ arquivos: ArquivoLidoCompleto[]; total: number }> {
   const tamanho = input.tamanho ?? 25
   const de = input.pagina * tamanho
+  const atual = ehEstadoAtual(input.execucaoId)
   const montar = (fonte: string, comSituacao: boolean) => {
-    let q = getSupabaseClient().from(fonte).select('*', { count: 'exact' }).eq('execucao_id', input.execucaoId)
+    let q = getSupabaseClient().from(fonte).select('*', { count: 'exact' })
+    if (!atual) q = q.eq('execucao_id', input.execucaoId)
     q = input.ordem === 'recentes' ? q.order('criado_em_sp', { ascending: false, nullsFirst: false })
       : input.ordem === 'nome' ? q.order('nome', { ascending: true })
         : q.order('caminho', { ascending: true })
@@ -103,7 +125,8 @@ export async function listarArquivosLidos(input: {
     if (busca) q = q.or(`nome.ilike.%${busca}%,caminho.ilike.%${busca}%`)
     return q
   }
-  const r = await montar('vw_sp_pep_arquivos_lidos', true)
+  const r = await montar(atual ? 'vw_sp_pep_arquivos_atuais' : 'vw_sp_pep_arquivos_lidos', true)
+  if (atual && r.error) throw r.error
   if (!r.error) return { arquivos: (r.data ?? []) as ArquivoLidoCompleto[], total: r.count ?? 0 }
   const cru = await montar('sp_pep_execucao_arquivos', false)
   if (cru.error) throw cru.error
@@ -111,13 +134,13 @@ export async function listarArquivosLidos(input: {
 }
 
 export async function obterArvorePastas(execucaoId: string, pastaPai: string | null): Promise<ArvorePastas> {
-  const { data, error } = await getSupabaseClient().rpc('sp_pep_arvore_pastas', { p_execucao_id: execucaoId, p_pasta_pai: pastaPai })
+  const { data, error } = await getSupabaseClient().rpc('sp_pep_arvore_pastas', { p_execucao_id: idDaLeitura(execucaoId), p_pasta_pai: pastaPai })
   if (error) throw error
   return data as ArvorePastas
 }
 
 export async function obterMatrizEvidencias(execucaoId: string): Promise<MatrizEvidencias> {
-  const { data, error } = await getSupabaseClient().rpc('sp_pep_matriz_evidencias', { p_execucao_id: execucaoId })
+  const { data, error } = await getSupabaseClient().rpc('sp_pep_matriz_evidencias', { p_execucao_id: idDaLeitura(execucaoId) })
   if (error) throw error
   return data as MatrizEvidencias
 }
@@ -129,10 +152,10 @@ export async function obterPacientesDetalhe(): Promise<PacienteDetalhe[]> {
 }
 
 export async function listarPlanilhasLidas(execucaoId: string): Promise<ArquivoLido[]> {
-  const { data, error } = await getSupabaseClient()
-    .from('sp_pep_execucao_arquivos')
-    .select('*')
-    .eq('execucao_id', execucaoId)
+  const sb = getSupabaseClient()
+  const { data, error } = await (ehEstadoAtual(execucaoId)
+    ? sb.from('vw_sp_pep_arquivos_atuais').select('*')
+    : sb.from('sp_pep_execucao_arquivos').select('*').eq('execucao_id', execucaoId))
     .eq('tipo', 'planilha')
     .order('caminho')
   if (error) throw error
@@ -234,14 +257,18 @@ export async function listarItensNaoReconhecidos(limite = 200): Promise<SpItem[]
   return (data ?? []) as SpItem[]
 }
 
-/** Sugestões e confirmados de um prestador num mês (gaveta da tela PEP). */
+/**
+ * Sugestões e confirmados de um prestador num mês (gaveta da tela PEP). Os
+ * 'removido' vêm para a aba "Saíram da pasta" (entrega retirada porque a
+ * evidência saiu do SharePoint, 20261003100000).
+ */
 export async function listarItensDoPrestador(prestadorNome: string, competencia: string): Promise<SpItem[]> {
   const { data, error } = await getSupabaseClient()
     .from('sp_pep_itens')
     .select('*')
     .eq('prestador_nome', prestadorNome)
     .eq('competencia', competencia)
-    .in('status', ['sugerido', 'confirmado', 'revertido'])
+    .in('status', ['sugerido', 'confirmado', 'revertido', 'removido'])
     .order('criado_em_sp', { ascending: true })
   if (error) throw error
   return (data ?? []) as SpItem[]
@@ -360,29 +387,6 @@ export async function getIndicesRobo(competencia: string): Promise<PepIndicesRob
   return (data ?? []) as PepIndicesRobo[]
 }
 
-export type EstadoEntregaAutomatica = { ligada: boolean; por: string | null; em: string | null }
-
-export async function obterEntregaAutomatica(): Promise<EstadoEntregaAutomatica | null> {
-  const { data, error } = await getSupabaseClient()
-    .from('sp_pep_estado')
-    .select('entrega_automatica, entrega_automatica_por_nome, entrega_automatica_em')
-    .eq('id', 1)
-    .maybeSingle()
-  if (error) return null // migration ainda não aplicada
-  return {
-    ligada: !!data?.entrega_automatica,
-    por: (data?.entrega_automatica_por_nome as string | null) ?? null,
-    em: (data?.entrega_automatica_em as string | null) ?? null,
-  }
-}
-
-/** Só admin. Ligar já reprocessa o que está em aberto (o robô entrega na hora). */
-export async function definirEntregaAutomatica(ligar: boolean): Promise<{ ligada: boolean; resultado: Record<string, unknown> }> {
-  const { data, error } = await getSupabaseClient().rpc('sp_pep_definir_entrega_automatica', { p_ligar: ligar })
-  if (error) throw error
-  return data as { ligada: boolean; resultado: Record<string, unknown> }
-}
-
 /** Quantas evidências seguem / ferem o padrão de nome (todas as competências, sem os apagados). */
 export async function contarPadrao(): Promise<{ ok: number; fora: number; duplicado: number; rep: number } | null> {
   const sb = getSupabaseClient()
@@ -391,4 +395,89 @@ export async function contarPadrao(): Promise<{ ok: number; fora: number; duplic
   const [ok, fora, duplicado, rep] = await Promise.all([contar('ok'), contar('fora'), contar('duplicado'), contar('rep')])
   if (ok.error || fora.error || duplicado.error || rep.error) return null // migration ainda não aplicada
   return { ok: ok.count ?? 0, fora: fora.count ?? 0, duplicado: duplicado.count ?? 0, rep: rep.count ?? 0 }
+}
+
+// ── Histórico das evidências e freio (20261003100000) ───────────────────────
+// Tudo tolerante: sem a migration, a tela mostra um aviso em vez de quebrar.
+
+/** Série do gráfico (por dia ou por mês) + totais. null = migration pendente. */
+export async function obterHistoricoEvidencias(input: {
+  de: string
+  ate: string
+  grao: 'dia' | 'mes'
+  prestadores?: string[]
+}): Promise<HistoricoEvidencias | null> {
+  const { data, error } = await getSupabaseClient().rpc('sp_pep_historico_evidencias', {
+    p_de: input.de, p_ate: input.ate, p_grao: input.grao,
+    p_prestadores: input.prestadores?.length ? input.prestadores : null,
+  })
+  if (error) {
+    if (ehMigrationPendente(error)) return null
+    throw error
+  }
+  return data as HistoricoEvidencias
+}
+
+/** Linhas do histórico, mais recentes primeiro. `de`/`ate` em 'AAAA-MM-DD' (dia de Brasília). */
+export async function listarEventosEvidencias(input: {
+  de?: string | null
+  ate?: string | null
+  eventos?: EventoEvidenciaTipo[]
+  prestadores?: string[]
+  pagina: number
+  tamanho?: number
+}): Promise<{ eventos: EventoEvidencia[]; total: number } | null> {
+  const tamanho = input.tamanho ?? 20
+  const de = input.pagina * tamanho
+  let q = getSupabaseClient()
+    .from('sp_pep_evidencias_historico')
+    .select('*', { count: 'exact' })
+    .order('em', { ascending: false })
+    .order('id', { ascending: false })
+    .range(de, de + tamanho - 1)
+  // Brasília é UTC-3 o ano todo: o dia começa às 03:00 UTC.
+  if (input.de) q = q.gte('em', `${input.de}T03:00:00Z`)
+  if (input.ate) q = q.lt('em', new Date(Date.parse(`${input.ate}T03:00:00Z`) + 86400000).toISOString())
+  if (input.eventos?.length) q = q.in('evento', input.eventos)
+  if (input.prestadores?.length) q = q.in('prestador_nome', input.prestadores)
+  const { data, error, count } = await q
+  if (error) {
+    if (ehMigrationPendente(error)) return null
+    throw error
+  }
+  return { eventos: (data ?? []) as EventoEvidencia[], total: count ?? 0 }
+}
+
+/**
+ * Os avisos da tela PEP: entrega retirada porque a evidência sumiu,
+ * evidência que sumiu em mês liberado, entregue e renomeada fora do padrão.
+ * [] sem a migration.
+ */
+export async function listarAvisosEvidencias(dias = 30): Promise<EventoEvidencia[]> {
+  const { data, error } = await getSupabaseClient()
+    .from('sp_pep_evidencias_historico')
+    .select('*')
+    .in('evento', ['entrega_desfeita', 'mes_liberado_mantido', 'saiu_do_padrao'])
+    .gte('em', new Date(Date.now() - dias * 86400000).toISOString())
+    .order('em', { ascending: false })
+    .limit(200)
+  if (error) {
+    if (!ehMigrationPendente(error)) console.warn('avisos das evidências indisponíveis:', error)
+    return []
+  }
+  return (data ?? []) as EventoEvidencia[]
+}
+
+/** Leitura completa suspensa pelo freio. Só quem tem robo_sharepoint lê sp_pep_estado. */
+export async function obterRemocaoSuspensa(): Promise<RemocaoSuspensa | null> {
+  const { data, error } = await getSupabaseClient().from('sp_pep_estado').select('remocao_suspensa').eq('id', 1).maybeSingle()
+  if (error) return null
+  return (data as { remocao_suspensa?: RemocaoSuspensa | null } | null)?.remocao_suspensa ?? null
+}
+
+/** Só admin: os sumidos sumiram mesmo — aplica as remoções suspensas. */
+export async function confirmarRemocoesSuspensas(): Promise<{ aplicado: boolean; evidencias_removidas?: number; motivo?: string }> {
+  const { data, error } = await getSupabaseClient().rpc('sp_pep_confirmar_remocoes_suspensas')
+  if (error) throw error
+  return data as { aplicado: boolean; evidencias_removidas?: number; motivo?: string }
 }

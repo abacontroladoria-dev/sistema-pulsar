@@ -1,4 +1,4 @@
-import type { RoboEtapaNome } from '@/types/roboSharepoint'
+import type { EventoEvidenciaTipo, RoboEtapaNome } from '@/types/roboSharepoint'
 
 // Texto humano para os códigos que o banco grava (sp_pep_reavaliar,
 // 20261001120000) e para as etapas do robô (robo-pep-sharepoint/lib/execucao.js).
@@ -219,6 +219,31 @@ export const MOTIVOS_ROBO: Record<string, string> = {
   fora_do_ciclo: 'Arquivo de um ciclo anterior ao planejamento',
   ja_entregue_no_ciclo: 'Já existe entrega deste item no ciclo',
   arquivo_removido: 'O arquivo foi apagado do SharePoint',
+  saiu_da_pasta_do_item: 'O arquivo saiu da pasta do item: a entrega foi retirada',
+}
+
+// ── Histórico das evidências (20261003100000) ────────────────────────────────
+
+/** Nome de cada acontecimento, para a lista e a legenda do gráfico. */
+export const EVENTOS_EVIDENCIA: Record<EventoEvidenciaTipo, { rotulo: string; explica: string }> = {
+  apareceu: { rotulo: 'Apareceu', explica: 'A evidência entrou na pasta do item' },
+  sumiu: { rotulo: 'Sumiu', explica: 'A evidência foi apagada do SharePoint' },
+  deixou_de_ser_evidencia: { rotulo: 'Saiu do PEP', explica: 'Continua no SharePoint, mas fora das pastas dos itens' },
+  voltou: { rotulo: 'Voltou', explica: 'A evidência apagada voltou para a pasta' },
+  renomeou: { rotulo: 'Renomeada', explica: 'O nome do arquivo mudou' },
+  moveu: { rotulo: 'Mudou de pasta', explica: 'O arquivo foi para outra pasta' },
+  saiu_do_padrao: { rotulo: 'Saiu do padrão', explica: 'Já estava entregue e o novo nome fere o padrão (a entrega ficou)' },
+  entrega_desfeita: { rotulo: 'Entrega retirada', explica: 'A entrega perdeu a unidade que a evidência sustentava' },
+  mes_liberado_mantido: { rotulo: 'Mês liberado: mantida', explica: 'A evidência saiu, mas o mês já estava liberado e não muda' },
+}
+
+/** 'AAAA-MM' → 'MM/AAAA'. */
+export const mesBR = (c: string | null | undefined) => (c ? c.split('-').reverse().join('/') : '—')
+
+/** Dias entre o envio do arquivo e o momento do evento ("ficou 3 dias na pasta"). */
+export function diasNaPasta(criadoEmSp: string | null | undefined, em: string) {
+  if (!criadoEmSp) return null
+  return Math.max(0, Math.floor((Date.parse(em) - Date.parse(criadoEmSp)) / 86400000))
 }
 
 /** Por que um arquivo sugerido está esperando uma pessoa, em uma frase. */

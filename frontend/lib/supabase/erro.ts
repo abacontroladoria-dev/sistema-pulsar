@@ -53,11 +53,15 @@ export function descreverErro(erro: unknown): string {
  * migration pendente.
  *
  * 42703 = undefined_column, 42P01 = undefined_table, 42883 = undefined_function.
+ * O PostgREST responde antes do banco quando o próprio cache dele não conhece o
+ * objeto: PGRST204 = coluna, PGRST202 = função, PGRST205 = tabela/view.
  * Vale a checagem porque a ação é completamente diferente das outras falhas: não é
  * bug de código nem permissão, é SQL que não rodou naquele ambiente
  * (reference_db_push_blast_radius).
  */
+const CODIGOS_MIGRATION_PENDENTE = new Set(['42703', '42P01', '42883', 'PGRST204', 'PGRST202', 'PGRST205'])
+
 export function ehMigrationPendente(erro: unknown): boolean {
   const code = (erro as ErroPostgrest | null)?.code
-  return code === '42703' || code === '42P01' || code === '42883'
+  return !!code && CODIGOS_MIGRATION_PENDENTE.has(code)
 }

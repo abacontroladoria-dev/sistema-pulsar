@@ -504,6 +504,38 @@ export async function listarRecalculosPendentes(competencia: string): Promise<st
   return (data ?? []).map(r => r.prestador_nome as string)
 }
 
+/**
+ * A fila dos OUTROS meses (20261003100000): quando uma evidência some do
+ * SharePoint, a entrega de um mês que não está aberto na tela também muda.
+ */
+export async function listarRecalculosDeOutrosMeses(competencia: string): Promise<{ prestadorNome: string; competencia: string }[]> {
+  const { data, error } = await getSupabaseClient()
+    .from('pep_apuracao_recalcular')
+    .select('prestador_nome, competencia')
+    .neq('competencia', competencia)
+    .order('competencia', { ascending: false })
+    .limit(200)
+  if (error) return []
+  return (data ?? []).map(r => ({ prestadorNome: r.prestador_nome as string, competencia: r.competencia as string }))
+}
+
+/**
+ * Reapura um mês que não está aberto na tela com o que ELE já tinha: os
+ * pacientes e o V gravados na apuração daquele mês. Mês nunca apurado fica
+ * na fila (será apurado quando abrirem). Liberado não muda (apurarESalvarPEP
+ * devolve o liberado como está).
+ */
+export async function reapurarMesFechado(prestadorNome: string, competencia: string): Promise<boolean> {
+  const { data } = await getApuracaoMes(prestadorNome, competencia)
+  if (!data || data.length === 0) return false
+  const r = await apurarESalvarPEP({
+    prestadorNome, competencia,
+    pacientes: data.map(a => ({ nome: a.paciente_nome })),
+    valorMensalPorPaciente: Number(data[0].valor_bruto),
+  })
+  return !r.error
+}
+
 export async function limparRecalculo(prestadorNome: string, competencia: string): Promise<void> {
   const { error } = await getSupabaseClient()
     .from('pep_apuracao_recalcular')
