@@ -3,7 +3,7 @@
 //   npx vitest run lib/remuneracao/situacaoEntregasPep.test.ts
 
 import { describe, expect, test } from "vitest"
-import { esperadasPorEntrega, evidenciasEsperadasPorAnalista, situacaoEntregasPorAnalista, somarMeses, type DadosSituacao } from "./situacaoEntregasPep"
+import { esperadasDoAno, esperadasPorEntrega, evidenciasEsperadasPorAnalista, situacaoEntregasPorAnalista, somarMeses, type DadosSituacao } from "./situacaoEntregasPep"
 import type { PepCatalogoItem } from "@/types/pep"
 
 const item = (id: string, extra: Partial<PepCatalogoItem>): PepCatalogoItem => ({
@@ -103,5 +103,40 @@ describe("evidenciasEsperadasPorAnalista", () => {
     const porEntrega = esperadasPorEntrega(lista, d.catalogo)
     expect(porEntrega.map(e => [e.sigla, e.esperadas, e.naPasta])).toEqual([["STC", 8, 1], ["TAP", 2, 1], ["PIC", 1, 0]])
     expect(porEntrega.find(e => e.sigla === "PIC")!.faltam).toBe(1)
+  })
+})
+
+describe("esperadasDoAno", () => {
+  const dadosAno = (extra: object = {}) => ({ catalogo: [STC, TAP, PIC], planos: [], semanasPorMes: {}, ...extra })
+  const ev = (sigla: string, paciente: string | null, competencia: string, padrao = "ok") => ({ prestador_nome: "Ana", paciente_nome: paciente, sigla, padrao, competencia })
+
+  test("soma os 12 meses: STC 4/mês e TAP 2/mês por paciente", () => {
+    const r = esperadasDoAno(ana, dadosAno(), [], 2026)[0]
+    expect(r.porSigla.STC).toEqual({ esperadas: 48, naPasta: 0 })
+    expect(r.porSigla.TAP).toEqual({ esperadas: 24, naPasta: 0 })
+    expect(r.esperadas).toBe(72)
+  })
+
+  test("mês de recesso espera 3 semanas", () => {
+    const r = esperadasDoAno(ana, dadosAno({ semanasPorMes: { "2026-07": 3 } }), [], 2026)[0]
+    expect(r.porSigla.STC.esperadas).toBe(47)
+  })
+
+  test("na pasta é por mês: o excedente de um mês não cobre outro", () => {
+    const evs = [...[1, 2, 3, 4, 5, 6].map(() => ev("STC", null, "2026-03")), ev("STC", null, "2026-04"), ev("TAP", "P1", "2026-03"), ev("STC", null, "2025-12")]
+    const r = esperadasDoAno(ana, dadosAno(), evs, 2026)[0]
+    expect(r.porSigla.STC.naPasta).toBe(4 + 1) // março limitado a 4, abril 1, dezembro de 2025 não conta
+    expect(r.porSigla.TAP.naPasta).toBe(1)
+  })
+
+  test("semestral: 1 por planejamento do ano; conta na pasta se há evidência no ciclo", () => {
+    const planos = [
+      { paciente_nome: "P1", item_id: "pic", competencia_planejada: "2026-09" },
+      { paciente_nome: "P1", item_id: "pic", competencia_planejada: "2027-03" },
+    ]
+    const sem = esperadasDoAno(ana, dadosAno({ planos }), [], 2026)[0]
+    expect(sem.porSigla.PIC).toEqual({ esperadas: 1, naPasta: 0 })
+    const com = esperadasDoAno(ana, dadosAno({ planos }), [ev("PIC", "P1", "2026-06")], 2026)[0]
+    expect(com.porSigla.PIC).toEqual({ esperadas: 1, naPasta: 1 })
   })
 })

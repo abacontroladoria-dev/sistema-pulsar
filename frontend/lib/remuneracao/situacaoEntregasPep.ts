@@ -70,7 +70,7 @@ export const sugestaoEsperaPessoa = (s: Pick<SugestaoSituacao, "padrao" | "robo_
   s.padrao !== "ok" || !!s.robo_obs
 
 /** Evidência do mês na pasta do SharePoint (sp_pep_itens, sem as apagadas). */
-export type EvidenciaDoMes = { prestador_nome: string; paciente_nome: string | null; sigla: string | null; padrao: string | null }
+export type EvidenciaDoMes = { prestador_nome: string; paciente_nome: string | null; sigla: string | null; padrao: string | null; competencia?: string | null }
 
 export type EsperadasAnalista = {
   nome: string
@@ -231,4 +231,70 @@ export function situacaoEntregasPorAnalista(
     })
   }
   return saida
+}
+
+/** O que a visão do ano precisa (diferente do mês: não depende de entregas já registradas). */
+export type DadosAno = {
+  catalogo: PepCatalogoItem[]
+  /** Planejamentos semestrais ativos cujo mês planejado cai no ano. */
+  planos: PlanoSituacao[]
+  /** Semanas esperadas de Supervisão e Estudo em cada mês ('AAAA-MM' → 3 ou 4). */
+  semanasPorMes: Record<string, number>
+}
+
+/**
+ * Tudo o que se espera no ANO, por analista: as recorrentes de cada um dos 12
+ * meses (STC/ETC pelas semanas do mês, TAP e TOP por paciente) e cada semestral
+ * planejada para o ano (1 por planejamento). "Na pasta" segue a regra do mês:
+ * só nome no padrão, no máximo o esperado de cada item/paciente/mês; a
+ * semestral conta 1 se há evidência no padrão no ciclo (5 meses antes do mês
+ * planejado em diante). Usa os pacientes da Grade que a tela tem (os do mês
+ * aberto) em todos os meses.
+ */
+export function esperadasDoAno(
+  analistas: { nome: string; pacientes: string[] }[],
+  dados: DadosAno,
+  evidencias: EvidenciaDoMes[],
+  ano: number,
+): EsperadasAnalista[] {
+  const itens = dados.catalogo.filter(i => i.ativo)
+  const recorrentes = itens.filter(i => i.classe === "recorrente")
+  const semestrais = new Map(itens.filter(i => i.classe === "semestral").map(i => [i.id, i]))
+  const meses = Array.from({ length: 12 }, (_, i) => `${ano}-${String(i + 1).padStart(2, "0")}`)
+
+  return analistas.map(a => {
+    const mine = evidencias.filter(e => e.prestador_nome === a.nome && e.sigla)
+    const ok = (sigla: string, paciente: string | null, filtro: (c: string) => boolean) =>
+      mine.filter(e => e.sigla === sigla && (e.paciente_nome ?? null) === paciente && e.padrao === "ok" && !!e.competencia && filtro(e.competencia))
+    const porSigla: Record<string, { esperadas: number; naPasta: number }> = {}
+    const somar = (sigla: string, esperadas: number, na: number) => {
+      const c = porSigla[sigla] ?? { esperadas: 0, naPasta: 0 }
+      porSigla[sigla] = { esperadas: c.esperadas + esperadas, naPasta: c.naPasta + na }
+    }
+    for (const mes of meses) {
+      for (const item of recorrentes) {
+        if (item.tipo_registro === "GERAL") {
+          const esperado = item.periodicidade === "semanal" ? (dados.semanasPorMes[mes] ?? 4) : (item.qtd_referencia_mes ?? 1)
+          somar(item.sigla, esperado, Math.min(esperado, ok(item.sigla, null, c => c === mes).length))
+        } else {
+          const esperado = item.qtd_referencia_mes ?? 1
+          for (const p of a.pacientes) somar(item.sigla, esperado, Math.min(esperado, ok(item.sigla, p, c => c === mes).length))
+        }
+      }
+    }
+    const pacientes = new Set(a.pacientes)
+    for (const plano of dados.planos) {
+      const item = semestrais.get(plano.item_id)
+      if (!item || !pacientes.has(plano.paciente_nome) || !plano.competencia_planejada.startsWith(`${ano}-`)) continue
+      const inicio = somarMeses(plano.competencia_planejada, -5)
+      somar(item.sigla, 1, ok(item.sigla, plano.paciente_nome, c => c >= inicio).length > 0 ? 1 : 0)
+    }
+    const esperadas = Object.values(porSigla).reduce((t, v) => t + v.esperadas, 0)
+    const naPasta = Object.values(porSigla).reduce((t, v) => t + v.naPasta, 0)
+    return {
+      nome: a.nome, esperadas, naPasta, faltam: Math.max(0, esperadas - naPasta),
+      foraDoPadrao: mine.filter(e => e.padrao === "fora" && !!e.competencia?.startsWith(`${ano}-`)).length,
+      porSigla,
+    }
+  })
 }

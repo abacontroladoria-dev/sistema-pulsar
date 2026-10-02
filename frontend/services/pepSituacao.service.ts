@@ -1,7 +1,7 @@
 import { getSupabaseClient } from '@/lib/supabase/client'
 import { ehMigrationPendente } from '@/lib/supabase/erro'
 import { semanasEsperadas } from '@/lib/remuneracao/semanasCompetencia'
-import { somarMeses, type ConferenciaMes, type DadosSituacao, type EvidenciaDoMes } from '@/lib/remuneracao/situacaoEntregasPep'
+import { somarMeses, type ConferenciaMes, type DadosAno, type DadosSituacao, type EvidenciaDoMes } from '@/lib/remuneracao/situacaoEntregasPep'
 import { getFeriados } from '@/services/feriados.service'
 import { getCatalogoItens } from '@/services/pep.service'
 import { getCalendarioCompetencia } from '@/services/pepCalendario.service'
@@ -80,6 +80,36 @@ export async function listarEvidenciasDoMes(competencia: string): Promise<Eviden
       .not('prestador_nome', 'is', null).order('sp_id').range(de, ate))
   } catch {
     return []
+  }
+}
+
+/**
+ * Tudo o que a visão do ANO precisa: catálogo, planejamentos semestrais que
+ * vencem no ano, semanas esperadas de cada mês e as evidências do ano na pasta.
+ * null = não foi possível ler.
+ */
+export async function carregarDadosAno(ano: number): Promise<{ dados: DadosAno; evidencias: EvidenciaDoMes[] } | null> {
+  const sb = getSupabaseClient()
+  const meses = Array.from({ length: 12 }, (_, i) => `${ano}-${String(i + 1).padStart(2, '0')}`)
+  try {
+    const [{ data: catalogo, error: erroCatalogo }, { data: feriados }, calendarios, planos, evidencias] = await Promise.all([
+      getCatalogoItens(),
+      getFeriados(),
+      Promise.all(meses.map(m => getCalendarioCompetencia(m))),
+      lerTudo<DadosAno['planos'][number]>((de, ate) => sb.from('pep_planejamento_semestral')
+        .select('paciente_nome, item_id, competencia_planejada')
+        .eq('ativo', true).gte('competencia_planejada', meses[0]).lte('competencia_planejada', meses[11]).order('id').range(de, ate)),
+      lerTudo<EvidenciaDoMes>((de, ate) => sb.from('sp_pep_itens')
+        .select('prestador_nome, paciente_nome, sigla, padrao, competencia')
+        .eq('tipo', 'evidencia').gte('competencia', meses[0]).lte('competencia', meses[11]).is('removido_em', null)
+        .not('prestador_nome', 'is', null).order('sp_id').range(de, ate)).catch(() => [] as EvidenciaDoMes[]),
+    ])
+    if (erroCatalogo || !catalogo) return null
+    const semanasPorMes = Object.fromEntries(meses.map((m, i) => [m, calendarios[i].data?.semanas_supervisao_estudo ?? semanasEsperadas(m, feriados ?? [])]))
+    return { dados: { catalogo, planos, semanasPorMes }, evidencias }
+  } catch (e) {
+    console.warn('Esperado do ano indisponível:', e)
+    return null
   }
 }
 

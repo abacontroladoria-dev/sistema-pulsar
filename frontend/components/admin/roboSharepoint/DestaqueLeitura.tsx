@@ -1,9 +1,8 @@
 'use client'
 
-import { ArrowRight, Camera, Target, Clock, FileCheck2, FileText, FolderSearch, FolderTree, Loader2, RefreshCw, ScanSearch, TriangleAlert } from 'lucide-react'
+import { ArrowRight, Camera, Clock, FileCheck2, FileText, FolderSearch, FolderTree, Loader2, RefreshCw, ScanSearch, TriangleAlert } from 'lucide-react'
 import { dataHora, haQuanto, numero } from '@/lib/roboSharepoint/rotulos'
-import type { EsperadasAnalista, EsperadasPorEntrega } from '@/lib/remuneracao/situacaoEntregasPep'
-import { EsperadasChart } from './EsperadasChart'
+import type { ReactNode } from 'react'
 import type { ResumoExecucao, RoboEtapaNome, RoboExecucao } from '@/types/roboSharepoint'
 
 // O topo do painel: "O que o robô encontrou no SharePoint". É a 1ª coisa que
@@ -57,14 +56,14 @@ function Numero({ icone: Icone, valor, rotulo, sub, compacto = false }: { icone:
   )
 }
 
-export function DestaqueLeitura({ execucao, estadoAtual, retratoDe, esperadas, onAbrir }: {
+export function DestaqueLeitura({ execucao, estadoAtual, retratoDe, painelEsperadas, onAbrir }: {
   execucao: RoboExecucao | null
   /** O que está na pasta agora (sp_pep_resumo_execucao(NULL)). Ausente = migration pendente. */
   estadoAtual?: ResumoExecucao | null
   /** Leitura que tirou o retrato (a última concluída). */
   retratoDe?: RoboExecucao | null
-  /** Evidências esperadas no mês × na pasta, no total e por tipo de entrega (null = ainda sem dados). */
-  esperadas?: { mesRotulo: string; analistas: EsperadasAnalista[]; porEntrega: EsperadasPorEntrega[] } | null
+  /** Painel das evidências esperadas × na pasta (PainelEsperadas). Ausente = sem Grade do mês. */
+  painelEsperadas?: ReactNode
   onAbrir: (etapa: RoboEtapaNome) => void
 }) {
   const etapa = execucao?.etapas.find(e => e.etapa === 'listar')
@@ -78,10 +77,8 @@ export function DestaqueLeitura({ execucao, estadoAtual, retratoDe, esperadas, o
   const pronta = etapa?.status === 'concluida' && !erro
   const atual = estadoAtual ?? null
   const quando = retratoDe ?? execucao
-  const totalEsperadas = esperadas?.analistas.reduce((t, a) => ({ esperadas: t.esperadas + a.esperadas, naPasta: t.naPasta + a.naPasta }), { esperadas: 0, naPasta: 0 })
 
   if (atual && !lendo) {
-    const pctEsperadas = totalEsperadas && totalEsperadas.esperadas > 0 ? Math.round((totalEsperadas.naPasta / totalEsperadas.esperadas) * 100) : 0
     return (
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]" aria-labelledby="titulo-destaque">
         <div className="h-1.5 w-full" style={{ background: FAIXA }} aria-hidden />
@@ -111,35 +108,15 @@ export function DestaqueLeitura({ execucao, estadoAtual, retratoDe, esperadas, o
             </div>
           </div>
 
-          <div className={`grid gap-4 ${esperadas ? 'lg:grid-cols-[minmax(0,19rem)_minmax(0,1fr)] lg:items-start' : ''}`}>
+          <div className={`grid gap-4 ${painelEsperadas ? 'lg:grid-cols-[minmax(0,17rem)_minmax(0,1fr)] lg:items-start' : ''}`}>
             {/* O retrato: três números, lado a lado no celular e empilhados ao lado do gráfico. */}
-            <div className={`grid gap-3 ${esperadas ? 'sm:grid-cols-3 lg:grid-cols-1' : 'sm:grid-cols-3'}`}>
+            <div className={`grid gap-3 ${painelEsperadas ? 'sm:grid-cols-3 lg:grid-cols-1' : 'sm:grid-cols-3'}`}>
               <Numero compacto icone={FileText} valor={numero(atual.total)} rotulo={atual.total === 1 ? 'arquivo na pasta' : 'arquivos na pasta'} />
               <Numero compacto icone={FileCheck2} valor={numero(atual.por_tipo.evidencia ?? 0)} rotulo="evidências" sub="de todos os meses" />
               <Numero compacto icone={FolderTree} valor={numero(atual.pastas.total)} rotulo="pastas no site" sub="prestadores, seções e pacientes" />
             </div>
 
-            {esperadas && totalEsperadas && totalEsperadas.esperadas > 0 && (
-              <div className="rounded-2xl border border-slate-200 p-4 sm:p-5">
-                <div className="mb-4 flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
-                  <div className="min-w-0">
-                    <h3 className="flex items-center gap-2 text-sm font-bold text-slate-800">
-                      <Target className="h-4 w-4 text-brand-fg" aria-hidden /> Evidências esperadas em {esperadas.mesRotulo}
-                    </h3>
-                    <p className="mt-0.5 text-xs text-slate-500">
-                      Supervisão e estudo por semana do mês, TAP e TOP por paciente, e semestrais vencidas. Conta só o nome no padrão.
-                    </p>
-                  </div>
-                  <p className="shrink-0 text-right">
-                    <span className="block text-3xl font-black leading-none tabular-nums text-slate-900 sm:text-4xl">
-                      {numero(totalEsperadas.naPasta)} <span className="text-lg font-bold text-slate-500">de {numero(totalEsperadas.esperadas)}</span>
-                    </span>
-                    <span className="mt-1 block text-xs font-semibold text-slate-600">{pctEsperadas}% já na pasta</span>
-                  </p>
-                </div>
-                <EsperadasChart entregas={esperadas.porEntrega} />
-              </div>
-            )}
+            {painelEsperadas}
           </div>
         </div>
       </section>
