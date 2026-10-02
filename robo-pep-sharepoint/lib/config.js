@@ -41,7 +41,20 @@ function carregarConfig(env = process.env) {
     segredoGatilho: env.ROBO_TRIGGER_SECRET || null,
     porta: Number(env.PORT || 8080),
     horarios: lerHorarios(env.HORARIOS),
+    // A execução agendada lê o site INTEIRO (decisão do usuário, 02/10/2026):
+    // a tela PEP é o retrato da pasta no último dia, e só a leitura completa
+    // enxerga tudo o que sumiu (inclusive o que estava numa pasta apagada).
+    // Custa ~10 s e 17 chamadas. "nao" volta ao delta diário.
+    leituraCompletaNaAgenda: String(env.LEITURA_COMPLETA_NA_AGENDA || 'sim').toLowerCase() !== 'nao',
   }
+}
+
+/**
+ * Esta execução relê o site inteiro? A agendada, sim; o "Executar agora"
+ * continua lendo só o que mudou, para responder rápido.
+ */
+function leituraCompleta(gatilho, config) {
+  return gatilho === 'agenda' && config.leituraCompletaNaAgenda !== false
 }
 
 /** Próximo horário agendado (em Brasília) depois de `agora`. */
@@ -57,4 +70,4 @@ function proximaExecucao(horarios, agora = new Date()) {
   return null
 }
 
-module.exports = { carregarConfig, proximaExecucao, lerHorarios }
+module.exports = { carregarConfig, proximaExecucao, lerHorarios, leituraCompleta }

@@ -134,8 +134,10 @@ async function executar({ graph, api, config, gatilho, simular = false, observad
         itens = await graph.listarPasta(bib.driveId, config.somentePastaId)
         completo = true
       } else {
-        // `forcarCompleta`: relê o site inteiro mesmo havendo deltaLink (serve para
-        // refazer o retrato completo; o delta seguinte continua valendo).
+        // `forcarCompleta`: relê o site inteiro mesmo havendo deltaLink. É o que
+        // a execução agendada faz todo dia (config.leituraCompleta): o banco
+        // marca como apagado o que esta leitura não viu. O deltaLink novo
+        // vale para o próximo "Executar agora".
         const mesmoDrive = !config.forcarCompleta && estado?.drive_id && estado.drive_id === bib.driveId
         arvore = mesmoDrive ? montarArvore(estado.pastas) : new Map()
         const d = await graph.delta(bib.driveId, mesmoDrive ? estado.delta_link : null)
