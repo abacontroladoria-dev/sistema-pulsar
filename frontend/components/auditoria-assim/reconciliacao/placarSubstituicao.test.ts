@@ -157,3 +157,62 @@ describe('guia de outro TUSS conta no TUSS da sessão que cobre', () => {
     expect(excedentesDoPlacar(placar, autorizacoes).size).toBe(0)
   })
 })
+
+/**
+ * Número de guia reemitido depois da triagem.
+ *
+ * A ASSIM recicla o número, e `porBloco` mantém a triagem antiga (a sessão que
+ * ela cobriu existiu e segue coberta). A guia nova, de outro paciente, não pode
+ * herdar por número o TUSS daquela sessão: contaria no TUSS errado e criaria um
+ * "+1" falso nele.
+ */
+describe('guia reemitida depois da triagem conta no próprio TUSS', () => {
+  const PSICOPED = '22070400'
+  const ABA = '22070410'
+  // A triagem de agosto: a 15032 cobriu a Psicopedagogia do paciente A.
+  const triagemAntiga: VinculoAutorizacao = {
+    ...triagem('vinculo'), guia: '15032', bloco_id: `100_2026-08-24_${PSICOPED}_10:00:00`,
+    vinculado_em: '2026-08-24T18:00:00Z',
+  }
+  // Setembro, paciente B: uma sessão de ABA e a 15032 reemitida para ela.
+  const sessoes = [
+    falta({ bloco_id: `200_2026-09-01_${ABA}_09:00:00`, data_atendimento: '2026-09-01', hora_inicial: '09:00:00', codigo_tuss: ABA, situacao: 'LIBERADA', guia: '15032' }),
+  ]
+  const autorizacoes = [
+    { ...autorizacao('15032'), codigo_tuss: ABA, data_execucao: '2026-09-01T09:10:00' },
+  ]
+  const mapa = new Map([[triagemAntiga.bloco_id!, triagemAntiga]])
+
+  it('a guia nova fica no TUSS dela, sem "+1" no TUSS da triagem antiga', () => {
+    const placar = calcularPlacar(sessoes, autorizacoes, CUTOFF, mapa)
+    expect(placar.find((p) => p.codigo_tuss === PSICOPED)).toBeUndefined()
+    const aba = placar.find((p) => p.codigo_tuss === ABA)!
+    expect(aba.liberadas).toBe(1)
+    expect(aba.excedente).toBe(0)
+    expect(excedentesDoPlacar(placar, autorizacoes).size).toBe(0)
+  })
+
+  it('com as duas emissões triadas, a guia nova conta no TUSS da triagem dela', () => {
+    // Depois de 20261002150000 o número reemitido pode ter a própria triagem,
+    // e as duas convivem. A ordem do mapa não pode decidir qual vale.
+    const OUTRO = '22070427'
+    const triagemNova: VinculoAutorizacao = {
+      ...triagem('vinculo'), id: 'v2', guia: '15032', bloco_id: `200_2026-09-01_${OUTRO}_09:00:00`,
+      vinculado_em: '2026-09-01T15:00:00Z', observacao: 'guia de ABA cobrindo sessão de outro TUSS',
+    }
+    const sessaoOutro = [falta({ bloco_id: triagemNova.bloco_id, data_atendimento: '2026-09-01', hora_inicial: '09:00:00', codigo_tuss: OUTRO, situacao: 'LIBERADA' })]
+    for (const ordem of [[triagemAntiga, triagemNova], [triagemNova, triagemAntiga]]) {
+      const mapaDuplo = new Map(ordem.map((v) => [v.bloco_id!, v]))
+      const placar = calcularPlacar(sessaoOutro, autorizacoes, CUTOFF, mapaDuplo)
+      expect(placar.find((p) => p.codigo_tuss === OUTRO)?.liberadas).toBe(1)
+      expect(placar.find((p) => p.codigo_tuss === PSICOPED)).toBeUndefined()
+    }
+  })
+
+  it('a guia que a triagem viu (emitida antes dela) continua herdando o TUSS', () => {
+    const antiga = [{ ...autorizacoes[0], data_execucao: '2026-08-24T10:30:00' }]
+    const placar = calcularPlacar([], antiga, CUTOFF, mapa)
+    expect(placar.find((p) => p.codigo_tuss === PSICOPED)?.liberadas).toBe(1)
+    expect(placar.find((p) => p.codigo_tuss === ABA)).toBeUndefined()
+  })
+})

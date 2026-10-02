@@ -9,6 +9,7 @@ import type {
   VinculoAutorizacao,
   VinculoCobertura,
 } from '@/components/auditoria-assim/types'
+import { blocoRealDaFalta, guiaPosteriorAoVinculo } from '@/components/auditoria-assim/reconciliacao/vinculo'
 
 const supabase = getSupabaseClient()
 
@@ -212,26 +213,33 @@ export async function buscarVinculosDosBlocos(
   const porBloco = new Map<string, VinculoCobertura>()
   if (blocoIds.length === 0) return porBloco
 
-  const { data, error } = await supabase
-    .from('autorizacoes_vinculos')
-    .select(COLUNAS_VINCULO)
-    .in('bloco_id', blocoIds)
-    .is('desfeito_em', null)
-    // 'sem_sessao' fica fora: é a guia extra que o operador descartou, e a
-    // constraint da tabela garante que ela nem tem bloco_id — o filtro é
-    // redundante de propósito, para o dia em que a constraint mudar.
-    //
-    // 'falta_terapeuta' entra, apontando para o bloco SINTÉTICO de uma falta.
-    // Ele não afirma cobertura (`situacaoComVinculo` devolve a falta intacta):
-    // serve para o slot dizer qual guia o autorizou.
-    .in('tipo', ['vinculo', 'falta_terapeuta'])
+  const [{ data, error }, substituicoes] = await Promise.all([
+    supabase
+      .from('autorizacoes_vinculos')
+      .select(COLUNAS_VINCULO)
+      .in('bloco_id', blocoIds)
+      .is('desfeito_em', null)
+      // 'sem_sessao' fica fora: é a guia extra que o operador descartou, e a
+      // constraint da tabela garante que ela nem tem bloco_id — o filtro é
+      // redundante de propósito, para o dia em que a constraint mudar.
+      //
+      // 'falta_terapeuta' entra, apontando para o bloco SINTÉTICO de uma falta.
+      // Ele não afirma cobertura (`situacaoComVinculo` devolve a falta intacta):
+      // serve para o slot dizer qual guia o autorizou.
+      .in('tipo', ['vinculo', 'falta_terapeuta']),
+    buscarSubstituicoesDosBlocos(blocoIds),
+  ])
 
   if (error) {
     console.error('Erro ao buscar vínculos da auditoria:', error.message, error.details)
     return porBloco
   }
 
-  const vinculos = (data ?? []) as VinculoAutorizacao[]
+  // A substituição vai por último e não sobrescreve: se um bloco real tiver
+  // as duas (não deveria), vale o vínculo gravado nele, como na Conferência de
+  // Guias ("o do bloco real ganha").
+  const vinculos = [...((data ?? []) as VinculoAutorizacao[]), ...substituicoes.map((s) => s.vinculo)]
+  const chaveDe = new Map(substituicoes.map((s) => [s.vinculo.id, s.blocoReal]))
   if (vinculos.length === 0) return porBloco
 
   // `data_execucao` vive em `autorizacoes_assim` e responde "quando a liberação
@@ -251,14 +259,58 @@ export async function buscarVinculosDosBlocos(
   }
 
   for (const vinculo of vinculos) {
-    if (!vinculo.bloco_id) continue
-    porBloco.set(vinculo.bloco_id, {
+    const chave = chaveDe.get(vinculo.id) ?? vinculo.bloco_id
+    if (!chave || porBloco.has(chave)) continue
+    // O número recicla e `autorizacoes_assim` guarda só a emissão mais nova:
+    // se ela é posterior à triagem, é outra guia, e a data dela mostrada aqui
+    // diria que a cobertura da sessão saiu dias depois de quando saiu de fato.
+    // Sem a data certa, nenhuma — o bloco continua dizendo qual guia cobriu.
+    const execucao = execucaoPorGuia.get(vinculo.guia) ?? null
+    porBloco.set(chave, {
       ...vinculo,
-      data_execucao: execucaoPorGuia.get(vinculo.guia) ?? null,
+      data_execucao: guiaPosteriorAoVinculo(execucao, vinculo.vinculado_em) ? null : execucao,
     })
   }
 
   return porBloco
+}
+
+/**
+ * As substituições ativas que cobrem algum dos blocos pedidos, já com o bloco
+ * REAL da sessão ao lado.
+ *
+ * A substituição é gravada no bloco SINTÉTICO da falta (`falta_<pac>_<dia>_
+ * <hora>_<tuss>`), mas a RPC devolve a sessão substituída pelo bloco real — a
+ * falta some e a sessão volta como LIBERADA. Pedidas só por `bloco_id`, elas
+ * nunca casavam, e a sessão com substituto saía sem dizer qual guia a cobriu
+ * nem quem triou.
+ *
+ * Consulta própria, pelo tipo, em vez de dobrar a lista de `bloco_id` da
+ * principal: a tabela é um livro de triagem (dezenas de linhas), e a URL da
+ * consulta por bloco já carrega um dia inteiro de ids. Falha em silêncio, pelo
+ * mesmo motivo da função de cima.
+ */
+async function buscarSubstituicoesDosBlocos(
+  blocoIds: string[]
+): Promise<{ vinculo: VinculoAutorizacao; blocoReal: string }[]> {
+  const { data, error } = await supabase
+    .from('autorizacoes_vinculos')
+    .select(COLUNAS_VINCULO)
+    .is('desfeito_em', null)
+    .eq('tipo', 'substituicao')
+
+  if (error) {
+    console.error('Erro ao buscar substituições da auditoria:', error.message, error.details)
+    return []
+  }
+
+  const pedidos = new Set(blocoIds)
+  const saida: { vinculo: VinculoAutorizacao; blocoReal: string }[] = []
+  for (const vinculo of (data ?? []) as VinculoAutorizacao[]) {
+    const blocoReal = vinculo.bloco_id ? blocoRealDaFalta(vinculo.bloco_id) : null
+    if (blocoReal && pedidos.has(blocoReal)) saida.push({ vinculo, blocoReal })
+  }
+  return saida
 }
 
 async function nomeUsuarioLogado(): Promise<{ id: string | null; nome: string | null }> {

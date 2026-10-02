@@ -13,6 +13,7 @@ import {
   situacaoComVinculo,
   triagemCobre,
 } from './cobertura'
+import { guiaPosteriorAoVinculo } from './vinculo'
 
 /**
  * A aritmética da reconciliação — separada do hook porque é PURA.
@@ -213,16 +214,28 @@ export function contarPendencias(
  * O TUSS sai do `bloco_id`, que é montado pelo banco:
  * `paciente_data_TUSS_hora` na sessão e `falta_paciente_data_hora_TUSS` no bloco
  * sintético da falta (substituição).
+ *
+ * Volta junto o `vinculado_em` da triagem, porque a chave é o NÚMERO da guia e o
+ * número recicla: quem aplica o TUSS precisa conferir que a guia em mãos não foi
+ * emitida depois da triagem (ver `calcularPlacar`).
+ *
+ * Com o mesmo número triado duas vezes — a guia antiga e a reemitida, cada uma
+ * na sua sessão (20261002150000) —, fica a triagem MAIS RECENTE: é a única que
+ * pode descrever a emissão que `autorizacoes_assim` guarda hoje, já que a
+ * antiga foi feita antes de a guia atual existir.
  */
 export function tussDasGuiasVinculadas(
   vinculosPorBloco: ReadonlyMap<string, VinculoAutorizacao>
-): Map<string, string> {
-  const mapa = new Map<string, string>()
+): Map<string, { tuss: string; vinculadoEm: string | null }> {
+  const mapa = new Map<string, { tuss: string; vinculadoEm: string | null }>()
   for (const v of vinculosPorBloco.values()) {
     if (!triagemCobre(v) || !v.bloco_id) continue
     const partes = v.bloco_id.split('_')
     const tuss = partes[0] === 'falta' ? partes[partes.length - 1] : partes[2]
-    if (tuss) mapa.set(v.guia, tuss)
+    if (!tuss) continue
+    const atual = mapa.get(v.guia)
+    if (atual && (atual.vinculadoEm ?? '') > (v.vinculado_em ?? '')) continue
+    mapa.set(v.guia, { tuss, vinculadoEm: v.vinculado_em })
   }
   return mapa
 }
@@ -325,9 +338,20 @@ export function calcularPlacar(
     if (sessaoNaoSolicitada(s, cutoff, vinculosPorBloco)) item.naoSolicitada += 1
   }
 
+  /*
+    A guia conta no TUSS da sessão que ela cobre — MAS só a guia que a triagem
+    viu. `porBloco` continua com a triagem antiga quando o número é reemitido (a
+    sessão coberta existiu e segue coberta), e a guia nova, de outro paciente e
+    outro atendimento, herdava por número o TUSS daquela sessão: a ABA de 01/09
+    contava como Psicopedagogia de agosto, um "+1" falso nesse TUSS e uma
+    liberação a menos no dela. Emitida depois da triagem = outra guia, conta no
+    próprio TUSS. É a mesma regra que `porGuia` aplica no hook.
+  */
   const tussCoberto = tussDasGuiasVinculadas(vinculosPorBloco)
   for (const a of autorizacoes) {
-    const item = entrada(tussCoberto.get(a.guia) ?? a.codigo_tuss)
+    const cobre = tussCoberto.get(a.guia)
+    const herda = cobre && !guiaPosteriorAoVinculo(a.data_execucao, cobre.vinculadoEm)
+    const item = entrada(herda ? cobre.tuss : a.codigo_tuss)
     item.autorizadas += 1
     if (autorizacaoLiberada(a.status)) item.liberadas += 1
     else if (autorizacaoCancelada(a.status)) item.canceladas += 1
