@@ -11,7 +11,7 @@
 
 import { Fragment, startTransition, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip as RechartsTooltip } from "recharts"
-import { Ban, CheckCircle2, ChevronDown, ChevronRight, ChevronUp, House, Lock, Repeat2, Sparkles, Star, Wallet, Sliders } from "lucide-react"
+import { Ban, CheckCircle2, ChevronDown, ChevronRight, ChevronUp, House, Lock, Repeat2, Sparkles, Star, Wallet, Sliders, Loader2 } from "lucide-react"
 import {
   avaliarPeriodo, calcularGaps, construirAgendaNovoProfissional, gapsParaMapa, limitarCandidatosPorGap, listarEspecialidades, montarPlanoRecomendado, ranquearUnidades,
   type CandidatoSlot, type PeriodoSimulado, type PeriodoAlvo, type SlotSimulado, type Turno,
@@ -38,6 +38,7 @@ import { RemanejamentoDetalheModal } from "./RemanejamentoDetalheModal"
 import { PacienteAgendaHipoteticaModal } from "./PacienteAgendaHipoteticaModal"
 import { ProjecaoFinanceiraDetalheModal } from "./ProjecaoFinanceiraDetalheModal"
 import { StatusPill } from "@/components/cronograma/ui/StatusPill"
+import { iniciais } from "@/components/ui/pastel/pecas"
 import { StatCard } from "@/components/cronograma/ui/StatCard"
 import { ICONE_TERAPIA } from "@/components/cronograma/indicadores/ComparativoSessoesShell"
 import { InlineNotice } from "@/components/cronograma/ui/InlineNotice"
@@ -45,7 +46,7 @@ import { InfoTooltip } from "@/components/cronograma/ui/InfoTooltip"
 import { ScheduleModal } from "@/components/cronograma/ui/ScheduleModal"
 import { TONE_ACCENT, TONE_SOFT } from "@/components/cronograma/ui/tones"
 import { Button } from "@/components/ui/button"
-import { CabecalhoPastel } from "@/components/ui/pastel/pecas"
+import { CabecalhoPastel, NumeroPastel, SecaoPastel } from "@/components/ui/pastel/pecas"
 import type { CsvRow, LaudoRow } from "@/types/cronograma"
 import type { CandidatoNaSugestao, SugestaoContratacao } from "@/lib/cronograma/sugestaoContratacaoTypes"
 
@@ -166,8 +167,8 @@ function LinhaEquilibrio({
   // Linha inteira (rótulo + valor) fica colorida quando tone é pos/neg — igual
   // à Frente 1 (só o valor mudar de cor faria a dedução passar despercebida).
   const corTom = tone === "pos" ? "text-emerald-700 dark:text-emerald-400" : tone === "neg" ? "text-rose-600 dark:text-rose-400" : null
-  const corLabel = corTom ?? (forte ? "text-foreground" : "text-muted-foreground")
-  const corValor = corTom ?? "text-foreground"
+  const corLabel = corTom ?? (forte ? "text-[var(--pp-ink)]" : "text-muted-foreground")
+  const corValor = corTom ?? "text-[var(--pp-ink)]"
   return (
     <div className={`flex items-center justify-between gap-3 ${forte ? "mt-0.5 border-t border-border pt-1.5" : ""}`}>
       <span className={`flex items-center gap-1 ${forte ? "font-bold" : ""} ${corLabel}`}>
@@ -431,47 +432,28 @@ function GrupoSalaCard({
 }) {
   const cor = estiloUnidade(grupoSala.unidade)
   return (
-    <div className="overflow-hidden rounded-xl border border-border">
-      <div className="flex flex-wrap items-center gap-2.5 border-b border-border bg-muted/40 px-3 py-2.5">
+    <div className="pp overflow-hidden rounded-2xl border border-[var(--pp-border)] bg-[var(--pp-surface)] shadow-[var(--pp-sombra)]">
+      <div className="flex flex-wrap items-center gap-2.5 border-b border-[var(--pp-border)] bg-[var(--pp-muted)] px-4 py-3">
         <span className={`rounded-full px-2.5 py-1 text-[12.5px] font-extrabold ${cor.bg} ${cor.text}`}>{grupoSala.unidade}</span>
         <span className={grupoSala.sala
-          ? "text-[12px] font-extrabold uppercase tracking-wide text-foreground"
-          : "animate-pulse text-[12px] font-extrabold uppercase tracking-wide text-red-600 dark:text-red-400"}
+          ? "text-[12px] font-extrabold uppercase tracking-wide text-[var(--pp-ink)]"
+          : "animate-pulse text-[12px] font-extrabold uppercase tracking-wide pp-tom pp-t-vermelho text-[var(--c-tinta)]"}
         >
           {grupoSala.sala ? `Sala ${grupoSala.sala}` : "Sem sala livre encontrada"}
         </span>
       </div>
-      <div className="flex flex-col divide-y divide-border">
+      <div className="flex flex-col p-4 gap-4">
         {grupoSala.turnos.map(({ turno, vagas }) => (
-          <div key={turno} className="flex flex-col gap-1 py-2">
-            <span className="px-3 text-[12px] font-extrabold uppercase tracking-wide text-sky-700 dark:text-sky-400">{turnoNome[turno]}</span>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[680px] table-fixed border-collapse text-[12.5px]">
-                {COLGROUP_VAGA}
-                {/* Cabeçalho das colunas numéricas vive na mesma tabela dos dados
-                    (não numa tabela separada acima de tudo) — assim a largura e o
-                    alinhamento horizontal vêm de graça do colgroup compartilhado,
-                    em vez de precisar bater manualmente com o padding de cada card. */}
-                <thead>
-                  <tr className="border-b border-border/60">
-                    <th />
-                    <th />
-                    <th />
-                    <th className="whitespace-nowrap pb-1 pr-3 text-right text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Autorizado → ofertado</th>
-                    <th className="whitespace-nowrap pb-1 pr-3 text-right text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Valor/sessão</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {vagas.map((vaga, i) => (
-                    <VagaLinhas
-                      key={vaga.hora} vaga={vaga} cRows={cRows} especialidade={especialidade}
-                      cobertosPorVaga={cobertosPorVaga} onVerDetalhe={onVerDetalhe} onVerRemanejamento={onVerRemanejamento}
-                      separador={i > 0}
-                    />
-                  ))}
-                </tbody>
-              </table>
+          <div key={turno} className="flex flex-col gap-3">
+            <span className="text-[12px] font-extrabold uppercase tracking-wide text-[var(--pp-ink-muted)]">{turnoNome[turno]}</span>
+            <div className="flex flex-col gap-2">
+              {vagas.map((vaga, i) => (
+                <VagaLinhas
+                  key={vaga.hora} vaga={vaga} cRows={cRows} especialidade={especialidade}
+                  cobertosPorVaga={cobertosPorVaga} onVerDetalhe={onVerDetalhe} onVerRemanejamento={onVerRemanejamento}
+                  separador={i > 0}
+                />
+              ))}
             </div>
           </div>
         ))}
@@ -533,40 +515,40 @@ function VagaLinhas({
   }
 
   return (
-    <>
+    <div className={`pp-cartao flex flex-col gap-2 p-3 ${separador ? "mt-2" : ""}`}>
       <CandidatoLinha
         hora={vaga.hora} linha={principal} cRows={cRows} disputada={disputada}
         cobertosPorVaga={cobertosPorVaga} acao={acaoParaCandidato(principal)} separador={separador}
       />
       {reservas.length > 0 && (
-        <>
-          <tr>
-            <td colSpan={6} className="pb-1.5 pl-3">
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => setReservasAbertas(v => !v)}
-                  className="flex items-center gap-1.5 text-left text-[11px] font-bold text-muted-foreground transition-colors hover:text-foreground"
-                >
-                  {reservasAbertas ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                  {reservasAbertas ? "Ocultar" : "Ver"} outro(s) candidato(s) para essa vaga
-                </button>
-                <InfoTip ariaLabel="Como funciona a fila de candidatos desta vaga">
-                  <p>Só entram <strong className="text-foreground">se o(s) anterior(es) recusar(em)</strong>, na ordem em que aparecem ao expandir.</p>
-                </InfoTip>
-              </div>
-            </td>
-          </tr>
-          {reservasAbertas && reservas.map((linha, i) => (
-            <CandidatoLinhaReserva
-              key={`${linha.dia}-${linha.candidato.turno}-${linha.candidato.hora}-${linha.candidato.paciente}-${i}`}
-              linha={linha} cRows={cRows} cobertosPorVaga={cobertosPorVaga}
-              acao={acaoParaCandidato(linha)}
-            />
-          ))}
-        </>
+        <div className="mt-2 border-t border-[var(--pp-border)] pt-2">
+          <div className="mb-2 flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setReservasAbertas(v => !v)}
+              className="flex items-center gap-1.5 text-left text-[11px] font-bold text-[var(--pp-ink-muted)] transition-colors hover:text-[var(--pp-ink)]"
+            >
+              {reservasAbertas ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+              {reservasAbertas ? "Ocultar" : "Ver"} outro(s) candidato(s) para essa vaga
+            </button>
+            <InfoTip ariaLabel="Como funciona a fila de candidatos desta vaga">
+              <p>Só entram <strong className="text-[var(--pp-ink)]">se o(s) anterior(es) recusar(em)</strong>, na ordem em que aparecem ao expandir.</p>
+            </InfoTip>
+          </div>
+          {reservasAbertas && (
+            <div className="flex flex-col gap-2">
+              {reservas.map((linha, i) => (
+                <CandidatoLinhaReserva
+                  key={`${linha.dia}-${linha.candidato.turno}-${linha.candidato.hora}-${linha.candidato.paciente}-${i}`}
+                  linha={linha} cRows={cRows} cobertosPorVaga={cobertosPorVaga}
+                  acao={acaoParaCandidato(linha)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
       )}
-    </>
+    </div>
   )
 }
 
@@ -582,57 +564,64 @@ function CandidatoLinha({
   const adjacente = c.modalidade === "adjacente"
   const vagaJaLivreNaClinica = linha.vagasInternasDisponiveis > 0
   return (
-    <tr className={`hover:bg-muted/30 ${separador ? "border-t border-border/40" : ""}`}>
-      <td className="whitespace-nowrap py-2 pl-3 text-[12px] font-black tabular-nums text-foreground">{hora}</td>
-      <td className="py-2">
-        <CheckCircle2 size={15} className="text-emerald-600 dark:text-emerald-400" aria-label="Pode oferecer agora" />
-      </td>
-      <td className="px-3 py-2">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="font-bold text-foreground">{c.paciente}</span>
-          <StatusPill tone={adjacente ? "green" : "blue"} variant="soft" dense>
+    <div className="flex items-start gap-3 rounded-xl hover:bg-[var(--pp-muted)] transition-colors p-1.5">
+      <div className="mt-2 flex shrink-0 items-center gap-2">
+        <span className="text-[12px] font-black tabular-nums text-[var(--pp-ink)]">{hora}</span>
+        <CheckCircle2 size={15} className="pp-tom pp-t-verde text-[var(--c-tinta)]" aria-label="Pode oferecer agora" />
+      </div>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex flex-wrap items-center gap-2 leading-tight">
+          <div className="flex items-center gap-2">
+            <div className={`flex h-6 w-6 items-center justify-center rounded-full text-[9px] font-bold pp-tom ${adjacente ? "pp-t-azul bg-[var(--c-suave)] text-[var(--c-tinta)]" : "pp-t-ambar bg-[var(--c-suave)] text-[var(--c-tinta)]"}`}>
+              {iniciais(c.paciente)}
+            </div>
+            <span className="font-bold text-[var(--pp-ink)]">{c.paciente}</span>
+          </div>
+          <span className={`pp-pilula-bola pp-tom font-bold ${adjacente ? "pp-t-azul bg-[var(--c-suave)] text-[var(--c-tinta)]" : "pp-t-ambar bg-[var(--c-suave)] text-[var(--c-tinta)]"}`}>
             {adjacente ? "Adjacência" : "Remanejamento"}
-          </StatusPill>
-          <span className="text-[11px] text-muted-foreground">{primeiroConvenioDoPaciente(c.paciente, cRows)}</span>
+          </span>
+          <span className="text-[11.5px] font-medium text-[var(--pp-ink-muted)]">{primeiroConvenioDoPaciente(c.paciente, cRows)}</span>
           {vagaJaLivreNaClinica && (
             <>
-              <StatusPill tone="amber" variant="solid" dense>Já disponível</StatusPill>
+              <span className="pp-pilula-bola pp-tom pp-t-vermelho bg-[var(--c-suave)] text-[var(--c-tinta)] font-bold">Reserva Interna</span>
               <InfoTip ariaLabel="Por que esta vaga está destacada">
-                <p>Existe(m) <strong className="text-foreground">profissional(is) já contratado(s) livre(s)</strong> neste mesmo dia, horário, unidade e especialidade — veja "Ocupar Profissionais Disponíveis".</p>
+                <p>Existe(m) <strong className="text-[var(--pp-ink)]">profissional(is) já contratado(s) livre(s)</strong> neste mesmo dia, horário, unidade e especialidade — veja "Ocupar Profissionais Disponíveis".</p>
                 <p className="mt-2">
                   Apenas {linha.vagasInternasDisponiveis} vaga(s) interna(s){disputada && ` para ${linha.concorrentesNaVaga} candidatos`}
                   {linha.vagasInternasSlots.length > 0 && (
-                    <> — <strong className="text-foreground">{fmtName(linha.vagasInternasSlots[0].profissional)}</strong></>
-                  )}.
-                </p>
-              </InfoTip>
-            </>
-          )}
+                    <> — <strong className="text-[var(--pp-ink)]">{fmtName(linha.vagasInternasSlots[0].profissional)}</strong></>
+                    )}.
+                  </p>
+                </InfoTip>
+              </>
+            )}
+          </div>
+          {!!c.cobertosInternamente && c.ordemNaVaga === linha.concorrentesNaVaga && (() => {
+            const nomesCobertos = cobertosPorVaga.get(`${linha.dia}|||${c.turno}|||${c.hora}|||${linha.unidade}`) ?? []
+            return (
+              <div className="mt-0.5 text-[10.5px] text-[var(--pp-ink-muted)]">
+                + <strong className="text-[var(--pp-ink)]">{nomesCobertos.length ? nomesCobertos.map(fmtName).join(", ") : `${c.cobertosInternamente} paciente(s)`}</strong> desta vaga já atendido(s) por profissional existente
+              </div>
+            )
+          })()}
         </div>
-        {!!c.cobertosInternamente && c.ordemNaVaga === linha.concorrentesNaVaga && (() => {
-          const nomesCobertos = cobertosPorVaga.get(`${linha.dia}|||${c.turno}|||${c.hora}|||${linha.unidade}`) ?? []
-          return (
-            <div className="mt-0.5 text-[10.5px] text-muted-foreground">
-              + <strong className="text-foreground">{nomesCobertos.length ? nomesCobertos.map(fmtName).join(", ") : `${c.cobertosInternamente} paciente(s)`}</strong> desta vaga já atendido(s) por profissional existente
-            </div>
-          )
-        })()}
-      </td>
-      <td className="whitespace-nowrap px-3 py-2 text-right">
-        <div className="flex items-center justify-end gap-2 tabular-nums text-sm font-bold text-foreground">
-          <span>{c.aut}</span>
-          <span className="text-muted-foreground">→</span>
-          <span>{c.of}</span>
-          <span className="rounded-full bg-rose-50 dark:bg-rose-950/30 px-2 py-0.5 text-xs font-extrabold text-rose-600 dark:text-rose-400">−{c.gap}</span>
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="flex flex-col items-end">
+          <span className="text-[10px] font-bold uppercase tracking-wide text-[var(--pp-ink-muted)]">Aut → Of</span>
+          <div className="flex items-center gap-1.5 tabular-nums text-sm font-bold text-[var(--pp-ink)]">
+            <span>{c.aut}</span><span className="text-[var(--pp-ink-muted)]">→</span><span>{c.of}</span>
+            <span className="rounded-full bg-[var(--pp-muted)] px-2 py-0.5 text-xs font-extrabold pp-tom pp-t-vermelho text-[var(--c-tinta)]">−{c.gap}</span>
+          </div>
         </div>
-      </td>
-      <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">
-        {c.valorSessaoProjetado !== null
-          ? <span className="font-extrabold text-emerald-700 dark:text-emerald-400">{fmtReal(c.valorSessaoProjetado)}</span>
-          : <span className="text-muted-foreground">Sem valor cadastrado</span>}
-      </td>
-      <td className="whitespace-nowrap px-3 py-2 pr-3 text-right">{acao}</td>
-    </tr>
+        <div className="flex flex-col items-end tabular-nums">
+          <span className="text-[10px] font-bold uppercase tracking-wide text-[var(--pp-ink-muted)]">Valor/sessão</span>
+          {c.valorSessaoProjetado !== null
+            ? <span className="font-extrabold pp-tom pp-t-verde text-[var(--c-tinta)]">{fmtReal(c.valorSessaoProjetado)}</span>
+            : <span className="text-[var(--pp-ink-muted)]">Sem valor</span>}
+        </div>
+        <div className="flex items-center">{acao}</div>
+      </div>
+    </div>
   )
 }
 
@@ -646,37 +635,45 @@ function CandidatoLinhaReserva({
   const adjacente = c.modalidade === "adjacente"
   const ultimaOpcao = c.ordemNaVaga === linha.concorrentesNaVaga
   return (
-    <tr className="border-b border-border bg-muted/20 last:border-b-0 hover:bg-muted/40">
-      <td className="py-1.5 pl-3" />
-      <td className="py-1.5 text-center text-[10px] font-bold text-muted-foreground" title={`${c.ordemNaVaga}ª opção`}>
-        {c.ordemNaVaga}ª
-      </td>
-      <td className="px-3 py-1.5">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="font-semibold text-foreground">{c.paciente}</span>
-          <span className="text-[10.5px] text-muted-foreground">
-            {adjacente ? "Adjacência" : "Remanejamento"} · {primeiroConvenioDoPaciente(c.paciente, cRows)}
-          </span>
-        </div>
-        {!!c.cobertosInternamente && ultimaOpcao && (() => {
-          const nomesCobertos = cobertosPorVaga.get(`${linha.dia}|||${c.turno}|||${c.hora}|||${linha.unidade}`) ?? []
-          return (
-            <div className="text-[10px] text-muted-foreground">
-              + <strong className="text-foreground">{nomesCobertos.length ? nomesCobertos.map(fmtName).join(", ") : `${c.cobertosInternamente} paciente(s)`}</strong> já atendido(s) por profissional existente
+    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-xl bg-[var(--pp-muted)] p-2">
+      <div className="flex min-w-0 flex-1 items-start gap-3">
+        <span className="mt-1.5 shrink-0 rounded-md bg-[var(--pp-surface)] px-1.5 py-0.5 text-center text-[10px] font-bold text-[var(--pp-ink-muted)] shadow-sm" title={`${c.ordemNaVaga}ª opção`}>
+          {c.ordemNaVaga}ª
+        </span>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex flex-wrap items-center gap-2 leading-tight">
+            <div className="flex items-center gap-2">
+              <div className={`flex h-6 w-6 items-center justify-center rounded-full text-[9px] font-bold pp-tom ${adjacente ? "pp-t-azul bg-[var(--c-suave)] text-[var(--c-tinta)]" : "pp-t-ambar bg-[var(--c-suave)] text-[var(--c-tinta)]"}`}>
+                {iniciais(c.paciente)}
+              </div>
+              <span className="font-semibold text-[var(--pp-ink)]">{c.paciente}</span>
             </div>
-          )
-        })()}
-      </td>
-      <td className="whitespace-nowrap px-3 py-1.5 text-right text-[11.5px] font-semibold tabular-nums text-foreground">
-        {c.aut} → {c.of} <span className="text-rose-600 dark:text-rose-400">(−{c.gap})</span>
-      </td>
-      <td className="whitespace-nowrap px-3 py-1.5 text-right text-[11.5px] tabular-nums">
-        {c.valorSessaoProjetado !== null
-          ? <span className="font-bold text-emerald-700 dark:text-emerald-400">{fmtReal(c.valorSessaoProjetado)}</span>
-          : <span className="text-muted-foreground">—</span>}
-      </td>
-      <td className="whitespace-nowrap px-3 py-1.5 pr-3 text-right">{acao}</td>
-    </tr>
+            <span className="text-[10.5px] font-medium text-[var(--pp-ink-muted)]">
+              {adjacente ? "Adjacência" : "Remanejamento"} · {primeiroConvenioDoPaciente(c.paciente, cRows)}
+            </span>
+          </div>
+          {!!c.cobertosInternamente && ultimaOpcao && (() => {
+            const nomesCobertos = cobertosPorVaga.get(`${linha.dia}|||${c.turno}|||${c.hora}|||${linha.unidade}`) ?? []
+            return (
+              <div className="text-[10px] text-[var(--pp-ink-muted)]">
+                + <strong className="text-[var(--pp-ink)]">{nomesCobertos.length ? nomesCobertos.map(fmtName).join(", ") : `${c.cobertosInternamente} paciente(s)`}</strong> já atendido(s) por profissional existente
+              </div>
+            )
+          })()}
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="text-right text-[11.5px] font-semibold tabular-nums text-[var(--pp-ink)]">
+          {c.aut} → {c.of} <span className="pp-tom pp-t-vermelho text-[var(--c-tinta)]">(−{c.gap})</span>
+        </div>
+        <div className="text-right text-[11.5px] tabular-nums">
+          {c.valorSessaoProjetado !== null
+            ? <span className="font-bold pp-tom pp-t-verde text-[var(--c-tinta)]">{fmtReal(c.valorSessaoProjetado)}</span>
+            : <span className="text-[var(--pp-ink-muted)]">—</span>}
+        </div>
+        <div>{acao}</div>
+      </div>
+    </div>
   )
 }
 
@@ -1321,17 +1318,17 @@ export function SimulacaoNovoPrestadorTab({ lRows }: Props) {
             <>
               Simule um novo profissional por especialidade, dia e turno para ver quantos pacientes com sessões pendentes ele conseguiria atender.
               <InfoTip ariaLabel="Como a simulação escolhe os pacientes">
-                <p>Considera pacientes com <strong className="text-foreground">autorizado &gt; ofertado</strong> que já frequentam a unidade naquele dia, sem conflito de horário.</p>
-                <p className="mt-2">Respeita o sequenciamento clínico: mínimo <strong className="text-foreground">1 sessão no dia</strong>, sempre em blocos consecutivos de <strong className="text-foreground">40min</strong>.</p>
+                <p>Considera pacientes com <strong className="text-[var(--pp-ink)]">autorizado &gt; ofertado</strong> que já frequentam a unidade naquele dia, sem conflito de horário.</p>
+                <p className="mt-2">Respeita o sequenciamento clínico: mínimo <strong className="text-[var(--pp-ink)]">1 sessão no dia</strong>, sempre em blocos consecutivos de <strong className="text-[var(--pp-ink)]">40min</strong>.</p>
               </InfoTip>
             </>
           }
         />
 
         {!laudosCarregados ? (
-          <InlineNotice tone="amber" icon={<Lock size={15} />}>
-            <strong>Relatório de laudos não anexado.</strong> Sem ele não é possível calcular quem tem sessões pendentes (autorizado × ofertado), então a simulação fica bloqueada. Anexe o relatório de laudos para liberar a especialidade e os dias/turnos.
-          </InlineNotice>
+          <div className="flex justify-center p-4">
+            <Loader2 className="animate-spin text-[var(--pp-ink-muted)]" size={24} />
+          </div>
         ) : (
         <div className="flex flex-wrap items-start gap-3">
           <div className="flex w-full lg:w-56 shrink-0 flex-col gap-2 rounded-xl border border-[var(--pp-border)] bg-[var(--pp-muted)] p-3">
@@ -1344,8 +1341,8 @@ export function SimulacaoNovoPrestadorTab({ lRows }: Props) {
               <span className="whitespace-nowrap text-[11px] font-bold uppercase tracking-wide text-[var(--pp-ink-muted)]">
                 Dias e turnos
                 <InfoTip ariaLabel="Como marcar dias e turnos">
-                  <p>Marque <strong className="text-foreground">manhã</strong>, <strong className="text-foreground">tarde</strong> ou <strong className="text-foreground">dia inteiro</strong>.</p>
-                  <p className="mt-2">A recomendação avalia cada período separadamente — pode indicar <strong className="text-foreground">unidades diferentes</strong> por turno.</p>
+                  <p>Marque <strong className="text-[var(--pp-ink)]">manhã</strong>, <strong className="text-[var(--pp-ink)]">tarde</strong> ou <strong className="text-[var(--pp-ink)]">dia inteiro</strong>.</p>
+                  <p className="mt-2">A recomendação avalia cada período separadamente — pode indicar <strong className="text-[var(--pp-ink)]">unidades diferentes</strong> por turno.</p>
                 </InfoTip>
               </span>
               <div className="ml-auto flex gap-1.5">
@@ -1458,47 +1455,47 @@ export function SimulacaoNovoPrestadorTab({ lRows }: Props) {
       {podeSimular && (
         <>
           {/* SEÇÃO 1 — decisão: onde encaixar esse profissional */}
-          <div className="overflow-hidden rounded-2xl border border-border bg-card">
-            <div className="border-b border-border bg-muted px-4 py-2.5">
-              <div className="text-sm font-extrabold text-foreground">Onde encaixar esse profissional</div>
-              <div className="text-[11px] text-muted-foreground">{periodosAlvo.length} período(s) simulado(s) em {unitRank.length} unidade(s) candidatas</div>
+          <div className="pp overflow-hidden rounded-2xl border border-[var(--pp-border)] bg-[var(--pp-surface)] shadow-[var(--pp-sombra)]">
+            <div className="border-b border-[var(--pp-border)] bg-[var(--pp-muted)] px-4 py-2.5">
+              <div className="text-sm font-extrabold text-[var(--pp-ink)]">Onde encaixar esse profissional</div>
+              <div className="text-[11px] text-[var(--pp-ink-muted)]">{periodosAlvo.length} período(s) simulado(s) em {unitRank.length} unidade(s) candidatas</div>
             </div>
 
             <div className="flex flex-col lg:flex-row items-start gap-6 p-4">
               <button
                 type="button"
                 onClick={() => startTransition(() => setUnidadeFixada(""))}
-                className={`flex w-full flex-col lg:w-[420px] shrink-0 rounded-xl border-2 p-3 text-left transition-colors ${!unidadeFixada ? "border-sky-400 dark:border-sky-700 bg-sky-50 dark:bg-sky-950/30" : "border-border bg-card hover:bg-muted/40"}`}
+                className={`flex w-full flex-col lg:w-[420px] shrink-0 rounded-2xl p-4 text-left transition-colors ${!unidadeFixada ? "pp-cartao bg-[var(--pp-surface)]" : "hover:bg-[var(--pp-muted)]"}`}
               >
-                <div className="mb-2 flex items-center gap-1.5">
-                  <Star size={13} className="text-sky-600 dark:text-sky-400" />
-                  <span className="text-sm font-extrabold text-foreground">
+                <div className="mb-3 flex items-center gap-1.5">
+                  <Star size={14} className="pp-tom pp-t-azul text-[var(--c-tinta)]" />
+                  <span className="text-[13px] font-extrabold text-[var(--pp-ink)]">
                     Plano recomendado{planoHomogeneo ? "" : " (misto)"}
                   </span>
                   <InfoTip ariaLabel="Como o plano recomendado escolhe a unidade">
-                    <p>Escolhe a <strong className="text-foreground">melhor unidade</strong> para cada dia/turno separadamente.</p>
-                    <p className="mt-2">Se uma unidade for escolhida num turno (ex.: Padre Miguel de manhã), o sistema não mistura com outra unidade no outro turno do mesmo dia — <strong className="text-foreground">restrição geográfica</strong>.</p>
+                    <p>Escolhe a <strong className="text-[var(--pp-ink)]">melhor unidade</strong> para cada dia/turno separadamente.</p>
+                    <p className="mt-2">Se uma unidade for escolhida num turno (ex.: Padre Miguel de manhã), o sistema não mistura com outra unidade no outro turno do mesmo dia — <strong className="text-[var(--pp-ink)]">restrição geográfica</strong>.</p>
                   </InfoTip>
                 </div>
                 {planoHomogeneo ? (
-                  <div className="mb-2 flex items-baseline gap-1.5">
-                    <span className={`text-2xl font-black tabular-nums ${estiloUnidade(planoHomogeneo).text}`}>{planoStatsLiquidas.vagas}</span>
-                    <span className="text-[12px] font-semibold text-muted-foreground">
-                      vaga(s) que exigem contratação em <strong className={estiloUnidade(planoHomogeneo).text}>{planoHomogeneo}</strong> · {planoStatsLiquidas.nPacientes} paciente(s) disputando
+                  <div className="mb-2 flex items-baseline gap-2">
+                    <span className="text-[28px] font-black tabular-nums text-[var(--pp-ink)]">{planoStatsLiquidas.vagas}</span>
+                    <span className="text-[11px] font-semibold text-[var(--pp-ink-muted)]">
+                      vaga(s) que exigem contratação em <strong className="text-[var(--pp-ink)]">{planoHomogeneo}</strong> · {planoStatsLiquidas.nPacientes} paciente(s) disputando
                     </span>
                     <InfoTip ariaLabel="O que essa estimativa considera">
-                      <p>Vagas que <strong className="text-foreground">só a contratação resolve</strong>, já descontado o que a agenda atual cobre sozinha — mesmo número que o <strong className="text-foreground">Detalhamento</strong> e a <strong className="text-foreground">projeção financeira</strong> usam logo abaixo.</p>
-                      <p className="mt-2">No bruto, antes desse desconto, o plano tem <strong className="text-foreground">{planoStats.totalVagas}</strong> vaga(s) e <strong className="text-foreground">{planoStats.nPacientes}</strong> paciente(s).</p>
-                      <p className="mt-2">Ainda antes de resolver <strong className="text-foreground">sala</strong>: uma vaga sem sala livre não vira contratação.</p>
+                      <p>Vagas que <strong className="text-[var(--pp-ink)]">só a contratação resolve</strong>, já descontado o que a agenda atual cobre sozinha — mesmo número que o <strong className="text-[var(--pp-ink)]">Detalhamento</strong> e a <strong className="text-[var(--pp-ink)]">projeção financeira</strong> usam logo abaixo.</p>
+                      <p className="mt-2">No bruto, antes desse desconto, o plano tem <strong className="text-[var(--pp-ink)]">{planoStats.totalVagas}</strong> vaga(s) e <strong className="text-[var(--pp-ink)]">{planoStats.nPacientes}</strong> paciente(s).</p>
+                      <p className="mt-2">Ainda antes de resolver <strong className="text-[var(--pp-ink)]">sala</strong>: uma vaga sem sala livre não vira contratação.</p>
                     </InfoTip>
                   </div>
                 ) : (
-                  <div className="mb-2 flex items-center gap-1 text-[11px] text-muted-foreground">
-                    <strong className="text-foreground">{planoStatsLiquidas.nPacientes} paciente(s)</strong> disputando {planoStatsLiquidas.vagas} vaga(s) que exigem contratação
+                  <div className="mb-3 flex items-center gap-1.5 text-[11px] text-[var(--pp-ink-muted)]">
+                    <strong className="text-[var(--pp-ink)]">{planoStatsLiquidas.nPacientes} paciente(s)</strong> disputando {planoStatsLiquidas.vagas} vaga(s) que exigem contratação
                     <InfoTip ariaLabel="O que essa estimativa considera">
-                      <p>Vagas que <strong className="text-foreground">só a contratação resolve</strong>, já descontado o que a agenda atual cobre sozinha — mesmo número que o <strong className="text-foreground">Detalhamento</strong> e a <strong className="text-foreground">projeção financeira</strong> usam logo abaixo.</p>
-                      <p className="mt-2">No bruto, antes desse desconto, o plano tem <strong className="text-foreground">{planoStats.totalVagas}</strong> vaga(s) e <strong className="text-foreground">{planoStats.nPacientes}</strong> paciente(s).</p>
-                      <p className="mt-2">Ainda antes de resolver <strong className="text-foreground">sala</strong>: uma vaga sem sala livre não vira contratação.</p>
+                      <p>Vagas que <strong className="text-[var(--pp-ink)]">só a contratação resolve</strong>, já descontado o que a agenda atual cobre sozinha — mesmo número que o <strong className="text-[var(--pp-ink)]">Detalhamento</strong> e a <strong className="text-[var(--pp-ink)]">projeção financeira</strong> usam logo abaixo.</p>
+                      <p className="mt-2">No bruto, antes desse desconto, o plano tem <strong className="text-[var(--pp-ink)]">{planoStats.totalVagas}</strong> vaga(s) e <strong className="text-[var(--pp-ink)]">{planoStats.nPacientes}</strong> paciente(s).</p>
+                      <p className="mt-2">Ainda antes de resolver <strong className="text-[var(--pp-ink)]">sala</strong>: uma vaga sem sala livre não vira contratação.</p>
                     </InfoTip>
                   </div>
                 )}
@@ -1510,22 +1507,22 @@ export function SimulacaoNovoPrestadorTab({ lRows }: Props) {
                 <PlanoGradeSemanal periodos={planoRecomendado} />
               </button>
 
-              <div className="w-full min-w-0 lg:max-w-[420px] lg:border-l lg:border-border lg:pl-6">
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <div className="text-sm font-extrabold text-foreground">
+              <div className="w-full min-w-0 lg:max-w-[420px] lg:border-l lg:border-[var(--pp-border)] lg:pl-6">
+                <div className="mb-4 flex items-center justify-between gap-2">
+                  <div className="text-[13px] font-extrabold text-[var(--pp-ink)]">
                     Ou fixe numa unidade única
                     <InfoTip ariaLabel="Como ler as barras de unidade">
-                      <p>Cada barra mostra quantas <strong className="text-foreground">vagas de horário</strong> você teria se contratasse o novo profissional só para essa unidade, nos mesmos dias/turnos escolhidos.</p>
-                      <p className="mt-2">Ao <strong className="text-foreground">clicar numa unidade</strong>, o total dela se abre nas duas parcelas que decidem a contratação: <strong className="text-foreground">exige contratação</strong> (só um profissional novo resolve) e <strong className="text-foreground">já pode cobrir internamente</strong> (existe profissional contratado com horário <strong className="text-foreground">Livre</strong> nesse mesmo slot, então essas sessões seriam preenchidas de qualquer jeito). As demais unidades mostram só o total, sem separar.</p>
-                      <p className="mt-2">Uma unidade em que <strong className="text-foreground">tudo</strong> cai em já pode cobrir internamente é a que aparece com <strong className="text-foreground">margem R$ 0,00</strong> na projeção financeira: tem candidato, mas não tem receita nova.</p>
-                      <p className="mt-2">A <strong className="text-foreground">marca vertical</strong> indica o total do plano recomendado (misto).</p>
+                      <p>Cada barra mostra quantas <strong className="text-[var(--pp-ink)]">vagas de horário</strong> você teria se contratasse o novo profissional só para essa unidade, nos mesmos dias/turnos escolhidos.</p>
+                      <p className="mt-2">Ao <strong className="text-[var(--pp-ink)]">clicar numa unidade</strong>, o total dela se abre nas duas parcelas que decidem a contratação: <strong className="text-[var(--pp-ink)]">exige contratação</strong> (só um profissional novo resolve) e <strong className="text-[var(--pp-ink)]">já pode cobrir internamente</strong> (existe profissional contratado com horário <strong className="text-[var(--pp-ink)]">Livre</strong> nesse mesmo slot, então essas sessões seriam preenchidas de qualquer jeito). As demais unidades mostram só o total, sem separar.</p>
+                      <p className="mt-2">Uma unidade em que <strong className="text-[var(--pp-ink)]">tudo</strong> cai em já pode cobrir internamente é a que aparece com <strong className="text-[var(--pp-ink)]">margem R$ 0,00</strong> na projeção financeira: tem candidato, mas não tem receita nova.</p>
+                      <p className="mt-2">A <strong className="text-[var(--pp-ink)]">marca vertical</strong> indica o total do plano recomendado (misto).</p>
                     </InfoTip>
                   </div>
                   {unidadeFixada && (
                     <Button variant="outline" size="xs" onClick={() => startTransition(() => setUnidadeFixada(""))}>Ver plano</Button>
                   )}
                 </div>
-                <div className="flex flex-col gap-1.5">
+                <div className="flex flex-col gap-2">
                   {unitRank.map(u => {
                     const cor = estiloUnidade(u.unidade)
                     const vagasUnidade = vagasDaUnidade(u)
@@ -1533,20 +1530,9 @@ export function SimulacaoNovoPrestadorTab({ lRows }: Props) {
                     const referencia = (planoStats.totalVagas / escalaComparativo) * 100
                     const ativo = unidadeFixada === u.unidade
                     const semVagas = vagasUnidade === 0
-                    // O número líquido só é conhecido de graça para a unidade
-                    // FIXADA (é o periodosEnriquecidos em exibição). Nas outras
-                    // barras não afirmamos nada sobre cobertura — ver o bloco
-                    // de comentário em vagasDaUnidade.
                     const liquidoConhecido = ativo && !!unidadeFixada
                     const vagasLiquidas = liquidoConhecido ? vagasLiquidasEmExibicao : null
-                    // Resto do bruto que a capacidade já contratada resolve
-                    // sozinha. Clampado em 0 porque o líquido PODE passar do
-                    // bruto: anexarModalidadeERemanejamento cria candidatos que
-                    // avaliarPeriodo não tinha (medido: Realengo/Musicoterapia
-                    // bruto=30, líquido=31) — não é subconjunto.
                     const cobertasInternamente = vagasLiquidas === null ? 0 : Math.max(0, vagasUnidade - vagasLiquidas)
-                    // Tem candidato, mas contratar ali não abre sessão nenhuma:
-                    // é a unidade cuja projeção financeira dá R$ 0,00.
                     const todasCobertas = !semVagas && vagasLiquidas === 0
                     const ehRecomendada = !unidadeFixada && planoHomogeneo === u.unidade
                     return (
@@ -1554,60 +1540,48 @@ export function SimulacaoNovoPrestadorTab({ lRows }: Props) {
                         key={u.unidade}
                         type="button"
                         onClick={() => startTransition(() => setUnidadeFixada(ativo ? "" : u.unidade))}
-                        className={`flex items-center gap-3 rounded-lg border p-2 text-left transition-colors ${
+                        className={`flex items-center gap-3 rounded-xl border p-2.5 text-left transition-colors ${
                           ativo
-                            ? "border-sky-400 dark:border-sky-700 bg-sky-50 dark:bg-sky-950/30"
+                            ? "border-[var(--pp-border)] bg-[var(--c-suave)]"
                             : semVagas
-                              ? "border-transparent opacity-70 hover:opacity-100 hover:bg-muted/40"
-                              : "border-transparent hover:bg-muted/50"
+                              ? "border-transparent opacity-70 hover:opacity-100 hover:bg-[var(--pp-muted)]"
+                              : "border-transparent hover:bg-[var(--pp-muted)]"
                         }`}
                       >
-                        <span className={`flex w-[104px] shrink-0 items-center gap-1 truncate text-[12px] font-bold ${semVagas ? "text-muted-foreground" : cor.text}`}>
-                          {ehRecomendada && <Star size={10} className="shrink-0 text-sky-600 dark:text-sky-400" />}
+                        <span className={`flex w-[104px] shrink-0 items-center gap-1.5 truncate text-[12px] font-bold ${semVagas ? "text-[var(--pp-ink-muted)]" : "text-[var(--pp-ink)]"}`}>
+                          {ehRecomendada && <Star size={12} className="shrink-0 pp-tom pp-t-azul text-[var(--c-tinta)]" />}
                           {u.unidade}
                         </span>
-                        {/* Barra segue medindo o BRUTO — é o que dá para saber
-                            das três unidades sem pagar o pipeline completo, e
-                            mantém as barras comparáveis entre si. A distinção
-                            bruto × exige-contratação aparece no número à
-                            direita, para a unidade fixada. */}
                         <span
-                          className="relative h-3 w-24 shrink-0 rounded-full bg-muted"
+                          className="relative h-2.5 w-24 shrink-0 rounded-full bg-[var(--pp-border)]"
                           title={
                             semVagas ? undefined
                               : vagasLiquidas === null ? `${vagasUnidade} vaga(s) no total`
                               : `${vagasUnidade} vaga(s) no total · ${vagasLiquidas} exigiria(m) contratação`
                           }
                         >
-                          {!semVagas && <span className={`absolute inset-y-0 left-0 rounded-full transition-[width] ${cor.bar} ${todasCobertas ? "opacity-30" : ""}`} style={{ width: `${largura}%` }} />}
-                          <span className="absolute -top-1 -bottom-1 w-[2px] bg-foreground/60" style={{ left: `${referencia}%` }} />
+                          {!semVagas && <span className={`absolute inset-y-0 left-0 rounded-full transition-[width] bg-[var(--pp-verde)] ${todasCobertas ? "opacity-30" : ""}`} style={{ width: `${largura}%` }} />}
+                          <span className="absolute -top-1.5 -bottom-1.5 w-[2px] bg-[var(--pp-ink)] opacity-40" style={{ left: `${referencia}%` }} />
                         </span>
                         <span className="flex-1" />
-                        {/* Quando o líquido é conhecido, o total bruto sai de
-                            cena e a coluna mostra as duas parcelas que o
-                            usuário precisa decidir: o que só a contratação
-                            resolve e o que já dá pra cobrir com quem está aqui.
-                            O bruto vira só o title da barra — como número
-                            solto ele era o que contradizia a projeção
-                            financeira. */}
                         <span className="w-[150px] shrink-0 text-right">
                           {semVagas ? (
-                            <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9.5px] font-bold ${TONE_SOFT.slate.bg} ${TONE_SOFT.slate.text}`}>
+                            <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[9.5px] font-bold bg-[var(--pp-muted)] text-[var(--pp-ink-muted)]">
                               Sem vagas
                             </span>
                           ) : vagasLiquidas === null ? (
-                            <span className="block text-[12px] font-black tabular-nums text-foreground">{vagasUnidade} vaga(s)</span>
+                            <span className="block text-[13px] font-black tabular-nums text-[var(--pp-ink)]">{vagasUnidade} vaga(s)</span>
                           ) : (
                             <>
                               {vagasLiquidas > 0 && (
-                                <span className="block text-[9.5px] font-bold leading-tight text-foreground">
-                                  <strong className="text-[12px] font-black tabular-nums">{vagasLiquidas}</strong>
+                                <span className="block text-[10px] font-bold leading-tight text-[var(--pp-ink)]">
+                                  <strong className="text-[13px] font-black tabular-nums">{vagasLiquidas}</strong>
                                   {" "}exige contratação
                                 </span>
                               )}
                               {cobertasInternamente > 0 && (
-                                <span className="block text-[9.5px] font-bold leading-tight text-amber-700 dark:text-amber-400">
-                                  <strong className="text-[12px] font-black tabular-nums">{cobertasInternamente}</strong>
+                                <span className="block text-[10px] font-bold leading-tight pp-tom pp-t-vermelho text-[var(--c-tinta)]">
+                                  <strong className="text-[13px] font-black tabular-nums">{cobertasInternamente}</strong>
                                   {" "}já pode cobrir internamente
                                 </span>
                               )}
@@ -1624,64 +1598,78 @@ export function SimulacaoNovoPrestadorTab({ lRows }: Props) {
 
           {/* Projeção financeira e Ponto de Equilíbrio — card separado dos parâmetros de entrada */}
           {laudosCarregados && podeSimular && (
-            <div className="rounded-2xl border border-border bg-card p-4">
-              <div className="mb-3 text-[15px] font-extrabold text-foreground">
-                Projeção financeira - Ponto de Equilíbrio (Break Even)
+            <div className="pp rounded-2xl border border-[var(--pp-border)] bg-[var(--pp-surface)] p-4 sm:p-5 shadow-[var(--pp-sombra)]">
+              <div className="mb-4 flex items-center gap-2">
+                <span className="text-[15px] font-extrabold text-[var(--pp-ink)]">
+                  Projeção financeira - Ponto de Equilíbrio (Break Even)
+                </span>
               </div>
 
               <div className="flex flex-col lg:flex-row lg:items-start lg:gap-6">
               <div>
               {/* Frente 1 — mês real, com os dias úteis e feriados específicos desse calendário */}
-              <div className="mb-1.5 flex items-center gap-1 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
-                <span className="flex h-4 w-4 items-center justify-center rounded-full bg-muted text-[10px] font-black text-foreground">1</span>
+              <div className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-[var(--pp-ink-muted)]">
+                <span className="flex h-4 w-4 items-center justify-center rounded-full bg-[var(--pp-muted)] text-[10px] font-black text-[var(--pp-ink)]">1</span>
                 Projeção específica de {labelMesReferencia}
-                <InfoTooltip ariaLabel="Como a projeção específica do mês é calculada">
-                  <p>Soma, por vaga de horário, só a receita do <strong className="text-foreground">paciente mais rentável</strong> entre os que disputam aquele horário — priorizando sempre quem paga mais.</p>
-                  <p className="mt-2">Projeção mensal usa os <strong className="text-foreground">dias úteis e feriados reais</strong> de {labelMesReferencia} — mesma lógica da Previsão de Receitas. Por isso não bate exatamente com a frente 2 abaixo, que usa uma média fixa de 4,33 semanas/mês.</p>
-                </InfoTooltip>
+                <InfoTip ariaLabel="Como a projeção específica do mês é calculada">
+                  <p>Soma, por vaga de horário, só a receita do <strong className="text-[var(--pp-ink)]">paciente mais rentável</strong> entre os que disputam aquele horário — priorizando sempre quem paga mais.</p>
+                  <p className="mt-2">Projeção mensal usa os <strong className="text-[var(--pp-ink)]">dias úteis e feriados reais</strong> de {labelMesReferencia} — mesma lógica da Previsão de Receitas. Por isso não bate exatamente com a frente 2 abaixo, que usa uma média fixa de 4,33 semanas/mês.</p>
+                </InfoTip>
               </div>
               <div className="sm:max-w-xs">
-                <StatCard tone={!detalheMesEspecifico || detalheMesEspecifico.margem === null || detalheMesEspecifico.margem >= 0 ? "green" : "red"} icon={<Wallet size={14} />} label={`Margem de ${labelMesReferencia}`}>
-                  {detalheMesEspecifico && detalheMesEspecifico.margem !== null ? (
-                    <>
-                      <div className={`text-lg font-black tabular-nums ${detalheMesEspecifico.margem >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
-                        {detalheMesEspecifico.margem >= 0 ? "+" : ""}{fmtReal(detalheMesEspecifico.margem)}
+                {(() => {
+                  const t = !detalheMesEspecifico || detalheMesEspecifico.margem === null || detalheMesEspecifico.margem >= 0 ? "verde" : "vermelho"
+                  return (
+                    <div className={`pp-tom pp-t-${t} flex items-center gap-3 rounded-2xl border border-[var(--pp-border)] bg-[var(--c-suave)] p-3 shadow-sm`}>
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--c-tinta)]/10 text-[var(--c-tinta)]">
+                        <Wallet size={20} />
                       </div>
-                      <div className="text-[11px] text-muted-foreground">Valores brutos {fmtReal(resumoFinanceiro.mensal)} · {fmtReal(resumoFinanceiro.semanal)}/semana</div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="text-lg font-black tabular-nums text-emerald-700 dark:text-emerald-400">{fmtReal(resumoFinanceiro.mensal)}</div>
-                      <div className="text-[11px] text-muted-foreground">100% de presença · sem imposto · {fmtReal(resumoFinanceiro.semanal)}/semana</div>
-                    </>
-                  )}
-                </StatCard>
+                      <div className="flex flex-col leading-tight">
+                        {detalheMesEspecifico && detalheMesEspecifico.margem !== null ? (
+                          <>
+                            <div className="text-[18px] font-black tabular-nums text-[var(--c-tinta)]">
+                              {detalheMesEspecifico.margem >= 0 ? "+" : ""}{fmtReal(detalheMesEspecifico.margem)}
+                            </div>
+                            <div className="text-[11px] font-bold text-[var(--pp-ink)]">Margem de {labelMesReferencia}</div>
+                            <div className="text-[10px] text-[var(--pp-ink-muted)]">Valores brutos {fmtReal(resumoFinanceiro.mensal)} · {fmtReal(resumoFinanceiro.semanal)}/sem</div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="text-[18px] font-black tabular-nums text-[var(--c-tinta)]">{fmtReal(resumoFinanceiro.mensal)}</div>
+                            <div className="text-[11px] font-bold text-[var(--pp-ink)]">Projetado bruto</div>
+                            <div className="text-[10px] text-[var(--pp-ink-muted)]">100% pres. · sem imposto · {fmtReal(resumoFinanceiro.semanal)}/sem</div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })()}
 
                 {detalheMesEspecifico && (
-                  <div className="mt-2 space-y-1 rounded-lg bg-muted/40 px-2.5 py-2 text-[11.5px]">
-                    <div className="flex items-center justify-between text-muted-foreground">
-                      <span>Projetado (100% de presença)</span>
-                      <span className="font-semibold tabular-nums text-foreground">{fmtReal(detalheMesEspecifico.bruto)}</span>
+                  <div className="mt-2 space-y-1 rounded-xl bg-[var(--pp-muted)] px-3 py-2.5 text-[11.5px]">
+                    <div className="flex items-center justify-between text-[var(--pp-ink-muted)]">
+                      <span>Projetado (100% pres.)</span>
+                      <span className="font-semibold tabular-nums text-[var(--pp-ink)]">{fmtReal(detalheMesEspecifico.bruto)}</span>
                     </div>
-                    <div className="flex items-center justify-between text-rose-600 dark:text-rose-400">
-                      <span>− Perda ({cenarioPerdaPct}% falta/ociosidade)</span>
+                    <div className="flex items-center justify-between pp-tom pp-t-vermelho text-[var(--c-tinta)]">
+                      <span>− Perda ({cenarioPerdaPct}%)</span>
                       <span className="font-semibold tabular-nums">− {fmtReal(detalheMesEspecifico.valorPerda)}</span>
                     </div>
-                    <div className="flex items-center justify-between text-rose-600 dark:text-rose-400">
-                      <span>− Imposto ({parametrosGerais?.imposto_faturamento_pct}% faturamento)</span>
+                    <div className="flex items-center justify-between pp-tom pp-t-vermelho text-[var(--c-tinta)]">
+                      <span>− Imposto ({parametrosGerais?.imposto_faturamento_pct}%)</span>
                       <span className="font-semibold tabular-nums">− {fmtReal(detalheMesEspecifico.valorImposto)}</span>
                     </div>
-                    <div className="flex items-center justify-between border-t border-border pt-1 font-bold text-foreground">
+                    <div className="flex items-center justify-between border-t border-[var(--pp-border)] pt-1.5 font-bold text-[var(--pp-ink)]">
                       <span>= Líquido</span>
                       <span className="tabular-nums">{fmtReal(detalheMesEspecifico.liquido)}</span>
                     </div>
                     {detalheMesEspecifico.custo !== null && detalheMesEspecifico.margem !== null && (
                       <>
-                        <div className="flex items-center justify-between text-rose-600 dark:text-rose-400">
-                          <span>− Remuneração do prestador</span>
+                        <div className="flex items-center justify-between pp-tom pp-t-vermelho text-[var(--c-tinta)]">
+                          <span>− Remuneração</span>
                           <span className="font-semibold tabular-nums">− {fmtReal(detalheMesEspecifico.custo)}</span>
                         </div>
-                        <div className={`flex items-center justify-between border-t border-border pt-1 font-black ${detalheMesEspecifico.margem >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
+                        <div className={`flex items-center justify-between border-t border-[var(--pp-border)] pt-1.5 font-black pp-tom ${detalheMesEspecifico.margem >= 0 ? "pp-t-verde text-[var(--c-tinta)]" : "pp-t-vermelho text-[var(--c-tinta)]"}`}>
                           <span>= Margem</span>
                           <span className="tabular-nums">{detalheMesEspecifico.margem >= 0 ? "+" : ""}{fmtReal(detalheMesEspecifico.margem)}</span>
                         </div>
@@ -1690,40 +1678,39 @@ export function SimulacaoNovoPrestadorTab({ lRows }: Props) {
                   </div>
                 )}
 
-                <Button
-                  variant="outline"
-                  size="xs"
-                  className={`mt-2 w-full px-6 ${
+                <button
+                  type="button"
+                  className={`mt-2 w-full rounded-lg border px-6 py-1.5 text-[11px] font-bold transition-colors pp-tom ${
                     detalheMesEspecifico && detalheMesEspecifico.margem !== null && detalheMesEspecifico.margem < 0
-                      ? "border-rose-300 text-rose-700 hover:bg-rose-50 dark:border-rose-700 dark:text-rose-400 dark:hover:bg-rose-950/30"
-                      : "border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+                      ? "pp-t-vermelho border-[var(--c-suave)] bg-[var(--c-suave)] text-[var(--c-tinta)] hover:opacity-80"
+                      : "pp-t-verde border-[var(--c-suave)] bg-[var(--c-suave)] text-[var(--c-tinta)] hover:opacity-80"
                   }`}
                   onClick={() => setDetalheFinanceiroAberto(true)}
                 >
                   Ver detalhe
-                </Button>
+                </button>
               </div>
               </div>
 
               {(breakEvenFixoDisponivel || breakEvenAtendimentoDisponivel) && (
-                <div className="mt-3 border-t border-border pt-3 lg:mt-0 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-6">
+                <div className="mt-3 border-t border-[var(--pp-border)] pt-3 lg:mt-0 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-6">
                   {/* Frente 2 — média mensal padronizada, mesma base usada pelo Ponto de Equilíbrio */}
-                  <div className="mb-1.5 flex items-center gap-1 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
-                    <span className="flex h-4 w-4 items-center justify-center rounded-full bg-muted text-[10px] font-black text-foreground">2</span>
+                  <div className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-[var(--pp-ink-muted)]">
+                    <span className="flex h-4 w-4 items-center justify-center rounded-full bg-[var(--pp-muted)] text-[10px] font-black text-[var(--pp-ink)]">2</span>
                     Projeção média mensal — 4,33 sem/mês e 56,33 sess/mês
-                    <InfoTooltip ariaLabel="Como o Ponto de Equilíbrio é calculado">
+                    <InfoTip ariaLabel="Como o Ponto de Equilíbrio é calculado">
                       {breakEvenFixoDisponivel ? (
                         <>
-                          <p>Margem de <strong className="text-foreground">contribuição</strong>: cobre só o custo fixo mensal do profissional (PJ), sem rateio de sala, recepção, supervisão ou sistema.</p>
-                          <p className="mt-2">Usa o <strong className="text-foreground">valor de sessão médio</strong> desta simulação (receita semanal ÷ vagas com candidato) e a <strong className="text-foreground">perda</strong> escolhida abaixo (falta + ociosidade) — ajuste em "Variáveis &amp; Taxas" o custo mensal e a capacidade diária de cada especialidade.</p>
+                          <p>Margem de <strong className="text-[var(--pp-ink)]">contribuição</strong>: cobre só o custo fixo mensal do profissional (PJ), sem rateio de sala, recepção, supervisão ou sistema.</p>
+                          <p className="mt-2">Usa o <strong className="text-[var(--pp-ink)]">valor de sessão médio</strong> desta simulação (receita semanal ÷ vagas com candidato) e a <strong className="text-[var(--pp-ink)]">perda</strong> escolhida abaixo (falta + ociosidade) — ajuste em "Variáveis &amp; Taxas" o custo mensal e a capacidade diária de cada especialidade.</p>
                           {resultadoBreakEven && projecaoBreakEven && (
                             <>
-                              <p className="mt-2 font-bold text-foreground">Como chega no extrato abaixo:</p>
+                              <p className="mt-2 font-bold text-[var(--pp-ink)]">Como chega no extrato abaixo:</p>
                               <ul className="mt-1 list-disc space-y-1 pl-4">
-                                <li>{fmtReal(resumoFinanceiro.semanal)} ÷ {agendaNovoProf?.slotsComCandidato ?? 0} slot(s)/semana = <strong className="text-foreground">{fmtReal(valorSessaoMedioSimulado)}</strong>/sessão (bruto)</li>
-                                <li>× (1 − {parametrosGerais?.imposto_faturamento_pct}% imposto) = <strong className="text-foreground">{fmtReal(resultadoBreakEven.receitaLiquidaSessao)}</strong>/sessão líquido</li>
-                                <li>{agendaNovoProf?.slotsComCandidato ?? 0} × 4,33 semanas × (1 − {cenarioPerdaPct}% perda) = <strong className="text-foreground">{projecaoBreakEven.sessoesEfetivasMes.toFixed(2)}</strong> sessões/mês</li>
-                                <li>× receita líquida/sessão = <strong className="text-foreground">{fmtReal(projecaoBreakEven.receitaLiquidaMes)}</strong> receita líquida/mês</li>
+                                <li>{fmtReal(resumoFinanceiro.semanal)} ÷ {agendaNovoProf?.slotsComCandidato ?? 0} slot(s)/semana = <strong className="text-[var(--pp-ink)]">{fmtReal(valorSessaoMedioSimulado)}</strong>/sessão (bruto)</li>
+                                <li>× (1 − {parametrosGerais?.imposto_faturamento_pct}% imposto) = <strong className="text-[var(--pp-ink)]">{fmtReal(resultadoBreakEven.receitaLiquidaSessao)}</strong>/sessão líquido</li>
+                                <li>{agendaNovoProf?.slotsComCandidato ?? 0} × 4,33 semanas × (1 − {cenarioPerdaPct}% perda) = <strong className="text-[var(--pp-ink)]">{projecaoBreakEven.sessoesEfetivasMes.toFixed(2)}</strong> sessões/mês</li>
+                                <li>× receita líquida/sessão = <strong className="text-[var(--pp-ink)]">{fmtReal(projecaoBreakEven.receitaLiquidaMes)}</strong> receita líquida/mês</li>
                                 <li>− {fmtReal(resultadoBreakEven.custoMensalTotal)} (custo fixo PJ, dos turnos marcados) = <strong className={projecaoBreakEven.margemMensal >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>{projecaoBreakEven.margemMensal >= 0 ? "+" : ""}{fmtReal(projecaoBreakEven.margemMensal)}</strong> margem</li>
                               </ul>
                             </>
@@ -1731,48 +1718,59 @@ export function SimulacaoNovoPrestadorTab({ lRows }: Props) {
                         </>
                       ) : (
                         <>
-                          <p>Essa especialidade paga o profissional <strong className="text-foreground">por atendimento</strong> (taxa PA), não um valor fixo — o custo cresce junto com o volume, então o Break Even é decidido pela <strong className="text-foreground">margem de uma sessão isolada</strong>, não por um piso de slots/semana.</p>
-                          <p className="mt-2">A <strong className="text-foreground">perda</strong> muda a margem mensal projetada, mas não muda se a especialidade atinge o Break Even — ajuste a taxa PA em "Taxas por Especialidade" e a capacidade padrão em "Valores Padrão".</p>
+                          <p>Essa especialidade paga o profissional <strong className="text-[var(--pp-ink)]">por atendimento</strong> (taxa PA), não um valor fixo — o custo cresce junto com o volume, então o Break Even é decidido pela <strong className="text-[var(--pp-ink)]">margem de uma sessão isolada</strong>, não por um piso de slots/semana.</p>
+                          <p className="mt-2">A <strong className="text-[var(--pp-ink)]">perda</strong> muda a margem mensal projetada, mas não muda se a especialidade atinge o Break Even — ajuste a taxa PA em "Taxas por Especialidade" e a capacidade padrão em "Valores Padrão".</p>
                           {resultadoBreakEvenAtendimento && projecaoBreakEvenAtendimento && (
                             <>
-                              <p className="mt-2 font-bold text-foreground">Como chega no extrato abaixo:</p>
+                              <p className="mt-2 font-bold text-[var(--pp-ink)]">Como chega no extrato abaixo:</p>
                               <ul className="mt-1 list-disc space-y-1 pl-4">
-                                <li>{fmtReal(resumoFinanceiro.semanal)} ÷ {agendaNovoProf?.slotsComCandidato ?? 0} slot(s)/semana = <strong className="text-foreground">{fmtReal(valorSessaoMedioSimulado)}</strong>/sessão (bruto)</li>
-                                <li>× (1 − {parametrosGerais?.imposto_faturamento_pct}% imposto) = <strong className="text-foreground">{fmtReal(resultadoBreakEvenAtendimento.receitaLiquidaSessao)}</strong>/sessão líquido</li>
-                                <li>{agendaNovoProf?.slotsComCandidato ?? 0} × 4,33 semanas × (1 − {cenarioPerdaPct}% perda) = <strong className="text-foreground">{projecaoBreakEvenAtendimento.sessoesEfetivasMes.toFixed(2)}</strong> sessões/mês</li>
-                                <li>× receita líquida/sessão = <strong className="text-foreground">{fmtReal(projecaoBreakEvenAtendimento.receitaLiquidaMes)}</strong> receita líquida/mês</li>
+                                <li>{fmtReal(resumoFinanceiro.semanal)} ÷ {agendaNovoProf?.slotsComCandidato ?? 0} slot(s)/semana = <strong className="text-[var(--pp-ink)]">{fmtReal(valorSessaoMedioSimulado)}</strong>/sessão (bruto)</li>
+                                <li>× (1 − {parametrosGerais?.imposto_faturamento_pct}% imposto) = <strong className="text-[var(--pp-ink)]">{fmtReal(resultadoBreakEvenAtendimento.receitaLiquidaSessao)}</strong>/sessão líquido</li>
+                                <li>{agendaNovoProf?.slotsComCandidato ?? 0} × 4,33 semanas × (1 − {cenarioPerdaPct}% perda) = <strong className="text-[var(--pp-ink)]">{projecaoBreakEvenAtendimento.sessoesEfetivasMes.toFixed(2)}</strong> sessões/mês</li>
+                                <li>× receita líquida/sessão = <strong className="text-[var(--pp-ink)]">{fmtReal(projecaoBreakEvenAtendimento.receitaLiquidaMes)}</strong> receita líquida/mês</li>
                                 <li>− {projecaoBreakEvenAtendimento.sessoesEfetivasMes.toFixed(2)} × {fmtReal(taxaPAEspecialidade)} (taxa PA) = <strong className={projecaoBreakEvenAtendimento.margemMensal >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>{projecaoBreakEvenAtendimento.margemMensal >= 0 ? "+" : ""}{fmtReal(projecaoBreakEvenAtendimento.margemMensal)}</strong> margem</li>
                               </ul>
                             </>
                           )}
                         </>
                       )}
-                    </InfoTooltip>
+                    </InfoTip>
                   </div>
                   {breakEvenFixoDisponivel ? (
                     !resultadoBreakEven || !projecaoBreakEven ? (
-                      <div className="text-[11px] text-muted-foreground">Simule pelo menos 1 vaga com candidato pra calcular o Ponto de Equilíbrio.</div>
+                      <div className="text-[11px] text-[var(--pp-ink-muted)]">Simule pelo menos 1 vaga com candidato pra calcular o Ponto de Equilíbrio.</div>
                     ) : (
-                      <div className="flex flex-col gap-2 sm:max-w-xs">
-                        <StatCard tone={projecaoBreakEven.margemMensal >= 0 ? "green" : "red"} icon={<Wallet size={14} />} label="Margem — Projeção média mensal">
-                          <div className={`text-lg font-black tabular-nums ${projecaoBreakEven.margemMensal >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
-                            {projecaoBreakEven.margemMensal >= 0 ? "+" : ""}{fmtReal(projecaoBreakEven.margemMensal)}
-                          </div>
-                          <div className="text-[11px] text-muted-foreground">Valores brutos {fmtReal(resumoFinanceiro.semanal * SEMANAS_POR_MES)} · {fmtReal(resumoFinanceiro.semanal)}/semana</div>
-                        </StatCard>
+                      <div className="flex flex-col gap-3 sm:max-w-xs">
+                        {(() => {
+                          const t = projecaoBreakEven.margemMensal >= 0 ? "verde" : "vermelho"
+                          return (
+                            <div className={`pp-tom pp-t-${t} flex items-center gap-3 rounded-2xl border border-[var(--pp-border)] bg-[var(--c-suave)] p-3 shadow-sm`}>
+                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--c-tinta)]/10 text-[var(--c-tinta)]">
+                                <Wallet size={20} />
+                              </div>
+                              <div className="flex flex-col leading-tight">
+                                <div className="text-[18px] font-black tabular-nums text-[var(--c-tinta)]">
+                                  {projecaoBreakEven.margemMensal >= 0 ? "+" : ""}{fmtReal(projecaoBreakEven.margemMensal)}
+                                </div>
+                                <div className="text-[11px] font-bold text-[var(--pp-ink)]">Margem média mensal</div>
+                                <div className="text-[10px] text-[var(--pp-ink-muted)]">Valores brutos {fmtReal(resumoFinanceiro.semanal * SEMANAS_POR_MES)} · {fmtReal(resumoFinanceiro.semanal)}/sem</div>
+                              </div>
+                            </div>
+                          )
+                        })()}
 
                         <div className="flex items-center gap-1.5">
-                          <span className="text-[10.5px] font-bold text-muted-foreground">Perda (falta + ociosidade):</span>
+                          <span className="text-[10.5px] font-bold text-[var(--pp-ink-muted)]">Perda (falta + ociosidade):</span>
                           <div className="flex gap-1">
                             {CENARIOS_PERDA_PCT.map(pct => (
                               <button
                                 key={pct}
                                 type="button"
                                 onClick={() => setCenarioPerdaPct(pct)}
-                                className={`rounded-full border px-2.5 py-1 text-[11px] font-bold transition-colors ${
+                                className={`rounded-full border px-2.5 py-1 text-[11px] font-bold transition-colors pp-tom ${
                                   cenarioPerdaPct === pct
-                                    ? "border-sky-400 dark:border-sky-700 bg-sky-50 dark:bg-sky-950/30 text-sky-700 dark:text-sky-400"
-                                    : "border-border bg-card text-muted-foreground hover:bg-muted/50"
+                                    ? "pp-t-azul border-[var(--c-suave)] bg-[var(--c-suave)] text-[var(--c-tinta)]"
+                                    : "border-[var(--pp-border)] bg-[var(--pp-surface)] text-[var(--pp-ink-muted)] hover:bg-[var(--pp-muted)]"
                                 }`}
                               >
                                 {pct}%
@@ -1781,22 +1779,22 @@ export function SimulacaoNovoPrestadorTab({ lRows }: Props) {
                           </div>
                         </div>
 
-                        <StatusPill tone={projecaoBreakEven.atingiuBreakEven ? "green" : "red"} variant="solid" dense className="w-full justify-center">
+                        <StatusPill tone={projecaoBreakEven.atingiuBreakEven ? "green" : "red"} variant="solid" dense className="w-full justify-center rounded-xl shadow-sm border border-[var(--pp-border)]">
                           {projecaoBreakEven.atingiuBreakEven ? "Break Even atingido" : "Break Even não atingido"}
                         </StatusPill>
 
-                        <div className="space-y-1 rounded-lg bg-muted/40 px-2.5 py-2 text-[11.5px]">
-                          <LinhaEquilibrio label="Valor médio da sessão (bruto)" valor={fmtReal(valorSessaoMedioSimulado)} />
+                        <div className="space-y-1 rounded-xl bg-[var(--pp-muted)] px-3 py-2.5 text-[11.5px]">
+                          <LinhaEquilibrio label="Valor médio da sessão" valor={fmtReal(valorSessaoMedioSimulado)} />
                           <LinhaEquilibrio
-                            label={`− Imposto (${parametrosGerais?.imposto_faturamento_pct}% faturamento)`}
+                            label={`− Imposto (${parametrosGerais?.imposto_faturamento_pct}%)`}
                             valor={`− ${fmtReal(valorSessaoMedioSimulado - resultadoBreakEven.receitaLiquidaSessao)}`}
                             tone="neg"
                           />
-                          <LinhaEquilibrio label="= Receita líquida por sessão" valor={fmtReal(resultadoBreakEven.receitaLiquidaSessao)} forte />
-                          <LinhaEquilibrio label="× Sessões efetivas do mês" valor={projecaoBreakEven.sessoesEfetivasMes.toFixed(2)} />
-                          <LinhaEquilibrio label="= Receita líquida do mês" valor={fmtReal(projecaoBreakEven.receitaLiquidaMes)} forte />
+                          <LinhaEquilibrio label="= Receita líquida / sessão" valor={fmtReal(resultadoBreakEven.receitaLiquidaSessao)} forte />
+                          <LinhaEquilibrio label="× Sessões efetivas" valor={projecaoBreakEven.sessoesEfetivasMes.toFixed(2)} />
+                          <LinhaEquilibrio label="= Receita líquida / mês" valor={fmtReal(projecaoBreakEven.receitaLiquidaMes)} forte />
                           <LinhaEquilibrio
-                            label="− Remuneração do prestador"
+                            label="− Remuneração"
                             valor={`− ${fmtReal(resultadoBreakEven.custoMensalTotal)}`}
                             tone="neg"
                           />
@@ -1808,37 +1806,48 @@ export function SimulacaoNovoPrestadorTab({ lRows }: Props) {
                           />
                         </div>
 
-                        <div className="text-[11px] text-muted-foreground">
-                          Piso mínimo: <strong className="text-foreground">{resultadoBreakEven.slotsSemanaMinimo} slot(s)/semana</strong> ({Math.round(resultadoBreakEven.alocacaoPercentual * 100)}% da capacidade)
-                          {" · "}simulado: <strong className="text-foreground">{agendaNovoProf?.slotsComCandidato ?? 0} slot(s)/semana</strong>
+                        <div className="text-[11px] text-[var(--pp-ink-muted)]">
+                          Piso mínimo: <strong className="text-[var(--pp-ink)]">{resultadoBreakEven.slotsSemanaMinimo} slot(s)/semana</strong> ({Math.round(resultadoBreakEven.alocacaoPercentual * 100)}% da capacidade)
+                          {" · "}simulado: <strong className="text-[var(--pp-ink)]">{agendaNovoProf?.slotsComCandidato ?? 0} slot(s)/semana</strong>
                         </div>
                       </div>
                     )
                   ) : (
                     !resultadoBreakEvenAtendimento || !projecaoBreakEvenAtendimento ? (
-                      <div className="text-[11px] text-muted-foreground">Simule pelo menos 1 vaga com candidato pra calcular o Ponto de Equilíbrio.</div>
+                      <div className="text-[11px] text-[var(--pp-ink-muted)]">Simule pelo menos 1 vaga com candidato pra calcular o Ponto de Equilíbrio.</div>
                     ) : (
-                      <div className="flex flex-col gap-2 sm:max-w-xs">
-                        <StatCard tone={projecaoBreakEvenAtendimento.margemMensal >= 0 ? "green" : "red"} icon={<Wallet size={14} />} label="Margem — Projeção média mensal">
-                          <div className={`text-lg font-black tabular-nums ${projecaoBreakEvenAtendimento.margemMensal >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
-                            {projecaoBreakEvenAtendimento.margemMensal >= 0 ? "+" : ""}{fmtReal(projecaoBreakEvenAtendimento.margemMensal)}
-                          </div>
-                          <div className="text-[11px] text-muted-foreground">Valores brutos {fmtReal(resumoFinanceiro.semanal * SEMANAS_POR_MES)} · {fmtReal(resumoFinanceiro.semanal)}/semana</div>
-                          <div className="text-[11px] text-muted-foreground">Líquido {fmtReal(projecaoBreakEvenAtendimento.receitaLiquidaMes)} · {projecaoBreakEvenAtendimento.sessoesEfetivasMes.toFixed(2)} sessões/mês</div>
-                        </StatCard>
+                      <div className="flex flex-col gap-3 sm:max-w-xs">
+                        {(() => {
+                          const t = projecaoBreakEvenAtendimento.margemMensal >= 0 ? "verde" : "vermelho"
+                          return (
+                            <div className={`pp-tom pp-t-${t} flex items-center gap-3 rounded-2xl border border-[var(--pp-border)] bg-[var(--c-suave)] p-3 shadow-sm`}>
+                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--c-tinta)]/10 text-[var(--c-tinta)]">
+                                <Wallet size={20} />
+                              </div>
+                              <div className="flex flex-col leading-tight">
+                                <div className="text-[18px] font-black tabular-nums text-[var(--c-tinta)]">
+                                  {projecaoBreakEvenAtendimento.margemMensal >= 0 ? "+" : ""}{fmtReal(projecaoBreakEvenAtendimento.margemMensal)}
+                                </div>
+                                <div className="text-[11px] font-bold text-[var(--pp-ink)]">Margem média mensal</div>
+                                <div className="text-[10px] text-[var(--pp-ink-muted)]">Valores brutos {fmtReal(resumoFinanceiro.semanal * SEMANAS_POR_MES)} · {fmtReal(resumoFinanceiro.semanal)}/sem</div>
+                                <div className="text-[10px] text-[var(--pp-ink-muted)]">Líquido {fmtReal(projecaoBreakEvenAtendimento.receitaLiquidaMes)} · {projecaoBreakEvenAtendimento.sessoesEfetivasMes.toFixed(2)} sessões/mês</div>
+                              </div>
+                            </div>
+                          )
+                        })()}
 
                         <div className="flex items-center gap-1.5">
-                          <span className="text-[10.5px] font-bold text-muted-foreground">Perda (falta + ociosidade):</span>
+                          <span className="text-[10.5px] font-bold text-[var(--pp-ink-muted)]">Perda (falta + ociosidade):</span>
                           <div className="flex gap-1">
                             {CENARIOS_PERDA_PCT.map(pct => (
                               <button
                                 key={pct}
                                 type="button"
                                 onClick={() => setCenarioPerdaPct(pct)}
-                                className={`rounded-full border px-2.5 py-1 text-[11px] font-bold transition-colors ${
+                                className={`rounded-full border px-2.5 py-1 text-[11px] font-bold transition-colors pp-tom ${
                                   cenarioPerdaPct === pct
-                                    ? "border-sky-400 dark:border-sky-700 bg-sky-50 dark:bg-sky-950/30 text-sky-700 dark:text-sky-400"
-                                    : "border-border bg-card text-muted-foreground hover:bg-muted/50"
+                                    ? "pp-t-azul border-[var(--c-suave)] bg-[var(--c-suave)] text-[var(--c-tinta)]"
+                                    : "border-[var(--pp-border)] bg-[var(--pp-surface)] text-[var(--pp-ink-muted)] hover:bg-[var(--pp-muted)]"
                                 }`}
                               >
                                 {pct}%
@@ -1847,30 +1856,30 @@ export function SimulacaoNovoPrestadorTab({ lRows }: Props) {
                           </div>
                         </div>
 
-                        <StatusPill tone={resultadoBreakEvenAtendimento.atingiuBreakEven ? "green" : "red"} variant="solid" dense className="w-full justify-center">
+                        <StatusPill tone={resultadoBreakEvenAtendimento.atingiuBreakEven ? "green" : "red"} variant="solid" dense className="w-full justify-center rounded-xl shadow-sm border border-[var(--pp-border)]">
                           {resultadoBreakEvenAtendimento.atingiuBreakEven ? "Break Even atingido" : "Break Even não atingido"}
                         </StatusPill>
 
-                        <div className={`flex items-center justify-center gap-1 text-center text-sm font-black tabular-nums ${resultadoBreakEvenAtendimento.margemPorSessao >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
+                        <div className={`flex items-center justify-center gap-1 text-center text-sm font-black tabular-nums pp-tom ${resultadoBreakEvenAtendimento.margemPorSessao >= 0 ? "pp-t-verde text-[var(--c-tinta)]" : "pp-t-vermelho text-[var(--c-tinta)]"}`}>
                           Margem por sessão: {resultadoBreakEvenAtendimento.margemPorSessao >= 0 ? "+" : ""}{fmtReal(resultadoBreakEvenAtendimento.margemPorSessao)}
                           <InfoTip ariaLabel="Por que o Break Even não muda com o cenário de perda">
                             <p>Esse aviso aparece só no modelo "por atendimento" (especialidades que não são Fono/TO/Musicoterapia) e explica por que o selo "Break Even atingido/não atingido" fica igual não importa qual % de perda (20/25/30%) você escolher ali em cima.</p>
-                            <p className="mt-2">O motivo: nesse modelo, tanto a receita quanto o custo são <strong className="text-foreground">por sessão realizada</strong> — se uma sessão não acontece (falta/ociosidade), a clínica não fatura aquela sessão, mas também não paga o profissional por ela (paga a taxa PA só pelo que foi atendido). Então perda reduz receita e custo na <strong className="text-foreground">mesma proporção</strong>, e o veredito "dá lucro ou não" já fica decidido numa única sessão isolada.</p>
+                            <p className="mt-2">O motivo: nesse modelo, tanto a receita quanto o custo são <strong className="text-[var(--pp-ink)]">por sessão realizada</strong> — se uma sessão não acontece (falta/ociosidade), a clínica não fatura aquela sessão, mas também não paga o profissional por ela (paga a taxa PA só pelo que foi atendido). Então perda reduz receita e custo na <strong className="text-[var(--pp-ink)]">mesma proporção</strong>, e o veredito "dá lucro ou não" já fica decidido numa única sessão isolada.</p>
                           </InfoTip>
                         </div>
 
-                        <div className="space-y-1 rounded-lg bg-muted/40 px-2.5 py-2 text-[11.5px]">
-                          <LinhaEquilibrio label="Valor médio da sessão (bruto)" valor={fmtReal(valorSessaoMedioSimulado)} />
+                        <div className="space-y-1 rounded-xl bg-[var(--pp-muted)] px-3 py-2.5 text-[11.5px]">
+                          <LinhaEquilibrio label="Valor médio da sessão" valor={fmtReal(valorSessaoMedioSimulado)} />
                           <LinhaEquilibrio
-                            label={`− Imposto (${parametrosGerais?.imposto_faturamento_pct}% faturamento)`}
+                            label={`− Imposto (${parametrosGerais?.imposto_faturamento_pct}%)`}
                             valor={`− ${fmtReal(valorSessaoMedioSimulado - resultadoBreakEvenAtendimento.receitaLiquidaSessao)}`}
                             tone="neg"
                           />
-                          <LinhaEquilibrio label="= Receita líquida por sessão" valor={fmtReal(resultadoBreakEvenAtendimento.receitaLiquidaSessao)} forte />
-                          <LinhaEquilibrio label="× Sessões efetivas do mês" valor={projecaoBreakEvenAtendimento.sessoesEfetivasMes.toFixed(2)} />
-                          <LinhaEquilibrio label="= Receita líquida do mês" valor={fmtReal(projecaoBreakEvenAtendimento.receitaLiquidaMes)} forte />
+                          <LinhaEquilibrio label="= Receita líquida / sessão" valor={fmtReal(resultadoBreakEvenAtendimento.receitaLiquidaSessao)} forte />
+                          <LinhaEquilibrio label="× Sessões efetivas" valor={projecaoBreakEvenAtendimento.sessoesEfetivasMes.toFixed(2)} />
+                          <LinhaEquilibrio label="= Receita líquida / mês" valor={fmtReal(projecaoBreakEvenAtendimento.receitaLiquidaMes)} forte />
                           <LinhaEquilibrio
-                            label="− Remuneração do prestador"
+                            label="− Remuneração"
                             valor={`− ${fmtReal(projecaoBreakEvenAtendimento.custoVariavelMes)}`}
                             tone="neg"
                           />
@@ -1882,9 +1891,9 @@ export function SimulacaoNovoPrestadorTab({ lRows }: Props) {
                           />
                         </div>
 
-                        <div className="text-[11px] text-muted-foreground">
-                          {Math.round((resultadoBreakEvenAtendimento.capacidadeMensal > 0 ? (agendaNovoProf!.slotsComCandidato * 4.33 / resultadoBreakEvenAtendimento.capacidadeMensal) * 100 : 0))}% da capacidade de referência (56,33 sessões/mês)
-                          {" · "}simulado: <strong className="text-foreground">{agendaNovoProf?.slotsComCandidato ?? 0} slot(s)/semana</strong>
+                        <div className="text-[11px] text-[var(--pp-ink-muted)]">
+                          {Math.round((resultadoBreakEvenAtendimento.capacidadeMensal > 0 ? (agendaNovoProf!.slotsComCandidato * 4.33 / resultadoBreakEvenAtendimento.capacidadeMensal) * 100 : 0))}% da capacidade de referência (56,33 sess/mês)
+                          {" · "}simulado: <strong className="text-[var(--pp-ink)]">{agendaNovoProf?.slotsComCandidato ?? 0} slot(s)/semana</strong>
                         </div>
                       </div>
                     )
@@ -1897,13 +1906,13 @@ export function SimulacaoNovoPrestadorTab({ lRows }: Props) {
 
           {/* SEÇÃO 2 — detalhamento da opção selecionada acima */}
           {agendaNovoProf && agendaNovoProf.totalSlots > 0 && (
-            <div className="overflow-hidden rounded-2xl border border-border bg-card">
-              <div className="flex flex-wrap items-center gap-2 border-b border-border bg-muted px-4 py-3">
-                <span className="text-sm font-extrabold text-foreground">Detalhamento — {unidadeFixada || "Plano recomendado (misto)"}</span>
-                <span className="ml-auto flex items-center gap-1 text-[11px] text-muted-foreground">
+            <div className="pp overflow-hidden rounded-2xl border border-[var(--pp-border)] bg-[var(--pp-surface)] shadow-[var(--pp-sombra)]">
+              <div className="flex flex-wrap items-center gap-2 border-b border-[var(--pp-border)] bg-[var(--pp-muted)] px-4 py-3">
+                <span className="text-sm font-extrabold text-[var(--pp-ink)]">Detalhamento — {unidadeFixada || "Plano recomendado (misto)"}</span>
+                <span className="ml-auto flex items-center gap-1 text-[11px] text-[var(--pp-ink-muted)]">
                   {nPacientesExibidos} pacientes · {agendaNovoProf.slotsComCandidato} vaga(s) de horário · {Math.round((agendaNovoProf.slotsComCandidato / agendaNovoProf.totalSlots) * 100)}% de ocupação
                   <InfoTip ariaLabel="O que conta como vaga de horário">
-                    <p><strong className="text-foreground">Vagas de horário</strong> são os horários distintos do novo profissional com pelo menos um candidato.</p>
+                    <p><strong className="text-[var(--pp-ink)]">Vagas de horário</strong> são os horários distintos do novo profissional com pelo menos um candidato.</p>
                     <p className="mt-2">Diferente do total de candidaturas na tabela "Sessões e candidatos" abaixo, já que mais de um paciente pode disputar a mesma vaga.</p>
                   </InfoTip>
                 </span>
@@ -1912,32 +1921,32 @@ export function SimulacaoNovoPrestadorTab({ lRows }: Props) {
               <div className="flex flex-col gap-4 p-4">
                 <div className="flex flex-col xl:flex-row gap-4 items-start">
                 {/* Agenda do novo profissional */}
-                <div className="w-fit max-w-full min-w-0 rounded-xl bg-muted/40 p-4">
-                  <div className="mb-2 flex items-center justify-between gap-2">
-                    <span className="text-sm font-extrabold text-foreground">Agenda do novo profissional</span>
-                    <div className="flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
+                <div className="w-fit max-w-full min-w-0 rounded-2xl bg-[var(--pp-muted)] p-5">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                    <span className="text-sm font-extrabold text-[var(--pp-ink)]">Agenda do novo profissional</span>
+                    <div className="flex flex-wrap items-center gap-3 text-[11px] text-[var(--pp-ink-muted)]">
                       <span className="inline-flex items-center gap-1.5">
-                        <span className="inline-block h-2.5 w-2.5 rounded-sm bg-sky-400 dark:bg-sky-500" />
+                        <span className="inline-block h-3 w-3 rounded-md pp-tom pp-t-azul bg-[var(--c-suave)]" />
                         Candidato(s)
                       </span>
                       <span className="inline-flex items-center gap-1.5">
-                        <span className="inline-block h-2.5 w-2.5 rounded-sm bg-amber-100 dark:bg-amber-900/40 ring-1 ring-amber-400 dark:ring-amber-700" />
+                        <span className="inline-block h-3 w-3 rounded-md pp-tom pp-t-ambar bg-[var(--c-suave)]" />
                         Parcialmente coberto
                         <InfoTip ariaLabel="O que significa uma vaga parcialmente coberta">
-                          <p>Dessa vaga, <strong className="text-foreground">parte dos candidatos</strong> já é atendida pela capacidade interna, e a <strong className="text-foreground">quantidade mostrada</strong> é quem ainda precisaria da contratação.</p>
+                          <p>Dessa vaga, <strong className="text-[var(--pp-ink)]">parte dos candidatos</strong> já é atendida pela capacidade interna, e a <strong className="text-[var(--pp-ink)]">quantidade mostrada</strong> é quem ainda precisaria da contratação.</p>
                           <p className="mt-2">Não dá pra saber qual candidato específico já está coberto — por isso aparece só a contagem, sem nome.</p>
                         </InfoTip>
                       </span>
                       <span className="inline-flex items-center gap-1.5">
-                        <span className="inline-block h-2.5 w-2.5 rounded-sm bg-rose-100 dark:bg-rose-950/40 ring-1 ring-rose-400 dark:ring-rose-700" />
+                        <span className="inline-block h-3 w-3 rounded-md pp-tom pp-t-vermelho bg-[var(--c-suave)]" />
                         Totalmente coberto sem contratar
                         <InfoTip ariaLabel="O que significa uma vaga totalmente coberta sem contratar">
-                          <p>Essa vaga tem <strong className="text-foreground">candidato(s)</strong>, mas a capacidade interna já cobre todos eles — contratando ou não, quem já está na clínica vai atender.</p>
+                          <p>Essa vaga tem <strong className="text-[var(--pp-ink)]">candidato(s)</strong>, mas a capacidade interna já cobre todos eles — contratando ou não, quem já está na clínica vai atender.</p>
                           <p className="mt-2">Por isso não entra na projeção financeira nem na carga semanal do novo profissional.</p>
                         </InfoTip>
                       </span>
                       <span className="inline-flex items-center gap-1.5">
-                        <span className="inline-block h-2.5 w-2.5 rounded-sm border border-border bg-muted" />
+                        <span className="inline-block h-3 w-3 rounded-md border border-dashed border-[var(--pp-border)]" />
                         Livre
                       </span>
                     </div>
@@ -1947,7 +1956,7 @@ export function SimulacaoNovoPrestadorTab({ lRows }: Props) {
                       ocupam quase todo o card, então a grade de 5 dias também
                       precisa rolar, e sem esse aviso a Sexta cortada parecia bug
                       em vez de "role para o lado" (2026-08-27). */}
-                  <div className="mb-1 text-[10px] font-bold text-muted-foreground">role para o lado →</div>
+                  <div className="mb-2 text-[10px] font-bold text-[var(--pp-ink-muted)]">role para o lado →</div>
                   <div className="overflow-x-auto">
                     {/* border-spacing-y sutil (0.5 = 2px) — um respiro mínimo
                         entre sessões e entre a barra de unidade e a 1ª sessão
@@ -1959,7 +1968,7 @@ export function SimulacaoNovoPrestadorTab({ lRows }: Props) {
                         <tr>
                           <th className="w-14" />
                           {diasAgendas.map(dia => (
-                            <th key={dia} className="min-w-[128px] pb-1 text-center text-[12px] font-extrabold uppercase text-foreground">{diaCurto(dia)}</th>
+                            <th key={dia} className="min-w-[128px] pb-1 text-center text-[12px] font-extrabold uppercase text-[var(--pp-ink)]">{diaCurto(dia)}</th>
                           ))}
                         </tr>
                       </thead>
@@ -2012,7 +2021,7 @@ export function SimulacaoNovoPrestadorTab({ lRows }: Props) {
                           </tr>
                           {horasTurno.map(hora => (
                           <tr key={hora}>
-                            <td className="rounded-md bg-card px-2 py-1 text-right text-[13px] font-bold tabular-nums text-foreground">{hora}</td>
+                            <td className="rounded-md bg-[var(--pp-surface)] px-2 py-1 text-right text-[13px] font-bold tabular-nums text-[var(--pp-ink)]">{hora}</td>
                             {diasAgendas.map(dia => {
                               const chave = `${dia}|||${hora}`
                               const celula = agendaNovoProf?.grade[chave]
@@ -2026,7 +2035,7 @@ export function SimulacaoNovoPrestadorTab({ lRows }: Props) {
                                 // "sumir" — parecia espaço em branco puro ao lado dos
                                 // cartões coloridos. Borda tracejada discreta em vez de
                                 // sólida invisível (só visual, sem mudar nenhum cálculo).
-                                return <td key={dia}><div className="h-9 rounded-md border border-dashed border-border/40" /></td>
+                                return <td key={dia}><div className="h-9 rounded-lg border border-dashed border-[var(--pp-border)]" /></td>
                               }
                               if (qtdRestante === 0) {
                                 return (
@@ -2035,22 +2044,21 @@ export function SimulacaoNovoPrestadorTab({ lRows }: Props) {
                                       type="button"
                                       onClick={() => setVagaCobertaAberta({ dia, hora, unidade: cobertura!.unidade, candidatos: cobertura!.candidatos })}
                                       title="Vaga já coberta pela capacidade interna — contratar aqui não mudaria a ocupação"
-                                      className="flex h-9 w-full cursor-pointer flex-col items-center justify-center gap-0.5 rounded-md border border-rose-300 bg-rose-50 px-1.5 text-center hover:brightness-95 dark:border-rose-800 dark:bg-rose-950/40"
+                                      className="flex h-9 w-full cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border border-[var(--pp-border)] pp-tom pp-t-vermelho bg-[var(--c-suave)] px-1.5 text-center hover:brightness-95"
                                     >
                                       {qtdCoberta === 1 ? (
-                                        <div className="text-[10.5px] font-bold leading-tight text-rose-800 dark:text-rose-300">{fmtName(cobertura!.candidatos[0].pac)}</div>
+                                        <div className="text-[10.5px] font-bold leading-tight text-[var(--c-tinta)]">{fmtName(cobertura!.candidatos[0].pac)}</div>
                                       ) : (
-                                        <div className="text-sm font-black leading-none text-rose-800 dark:text-rose-300">{qtdCoberta}</div>
+                                        <div className="text-sm font-black leading-none text-[var(--c-tinta)]">{qtdCoberta}</div>
                                       )}
-                                      <div className="text-[8.5px] font-semibold uppercase tracking-wide text-rose-700 dark:text-rose-400 opacity-90">sem contratar</div>
+                                      <div className="text-[8.5px] font-semibold uppercase tracking-wide text-[var(--c-tinta)] opacity-90">sem contratar</div>
                                     </button>
                                   </td>
                                 )
                               }
-                              const cor = estiloUnidade(celula!.unidade)
                               const corCelula = ambiguo
-                                ? { border: "border-amber-300 dark:border-amber-800", bg: "bg-amber-50 dark:bg-amber-900/30", text: "text-amber-900 dark:text-amber-200" }
-                                : { border: "border-sky-200 dark:border-sky-800", bg: cor.bg, text: cor.text }
+                                ? { border: "border-[var(--pp-border)]", bg: "pp-tom pp-t-ambar bg-[var(--c-suave)]", text: "text-[var(--c-tinta)]" }
+                                : { border: "border-[var(--pp-border)]", bg: "pp-tom pp-t-azul bg-[var(--c-suave)]", text: "text-[var(--c-tinta)]" }
                               const totalNaVaga = qtdRestante + qtdCoberta
                               const vagaDaCelula = vagaPorDiaHora.get(`${dia}|||${hora}`)
                               return (
@@ -2060,7 +2068,7 @@ export function SimulacaoNovoPrestadorTab({ lRows }: Props) {
                                     disabled={!vagaDaCelula}
                                     onClick={() => vagaDaCelula && abrirVagaGrade(dia, vagaDaCelula, ambiguo ? { unidade: cobertura!.unidade, candidatos: cobertura!.candidatos } : undefined)}
                                     title={ambiguo ? `${totalNaVaga} candidato(s) disputam esta vaga: ${qtdCoberta} já está(ão) coberto(s) pela capacidade interna, ${qtdRestante} precisaria(m) da contratação` : undefined}
-                                    className={`flex w-full flex-col items-center justify-center gap-0.5 rounded-md border px-1.5 text-center ${ambiguo ? "h-14" : "h-9"} ${corCelula.border} ${corCelula.bg} ${vagaDaCelula ? "cursor-pointer hover:brightness-95" : "cursor-default"}`}
+                                    className={`flex w-full flex-col items-center justify-center gap-0.5 rounded-lg border px-1.5 text-center ${ambiguo ? "h-14" : "h-9"} ${corCelula.border} ${corCelula.bg} ${vagaDaCelula ? "cursor-pointer hover:brightness-95" : "cursor-default"}`}
                                   >
                                     {!ambiguo && qtdRestante === 1 ? (
                                       <div className={`text-[10.5px] font-bold leading-tight ${corCelula.text}`}>{fmtName(celula!.candidatos[0].pac)}</div>
@@ -2068,10 +2076,10 @@ export function SimulacaoNovoPrestadorTab({ lRows }: Props) {
                                       <>
                                         <div className={`text-[12px] font-black leading-none ${corCelula.text}`}>{totalNaVaga} candidato(s)</div>
                                         <div className="flex flex-col items-center gap-0.5">
-                                          <span className="rounded-full bg-rose-100 px-1.5 py-px text-[8.5px] font-bold leading-tight text-rose-700 dark:bg-rose-900/50 dark:text-rose-300">
+                                          <span className="rounded-full bg-white/40 px-1.5 py-px text-[8.5px] font-bold leading-tight text-[var(--c-tinta)]">
                                             {qtdCoberta} já coberto(s)
                                           </span>
-                                          <span className="rounded-full bg-sky-100 px-1.5 py-px text-[8.5px] font-bold leading-tight text-sky-700 dark:bg-sky-900/50 dark:text-sky-300">
+                                          <span className="rounded-full bg-white/40 px-1.5 py-px text-[8.5px] font-bold leading-tight text-[var(--c-tinta)]">
                                             {qtdRestante} a contratar
                                           </span>
                                         </div>
@@ -2102,9 +2110,9 @@ export function SimulacaoNovoPrestadorTab({ lRows }: Props) {
                       novo profissional" numa tela de notebook (~1366-1440px),
                       cortando a Sexta-feira da grade. O donut (170px) cabe
                       inteiro nos 220px - 32px de padding = 188px. */}
-                  <div className="w-full xl:w-[220px] shrink-0 rounded-xl bg-muted/40 p-4">
-                    <div className="text-sm font-extrabold text-foreground">Carga semanal</div>
-                    <div className="mb-3 text-[11px] text-muted-foreground">Novo profissional hipotético</div>
+                  <div className="w-full xl:w-[220px] shrink-0 rounded-2xl bg-[var(--pp-muted)] p-5">
+                    <div className="text-sm font-extrabold text-[var(--pp-ink)]">Carga semanal</div>
+                    <div className="mb-3 text-[11px] text-[var(--pp-ink-muted)]">Novo profissional hipotético</div>
                     <div className="relative mx-auto aspect-square w-[170px]">
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
@@ -2124,38 +2132,38 @@ export function SimulacaoNovoPrestadorTab({ lRows }: Props) {
                         <RechartsTooltip formatter={(val, name) => [`${val ?? 0} slot(s)`, name]} contentStyle={{ fontSize: "11px", borderRadius: "8px" }} />
                       </PieChart>
                     </ResponsiveContainer>
-                    <div className="absolute inset-0 flex items-center justify-center text-2xl font-black text-foreground">
+                    <div className="absolute inset-0 flex items-center justify-center text-2xl font-black text-[var(--pp-ink)]">
                       {Math.round((agendaNovoProf.slotsComCandidato / agendaNovoProf.totalSlots) * 100)}%
                     </div>
                   </div>
                   <div className="mt-4 flex flex-col gap-2">
-                    <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/30 px-3 py-2">
-                      <div className="text-xl font-extrabold text-emerald-700 dark:text-emerald-400">{fmtH(agendaNovoProf.chOcupMin / 60)}</div>
-                      <div className="text-[11px] text-emerald-700 dark:text-emerald-400">com candidato</div>
+                    <div className="rounded-xl pp-tom pp-t-verde bg-[var(--c-suave)] px-3 py-2">
+                      <div className="text-xl font-extrabold text-[var(--c-tinta)]">{fmtH(agendaNovoProf.chOcupMin / 60)}</div>
+                      <div className="text-[11px] font-medium text-[var(--c-tinta)] opacity-90">com candidato</div>
                     </div>
-                    <div className="rounded-lg bg-rose-50 dark:bg-rose-950/30 px-3 py-2">
-                      <div className="text-xl font-extrabold text-rose-700 dark:text-rose-400">{fmtH(agendaNovoProf.chLivreMin / 60)}</div>
-                      <div className="text-[11px] text-rose-700 dark:text-rose-400">livre/ociosa</div>
+                    <div className="rounded-xl pp-tom pp-t-vermelho bg-[var(--c-suave)] px-3 py-2">
+                      <div className="text-xl font-extrabold text-[var(--c-tinta)]">{fmtH(agendaNovoProf.chLivreMin / 60)}</div>
+                      <div className="text-[11px] font-medium text-[var(--c-tinta)] opacity-90">livre/ociosa</div>
                     </div>
                   </div>
-                  <div className="mt-3 text-center text-[12px] text-muted-foreground">
-                    CH total: <strong className="text-foreground">{fmtH(agendaNovoProf.chTotalMin / 60)}</strong>
+                  <div className="mt-4 text-center text-[12px] text-[var(--pp-ink-muted)]">
+                    CH total: <strong className="text-[var(--pp-ink)]">{fmtH(agendaNovoProf.chTotalMin / 60)}</strong>
                   </div>
 
                   {breakEvenFixoDisponivel && projecaoBreakEven && (
-                    <div className="mt-3 flex items-center justify-center gap-1.5 border-t border-border pt-3">
-                      <span className="text-[11px] font-bold text-muted-foreground">Break Even:</span>
-                      <StatusPill tone={projecaoBreakEven.atingiuBreakEven ? "green" : "red"} variant="solid" dense>
+                    <div className="mt-3 flex items-center justify-center gap-1.5 border-t border-[var(--pp-border)] pt-3">
+                      <span className="text-[11px] font-bold text-[var(--pp-ink-muted)]">Break Even:</span>
+                      <span className={`pp-pilula-bola ${projecaoBreakEven.atingiuBreakEven ? "pp-tom pp-t-verde bg-[var(--c-suave)] text-[var(--c-tinta)]" : "pp-tom pp-t-vermelho bg-[var(--c-suave)] text-[var(--c-tinta)]"}`}>
                         {projecaoBreakEven.atingiuBreakEven ? "Atingido" : "Não atingido"}
-                      </StatusPill>
+                      </span>
                     </div>
                   )}
                   {breakEvenAtendimentoDisponivel && resultadoBreakEvenAtendimento && (
-                    <div className="mt-3 flex items-center justify-center gap-1.5 border-t border-border pt-3">
-                      <span className="text-[11px] font-bold text-muted-foreground">Break Even:</span>
-                      <StatusPill tone={resultadoBreakEvenAtendimento.atingiuBreakEven ? "green" : "red"} variant="solid" dense>
+                    <div className="mt-3 flex items-center justify-center gap-1.5 border-t border-[var(--pp-border)] pt-3">
+                      <span className="text-[11px] font-bold text-[var(--pp-ink-muted)]">Break Even:</span>
+                      <span className={`pp-pilula-bola ${resultadoBreakEvenAtendimento.atingiuBreakEven ? "pp-tom pp-t-verde bg-[var(--c-suave)] text-[var(--c-tinta)]" : "pp-tom pp-t-vermelho bg-[var(--c-suave)] text-[var(--c-tinta)]"}`}>
                         {resultadoBreakEvenAtendimento.atingiuBreakEven ? "Atingido" : "Não atingido"}
-                      </StatusPill>
+                      </span>
                     </div>
                   )}
                 </div>
@@ -2163,9 +2171,9 @@ export function SimulacaoNovoPrestadorTab({ lRows }: Props) {
                   {/* Ocupação por dia — só 4 colunas compactas, não precisa da
                       largura generosa das outras duas seções ao lado. */}
                   <div className="flex w-full flex-col gap-2 min-w-0 xl:w-[320px] xl:shrink-0">
-                  <div className="rounded-xl bg-muted/40 p-4">
-                    <div className="text-sm font-extrabold text-foreground">Ocupação por dia</div>
-                    <div className="mb-3 text-[11px] text-muted-foreground">Novo profissional hipotético</div>
+                  <div className="rounded-2xl bg-[var(--pp-muted)] p-5">
+                    <div className="text-sm font-extrabold text-[var(--pp-ink)]">Ocupação por dia</div>
+                    <div className="mb-3 text-[11px] text-[var(--pp-ink-muted)]">Novo profissional hipotético</div>
                     <table className="w-full table-fixed text-[13px]">
                     <colgroup>
                       <col className="w-[68px]" />
@@ -2174,23 +2182,23 @@ export function SimulacaoNovoPrestadorTab({ lRows }: Props) {
                       <col className="w-[60px]" />
                     </colgroup>
                     <thead>
-                      <tr className="border-b border-border">
-                        <th className="whitespace-nowrap pb-2 pr-2 text-left text-[11px] font-bold text-muted-foreground">Dia</th>
-                        <th className="pb-2 pr-2 text-left text-[11px] font-bold text-muted-foreground">Unidade</th>
-                        <th className="pb-2 pr-2 text-center text-[11px] font-bold whitespace-nowrap text-muted-foreground">Sessões</th>
-                        <th className="pb-2 text-right text-[11px] font-bold whitespace-nowrap text-muted-foreground">% ocup.</th>
+                      <tr className="border-b border-[var(--pp-border)]">
+                        <th className="whitespace-nowrap pb-2 pr-2 text-left text-[11px] font-bold text-[var(--pp-ink-muted)]">Dia</th>
+                        <th className="pb-2 pr-2 text-left text-[11px] font-bold text-[var(--pp-ink-muted)]">Unidade</th>
+                        <th className="pb-2 pr-2 text-center text-[11px] font-bold whitespace-nowrap text-[var(--pp-ink-muted)]">Sessões</th>
+                        <th className="pb-2 text-right text-[11px] font-bold whitespace-nowrap text-[var(--pp-ink-muted)]">% ocup.</th>
                       </tr>
                     </thead>
                     <tbody>
                       {agendaNovoProf.porDia.map(row => (
-                        <tr key={row.dia} className="border-b border-border last:border-b-0">
-                          <td className="whitespace-nowrap py-2 pr-2 font-bold text-foreground">{diaCurto(row.dia)}</td>
-                          <td className="truncate py-2 pr-2 text-foreground">{row.unidades}</td>
-                          <td className="whitespace-nowrap py-2 pr-2 text-center tabular-nums text-foreground">{row.sessoes}/{row.totalSlots}</td>
+                        <tr key={row.dia} className="border-b border-[var(--pp-border)] last:border-b-0">
+                          <td className="whitespace-nowrap py-2 pr-2 font-bold text-[var(--pp-ink)]">{diaCurto(row.dia)}</td>
+                          <td className="truncate py-2 pr-2 text-[var(--pp-ink)]">{row.unidades}</td>
+                          <td className="whitespace-nowrap py-2 pr-2 text-center tabular-nums text-[var(--pp-ink)]">{row.sessoes}/{row.totalSlots}</td>
                           <td className="py-2 text-right">
-                            <StatusPill tone={row.pct >= 70 ? "green" : row.pct > 50 ? "amber" : "red"} variant="solid" dense>
+                            <span className={`pp-pilula-bola ${row.pct >= 70 ? "pp-tom pp-t-verde bg-[var(--c-suave)] text-[var(--c-tinta)]" : row.pct > 50 ? "pp-tom pp-t-ambar bg-[var(--c-suave)] text-[var(--c-tinta)]" : "pp-tom pp-t-vermelho bg-[var(--c-suave)] text-[var(--c-tinta)]"}`}>
                               {row.pct.toFixed(0)}%
-                            </StatusPill>
+                            </span>
                           </td>
                         </tr>
                       ))}
@@ -2218,11 +2226,18 @@ export function SimulacaoNovoPrestadorTab({ lRows }: Props) {
                   </div>
                 </div>
 
-                <div className="border-t border-border pt-4">
-                  <div className="mb-2 flex flex-wrap items-center gap-2">
-                    <span className="text-base font-extrabold text-foreground">Sessões e candidatos em formato lista</span>
-                    <span className="ml-auto text-[11px] text-muted-foreground">{linhasExibidas.length} candidatura(s) elegível(is) em {vagasExibidas} vaga(s) de horário</span>
-                  </div>
+                <SecaoPastel titulo="sessoes-lista" semPadding className="border-none shadow-none bg-transparent border-t border-[var(--pp-border)] pt-4 mt-6">
+                  <CabecalhoPastel
+                    id="sessoes-lista"
+                    nivel="h3"
+                    tamanho="medio"
+                    titulo="Sessões e candidatos em formato lista"
+                    direita={
+                      <div className="flex items-center gap-4">
+                        <NumeroPastel t="azul" Icone={Lock} valor={linhasExibidas.length} rotulo="candidatura(s) elegível(is)" apoio={`em ${vagasExibidas} vaga(s)`} compacto />
+                      </div>
+                    }
+                  />
                   {algumPeriodoSemSala && (
                     <InlineNotice tone="red" className="mb-3 animate-pulse border-red-300 dark:border-red-800">
                       <strong>Sem sala livre encontrada</strong> para pelo menos um dos dias/turnos simulados — você está simulando uma contratação hipotética sem sala garantida nessa combinação.
@@ -2235,7 +2250,7 @@ export function SimulacaoNovoPrestadorTab({ lRows }: Props) {
                       <div className="text-[10px] font-bold text-muted-foreground sm:hidden">deslize para o lado →</div>
                       {gruposPorDia.map(grupo => (
                         <div key={grupo.dia}>
-                          <div className="mb-2 text-[13.5px] font-extrabold uppercase tracking-wide text-foreground">
+                          <div className="mb-2 text-[13.5px] font-extrabold uppercase tracking-wide text-[var(--pp-ink)]">
                             {grupo.dia}
                           </div>
                           <div className="flex flex-col gap-2">
@@ -2255,7 +2270,7 @@ export function SimulacaoNovoPrestadorTab({ lRows }: Props) {
                       ))}
                     </div>
                   )}
-                </div>
+                </SecaoPastel>
               </div>
             </div>
           )}
@@ -2320,13 +2335,18 @@ export function SimulacaoNovoPrestadorTab({ lRows }: Props) {
                         key={`direto-${i}`}
                         type="button"
                         onClick={() => abrirDetalheCandidato(linha)}
-                        className="flex items-center justify-between gap-2 rounded-lg border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-2 text-left hover:brightness-95"
+                        className="flex items-center justify-between gap-3 rounded-xl border border-[var(--pp-border)] bg-[var(--pp-surface)] p-3 text-left hover:bg-[var(--pp-muted)] transition-colors"
                       >
-                        <span className="min-w-0">
-                          <span className="block truncate text-[12.5px] font-bold text-foreground">{fmtName(linha.candidato.paciente)}</span>
-                          <span className="block truncate text-[10.5px] text-muted-foreground">{linha.unidade} · {linha.sugestao.especialidade}</span>
-                        </span>
-                        <span className="shrink-0 text-[10.5px] font-bold text-emerald-700 dark:text-emerald-400">Ver agenda</span>
+                        <div className="flex min-w-0 flex-1 items-center gap-3">
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-bold pp-tom pp-t-verde bg-[var(--c-suave)] text-[var(--c-tinta)]">
+                            {iniciais(linha.candidato.paciente)}
+                          </div>
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-[13px] font-bold text-[var(--pp-ink)]">{fmtName(linha.candidato.paciente)}</span>
+                            <span className="block text-[11px] font-medium text-[var(--pp-ink-muted)] mt-0.5">{linha.unidade} · {linha.sugestao.especialidade}</span>
+                          </span>
+                        </div>
+                        <span className="shrink-0 text-[10.5px] font-bold pp-tom pp-t-verde text-[var(--c-tinta)]">Ver agenda</span>
                       </button>
                     ))}
                   </div>
@@ -2335,7 +2355,7 @@ export function SimulacaoNovoPrestadorTab({ lRows }: Props) {
 
               {remanejamentos.length > 0 && (
                 <div>
-                  <div className="mb-2 flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-wide text-sky-700 dark:text-sky-400">
+                  <div className="mb-2 flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-wide pp-tom pp-t-azul text-[var(--c-tinta)]">
                     <Repeat2 size={13} /> Oportunidade via remanejamento
                   </div>
                   <div className="flex flex-col gap-1.5">
@@ -2344,13 +2364,18 @@ export function SimulacaoNovoPrestadorTab({ lRows }: Props) {
                         key={`remanejamento-${i}`}
                         type="button"
                         onClick={() => abrirDetalheCandidato(linha)}
-                        className="flex items-center justify-between gap-2 rounded-lg border border-sky-300 dark:border-sky-800 bg-sky-50 dark:bg-sky-950/30 px-3 py-2 text-left hover:brightness-95"
+                        className="flex items-center justify-between gap-3 rounded-xl border border-[var(--pp-border)] bg-[var(--pp-surface)] p-3 text-left hover:bg-[var(--pp-muted)] transition-colors"
                       >
-                        <span className="min-w-0">
-                          <span className="block truncate text-[12.5px] font-bold text-foreground">{fmtName(linha.candidato.paciente)}</span>
-                          <span className="block truncate text-[10.5px] text-muted-foreground">{linha.unidade} · {linha.sugestao.especialidade}</span>
-                        </span>
-                        <span className="shrink-0 text-[10.5px] font-bold text-sky-700 dark:text-sky-400">Ver antes/depois</span>
+                        <div className="flex min-w-0 flex-1 items-center gap-3">
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-bold pp-tom pp-t-azul bg-[var(--c-suave)] text-[var(--c-tinta)]">
+                            {iniciais(linha.candidato.paciente)}
+                          </div>
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-[13px] font-bold text-[var(--pp-ink)]">{fmtName(linha.candidato.paciente)}</span>
+                            <span className="block text-[11px] font-medium text-[var(--pp-ink-muted)] mt-0.5">{linha.unidade} · {linha.sugestao.especialidade}</span>
+                          </span>
+                        </div>
+                        <span className="shrink-0 text-[10.5px] font-bold pp-tom pp-t-azul text-[var(--c-tinta)]">Ver antes/depois</span>
                       </button>
                     ))}
                   </div>
@@ -2359,7 +2384,7 @@ export function SimulacaoNovoPrestadorTab({ lRows }: Props) {
 
               {cobertos.length > 0 && (
                 <div>
-                  <div className="mb-2 flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-wide text-rose-700 dark:text-rose-400">
+                  <div className="mb-2 flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-wide pp-tom pp-t-vermelho text-[var(--c-tinta)]">
                     <House size={13} /> Já coberto pela capacidade interna
                   </div>
                   <div className="flex flex-col gap-1.5">
@@ -2368,13 +2393,18 @@ export function SimulacaoNovoPrestadorTab({ lRows }: Props) {
                         key={`coberto-${i}`}
                         type="button"
                         onClick={() => abrirDetalheCoberto(vagaGradeAberta.dia, vagaGradeAberta.vaga.hora, vagaGradeAberta.cobertos!.unidade, c.pac, profissionaisLivres[i]?.profissional)}
-                        className="flex items-center justify-between gap-2 rounded-lg border border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/30 px-3 py-2 text-left hover:brightness-95"
+                        className="flex items-center justify-between gap-3 rounded-xl border border-[var(--pp-border)] bg-[var(--pp-surface)] p-3 text-left hover:bg-[var(--pp-muted)] transition-colors"
                       >
-                        <span className="min-w-0">
-                          <span className="block truncate text-[12.5px] font-bold text-foreground">{fmtName(c.pac)}</span>
-                          <span className="block truncate text-[10.5px] text-muted-foreground">{vagaGradeAberta.cobertos!.unidade}</span>
-                        </span>
-                        <span className="flex shrink-0 items-center gap-1 text-right text-[10.5px] font-bold text-rose-700 dark:text-rose-400">
+                        <div className="flex min-w-0 flex-1 items-center gap-3">
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-bold pp-tom pp-t-vermelho bg-[var(--c-suave)] text-[var(--c-tinta)]">
+                            {iniciais(c.pac)}
+                          </div>
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-[13px] font-bold text-[var(--pp-ink)]">{fmtName(c.pac)}</span>
+                            <span className="block text-[11px] font-medium text-[var(--pp-ink-muted)] mt-0.5">{vagaGradeAberta.cobertos!.unidade}</span>
+                          </span>
+                        </div>
+                        <span className="flex shrink-0 items-center gap-1 text-right text-[10.5px] font-bold pp-tom pp-t-vermelho text-[var(--c-tinta)]">
                           {profissionaisLivres[i] ? fmtName(profissionaisLivres[i].profissional) : "Profissional já disponível"}
                           <ChevronRight size={13} className="shrink-0" />
                         </span>
@@ -2397,7 +2427,7 @@ export function SimulacaoNovoPrestadorTab({ lRows }: Props) {
             onClose={() => setVagaCobertaAberta(null)}
           >
             <div>
-              <div className="mb-2 flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-wide text-rose-700 dark:text-rose-400">
+              <div className="mb-2 flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-wide pp-tom pp-t-vermelho text-[var(--c-tinta)]">
                 <House size={13} /> Já coberto pela capacidade interna
               </div>
               <div className="flex flex-col gap-1.5">
@@ -2406,13 +2436,18 @@ export function SimulacaoNovoPrestadorTab({ lRows }: Props) {
                     key={`coberto-${i}`}
                     type="button"
                     onClick={() => abrirDetalheCoberto(vagaCobertaAberta.dia, vagaCobertaAberta.hora, vagaCobertaAberta.unidade, c.pac, profissionaisLivres[i]?.profissional)}
-                    className="flex items-center justify-between gap-2 rounded-lg border border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/30 px-3 py-2 text-left hover:brightness-95"
+                    className="flex items-center justify-between gap-3 rounded-xl border border-[var(--pp-border)] bg-[var(--pp-surface)] p-3 text-left hover:bg-[var(--pp-muted)] transition-colors"
                   >
-                    <span className="min-w-0">
-                      <span className="block truncate text-[12.5px] font-bold text-foreground">{fmtName(c.pac)}</span>
-                      <span className="block truncate text-[10.5px] text-muted-foreground">{vagaCobertaAberta.unidade}</span>
-                    </span>
-                    <span className="flex shrink-0 items-center gap-1 text-right text-[10.5px] font-bold text-rose-700 dark:text-rose-400">
+                    <div className="flex min-w-0 flex-1 items-center gap-3">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-bold pp-tom pp-t-vermelho bg-[var(--c-suave)] text-[var(--c-tinta)]">
+                        {iniciais(c.pac)}
+                      </div>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-[13px] font-bold text-[var(--pp-ink)]">{fmtName(c.pac)}</span>
+                        <span className="block text-[11px] font-medium text-[var(--pp-ink-muted)] mt-0.5">{vagaCobertaAberta.unidade}</span>
+                      </span>
+                    </div>
+                    <span className="flex shrink-0 items-center gap-1 text-right text-[10.5px] font-bold pp-tom pp-t-vermelho text-[var(--c-tinta)]">
                       {profissionaisLivres[i] ? fmtName(profissionaisLivres[i].profissional) : "Profissional já disponível"}
                       <ChevronRight size={13} className="shrink-0" />
                     </span>

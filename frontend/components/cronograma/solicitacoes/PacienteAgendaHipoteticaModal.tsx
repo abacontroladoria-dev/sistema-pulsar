@@ -158,17 +158,17 @@ export function PacienteAgendaHipoteticaModal({
                           {celulas.map((c, ci) => {
                             const combinaComDominante = c.unidade === dominante
                             return (
-                              <div key={ci} className={`mb-0.5 flex h-[64px] flex-col justify-center overflow-hidden rounded-lg border px-2 py-1.5 ${c.proposta ? "border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30" : "border-border bg-muted"}`}>
+                              <div key={ci} className={`mb-0.5 flex h-[64px] flex-col justify-center overflow-hidden rounded-lg border px-2 py-1.5 ${c.proposta ? "border-[var(--pp-border)] pp-tom pp-t-verde bg-[var(--c-suave)] text-[var(--c-tinta)]" : "border-[var(--pp-border)] bg-[var(--pp-muted)] text-[var(--pp-ink)]"}`}>
                                 <div className="flex min-w-0 items-center justify-between gap-1">
-                                  <span className="min-w-0 truncate text-[11px] font-bold leading-tight text-foreground">{c.terapia}</span>
+                                  <span className="min-w-0 truncate text-[11px] font-bold leading-tight inherit">{c.terapia}</span>
                                   {!combinaComDominante && c.unidade && c.unidade !== "Desconhecida" && (
                                     <span className={`shrink-0 rounded px-1 text-[9px] font-black leading-tight ${estiloUnidade(c.unidade).bg} ${estiloUnidade(c.unidade).text}`}>
                                       {unidadeExibicao(c.unidade)}
                                     </span>
                                   )}
                                 </div>
-                                <div className="text-[10px] text-muted-foreground">{fmtName(c.prof)}</div>
-                                {c.proposta && <div className="mt-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-400">Sessão hipotética</div>}
+                                <div className="text-[10px] opacity-80">{fmtName(c.prof)}</div>
+                                {c.proposta && <div className="mt-0.5 text-[10px] font-bold opacity-90">Sessão hipotética</div>}
                               </div>
                             )
                           })}

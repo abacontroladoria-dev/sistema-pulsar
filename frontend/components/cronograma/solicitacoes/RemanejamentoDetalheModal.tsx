@@ -33,10 +33,10 @@ interface Celula { terapia: string; prof: string; tag: Tag; unidade: string }
 function hiStr(r: CsvRow): string { return String(r.HI_str || "") }
 
 const ESTILO_CELULA: Record<Tag, string> = {
-  existente: "border-border bg-muted",
-  sai: "border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/30",
-  movida: "border-sky-300 dark:border-sky-800 bg-sky-50 dark:bg-sky-950/30",
-  hipotetica: "border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30",
+  existente: "border-[var(--pp-border)] bg-[var(--pp-muted)] text-[var(--pp-ink)]",
+  sai: "border-[var(--pp-border)] pp-tom pp-t-vermelho bg-[var(--c-suave)] text-[var(--c-tinta)]",
+  movida: "border-[var(--pp-border)] pp-tom pp-t-azul bg-[var(--c-suave)] text-[var(--c-tinta)]",
+  hipotetica: "border-[var(--pp-border)] pp-tom pp-t-verde bg-[var(--c-suave)] text-[var(--c-tinta)]",
 }
 
 const ROTULO_CELULA: Record<Tag, string> = {
@@ -125,16 +125,16 @@ function Grade({ mapa, titulo, dias, horas }: { mapa: Record<string, Celula>; ti
                       <td key={dia} className="px-0.5 py-0">
                         <div className={`flex h-[64px] flex-col justify-center overflow-hidden rounded-lg border px-2 py-1.5 ${ESTILO_CELULA[c.tag]}`}>
                           <div className="flex min-w-0 items-center justify-between gap-1">
-                            <span className="min-w-0 truncate text-[11px] font-bold leading-tight text-foreground">{c.terapia}</span>
+                            <span className="min-w-0 truncate text-[11px] font-bold leading-tight inherit">{c.terapia}</span>
                             {!combinaComDominante && (
                               <span className={`shrink-0 rounded px-1 text-[9px] font-black leading-tight ${estiloUnidade(c.unidade).bg} ${estiloUnidade(c.unidade).text}`}>
                                 {unidadeExibicao(c.unidade)}
                               </span>
                             )}
                           </div>
-                          <div className="text-[10px] text-muted-foreground">{fmtName(c.prof)}</div>
+                          <div className="text-[10px] opacity-80">{fmtName(c.prof)}</div>
                           {!!ROTULO_CELULA[c.tag] && (
-                            <div className="mt-0.5 text-[10px] font-bold text-foreground">{ROTULO_CELULA[c.tag]}</div>
+                            <div className="mt-0.5 text-[10px] font-bold opacity-90">{ROTULO_CELULA[c.tag]}</div>
                           )}
                         </div>
                       </td>

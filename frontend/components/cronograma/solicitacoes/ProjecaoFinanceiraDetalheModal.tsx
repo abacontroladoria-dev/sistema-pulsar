@@ -163,86 +163,86 @@ export function ProjecaoFinanceiraDetalheModal({
     >
       <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
         <StatCard tone="green" icon={<Wallet size={15} />} label="Cenário 1 — fila prioritária aceita">
-          <div className="text-lg font-black tabular-nums text-emerald-700 dark:text-emerald-400">{fmtReal(totalCenario1)}</div>
-          <div className="mt-1 text-[11px] text-muted-foreground">Soma do melhor candidato de cada vaga, em todas as ocorrências reais do mês.</div>
+          <div className="text-lg font-black tabular-nums text-[var(--c-tinta)]">{fmtReal(totalCenario1)}</div>
+          <div className="mt-1 text-[11px] text-[var(--pp-ink-muted)]">Soma do melhor candidato de cada vaga, em todas as ocorrências reais do mês.</div>
         </StatCard>
         <StatCard tone="blue" icon={<Wallet size={15} />} label="Cenário 2 — faixa se pelo menos um aceitar">
-          <div className="text-lg font-black tabular-nums text-sky-700 dark:text-sky-400">{fmtReal(faixaMin)} – {fmtReal(faixaMax)}</div>
-          <div className="mt-1 text-[11px] text-muted-foreground">
+          <div className="text-lg font-black tabular-nums text-[var(--c-tinta)]">{fmtReal(faixaMin)} – {fmtReal(faixaMax)}</div>
+          <div className="mt-1 text-[11px] text-[var(--pp-ink-muted)]">
             Pior caso: o 2º candidato de cada vaga aceita no lugar do 1º (vagas com um só candidato mantêm o mesmo valor).
           </div>
         </StatCard>
       </div>
 
-      <div className="mb-2 text-sm font-extrabold text-foreground">Receita por dia do mês</div>
-      <div className="mb-4 overflow-x-auto rounded-lg border border-border">
+      <div className="mb-2 text-sm font-extrabold text-[var(--pp-ink)]">Receita por dia do mês</div>
+      <div className="mb-4 overflow-x-auto rounded-lg border border-[var(--pp-border)] bg-[var(--pp-surface)]">
         <table className="w-full min-w-[420px] border-collapse text-[12.5px]">
           <thead>
-            <tr className="border-b border-border bg-muted">
-              <th className="px-3 py-1.5 text-left text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Data</th>
-              <th className="px-3 py-1.5 text-left text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Dia da semana</th>
-              <th className="px-3 py-1.5 text-right text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Sessões</th>
-              <th className="px-3 py-1.5 text-right text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Receita do dia</th>
+            <tr className="border-b border-[var(--pp-border)] bg-[var(--pp-muted)]">
+              <th className="px-3 py-1.5 text-left text-[10px] font-bold uppercase tracking-wide text-[var(--pp-ink-muted)]">Data</th>
+              <th className="px-3 py-1.5 text-left text-[10px] font-bold uppercase tracking-wide text-[var(--pp-ink-muted)]">Dia da semana</th>
+              <th className="px-3 py-1.5 text-right text-[10px] font-bold uppercase tracking-wide text-[var(--pp-ink-muted)]">Sessões</th>
+              <th className="px-3 py-1.5 text-right text-[10px] font-bold uppercase tracking-wide text-[var(--pp-ink-muted)]">Receita do dia</th>
             </tr>
           </thead>
           <tbody>
             {resumoPorDia.map(row => (
-              <tr key={row.data} className="border-b border-border last:border-b-0">
-                <td className="px-3 py-1.5 font-mono tabular-nums text-foreground">{row.dataLabel}</td>
-                <td className="px-3 py-1.5 text-foreground">
+              <tr key={row.data} className="border-b border-[var(--pp-border)] last:border-b-0 hover:bg-[var(--pp-muted)]">
+                <td className="px-3 py-1.5 font-mono tabular-nums text-[var(--pp-ink)]">{row.dataLabel}</td>
+                <td className="px-3 py-1.5 text-[var(--pp-ink)]">
                   {diaCurto(row.diaSemana)}
                   {row.feriado && (
-                    <span className="ml-1.5 rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-rose-700 dark:bg-rose-900/30 dark:text-rose-400">
+                    <span className="ml-1.5 rounded pp-tom pp-t-vermelho bg-[var(--c-suave)] px-1.5 py-0.5 text-[10px] font-bold uppercase text-[var(--c-tinta)]">
                       Feriado — {row.feriado}
                     </span>
                   )}
                 </td>
-                <td className="px-3 py-1.5 text-right tabular-nums text-foreground">{row.qtd}</td>
-                <td className={`px-3 py-1.5 text-right tabular-nums font-bold ${row.feriado ? "text-rose-600 dark:text-rose-400" : "text-emerald-700 dark:text-emerald-400"}`}>
+                <td className="px-3 py-1.5 text-right tabular-nums text-[var(--pp-ink)]">{row.qtd}</td>
+                <td className={`px-3 py-1.5 text-right tabular-nums font-bold ${row.feriado ? "pp-tom pp-t-vermelho text-[var(--c-tinta)]" : "pp-tom pp-t-verde text-[var(--c-tinta)]"}`}>
                   {fmtReal(row.receita)}
                 </td>
               </tr>
             ))}
             {!resumoPorDia.length && (
-              <tr><td colSpan={4} className="px-3 py-4 text-center text-muted-foreground">Sem ocorrências no mês de referência.</td></tr>
+              <tr><td colSpan={4} className="px-3 py-4 text-center text-[var(--pp-ink-muted)]">Sem ocorrências no mês de referência.</td></tr>
             )}
           </tbody>
         </table>
       </div>
 
-      <div className="mb-2 text-sm font-extrabold text-foreground">Sessão a sessão (cenário 1)</div>
-      <div className="overflow-x-auto rounded-lg border border-border">
+      <div className="mb-2 text-sm font-extrabold text-[var(--pp-ink)]">Sessão a sessão (cenário 1)</div>
+      <div className="overflow-x-auto rounded-lg border border-[var(--pp-border)] bg-[var(--pp-surface)]">
         <table className="w-full min-w-[820px] border-collapse text-[12.5px]">
           <thead>
-            <tr className="border-b border-border bg-muted">
-              <th className="px-3 py-1.5 text-left text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Data</th>
-              <th className="px-3 py-1.5 text-left text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Hora</th>
-              <th className="px-3 py-1.5 text-left text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Paciente</th>
-              <th className="px-3 py-1.5 text-left text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Terapia</th>
-              <th className="px-3 py-1.5 text-left text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Sala</th>
-              <th className="px-3 py-1.5 text-left text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Unidade</th>
-              <th className="px-3 py-1.5 text-left text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Convênio</th>
-              <th className="px-3 py-1.5 text-right text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Valor</th>
+            <tr className="border-b border-[var(--pp-border)] bg-[var(--pp-muted)]">
+              <th className="px-3 py-1.5 text-left text-[10px] font-bold uppercase tracking-wide text-[var(--pp-ink-muted)]">Data</th>
+              <th className="px-3 py-1.5 text-left text-[10px] font-bold uppercase tracking-wide text-[var(--pp-ink-muted)]">Hora</th>
+              <th className="px-3 py-1.5 text-left text-[10px] font-bold uppercase tracking-wide text-[var(--pp-ink-muted)]">Paciente</th>
+              <th className="px-3 py-1.5 text-left text-[10px] font-bold uppercase tracking-wide text-[var(--pp-ink-muted)]">Terapia</th>
+              <th className="px-3 py-1.5 text-left text-[10px] font-bold uppercase tracking-wide text-[var(--pp-ink-muted)]">Sala</th>
+              <th className="px-3 py-1.5 text-left text-[10px] font-bold uppercase tracking-wide text-[var(--pp-ink-muted)]">Unidade</th>
+              <th className="px-3 py-1.5 text-left text-[10px] font-bold uppercase tracking-wide text-[var(--pp-ink-muted)]">Convênio</th>
+              <th className="px-3 py-1.5 text-right text-[10px] font-bold uppercase tracking-wide text-[var(--pp-ink-muted)]">Valor</th>
             </tr>
           </thead>
           <tbody>
             {ocorrencias.map((o, i) => (
-              <tr key={`${o.data}-${o.hora}-${o.paciente}-${i}`} className="border-b border-border last:border-b-0">
-                <td className="px-3 py-1.5 font-mono tabular-nums text-foreground">{o.dataLabel}</td>
+              <tr key={`${o.data}-${o.hora}-${o.paciente}-${i}`} className="border-b border-[var(--pp-border)] last:border-b-0 hover:bg-[var(--pp-muted)]">
+                <td className="px-3 py-1.5 font-mono tabular-nums text-[var(--pp-ink)]">{o.dataLabel}</td>
                 <td className="px-3 py-1.5">
-                  <span className="text-[10px] font-bold uppercase text-sky-700 dark:text-sky-400">{turnoNome[o.turno]}</span>{" "}
-                  <span className="font-mono tabular-nums text-foreground">{o.hora}</span>
+                  <span className="text-[10px] font-bold uppercase pp-tom pp-t-azul text-[var(--c-tinta)]">{turnoNome[o.turno]}</span>{" "}
+                  <span className="font-mono tabular-nums text-[var(--pp-ink)]">{o.hora}</span>
                 </td>
-                <td className="px-3 py-1.5 text-foreground">{o.paciente}</td>
-                <td className="px-3 py-1.5 text-foreground">{o.terapia}</td>
-                <td className="px-3 py-1.5 text-foreground">{o.sala}</td>
-                <td className="px-3 py-1.5 text-foreground">{o.unidade}</td>
-                <td className="px-3 py-1.5 text-foreground">{o.convenio}</td>
-                <td className="px-3 py-1.5 text-right tabular-nums text-foreground">{o.valor !== null ? fmtReal(o.valor) : "Sem valor"}</td>
+                <td className="px-3 py-1.5 text-[var(--pp-ink)]">{o.paciente}</td>
+                <td className="px-3 py-1.5 text-[var(--pp-ink)]">{o.terapia}</td>
+                <td className="px-3 py-1.5 text-[var(--pp-ink)]">{o.sala}</td>
+                <td className="px-3 py-1.5 text-[var(--pp-ink)]">{o.unidade}</td>
+                <td className="px-3 py-1.5 text-[var(--pp-ink)]">{o.convenio}</td>
+                <td className="px-3 py-1.5 text-right tabular-nums text-[var(--pp-ink)]">{o.valor !== null ? fmtReal(o.valor) : "Sem valor"}</td>
               </tr>
             ))}
             {!ocorrencias.length && (
-              <tr><td colSpan={8} className="px-3 py-4 text-center text-muted-foreground">Sem ocorrências no mês de referência.</td></tr>
+              <tr><td colSpan={8} className="px-3 py-4 text-center text-[var(--pp-ink-muted)]">Sem ocorrências no mês de referência.</td></tr>
             )}
           </tbody>
         </table>

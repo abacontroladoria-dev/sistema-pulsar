@@ -7,8 +7,10 @@
 import { DIAS_UTIL } from "@/lib/cronograma/constants"
 import { diaCurto, turnoNome } from "@/lib/cronograma/helpers"
 import type { Turno } from "@/lib/cronograma/simulacaoNovoPrestador"
+import type { Tom } from "@/components/ui/pastel/pecas"
 
-export function IndicadorDiaTurno({ dia, turnos, corBar }: { dia: string; turnos: Turno[]; corBar: string }) {
+export function IndicadorDiaTurno({ dia, turnos, t }: { dia: string; turnos: Turno[]; t: Tom }) {
+  const ppTomCls = `pp-tom pp-t-${t} bg-[var(--c-tinta)] text-[var(--c-sobre-tinta)]`
   return (
     <div className="mt-2 flex flex-nowrap items-center gap-3">
       <div className="flex items-center gap-1">
@@ -17,23 +19,23 @@ export function IndicadorDiaTurno({ dia, turnos, corBar }: { dia: string; turnos
           return (
             <span
               key={d}
-              className={`flex h-6 w-6 items-center justify-center rounded-md text-[11px] font-bold ${ativo ? `${corBar} text-white` : "bg-muted text-muted-foreground"}`}
+              className={`flex h-6 w-6 items-center justify-center rounded-xl text-[11px] font-bold ${ativo ? ppTomCls : "bg-[var(--pp-muted)] text-[var(--pp-ink-muted)]"}`}
             >
               {diaCurto(d)[0]}
             </span>
           )
         })}
       </div>
-      <span className="h-5 w-px shrink-0 bg-border" />
+      <span className="h-5 w-px shrink-0 bg-[var(--pp-border)]" />
       <div className="flex items-center gap-2">
-        {(["manha", "tarde"] as Turno[]).map(t => {
-          const ativo = turnos.includes(t)
+        {(["manha", "tarde"] as Turno[]).map(turno => {
+          const ativo = turnos.includes(turno)
           return (
             <span
-              key={t}
-              className={`rounded-md px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${ativo ? `${corBar} text-white` : "bg-muted text-muted-foreground"}`}
+              key={turno}
+              className={`rounded-xl px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${ativo ? ppTomCls : "bg-[var(--pp-muted)] text-[var(--pp-ink-muted)]"}`}
             >
-              {turnoNome[t][0]}
+              {turnoNome[turno][0]}
             </span>
           )
         })}
