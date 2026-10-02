@@ -11,7 +11,7 @@
 
 import { Fragment, startTransition, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip as RechartsTooltip } from "recharts"
-import { Ban, CheckCircle2, ChevronDown, ChevronRight, ChevronUp, House, Lock, Repeat2, Sparkles, Star, Wallet } from "lucide-react"
+import { Ban, CheckCircle2, ChevronDown, ChevronRight, ChevronUp, House, Lock, Repeat2, Sparkles, Star, Wallet, Sliders } from "lucide-react"
 import {
   avaliarPeriodo, calcularGaps, construirAgendaNovoProfissional, gapsParaMapa, limitarCandidatosPorGap, listarEspecialidades, montarPlanoRecomendado, ranquearUnidades,
   type CandidatoSlot, type PeriodoSimulado, type PeriodoAlvo, type SlotSimulado, type Turno,
@@ -45,6 +45,7 @@ import { InfoTooltip } from "@/components/cronograma/ui/InfoTooltip"
 import { ScheduleModal } from "@/components/cronograma/ui/ScheduleModal"
 import { TONE_ACCENT, TONE_SOFT } from "@/components/cronograma/ui/tones"
 import { Button } from "@/components/ui/button"
+import { CabecalhoPastel } from "@/components/ui/pastel/pecas"
 import type { CsvRow, LaudoRow } from "@/types/cronograma"
 import type { CandidatoNaSugestao, SugestaoContratacao } from "@/lib/cronograma/sugestaoContratacaoTypes"
 
@@ -260,7 +261,7 @@ function EspecialidadeCombobox({
           }
         }}
         placeholder="Digite para buscar uma especialidade…"
-        className={`w-full rounded-lg border px-2.5 py-2 text-[13px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring ${valida ? "border-border bg-card" : "border-rose-300 dark:border-rose-800 bg-rose-50/50 dark:bg-rose-950/20"}`}
+        className={`w-full rounded-lg border px-2.5 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-ring ${valida ? "border-[var(--pp-border)] bg-[var(--pp-surface)] text-[var(--pp-ink)] placeholder:text-[var(--pp-ink-muted)]" : "border-rose-300 dark:border-rose-800 bg-rose-50/50 dark:bg-rose-950/20 text-rose-900 dark:text-rose-100 placeholder:text-rose-400"}`}
       />
       {aberto && filtradas.length > 0 && (
         <div
@@ -268,7 +269,7 @@ function EspecialidadeCombobox({
           id="sim-esp-listbox"
           role="listbox"
           aria-label="Especialidades"
-          className="absolute left-0 right-0 top-[calc(100%+2px)] z-[100] max-h-52 overflow-y-auto rounded-lg border border-border bg-popover shadow-lg"
+          className="absolute left-0 right-0 top-[calc(100%+2px)] z-[100] max-h-52 overflow-y-auto rounded-lg border border-[var(--pp-border)] bg-[var(--pp-surface)] shadow-[var(--pp-sombra)]"
         >
           {filtradas.map((esp, i) => {
             const selecionada = esp === value
@@ -280,7 +281,7 @@ function EspecialidadeCombobox({
                 role="option"
                 aria-selected={selecionada}
                 onMouseDown={e => { e.preventDefault(); selecionar(esp) }}
-                className={`block w-full px-3 py-1.5 text-left text-[13px] transition-colors ${ativa ? "bg-sky-600 text-white" : selecionada ? "bg-muted font-semibold text-foreground" : "text-foreground hover:bg-muted/60"}`}
+                className={`block w-full px-3 py-1.5 text-left text-[13px] transition-colors ${ativa ? "bg-[var(--pp-verde)] text-white" : selecionada ? "bg-[var(--pp-muted)] font-semibold text-[var(--pp-ink)]" : "text-[var(--pp-ink)] hover:bg-[var(--pp-muted)]/60"}`}
               >
                 {esp}
               </button>
@@ -1298,27 +1299,34 @@ export function SimulacaoNovoPrestadorTab({ lRows }: Props) {
       {/* Parâmetros */}
       <div
         ref={parametrosRef}
-        className={`rounded-2xl border p-4 transition-colors duration-700 ${
+        className={`pp @container rounded-2xl border p-5 sm:p-6 transition-colors duration-700 ${
           destaqueAplicado
-            ? "border-emerald-400 bg-emerald-50/60 ring-4 ring-emerald-200 dark:border-emerald-600 dark:bg-emerald-950/20 dark:ring-emerald-900/40"
-            : "border-border bg-card"
+            ? "border-emerald-400 bg-[var(--pp-surface)] ring-4 ring-emerald-200"
+            : "border-[var(--pp-border)] bg-[var(--pp-surface)] shadow-[var(--pp-sombra)]"
         }`}
       >
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <span className="text-[15px] font-extrabold text-foreground">Parâmetros da simulação</span>
-          {destaqueAplicado && (
-            <span className="animate-in fade-in slide-in-from-left-1 duration-300 flex items-center gap-1 rounded-full bg-emerald-600 px-2.5 py-1 text-[10px] font-bold text-white dark:bg-emerald-500">
-              <Sparkles size={11} /> Sugestão aplicada
-            </span>
-          )}
-        </div>
-        <div className="mb-2.5 text-xs text-muted-foreground">
-          Simule um novo profissional por especialidade, dia e turno para ver quantos pacientes com sessões pendentes ele conseguiria atender.
-          <InfoTip ariaLabel="Como a simulação escolhe os pacientes">
-            <p>Considera pacientes com <strong className="text-foreground">autorizado &gt; ofertado</strong> que já frequentam a unidade naquele dia, sem conflito de horário.</p>
-            <p className="mt-2">Respeita o sequenciamento clínico: mínimo <strong className="text-foreground">1 sessão no dia</strong>, sempre em blocos consecutivos de <strong className="text-foreground">40min</strong>.</p>
-          </InfoTip>
-        </div>
+        <CabecalhoPastel
+          id="parametros-simulacao"
+          titulo="Parâmetros da simulação"
+          t="azul"
+          Icone={Sliders}
+          direita={
+            destaqueAplicado ? (
+              <span className="animate-in fade-in slide-in-from-left-1 duration-300 flex items-center gap-1 rounded-full bg-emerald-600 px-2.5 py-1 text-[10px] font-bold text-white dark:bg-emerald-500">
+                <Sparkles size={11} /> Sugestão aplicada
+              </span>
+            ) : null
+          }
+          apoio={
+            <>
+              Simule um novo profissional por especialidade, dia e turno para ver quantos pacientes com sessões pendentes ele conseguiria atender.
+              <InfoTip ariaLabel="Como a simulação escolhe os pacientes">
+                <p>Considera pacientes com <strong className="text-foreground">autorizado &gt; ofertado</strong> que já frequentam a unidade naquele dia, sem conflito de horário.</p>
+                <p className="mt-2">Respeita o sequenciamento clínico: mínimo <strong className="text-foreground">1 sessão no dia</strong>, sempre em blocos consecutivos de <strong className="text-foreground">40min</strong>.</p>
+              </InfoTip>
+            </>
+          }
+        />
 
         {!laudosCarregados ? (
           <InlineNotice tone="amber" icon={<Lock size={15} />}>
@@ -1326,14 +1334,14 @@ export function SimulacaoNovoPrestadorTab({ lRows }: Props) {
           </InlineNotice>
         ) : (
         <div className="flex flex-wrap items-start gap-3">
-          <div className="flex w-full lg:w-56 shrink-0 flex-col gap-2 rounded-xl border border-border bg-muted/40 p-3">
-            <span className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Especialidade</span>
+          <div className="flex w-full lg:w-56 shrink-0 flex-col gap-2 rounded-xl border border-[var(--pp-border)] bg-[var(--pp-muted)] p-3">
+            <span className="text-[11px] font-bold uppercase tracking-wide text-[var(--pp-ink-muted)]">Especialidade</span>
             <EspecialidadeCombobox value={especialidade} onChange={setEspecialidade} opcoes={espOptions} />
           </div>
 
-          <div className="w-full lg:w-fit rounded-xl border border-border bg-muted/40 p-3">
+          <div className="w-full lg:w-fit rounded-xl border border-[var(--pp-border)] bg-[var(--pp-muted)] p-3">
             <div className="mb-2 flex items-center gap-2">
-              <span className="whitespace-nowrap text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+              <span className="whitespace-nowrap text-[11px] font-bold uppercase tracking-wide text-[var(--pp-ink-muted)]">
                 Dias e turnos
                 <InfoTip ariaLabel="Como marcar dias e turnos">
                   <p>Marque <strong className="text-foreground">manhã</strong>, <strong className="text-foreground">tarde</strong> ou <strong className="text-foreground">dia inteiro</strong>.</p>
@@ -1355,9 +1363,9 @@ export function SimulacaoNovoPrestadorTab({ lRows }: Props) {
               <thead>
                 <tr>
                   <th className="w-14" />
-                  <th className="pb-1 text-[10px] font-bold text-muted-foreground">Manhã</th>
-                  <th className="pb-1 text-[10px] font-bold text-muted-foreground">Tarde</th>
-                  <th className="pb-1 text-[10px] font-bold text-muted-foreground">Dia inteiro</th>
+                  <th className="pb-1 text-[10px] font-bold text-[var(--pp-ink-muted)]">Manhã</th>
+                  <th className="pb-1 text-[10px] font-bold text-[var(--pp-ink-muted)]">Tarde</th>
+                  <th className="pb-1 text-[10px] font-bold text-[var(--pp-ink-muted)]">Dia inteiro</th>
                 </tr>
               </thead>
               <tbody>
@@ -1365,7 +1373,7 @@ export function SimulacaoNovoPrestadorTab({ lRows }: Props) {
                   const diaInteiro = !!periodosSel[dia]?.manha && !!periodosSel[dia]?.tarde
                   return (
                     <tr key={dia}>
-                      <td className="pr-1 text-xs font-extrabold uppercase text-foreground">{diaCurto(dia)}</td>
+                      <td className="pr-1 text-xs font-extrabold uppercase text-[var(--pp-ink)]">{diaCurto(dia)}</td>
                       {(["manha", "tarde"] as Turno[]).map(turno => {
                         const marcado = !!periodosSel[dia]?.[turno]
                         const semSala = marcado && semSalaPorDiaTurno.has(`${dia}|||${turno}`)
@@ -1376,12 +1384,12 @@ export function SimulacaoNovoPrestadorTab({ lRows }: Props) {
                               onClick={() => alternar(dia, turno)}
                               aria-pressed={marcado}
                               title={semSala ? "Selecionado, mas sem sala livre encontrada" : undefined}
-                              className={`h-8 w-full rounded-lg border text-xs font-bold transition-colors ${
+                              className={`h-8 w-full rounded-full border text-xs font-bold transition-colors ${
                                 semSala
                                   ? "border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400"
                                   : marcado
-                                    ? "border-sky-300 dark:border-sky-700 bg-sky-50 dark:bg-sky-950/30 text-sky-700 dark:text-sky-400"
-                                    : "border-border bg-card text-muted-foreground hover:bg-muted/50"
+                                    ? "border-[var(--pp-verde)] bg-[var(--pp-verde)] text-white"
+                                    : "border-[var(--pp-border)] bg-[var(--pp-surface)] text-[var(--pp-ink-muted)] hover:bg-[var(--pp-muted)]"
                               }`}
                             >
                               {semSala
@@ -1398,7 +1406,7 @@ export function SimulacaoNovoPrestadorTab({ lRows }: Props) {
                           type="button"
                           onClick={() => alternarDiaInteiro(dia)}
                           aria-pressed={diaInteiro}
-                          className={`h-8 w-full rounded-lg border px-2.5 text-[11px] font-semibold transition-colors ${diaInteiro ? "border-violet-300 dark:border-violet-700 bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-400" : "border-border bg-card text-muted-foreground hover:bg-muted/50"}`}
+                          className={`h-8 w-full rounded-full border px-2.5 text-[11px] font-semibold transition-colors ${diaInteiro ? "border-[var(--pp-verde)] bg-[var(--pp-verde)] text-white" : "border-[var(--pp-border)] bg-[var(--pp-surface)] text-[var(--pp-ink-muted)] hover:bg-[var(--pp-muted)]"}`}
                         >
                           {diaInteiro ? <CheckCircle2 size={14} className="mx-auto" /> : "Marcar"}
                         </button>
