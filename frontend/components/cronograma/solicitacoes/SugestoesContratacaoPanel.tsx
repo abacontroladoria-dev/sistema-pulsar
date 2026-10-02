@@ -23,6 +23,7 @@ import { BadgeOcupacao, COR_OCUPACAO } from "@/components/cronograma/ui/BadgeOcu
 import { IndicadorDiaTurno } from "@/components/cronograma/ui/IndicadorDiaTurno"
 import { ConfirmDialog } from "@/components/cronograma/ui/ConfirmDialog"
 import { MultiSearchCombobox } from "@/components/cronograma/ui/MultiSearchCombobox"
+import { SecaoPastel, CabecalhoPastel } from "@/components/ui/pastel/pecas"
 import { listarEspecialidades } from "@/lib/cronograma/simulacaoNovoPrestador"
 import type { SugestaoContratacao } from "@/lib/cronograma/sugestaoContratacaoTypes"
 import type { ModoCascataOcupacao, FaixaCascata } from "@/lib/cronograma/sugestaoContratacao"
@@ -195,7 +196,7 @@ function CardSugestao({
           if (e.key === "Enter" || e.key === " ") { e.preventDefault(); acionar() }
         }}
         aria-label={`Aplicar sugestão: ${sugestao.especialidade} em ${sugestao.unidade}, ${diaCurto(sugestao.dia)}`}
-        className={`group flex h-full flex-col gap-3 rounded-xl border border-border bg-card p-3.5 shadow-sm transition-all duration-200 ease-out hover:-translate-y-1 hover:border-foreground/15 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 motion-reduce:transform-none motion-reduce:transition-none ${pendente ? "cursor-wait opacity-80" : "cursor-pointer"}`}
+        className={`group flex h-full flex-col gap-3 rounded-xl bg-[var(--pp-muted)] p-3.5 transition-all duration-200 ease-out hover:-translate-y-1 hover:shadow-[var(--pp-sombra)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 motion-reduce:transform-none motion-reduce:transition-none ${pendente ? "cursor-wait opacity-80" : "cursor-pointer"}`}
       >
         <div className="flex items-start gap-3">
           <BadgeOcupacao pct={pctExibido} faixa={faixaExibida} />
@@ -219,43 +220,43 @@ function CardSugestao({
           </div>
         </div>
 
-        <hr className="border-border" />
+        <hr className="border-[var(--pp-border)]" />
 
         {margemBreakEven ? (
-          <div className="w-full rounded-xl bg-muted/50 p-3">
+          <div className="w-full rounded-xl bg-[var(--pp-surface)] p-3 shadow-sm">
             <div className="flex flex-col gap-1 text-[11px]">
               <div className="flex items-center justify-between gap-3">
-                <span className="whitespace-nowrap text-muted-foreground">Receita líquida/mês</span>
-                <span className="whitespace-nowrap text-right font-bold tabular-nums text-emerald-700 dark:text-emerald-400">
+                <span className="whitespace-nowrap text-[var(--pp-ink-muted)]">Receita líquida/mês</span>
+                <span className="whitespace-nowrap text-right font-bold tabular-nums text-[var(--pp-verde)]">
                   {fmtReal(margemBreakEven.receitaLiquidaMes)}
                 </span>
               </div>
               <div className="flex items-center justify-between gap-3 text-rose-500/80 dark:text-rose-400/70">
-                <span className="whitespace-nowrap text-muted-foreground">Impostos ({parametrosGerais?.imposto_faturamento_pct}%) e perdas ({PERDA_PADRAO_CARD}%)</span>
-                <span className="whitespace-nowrap text-right font-semibold tabular-nums">− {fmtReal(impostosEPerdas)}</span>
+                <span className="whitespace-nowrap text-[var(--pp-ink-muted)]">Impostos ({parametrosGerais?.imposto_faturamento_pct}%) e perdas ({PERDA_PADRAO_CARD}%)</span>
+                <span className="whitespace-nowrap text-right font-semibold tabular-nums text-rose-500/80 dark:text-rose-400/70">− {fmtReal(impostosEPerdas)}</span>
               </div>
               <div className="flex items-center justify-between gap-3 text-rose-600 dark:text-rose-400">
-                <span className="whitespace-nowrap text-muted-foreground">Remuneração do prestador</span>
-                <span className="whitespace-nowrap text-right font-semibold tabular-nums">− {fmtReal(margemBreakEven.custoMes)}</span>
+                <span className="whitespace-nowrap text-[var(--pp-ink-muted)]">Remuneração do prestador</span>
+                <span className="whitespace-nowrap text-right font-semibold tabular-nums text-rose-600 dark:text-rose-400">− {fmtReal(margemBreakEven.custoMes)}</span>
               </div>
             </div>
 
-            <div className="mt-2 flex items-center justify-between gap-2 border-t border-border pt-2">
-              <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Margem/mês</span>
-              <span className={`whitespace-nowrap text-[15px] font-black tabular-nums ${margemBreakEven.margemMensal >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
+            <div className="mt-2 flex items-center justify-between gap-2 border-t border-[var(--pp-border)] pt-2">
+              <span className="text-[10px] font-bold uppercase tracking-wide text-[var(--pp-ink-muted)]">Margem/mês</span>
+              <span className={`whitespace-nowrap text-[15px] font-black tabular-nums ${margemBreakEven.margemMensal >= 0 ? "text-[var(--pp-verde)]" : "text-rose-600 dark:text-rose-400"}`}>
                 {margemBreakEven.margemMensal >= 0 ? "+" : ""}{fmtReal(margemBreakEven.margemMensal)}
               </span>
             </div>
           </div>
         ) : (
           <div className="text-right">
-            <div className="text-lg font-black tabular-nums text-emerald-700 dark:text-emerald-400">
+            <div className="text-lg font-black tabular-nums text-[var(--pp-verde)]">
               {sugestao.projecaoRemuneracao ? fmtReal(sugestao.projecaoRemuneracao.receitaMensalProjetada) : "—"}
             </div>
-            <div className="text-[11px] text-muted-foreground">receita/mês projetada</div>
+            <div className="text-[11px] text-[var(--pp-ink-muted)]">receita/mês projetada</div>
             {sugestao.projecaoRemuneracao && (
-              <div className="mt-0.5 text-[11px] font-bold tabular-nums text-foreground">
-                {fmtReal(sugestao.projecaoRemuneracao.receitaSemanalProjetada)} <span className="font-normal text-muted-foreground">/semana</span>
+              <div className="mt-0.5 text-[11px] font-bold tabular-nums text-[var(--pp-ink)]">
+                {fmtReal(sugestao.projecaoRemuneracao.receitaSemanalProjetada)} <span className="font-normal text-[var(--pp-ink-muted)]">/semana</span>
               </div>
             )}
           </div>
@@ -266,24 +267,24 @@ function CardSugestao({
           </div>
         )}
 
-        <hr className="border-border" />
+        <hr className="border-[var(--pp-border)]" />
 
         <div className="flex flex-wrap gap-1.5 text-[11px]">
-          <span className="flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-1 font-semibold text-foreground">
-            <Users size={12} className="text-muted-foreground" />
+          <span className="flex items-center gap-1 rounded-full border border-[var(--pp-border)] bg-[var(--pp-surface)] px-2 py-1 font-semibold text-[var(--pp-ink)]">
+            <Users size={12} className="text-[var(--pp-ink-muted)]" />
             {vagas} vaga(s) · {sugestao.candidatos.length} paciente(s) elegível(is)
           </span>
           {qtdRemanejamento > 0 && (
-            <span className="flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-1 text-muted-foreground">
+            <span className="flex items-center gap-1 rounded-full border border-[var(--pp-border)] bg-[var(--pp-surface)] px-2 py-1 text-[var(--pp-ink-muted)]">
               {qtdAdjacente} adjacência · {qtdRemanejamento} remanejamento
             </span>
           )}
           <span className={`flex items-center gap-1 rounded-full border px-2 py-1 ${
             semSalaLivre
               ? "animate-pulse border-red-300 bg-red-50 font-bold text-red-600 dark:border-red-800 dark:bg-red-950/30 dark:text-red-400"
-              : "border-border bg-muted/40 text-foreground"
+              : "border-[var(--pp-border)] bg-[var(--pp-surface)] text-[var(--pp-ink)]"
           }`}>
-            <Building2 size={12} className={semSalaLivre ? "text-red-600 dark:text-red-400" : "text-muted-foreground"} />
+            <Building2 size={12} className={semSalaLivre ? "text-red-600 dark:text-red-400" : "text-[var(--pp-ink-muted)]"} />
             {sugestao.salaVinculada
               ? `${sugestao.salaVinculada.nomeExibicao} · ${sugestao.salaVinculada.unidade}`
               : "Sem sala livre encontrada"}
@@ -397,19 +398,22 @@ export function SugestoesContratacaoPanel({ onAplicarSugestao }: Props) {
   }
 
   return (
-    <div className="rounded-2xl border border-border bg-card p-4">
-      <div className="mb-1 flex items-center gap-1.5">
-        <Sparkles size={15} className="text-violet-600 dark:text-violet-400" />
-        <span className="text-[15px] font-extrabold text-foreground">Sugestões automáticas de contratação</span>
-        {!loading && !error && (
-          <span className="ml-auto rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-bold text-muted-foreground">
-            {sugestoes.length} sugestão(ões)
-          </span>
-        )}
-      </div>
-      <div className="mb-3 text-xs text-muted-foreground">
-        O sistema identifica onde contratar rende mais ocupação prevista, já indicando sala livre e a receita mensal estimada — semana de referência: {refWeekLabel}.
-      </div>
+    <SecaoPastel titulo="sugestoes-contratacao">
+      <CabecalhoPastel
+        id="sugestoes-contratacao"
+        titulo="Sugestões automáticas de contratação"
+        t="violeta"
+        Icone={Sparkles}
+        apoio={`O sistema identifica onde contratar rende mais ocupação prevista, já indicando sala livre e a receita mensal estimada — semana de referência: ${refWeekLabel}.`}
+        direita={
+          !loading && !error ? (
+            <span className="rounded-full bg-[var(--pp-muted)] px-3 py-1 text-[11px] font-bold text-[var(--pp-ink-muted)]">
+              {sugestoes.length} sugestão(ões)
+            </span>
+          ) : null
+        }
+        tamanho="medio"
+      />
 
       <div className="mb-3 flex flex-wrap items-center gap-x-5 gap-y-2.5 rounded-xl bg-muted/40 px-3 py-2.5">
         <div className="flex flex-wrap items-center gap-1.5">
@@ -562,6 +566,6 @@ export function SugestoesContratacaoPanel({ onAplicarSugestao }: Props) {
           )}
         </>
       )}
-    </div>
+    </SecaoPastel>
   )
 }

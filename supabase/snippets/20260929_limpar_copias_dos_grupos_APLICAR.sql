@@ -21,7 +21,7 @@
 -- errado até o ROLLBACK.
 DO $$
 DECLARE
-  frontend_novo_ja_publicado boolean := false;
+  frontend_novo_ja_publicado boolean := true;
 BEGIN
   IF NOT frontend_novo_ja_publicado THEN
     RAISE EXCEPTION 'Pare: rode este arquivo só DEPOIS de publicar o frontend novo (grupos ao vivo). Nada foi alterado.';
