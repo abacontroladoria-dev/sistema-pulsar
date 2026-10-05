@@ -113,6 +113,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, ignorado: 'corpo ilegível' })
   }
 
+  // Falha de entrega. A Meta ACEITA o envio (devolve wamid) e só depois, por
+  // este webhook, diz que não entregou e por quê. Antes isso era descartado e
+  // uma resposta que nunca chegou ficava "sent" para sempre, sem motivo
+  // nenhum (05/10/2026). sent/delivered/read continuam ignorados.
+  await registrarFalhasDeEntrega(payload)
+
   const linhas = extrairMensagens(payload)
 
   if (linhas.length === 0) {
@@ -208,6 +214,55 @@ interface LinhaFila {
   phone_number_id: string
   message_data: unknown
   contacts_data: unknown
+}
+
+interface StatusMeta {
+  id?: string
+  status?: string
+  recipient_id?: string
+  errors?: { code?: number; title?: string; message?: string; error_data?: { details?: string } }[]
+}
+
+// Grava cada status 'failed' em provider_webhook_logs (com o código da Meta) e
+// marca a mensagem como 'failed'. Nunca lança: um defeito aqui não pode
+// derrubar o webhook e fazer a Meta reentregar mensagens de paciente.
+async function registrarFalhasDeEntrega(payload: PayloadMeta): Promise<void> {
+  try {
+    const falhas: StatusMeta[] = []
+    for (const entry of payload.entry ?? []) {
+      for (const change of entry.changes ?? []) {
+        for (const s of (change.value?.statuses ?? []) as StatusMeta[]) {
+          if (s?.status === 'failed') falhas.push(s)
+        }
+      }
+    }
+    if (falhas.length === 0) return
+
+    const orgId = process.env.CENTRAL_ORGANIZATION_ID ?? null
+    for (const s of falhas) {
+      const erro = s.errors?.[0]
+      const motivo = erro
+        ? `${erro.code ?? '?'} ${erro.title ?? ''}${erro.error_data?.details ? ` — ${erro.error_data.details}` : ''}`.trim()
+        : 'sem código'
+      console.warn('[webhook whatsapp] entrega falhou', s.id, motivo)
+
+      await supabaseService.schema('central').from('provider_webhook_logs').insert({
+        organization_id: orgId,
+        provider:        'meta_waba',
+        event_type:      'status.failed',
+        payload:         s,
+        error_message:   motivo,
+        processed:       true,
+      })
+      if (s.id) {
+        await supabaseService.schema('central').from('messages')
+          .update({ status: 'failed' })
+          .eq('external_message_id', s.id)
+      }
+    }
+  } catch (err) {
+    console.error('[webhook whatsapp] falha ao registrar status de entrega', err)
+  }
 }
 
 function extrairMensagens(payload: PayloadMeta): LinhaFila[] {
