@@ -16,7 +16,7 @@
 // O `<script>` do layout NÃO consegue importar daqui: ele é uma string embutida
 // no HTML, avaliada antes de qualquer bundle carregar. Ao mexer aqui, ajuste
 // também o regex literal em app/layout.tsx.
-export const ROTAS_SEMPRE_CLARAS = ['/ficha-escolar'] as const
+export const ROTAS_SEMPRE_CLARAS = ['/ficha-escolar', '/disponibilidade-paciente'] as const
 
 /** A rota é uma das sempre-claras? Casa a própria rota e o que estiver abaixo dela. */
 export function rotaSempreClara(caminho: string): boolean {

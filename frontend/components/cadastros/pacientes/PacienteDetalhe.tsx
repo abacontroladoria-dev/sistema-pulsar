@@ -20,11 +20,12 @@ import { PlanoSaude } from "./secoes/PlanoSaude"
 import { AbaLaudo } from "./secoes/AbaLaudo"
 import { AbaAltasIndividualidades } from "./secoes/AbaAltasIndividualidades"
 import { AbaEscola } from "./secoes/AbaEscola"
+import { AbaDisponibilidade } from "./secoes/AbaDisponibilidade"
 import { foco } from "./ui/campos"
 import { getAltasClinicasDoPaciente, altaClinicaVigente } from "@/services/pacienteAltaClinica.service"
 import type { PacienteAltaClinica } from "@/types/laudos"
 
-type Aba = "cadastro" | "ficha" | "laudo" | "altas" | "escola"
+type Aba = "cadastro" | "ficha" | "laudo" | "altas" | "escola" | "disponibilidade"
 type SecaoCadastro = "dados" | "endereco" | "filiacao" | "plano"
 type SecaoFicha = "basica" | "doencas"
 
@@ -190,6 +191,7 @@ export function PacienteDetalhe({
             { value: "laudo", label: "Laudo" },
             { value: "altas", label: "Altas e Individualidades" },
             { value: "escola", label: "Escola" },
+            { value: "disponibilidade", label: "Disponibilidade" },
           ]}
         />
       </div>
@@ -250,6 +252,10 @@ export function PacienteDetalhe({
           // declaração do responsável, e a equipe lê sem editar. Por isso não
           // recebe `disabled={!editando}` nem participa de `dirtyCount`.
           <AbaEscola pacienteId={idPaciente} />
+        ) : aba === "disponibilidade" ? (
+          // Também fora do editar/salvar do cadastro: cada gravação é uma versão
+          // nova num histórico imutável, com botão e confirmação próprios.
+          <AbaDisponibilidade pacienteId={idPaciente} pacienteNome={paciente.nome} pacienteCpf={paciente.cpf} />
         ) : (
           <AbaAltasIndividualidades
             pacienteId={idPaciente}
