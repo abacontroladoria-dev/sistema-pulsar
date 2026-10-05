@@ -99,12 +99,12 @@ export function usePainelDetalhamento(contactId: string | null): UsePainelDetalh
     // dois try/catch e não um Promise.all com um catch só.
     ;(async () => {
       try {
-        const tags = await buscar<TagDefinition[]>('/api/central/tag-definitions', controller.signal)
+        const tags = await buscar<TagDefinition[]>('/api/central/tag-definitions/', controller.signal)
         if (vivo) setCatalogoTags(tags)
       } catch { /* o bloco de tags degrada para leitura */ }
 
       try {
-        const us = await buscar<UsuarioAtribuivel[]>('/api/central/users', controller.signal)
+        const us = await buscar<UsuarioAtribuivel[]>('/api/central/users/', controller.signal)
         if (vivo) setUsuarios(us)
       } catch { /* o seletor de responsável fica sem nomes */ }
     })()
@@ -126,11 +126,11 @@ export function usePainelDetalhamento(contactId: string | null): UsePainelDetalh
 
     try {
       const [ags, tks] = await Promise.all([
-        buscar<Appointment[]>(`/api/central/appointments?contactId=${contactId}`, signal),
+        buscar<Appointment[]>(`/api/central/appointments/?contactId=${contactId}`, signal),
         // Só as pendentes: o bloco responde "o que falta fazer com esta
         // pessoa", e histórico de tarefa concluída empurraria a pendência para
         // fora da vista no espaço curto do painel.
-        buscar<Task[]>(`/api/central/tasks?contactId=${contactId}&status=pending`, signal),
+        buscar<Task[]>(`/api/central/tasks/?contactId=${contactId}&status=pending`, signal),
       ])
       setAgendamentos(ags)
       setTarefas(tks)
