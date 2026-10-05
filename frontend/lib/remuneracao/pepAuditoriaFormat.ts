@@ -58,12 +58,60 @@ const LABEL_POR_TABELA: Record<PepTrilhaTabela, Record<string, string>> = {
   },
 }
 
+export interface EvidenciaTrilha {
+  caminho: string
+  nome?: string | null
+}
+
+/** As evidências gravadas num registro (jsonb), só as que têm caminho. */
+export function evidenciasDe(valor: unknown): EvidenciaTrilha[] {
+  if (!Array.isArray(valor)) return []
+  return valor.filter((e): e is EvidenciaTrilha => !!e && typeof e === "object" && !!(e as { caminho?: unknown }).caminho)
+}
+
+/**
+ * Nome legível de uma evidência — nunca a URL crua. Sem `nome`, tira do próprio
+ * link: no SharePoint o caminho real vem no parâmetro `id` do AllItems.aspx
+ * (".../Forms/AllItems.aspx?id=%2Fsites%2F...%2FPasta"); fora disso, o último
+ * pedaço do endereço.
+ */
+export function nomeDaEvidencia(e: EvidenciaTrilha): string {
+  if (e.nome) return e.nome
+  const ultimo = (caminho: string) => caminho.split("/").filter(Boolean).pop() ?? ""
+  try {
+    const url = new URL(e.caminho)
+    const id = url.searchParams.get("id")
+    if (id && ultimo(id)) return ultimo(id)
+    const fim = decodeURIComponent(ultimo(url.pathname))
+    return fim && !/\.aspx$/i.test(fim) ? fim : "Arquivo no SharePoint"
+  } catch {
+    return ultimo(e.caminho) || e.caminho
+  }
+}
+
 function formatarEvidencias(valor: unknown): string {
-  if (!Array.isArray(valor) || valor.length === 0) return "—"
-  return valor
-    .filter((e): e is { caminho: string; nome: string | null } => !!e && typeof e === "object" && "caminho" in e && !!(e as { caminho?: string }).caminho)
-    .map(e => e.nome || e.caminho)
-    .join(", ") || "—"
+  return evidenciasDe(valor).map(nomeDaEvidencia).join(", ") || "—"
+}
+
+const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`
+
+/** O que mudou na lista de evidências, comparando pelo caminho. */
+export function diffEvidencias(antes: unknown, depois: unknown): { adicionadas: EvidenciaTrilha[]; removidas: EvidenciaTrilha[] } {
+  const a = evidenciasDe(antes)
+  const d = evidenciasDe(depois)
+  const emA = new Set(a.map(e => e.caminho))
+  const emD = new Set(d.map(e => e.caminho))
+  return { adicionadas: d.filter(e => !emA.has(e.caminho)), removidas: a.filter(e => !emD.has(e.caminho)) }
+}
+
+function resumoDiffEvidencias(antes: unknown, depois: unknown): string {
+  const { adicionadas, removidas } = diffEvidencias(antes, depois)
+  if (adicionadas.length === 1 && removidas.length === 1) return "arquivo trocado"
+  const partes = [
+    adicionadas.length ? plural(adicionadas.length, "adicionado", "adicionados") : "",
+    removidas.length ? plural(removidas.length, "removido", "removidos") : "",
+  ].filter(Boolean)
+  return partes.join(", ") || "alteradas"
 }
 
 function formatarValor(campo: string, valor: unknown): string {
@@ -81,15 +129,21 @@ function formatarValor(campo: string, valor: unknown): string {
 }
 
 export interface CampoAlteracaoPep {
+  campo: string
   label: string
   antes: string
   depois: string
   mudou: boolean
+  /** Valores crus — a tela usa nas evidências, que viram links. */
+  antesBruto: unknown
+  depoisBruto: unknown
 }
 
 export interface CampoSnapshotPep {
+  campo: string
   label: string
   valor: string
+  valorBruto: unknown
 }
 
 function camposConhecidos(tabela: PepTrilhaTabela, registro: Record<string, unknown>): [string, string][] {
@@ -106,10 +160,13 @@ export function camposAlterados(item: AuditoriaEntradaPep): CampoAlteracaoPep[] 
   const base = Object.keys(depois).length ? depois : antes
   return camposConhecidos(item.tabela, base)
     .map(([campo, label]) => ({
+      campo,
       label,
       antes: formatarValor(campo, antes[campo]),
       depois: formatarValor(campo, depois[campo]),
       mudou: JSON.stringify(antes[campo] ?? null) !== JSON.stringify(depois[campo] ?? null),
+      antesBruto: antes[campo],
+      depoisBruto: depois[campo],
     }))
     .filter(c => c.mudou)
 }
@@ -118,7 +175,7 @@ export function camposAlterados(item: AuditoriaEntradaPep): CampoAlteracaoPep[] 
 export function camposSnapshot(item: AuditoriaEntradaPep): CampoSnapshotPep[] {
   const registro = (item.acao === "excluir" ? item.antes : item.depois ?? item.antes) as Record<string, unknown> | null
   if (!registro) return []
-  return camposConhecidos(item.tabela, registro).map(([campo, label]) => ({ label, valor: formatarValor(campo, registro[campo]) }))
+  return camposConhecidos(item.tabela, registro).map(([campo, label]) => ({ campo, label, valor: formatarValor(campo, registro[campo]), valorBruto: registro[campo] }))
 }
 
 /**
@@ -135,6 +192,35 @@ export function resumoAlteracao(item: AuditoriaEntradaPep): string {
   const snapshot = camposSnapshot(item)
   if (!snapshot.length) return item.acao === "criar" ? "Registro criado." : "Registro excluído."
   return snapshot.map(c => `${c.label}: ${c.valor}`).join(" · ")
+}
+
+/** Edição gravada sem `antes` (o robô grava só o `depois`): não há o que comparar. */
+export function semEstadoAnterior(item: AuditoriaEntradaPep): boolean {
+  return !item.antes || (typeof item.antes === "object" && Object.keys(item.antes as object).length === 0)
+}
+
+/**
+ * A linha curta da lista do histórico, montada na hora a partir de antes/depois
+ * — diferente de `resumo` (gravado), que nas linhas antigas traz a URL inteira
+ * das evidências. Edição: só o que mudou, evidência resumida ("arquivo
+ * trocado"); criação/exclusão: só os campos preenchidos, evidência contada.
+ */
+export function resumoCurto(item: AuditoriaEntradaPep): string {
+  if (item.acao === "editar" && !semEstadoAnterior(item)) {
+    const alteracoes = camposAlterados(item)
+    if (!alteracoes.length) return "Nenhum campo alterado."
+    return alteracoes
+      .map(c => c.campo === "evidencias"
+        ? `${c.label}: ${resumoDiffEvidencias(c.antesBruto, c.depoisBruto)}`
+        : `${c.label}: ${c.antes} → ${c.depois}`)
+      .join(" · ")
+  }
+  return camposSnapshot(item)
+    .filter(c => c.valor !== "—")
+    .map(c => c.campo === "evidencias"
+      ? plural(evidenciasDe(c.valorBruto).length, "evidência", "evidências")
+      : `${c.label}: ${c.valor}`)
+    .join(" · ")
 }
 
 /** Nome do item de catálogo referenciado por uma linha da trilha (antes ou depois), pro cabeçalho da lista — resolve item_id sem precisar de nova consulta. */
