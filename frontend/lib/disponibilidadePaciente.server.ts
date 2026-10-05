@@ -11,7 +11,7 @@ import type { ColunasDisponibilidade } from "@/lib/disponibilidadePaciente"
 export const COLUNAS_CONTEUDO =
   "frequenta_escola, escola_inicio, escola_fim, " +
   "seg_inicio, seg_fim, ter_inicio, ter_fim, qua_inicio, qua_fim, " +
-  "qui_inicio, qui_fim, sex_inicio, sex_fim, sab_inicio, sab_fim"
+  "qui_inicio, qui_fim, sex_inicio, sex_fim"
 
 /**
  * Pacientes ativos com este CPF. Pode haver mais de um: `pacientes.cpf` NÃO é

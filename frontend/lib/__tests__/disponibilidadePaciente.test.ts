@@ -28,7 +28,6 @@ describe("totais", () => {
   // todos atravessam o almoço. Horários reais da carga inicial, sem os nomes.
   it.each([
     [{ seg: ["09:20", "17:40"], ter: ["09:20", "17:40"], qua: ["09:20", "17:40"], qui: ["09:20", "17:40"] }, "33h20", 44],
-    [{ seg: ["10:00", "19:00"], qui: ["13:00", "19:00"], sex: ["10:00", "19:00"] }, "24h00", 33],
     [{ seg: ["10:00", "15:40"], ter: ["13:40", "15:40"], qua: ["13:40", "15:40"] }, "9h40", 13],
     [{ seg: ["11:20", "14:20"], ter: ["11:20", "17:40"], qua: ["11:20", "14:20"], qui: ["11:20", "17:40"] }, "18h40", 22],
     [{ seg: ["10:00", "17:00"], ter: ["10:00", "17:00"], qua: ["10:00", "17:00"], qui: ["10:00", "17:00"], sex: ["10:00", "17:00"] }, "35h00", 45],
@@ -40,6 +39,18 @@ describe("totais", () => {
     const t = calcularTotais(com(dias))
     expect(formatarHoras(t.minutosSemana)).toBe(horas)
     expect(t.sessoes40).toBe(sessoes)
+  })
+
+  it("janela que passa das 17:40 só soma sessões até 17:40", () => {
+    // No CSV da Órbita este caso dava 33 sessões (grade até 19:40). A clínica
+    // agora fecha às 17:40: as horas declaradas continuam, as sessões não.
+    const t = calcularTotais(com({
+      seg: { inicio: "10:00", fim: "19:00" },
+      qui: { inicio: "13:00", fim: "19:00" },
+      sex: { inicio: "10:00", fim: "19:00" },
+    }))
+    expect(formatarHoras(t.minutosSemana)).toBe("24h00")
+    expect(t.sessoes40).toBe(27)
   })
 
   it("não conta sessão que termina depois do fim da janela", () => {
@@ -58,19 +69,20 @@ describe("totais", () => {
 })
 
 describe("opções de horário", () => {
-  it("a grade vai das 08:00 às 19:00 sem o almoço", () => {
+  it("a grade vai das 08:00 até a sessão das 17:00 (termina 17:40), sem o almoço", () => {
     const inicios = opcoesInicio().map((o) => o.valor)
     expect(inicios[0]).toBe("08:00")
     expect(inicios).toContain("11:20")
     expect(inicios).not.toContain("12:00")
     expect(inicios).toContain("13:00")
-    expect(inicios.at(-1)).toBe("19:00")
+    expect(inicios.at(-1)).toBe("17:00")
+    expect(inicios).not.toContain("17:40")
   })
 
   it("fim só oferece horários depois do início", () => {
     const fins = opcoesFim("13:00").map((o) => o.valor)
     expect(fins[0]).toBe("13:40")
-    expect(fins.at(-1)).toBe("19:40")
+    expect(fins.at(-1)).toBe("17:40")
   })
 
   it("mantém um valor importado fora da grade, marcado", () => {
@@ -101,13 +113,12 @@ describe("banco ↔ tela", () => {
       escola_fim: "12:00:00",
       seg_inicio: "13:00:00",
       seg_fim: "17:00:00",
-      sab_inicio: null,
-      sab_fim: null,
     })
     expect(d.escola).toEqual({ inicio: "07:30", fim: "12:00" })
     expect(d.dias.seg).toEqual({ inicio: "13:00", fim: "17:00" })
-    expect(d.dias.sab).toBeNull()
-    expect(paraColunas(d)).toMatchObject({ escola_inicio: "07:30", seg_inicio: "13:00", seg_fim: "17:00", sab_inicio: null })
+    expect(Object.keys(d.dias)).toEqual(["seg", "ter", "qua", "qui", "sex"])
+    expect(paraColunas(d)).toMatchObject({ escola_inicio: "07:30", seg_inicio: "13:00", seg_fim: "17:00", sex_inicio: null })
+    expect(paraColunas(d)).not.toHaveProperty("sab_inicio")
   })
 
   it("não frequenta escola zera o horário da escola ao gravar", () => {
@@ -124,14 +135,14 @@ describe("histórico", () => {
       { frequenta_escola: true, escola: { inicio: "07:30", fim: "12:00" } }
     )
     const mae = com(
-      { seg: { inicio: "13:00", fim: "17:00" }, sab: { inicio: "08:00", fim: "12:00" } },
+      { seg: { inicio: "13:00", fim: "17:00" }, sex: { inicio: "08:00", fim: "12:00" } },
       { frequenta_escola: true, escola: { inicio: "13:00", fim: "17:30" } }
     )
     expect(diferencas(pai, mae)).toEqual([
       "Escola: 07:30–12:00 → 13:00–17:30",
       "Seg: 08:00–12:00 → 13:00–17:00",
       "Qua: removido (era 14:20–17:40)",
-      "Sáb: incluído 08:00–12:00",
+      "Sex: incluído 08:00–12:00",
     ])
   })
 
@@ -196,7 +207,6 @@ describe("conflito com a escola", () => {
       seg: { inicio: "13:00", fim: "17:40" },
       ter: { inicio: "08:00", fim: "12:00" },
       qua: { inicio: "15:00", fim: "17:00" },
-      sab: { inicio: "08:00", fim: "12:00" },
     },
     { frequenta_escola: true, escola: { inicio: "06:30", fim: "11:20" } }
   )
@@ -215,8 +225,7 @@ describe("conflito com a escola", () => {
     expect(conflitoComEscola(e, "seg")).toBeNull()
   })
 
-  it("sábado não conta e quem não frequenta escola nunca tem conflito", () => {
-    expect(conflitoComEscola(d, "sab")).toBeNull()
+  it("quem não frequenta escola nunca tem conflito", () => {
     expect(conflitoComEscola({ ...d, frequenta_escola: false, escola: null }, "ter")).toBeNull()
   })
 })

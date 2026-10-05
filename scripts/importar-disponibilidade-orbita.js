@@ -23,9 +23,11 @@
 // O QUE ELE NÃO FAZ, DE PROPÓSITO:
 //   - Não cria paciente. `ID Paciente` sem match em pacientes.tita_paciente_id
 //     só é reportado.
-//   - Não "arruma" horário: janela com fim <= início, ou 00:00–00:00 (o CSV usa
-//     isso no sábado), vira dia vazio e entra no relatório. Horário fora da
-//     grade de sessões é gravado como veio.
+//   - Não "arruma" horário: janela com fim <= início, ou 00:00–00:00, vira dia
+//     vazio e entra no relatório. Horário fora da grade de sessões (inclusive
+//     depois das 17:40) é gravado como veio.
+//   - Não importa SÁBADO: a clínica deixou de oferecer o dia (05/10/2026). O
+//     sábado do CSV é ignorado e só contado no relatório.
 //
 // LGPD: o CSV traz nome de responsável e não deve ser versionado (*.csv já está
 // no .gitignore). Apague do disco depois da carga.
@@ -40,8 +42,12 @@ const PARENTESCOS = [
 ]
 
 const DIAS = [
-  ["seg", "Seg"], ["ter", "Ter"], ["qua", "Qua"], ["qui", "Qui"], ["sex", "Sex"], ["sab", "Sab"],
+  ["seg", "Seg"], ["ter", "Ter"], ["qua", "Qua"], ["qui", "Qui"], ["sex", "Sex"],
 ]
+
+// Último horário que a clínica aceita (decisão do usuário, 05/10/2026). Janela
+// que passa disso é gravada como veio e só entra no relatório.
+const FIM_CLINICA = 17 * 60 + 40
 
 // ─── Parsing ─────────────────────────────────────────────────────────────────
 
@@ -125,11 +131,16 @@ function converterLinha(l) {
     versao[`${chave}_fim`] = j.valor ? j.valor.fim : null
   }
 
+  const sabado = janela(l["Sab Início"], l["Sab Fim"]).valor
+  const depoisDoFecho = DIAS.filter(([chave]) => versao[`${chave}_fim`] && minutos(versao[`${chave}_fim`]) > FIM_CLINICA).length
+
   const nome = (l["Responsável pelo Preenchimento das Informações"] || "").trim() || null
   const parentesco = normalizarParentesco(l["Parentesco"])
 
   return {
     titaId: Number(l["ID Paciente"]),
+    tinhaSabado: !!sabado,
+    diasDepoisDoFecho: depoisDoFecho,
     parentescoOriginal: (l["Parentesco"] || "").trim(),
     parentesco,
     descartes,
@@ -252,6 +263,8 @@ async function main() {
   console.log(`  ativos SEM CPF válido ................ ${ativosSemCpf.length} (o formulário não os encontra; completar CPF no cadastro)`)
   console.log(`  sem responsável identificado ......... ${semResponsavel.length}`)
   console.log(`  prazo do responsável ainda aberto .... ${prazoAberto.length}`)
+  console.log(`  tinham SÁBADO (ignorado) ............. ${linhas.filter((l) => l.tinhaSabado).length}`)
+  console.log(`  com dia passando das 17:40 ........... ${linhas.filter((l) => l.diasDepoisDoFecho > 0).length} (gravado como veio, aparece "fora da grade")`)
 
   if (descartadas.length) {
     console.log(`\n  Janelas descartadas (${descartadas.length} linha(s)):`)

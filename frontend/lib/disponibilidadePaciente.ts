@@ -5,8 +5,12 @@
 // lib/cronograma inteira junto), nos route handlers e no teste.
 //
 // O formato espelha a tabela pacientes_disponibilidade_versoes
-// (20261005160000): horário da escola + UMA janela por dia, Seg–Sáb. É o mesmo
+// (20261005160000): horário da escola + UMA janela por dia, Seg–Sex. É o mesmo
 // desenho do CSV da Órbita que a clínica usava antes.
+//
+// SÁBADO saiu (decisão do usuário, 05/10/2026): a clínica não oferece mais o dia.
+// As colunas sab_* continuam na tabela (a migration já estava aplicada), mas a
+// aplicação não lê nem grava mais nelas.
 
 // ─── Dias ─────────────────────────────────────────────────────────────────────
 
@@ -16,7 +20,6 @@ export const DIAS = [
   { chave: "qua", curto: "Qua", longo: "Quarta-feira" },
   { chave: "qui", curto: "Qui", longo: "Quinta-feira" },
   { chave: "sex", curto: "Sex", longo: "Sexta-feira" },
-  { chave: "sab", curto: "Sáb", longo: "Sábado" },
 ] as const
 
 export type DiaChave = (typeof DIAS)[number]["chave"]
@@ -35,7 +38,7 @@ export function disponibilidadeVazia(): Disponibilidade {
   return {
     frequenta_escola: null,
     escola: null,
-    dias: { seg: null, ter: null, qua: null, qui: null, sex: null, sab: null },
+    dias: { seg: null, ter: null, qua: null, qui: null, sex: null },
   }
 }
 
@@ -65,10 +68,11 @@ export function horaCurta(hora: string | null | undefined): string | null {
 
 // ─── Grade de sessões ─────────────────────────────────────────────────────────
 // Sessão de 40 min. Manhã 08:00–12:00, almoço 12:00–13:00, tarde 13:00 até a
-// última sessão das 19:00 (termina 19:40). É a grade em que a clínica atende —
-// HORAS_GRID em lib/cronograma/constants.ts vai só até 17:00 porque descreve a
-// grade padrão do cronograma; o CSV da Órbita mostra famílias disponíveis até
-// 19:40, e a disponibilidade precisa caber nelas.
+// última sessão das 17:00, que termina às 17:40 — o último horário que a clínica
+// aceita (decisão do usuário). É a mesma grade de HORAS_GRID em
+// lib/cronograma/constants.ts. Janelas antigas que passam das 17:40 (o CSV da
+// Órbita tem até 19:40) aparecem como "fora da grade" e não somam sessões além
+// das 17:40.
 
 const DURACAO_SESSAO = 40
 
@@ -79,7 +83,7 @@ function faixa(de: number, ate: number, passo: number): number[] {
 }
 
 /** Inícios de sessão, em minutos. */
-const INICIOS_MIN = [...faixa(8 * 60, 11 * 60 + 20, DURACAO_SESSAO), ...faixa(13 * 60, 19 * 60, DURACAO_SESSAO)]
+const INICIOS_MIN = [...faixa(8 * 60, 11 * 60 + 20, DURACAO_SESSAO), ...faixa(13 * 60, 17 * 60, DURACAO_SESSAO)]
 
 /** Fins de sessão, em minutos (início + 40). */
 const FINS_MIN = INICIOS_MIN.map((m) => m + DURACAO_SESSAO)
@@ -174,9 +178,6 @@ export function formatarHoras(minutos: number): string {
 
 // ─── Conflito com a escola ────────────────────────────────────────────────────
 
-/** Dias em que a escola funciona. Sábado fica de fora: o horário escolar é um só e descreve a semana útil. */
-const DIAS_DE_ESCOLA: readonly DiaChave[] = ["seg", "ter", "qua", "qui", "sex"]
-
 /**
  * Trecho em que a janela do dia se sobrepõe ao horário da escola, ou `null`.
  *
@@ -186,7 +187,7 @@ const DIAS_DE_ESCOLA: readonly DiaChave[] = ["seg", "ter", "qua", "qui", "sex"]
  * Encostar não é conflito: escola até 12:00 e clínica a partir de 12:00 é ok.
  */
 export function conflitoComEscola(d: Disponibilidade, dia: DiaChave): Janela {
-  if (d.frequenta_escola === false || !d.escola || !DIAS_DE_ESCOLA.includes(dia)) return null
+  if (d.frequenta_escola === false || !d.escola) return null
   const j = d.dias[dia]
   if (!j) return null
   const ini = Math.max(paraMinutos(j.inicio) ?? 0, paraMinutos(d.escola.inicio) ?? 0)

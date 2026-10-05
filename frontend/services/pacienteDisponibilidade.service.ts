@@ -84,7 +84,7 @@ export class ErroDisponibilidade extends Error {
 const COLUNAS_VERSAO =
   "id, paciente_id, numero_versao, frequenta_escola, escola_inicio, escola_fim, " +
   "seg_inicio, seg_fim, ter_inicio, ter_fim, qua_inicio, qua_fim, " +
-  "qui_inicio, qui_fim, sex_inicio, sex_fim, sab_inicio, sab_fim, " +
+  "qui_inicio, qui_fim, sex_inicio, sex_fim, " +
   "origem, preenchido_por_nome, preenchido_por_parentesco, preenchido_por_telefone, " +
   "telefone_confere, registrado_por_usuario, registrado_por_nome, sem_alteracao, " +
   "observacao, criado_em"

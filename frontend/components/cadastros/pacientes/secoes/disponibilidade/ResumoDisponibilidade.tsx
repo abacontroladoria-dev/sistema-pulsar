@@ -12,12 +12,12 @@ import {
   type Disponibilidade,
 } from "@/lib/disponibilidadePaciente"
 
-// Leitura da disponibilidade: escola + os seis dias + totais. Usado na versão
+// Leitura da disponibilidade: escola + os cinco dias (Seg–Sex) + totais. Usado na versão
 // atual e no detalhe de cada versão do histórico — as duas precisam ser lidas
 // do mesmo jeito para a comparação de olho funcionar.
 //
 // Celular primeiro: a atendente abre isto no telefone. Abaixo de `sm` cada dia
-// é uma linha (dia · janela · sessões); a partir de `sm` vira uma grade de seis
+// é uma linha (dia · janela · sessões); a partir de `sm` vira uma grade de cinco
 // colunas, que é como a equipe pensa a semana.
 //
 // Cores do dia: verde = pode vir; AMARELO = pode vir, mas a janela cruza o
@@ -42,7 +42,7 @@ export function ResumoDisponibilidade({ disponibilidade }: { disponibilidade: Di
         </span>
       </div>
 
-      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-3 lg:grid-cols-5">
         {DIAS.map((dia) => {
           const j = disponibilidade.dias[dia.chave]
           const sessoes = sessoesNaJanela(j)
