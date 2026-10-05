@@ -11,9 +11,10 @@
 // responde de forma inequívoca para aquele paciente; em qualquer dúvida vale o
 // convênio da agenda, exatamente como antes.
 //
-// Hoje só o Dashboard de Pacientes usa este módulo. A Previsão de Receitas deve
-// passar a usar ESTE mesmo módulo (e não uma cópia da regra) para as duas telas
-// nunca discordarem do convênio de um paciente.
+// Usado pelo Dashboard de Pacientes e pela Previsão de Receitas — as duas telas
+// usam ESTE mesmo módulo (e não uma cópia da regra) para nunca discordarem do
+// convênio de um paciente. A única cópia é o port em Deno da Edge Function
+// snapshot-previsao-receitas (retrato histórico), que tem de seguir esta regra.
 
 import { cleanTxt } from "./helpers"
 import type { AgendaSalaRow } from "./salasTypes"
@@ -80,4 +81,16 @@ export function convenioDaLinha(r: AgendaSalaRow, mapa: MapaConvenioCadastro | n
   const plano = mapa && r.paciente_id != null ? mapa.porPacienteId.get(r.paciente_id) : undefined
   if (plano) return { convenio: plano, fonte: "cadastro", convenioAgenda }
   return { convenio: convenioAgenda, fonte: "agenda", convenioAgenda }
+}
+
+/**
+ * As mesmas linhas com `convenio_nome` já trocado pelo convênio de
+ * `convenioDaLinha` — para quem calcula a partir de `convenio_nome` (Previsão de
+ * Receitas: agrupamento, preço, dedução por falta, pacotes, export) receber o
+ * MESMO convênio da aba Pacientes sem mudar o próprio cálculo. Sem mapa (TiTa
+ * indisponível ou carregando), devolve o próprio array: tudo como antes.
+ */
+export function aplicarConvenioCadastro<T extends AgendaSalaRow>(rows: T[], mapa: MapaConvenioCadastro | null | undefined): T[] {
+  if (!mapa) return rows
+  return rows.map(r => ({ ...r, convenio_nome: convenioDaLinha(r, mapa).convenio }))
 }
