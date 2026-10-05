@@ -107,6 +107,8 @@ export default function RoboSharepointShell() {
   const [historicoAberto, setHistoricoAberto] = useState(false)
   // "Informações técnicas" nasce recolhido: só aparece quando a pessoa expande.
   const [tecnicoAberto, setTecnicoAberto] = useState(false)
+  // Idem "Histórico de mudanças nas evidências" — e só carrega ao expandir.
+  const [mudancasAberto, setMudancasAberto] = useState(false)
   const [detalhe, setDetalhe] = useState<{ execucao: RoboExecucao; etapa: RoboEtapaNome } | null>(null)
 
   const { ultima, ultimaConcluida, idUltimaGravada, ultimaCompleta, executando } = execucoesDeReferencia(execucoes)
@@ -169,9 +171,6 @@ export default function RoboSharepointShell() {
         {carregando ? <p className="text-sm text-slate-500">Carregando…</p> : <EstadoAgora saude={saude} ultima={ultima} />}
       </section>
 
-      {/* O que mudou nas evidências (o retrato fica na tela Entregas PEP). */}
-      <HistoricoMudancas />
-
       <EntregaAutomatica />
 
       <ComoFunciona />
@@ -228,6 +227,36 @@ export default function RoboSharepointShell() {
           <HistoricoExecucoes execucoes={execucoes} />
         </section>
         </div>
+        )}
+      </section>
+
+      {/* O que mudou nas evidências (o retrato fica na tela Entregas PEP). Não é
+          o foco da tela: recolhido, abaixo das informações técnicas, e só busca
+          os dados quando a pessoa expande. */}
+      <section className="space-y-4" aria-labelledby="titulo-mudancas-evidencias">
+        <button
+          type="button"
+          onClick={() => setMudancasAberto(a => !a)}
+          aria-expanded={mudancasAberto}
+          aria-controls="conteudo-mudancas-evidencias"
+          className="flex min-h-11 w-full items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand sm:px-6"
+        >
+          <span className="min-w-0">
+            <span id="titulo-mudancas-evidencias" className="flex items-center gap-2 text-base font-bold text-slate-800">
+              <History className="h-4 w-4 text-brand-fg" aria-hidden /> Histórico de mudanças nas evidências
+            </span>
+            <span className="mt-0.5 block text-xs text-slate-500">O que entrou, saiu, voltou ou mudou de nome nas pastas dos itens do PEP — e o que isso fez com as entregas</span>
+          </span>
+          <span className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-brand-fg">
+            {mudancasAberto ? 'Recolher' : 'Mostrar'}
+            <ChevronDown className={`h-4 w-4 transition-transform motion-reduce:transition-none ${mudancasAberto ? 'rotate-180' : ''}`} aria-hidden />
+          </span>
+        </button>
+
+        {mudancasAberto && (
+          <div id="conteudo-mudancas-evidencias">
+            <HistoricoMudancas tituloId="titulo-mudancas-evidencias" />
+          </div>
         )}
       </section>
 

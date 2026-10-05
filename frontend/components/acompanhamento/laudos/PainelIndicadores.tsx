@@ -81,12 +81,13 @@ const PASTEL = {
     base: "border-rose-100 bg-rose-50 dark:border-rose-900/60 dark:bg-rose-950/30",
     ativo: "border-rose-400 bg-rose-100 ring-1 ring-rose-400/30 dark:border-rose-700 dark:bg-rose-900/40",
   },
-  // O mesmo assunto de `rosa`, um grau pior: texto e moldura mais fortes, fundo
-  // um tom acima — "Vencidos há mais de 6 meses" ao lado de "Vencidos".
-  rosaForte: {
-    tom: "text-rose-800 dark:text-rose-300",
-    base: "border-rose-200 bg-rose-100/70 dark:border-rose-800/70 dark:bg-rose-950/50",
-    ativo: "border-rose-500 bg-rose-200/70 ring-1 ring-rose-500/30 dark:border-rose-600 dark:bg-rose-900/60",
+  // "Vencidos há mais de 6 meses": era um rosa mais forte, mas na barra 100% os
+  // dois pedaços vermelhos se confundiam (05/10/2026) — a barra não tem legenda,
+  // a cor de cada card é a legenda. Violeta: não aparece em mais nada da tela.
+  violeta: {
+    tom: "text-violet-600 dark:text-violet-400",
+    base: "border-violet-100 bg-violet-50 dark:border-violet-900/60 dark:bg-violet-950/30",
+    ativo: "border-violet-400 bg-violet-100 ring-1 ring-violet-400/30 dark:border-violet-700 dark:bg-violet-900/40",
   },
   ambar: {
     tom: "text-amber-600 dark:text-amber-400",
@@ -106,7 +107,7 @@ const LAUDO_GERAL: CardInfo<RecorteLaudo>[] = [
   { recorte: "todos", rotulo: RECORTE_LABEL.todos, icone: Layers, ...PASTEL.neutro },
   { recorte: "vigentes", rotulo: RECORTE_LABEL.vigentes, icone: FileCheck2, ...PASTEL.verde },
   { recorte: "vencidos", rotulo: RECORTE_LABEL.vencidos, icone: FileClock, ...PASTEL.rosa },
-  { recorte: "vencidos_ha_muito", rotulo: RECORTE_LABEL.vencidos_ha_muito, icone: FileX, ...PASTEL.rosaForte },
+  { recorte: "vencidos_ha_muito", rotulo: RECORTE_LABEL.vencidos_ha_muito, icone: FileX, ...PASTEL.violeta },
 ]
 
 /** Na ordem de urgência: a fila do dia primeiro, o que já foi tratado por último. */
@@ -206,6 +207,64 @@ function explicaSenha(r: RecorteSenha, convenios: ConveniosDaSenha): string {
   return EXPLICA[r]
 }
 
+// ─── Barra 100% ─────────────────────────────────────────────────────────────
+// Uma barra só, acima da visão geral, dizendo como o total do painel se divide.
+// SEM LEGENDA (pedido do usuário, 05/10/2026): cada pedaço tem a cor do card
+// logo abaixo, e o card é a legenda. Os pedaços são DISJUNTOS e somam o número
+// do badge do painel — por isso o vermelho do laudo é só "vencidos até 6 meses"
+// (o card "Vencidos" contém os de +6 meses, que ganham o violeta) e o cinza
+// junta o que não tem card na visão geral. Detalhe de cada pedaço no `title`.
+
+type Parte = { valor: number; cor: string; rotulo: string }
+
+const CINZA = "bg-slate-300 dark:bg-slate-600"
+
+function partesLaudo(c: Record<RecorteLaudo, number>): Parte[] {
+  return [
+    { valor: c.vigentes, cor: "bg-emerald-500", rotulo: RECORTE_LABEL.vigentes },
+    { valor: Math.max(0, c.vencidos - c.vencidos_ha_muito), cor: "bg-rose-500", rotulo: "Vencidos até 6 meses" },
+    { valor: c.vencidos_ha_muito, cor: "bg-violet-500", rotulo: RECORTE_LABEL.vencidos_ha_muito },
+    { valor: Math.max(0, c.todos - c.vigentes - c.vencidos), cor: CINZA, rotulo: "Sem validade" },
+  ]
+}
+
+function partesSenha(c: Record<RecorteSenha, number> & { aplicaveis: number }): Parte[] {
+  return [
+    { valor: c.vigente, cor: "bg-emerald-500", rotulo: RECORTE_SENHA_LABEL.vigente },
+    { valor: c.vencida, cor: "bg-rose-500", rotulo: RECORTE_SENHA_LABEL.vencida },
+    { valor: c.laudo_antigo, cor: "bg-sky-500", rotulo: RECORTE_SENHA_LABEL.laudo_antigo },
+    { valor: c.sem_senha, cor: "bg-amber-500", rotulo: RECORTE_SENHA_LABEL.sem_senha },
+    {
+      valor: c.pendente + c.em_analise + c.sem_validade,
+      cor: CINZA,
+      rotulo: `Outras situações (${RECORTE_SENHA_LABEL.pendente}: ${c.pendente}, ${RECORTE_SENHA_LABEL.em_analise}: ${c.em_analise}, ${RECORTE_SENHA_LABEL.sem_validade}: ${c.sem_validade})`,
+    },
+  ]
+}
+
+function BarraProporcao({ partes, carregando }: { partes: Parte[]; carregando: boolean }) {
+  const visiveis = carregando ? [] : partes.filter((p) => p.valor > 0)
+  const total = visiveis.reduce((s, p) => s + p.valor, 0)
+  const texto = (p: Parte) => `${p.rotulo}: ${p.valor} (${Math.round((p.valor / total) * 100)}%)`
+  return (
+    <div
+      role="img"
+      aria-label={total > 0 ? visiveis.map(texto).join("; ") : "Sem dados"}
+      className="flex h-3 w-full gap-px overflow-hidden rounded-full bg-muted"
+    >
+      {total > 0 &&
+        visiveis.map((p) => (
+          <div
+            key={p.rotulo}
+            title={texto(p)}
+            className={`h-full min-w-[3px] transition-[flex-grow] duration-500 motion-reduce:transition-none ${p.cor}`}
+            style={{ flexGrow: p.valor, flexBasis: 0 }}
+          />
+        ))}
+    </div>
+  )
+}
+
 type Aba = "laudo" | "senha"
 
 export function PainelIndicadores({
@@ -273,6 +332,7 @@ export function PainelIndicadores({
           subtitulo="Renovação e aviso ao responsável"
           contagem={carregando ? "—" : `${contagensLaudo.todos} laudos`}
         >
+          <BarraProporcao partes={partesLaudo(contagensLaudo)} carregando={carregando} />
           <Grupo rotulo="Visão geral">
             {/* Mesma grade do painel de senhas: os dois com quatro cards. */}
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -319,6 +379,7 @@ export function PainelIndicadores({
         >
           {comSenhas || carregando ? (
             <>
+              <BarraProporcao partes={partesSenha(contagensSenha)} carregando={carregando} />
               <Grupo rotulo="Visão geral">
                 {/* Quatro cards: 2×2 no celular (em quatro colunas o rótulo
                     "Senha vinculada ao laudo antigo" quebraria em cinco linhas). */}

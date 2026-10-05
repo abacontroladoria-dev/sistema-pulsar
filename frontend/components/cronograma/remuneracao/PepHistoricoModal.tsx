@@ -11,10 +11,20 @@
 // `calendario_competencia` ("Semanas no mês"), que não têm prestador.
 
 import { useEffect, useState } from "react"
-import { ChevronDown, ChevronLeft, ChevronRight, Loader2 } from "lucide-react"
+import { ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Loader2 } from "lucide-react"
 import { ScheduleModal } from "@/components/cronograma/ui/ScheduleModal"
 import { TONE_SOLID } from "@/components/cronograma/ui/tones"
-import { camposAlterados, camposSnapshot, nomeItemDaTrilha } from "@/lib/remuneracao/pepAuditoriaFormat"
+import {
+  camposAlterados,
+  camposSnapshot,
+  diffEvidencias,
+  evidenciasDe,
+  nomeDaEvidencia,
+  nomeItemDaTrilha,
+  resumoCurto,
+  semEstadoAnterior,
+  type EvidenciaTrilha,
+} from "@/lib/remuneracao/pepAuditoriaFormat"
 import { getTrilhaAuditoria, type PepTrilhaAcao, type PepTrilhaAuditoria, type PepTrilhaTabela } from "@/services/pepAuditoria.service"
 import type { PepCatalogoItem } from "@/types/pep"
 import { ChipOrigem } from "./pep/origem"
@@ -46,6 +56,72 @@ function formatarDataHora(item: PepTrilhaAuditoria): string {
   // Brasília) — toLocaleString é só um fallback pra linhas antigas sem essa coluna.
   return item.criado_em_brasilia ?? new Date(item.criado_em).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })
 }
+
+/**
+ * A linha curta sob o nome. Robô (e "Desfeito", que só ele grava): o `resumo`
+ * escrito pelo SQL já é uma frase pronta. Pessoa: montada na hora a partir de
+ * antes/depois — o `resumo` gravado traz a URL inteira das evidências.
+ */
+function resumoDaLinha(item: PepTrilhaAuditoria): string {
+  if ((item.ator === "robo" || item.acao === "reverter") && item.resumo) return item.resumo
+  return resumoCurto(item) || item.resumo || ""
+}
+
+// Link neutro: azul e violeta na PEP querem dizer Pessoa e Robô (pep/origem.tsx).
+function LinkEvidencia({ evidencia, riscado = false }: { evidencia: EvidenciaTrilha; riscado?: boolean }) {
+  const nome = nomeDaEvidencia(evidencia)
+  const link = /^https?:\/\//i.test(evidencia.caminho) ? evidencia.caminho : null
+  if (!link) return <span className={`break-words ${riscado ? "line-through" : ""}`}>{nome}</span>
+  return (
+    <a
+      href={link}
+      target="_blank"
+      rel="noreferrer"
+      title={link}
+      className={`inline-flex max-w-full items-center gap-1 underline decoration-border underline-offset-2 hover:decoration-foreground ${riscado ? "line-through" : ""}`}
+    >
+      <span className="min-w-0 break-words">{nome}</span>
+      <ExternalLink size={12} className="shrink-0 text-muted-foreground" aria-hidden />
+      <span className="sr-only">(abre no SharePoint)</span>
+    </a>
+  )
+}
+
+function ListaEvidencias({ valor }: { valor: unknown }) {
+  const lista = evidenciasDe(valor)
+  if (!lista.length) return <>—</>
+  return (
+    <ul className="flex flex-col gap-0.5">
+      {lista.map(e => <li key={e.caminho} className="min-w-0"><LinkEvidencia evidencia={e} /></li>)}
+    </ul>
+  )
+}
+
+function DiffEvidencias({ antes, depois }: { antes: unknown; depois: unknown }) {
+  const { adicionadas, removidas } = diffEvidencias(antes, depois)
+  if (!adicionadas.length && !removidas.length) return <>Mesmos arquivos, com outro nome ou outra ordem</>
+  return (
+    <ul className="flex flex-col gap-0.5">
+      {removidas.map(e => (
+        <li key={`-${e.caminho}`} className="flex min-w-0 gap-1.5 text-muted-foreground">
+          <span className="shrink-0 font-bold text-rose-600 dark:text-rose-400" aria-label="Removido">−</span>
+          <LinkEvidencia evidencia={e} riscado />
+        </li>
+      ))}
+      {adicionadas.map(e => (
+        <li key={`+${e.caminho}`} className="flex min-w-0 gap-1.5">
+          <span className="shrink-0 font-bold text-emerald-600 dark:text-emerald-400" aria-label="Adicionado">+</span>
+          <LinkEvidencia evidencia={e} />
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+/** Rótulo à esquerda, valor à direita; no celular, um embaixo do outro. */
+const GRADE = "grid grid-cols-1 gap-x-3 gap-y-1 text-sm sm:grid-cols-[max-content_minmax(0,1fr)] sm:gap-y-1.5"
+const ROTULO = "text-[12px] font-semibold text-muted-foreground sm:text-sm"
+const VALOR = "mb-1.5 min-w-0 break-words text-foreground sm:mb-0"
 
 const ITENS_POR_PAGINA = 30
 
@@ -94,48 +170,84 @@ export function PepHistoricoModal({ prestadorNome, catalogo, onClose }: Props) {
         {itens.map(item => {
           const tone = TONE_SOLID[ACAO_TONE[item.acao]]
           const expandido = expandidoId === item.id
-          const alteracoes = item.acao === "editar" ? camposAlterados(item) : []
-          const snapshot = item.acao !== "editar" ? camposSnapshot(item) : []
+          // Edição do robô vem sem `antes`: mostra o estado gravado, sem "— → valor".
+          const comoDiff = item.acao === "editar" && !semEstadoAnterior(item)
+          const alteracoes = comoDiff ? camposAlterados(item) : []
+          const snapshot = comoDiff ? [] : camposSnapshot(item).filter(c => c.valor !== "—")
           const temDetalhe = alteracoes.length > 0 || snapshot.length > 0 || !!item.motivo
+          const resumo = resumoDaLinha(item)
+          // Aberto, o detalhe diz tudo e a linha curta só repetiria. A do robô é
+          // uma frase que o detalhe não tem, então fica.
+          const mostrarResumo = !!resumo && (!expandido || item.ator === "robo" || item.acao === "reverter")
           return (
             <div key={item.id} className="rounded-lg border border-border px-2.5 py-2">
               <button
                 type="button"
                 onClick={() => temDetalhe && setExpandidoId(expandido ? null : item.id)}
-                className={`flex w-full items-center gap-2 text-left ${temDetalhe ? "cursor-pointer" : "cursor-default"}`}
+                aria-expanded={temDetalhe ? expandido : undefined}
+                className={`flex w-full items-start gap-2 text-left ${temDetalhe ? "cursor-pointer" : "cursor-default"}`}
               >
-                {temDetalhe ? (expandido ? <ChevronDown size={14} className="shrink-0 text-muted-foreground" /> : <ChevronRight size={14} className="shrink-0 text-muted-foreground" />) : <span className="w-3.5 shrink-0" />}
-                <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-bold ${tone.bg} ${tone.text}`}>{ACAO_LABEL[item.acao]}</span>
-                <ChipOrigem origem={item.ator === "robo" ? "robo" : "humano"} />
-                <span className="shrink-0 text-[11px] font-semibold text-muted-foreground">{TABELA_LABEL[item.tabela]}</span>
-                <span className="flex-1 truncate text-sm font-semibold text-foreground">{nomeContextual(item, catalogo)}</span>
-                <span className="shrink-0 text-right text-[11px] text-muted-foreground">
-                  <div>{item.usuario_nome ?? "Usuário desconhecido"}</div>
-                  <div>{formatarDataHora(item)}</div>
+                <span className="mt-0.5 w-3.5 shrink-0 text-muted-foreground">
+                  {temDetalhe && (expandido ? <ChevronDown size={14} /> : <ChevronRight size={14} />)}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex flex-wrap items-center gap-1.5">
+                    <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-bold ${tone.bg} ${tone.text}`}>{ACAO_LABEL[item.acao]}</span>
+                    <ChipOrigem origem={item.ator === "robo" ? "robo" : "humano"} />
+                    <span className="text-[11px] font-semibold text-muted-foreground">{TABELA_LABEL[item.tabela]}</span>
+                  </span>
+                  <span className="mt-1 line-clamp-2 text-sm font-semibold text-foreground">{nomeContextual(item, catalogo)}</span>
+                  {mostrarResumo && (
+                    <span className="mt-0.5 line-clamp-2 text-[12px] text-muted-foreground">{resumo}</span>
+                  )}
+                </span>
+                <span className="max-w-[40%] shrink-0 text-right text-[11px] leading-snug text-muted-foreground">
+                  <span className="block">{item.usuario_nome ?? "Usuário desconhecido"}</span>
+                  <span className="block tabular-nums">{formatarDataHora(item)}</span>
                 </span>
               </button>
-              {item.resumo && (
-                <div className="mt-1 pl-[22px] text-[12px] text-muted-foreground">{item.resumo}</div>
-              )}
               {expandido && (
-                <div className="mt-2 flex flex-col gap-1.5 border-t border-border pt-2">
-                  {alteracoes.length === 0 && snapshot.length === 0 && (
+                <div className="mt-2 border-t border-border pt-2 sm:pl-[22px]">
+                  {alteracoes.length === 0 && snapshot.length === 0 && !item.motivo && (
                     <div className="text-sm text-muted-foreground">Nenhum outro detalhe registrado pra essa alteração.</div>
                   )}
-                  {alteracoes.map(c => (
-                    <div key={c.label} className="text-sm text-foreground">
-                      <span className="font-semibold">{c.label}:</span> {c.antes} <span className="text-muted-foreground">→</span> {c.depois}
-                    </div>
-                  ))}
-                  {snapshot.map(c => (
-                    <div key={c.label} className="text-sm text-foreground">
-                      <span className="font-semibold">{c.label}:</span> {c.valor}
-                    </div>
-                  ))}
+                  {alteracoes.length > 0 && (
+                    <dl className={GRADE}>
+                      {alteracoes.map(c => (
+                        <div key={c.campo} className="contents">
+                          <dt className={ROTULO}>{c.label}</dt>
+                          <dd className={VALOR}>
+                            {c.campo === "evidencias" ? (
+                              <DiffEvidencias antes={c.antesBruto} depois={c.depoisBruto} />
+                            ) : (
+                              <>
+                                <span className="text-muted-foreground line-through">{c.antes}</span>
+                                <span className="mx-1.5 text-muted-foreground" aria-label="passou a ser">→</span>
+                                <span className="font-semibold">{c.depois}</span>
+                              </>
+                            )}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                  )}
+                  {snapshot.length > 0 && (
+                    <dl className={GRADE}>
+                      {snapshot.map(c => (
+                        <div key={c.campo} className="contents">
+                          <dt className={ROTULO}>{c.label}</dt>
+                          <dd className={VALOR}>
+                            {c.campo === "evidencias" ? <ListaEvidencias valor={c.valorBruto} /> : c.valor}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                  )}
                   {item.motivo && (
-                    <div className="text-sm text-foreground">
-                      <span className="font-semibold">Motivo:</span> {item.motivo}
-                    </div>
+                    <dl className={`${GRADE} mt-1.5`}>
+                      <dt className={ROTULO}>Motivo</dt>
+                      <dd className={VALOR}>{item.motivo}</dd>
+                    </dl>
                   )}
                 </div>
               )}
