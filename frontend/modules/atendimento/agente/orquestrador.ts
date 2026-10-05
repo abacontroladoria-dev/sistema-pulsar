@@ -177,6 +177,8 @@ const ARGUMENTOS_LOGAVEIS = new Set([
   // que o responsável disse. Os dois campos têm nomes diferentes exatamente para
   // que esta linha não arraste aquele junto.
   'motivoEscalada',
+  // Enum fechado de `atualizar_funil`. `motivoFunil` fica fora: é texto livre.
+  'posicao',
 ])
 
 function argumentosLogaveis(args: Record<string, unknown>): Record<string, unknown> {

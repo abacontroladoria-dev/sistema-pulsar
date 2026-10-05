@@ -16,6 +16,7 @@ import { interpretarArgumentosTags, gruposFaltantesParaLead, ClassificacaoInvali
 import type { VagaOferecida } from './vagas-oferecidas'
 import type { TagDefinition } from '../types/central.types'
 import { TagDesconhecidaError, TagNaoAplicavelPelaMaiaError } from '../types/errors.types'
+import type { FunilMaiaService } from '../services/funil-maia.service'
 
 // ============================================================================
 // Ferramentas do agente de atendimento
@@ -403,6 +404,50 @@ export const FERRAMENTAS_SEMPRE = [
       },
     },
   },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'atualizar_funil',
+      // "Em qualificação", "Agendado"/"Entrevista agendada" e "Encaminhado para
+      // humano" NÃO estão no enum: o sistema move sozinho quando a Maia
+      // classifica, agenda ou escala. Aqui ficam só as posições que dependem de
+      // ela entender a conversa.
+      description:
+        'Move o card deste contato no funil comercial. Não aparece para o responsável. '
+        + 'Chame quando a conversa mudar de etapa: '
+        + 'qualificado = você já sabe o motivo do contato, se tem laudo, o que já fez e como vai pagar; '
+        + 'proposta_apresentada = você apresentou valor, horários ou o caminho para começar (particular); '
+        + 'aguardando_elegibilidade = o responsável entregou os documentos do convênio e a equipe vai conferir; '
+        + 'perdido_objecao = desistiu por preço, distância, horário ou outra objeção; '
+        + 'perdido_nao_elegivel = o plano ou o diagnóstico não é aceito pela clínica; '
+        + 'nao_qualificado = não é paciente ou pede serviço que a clínica não tem; '
+        + 'sem_interesse = disse claramente que não quer. '
+        + 'O card só avança: se a resposta vier com nao_volta, siga a conversa normalmente. '
+        + 'Não chame para agendamento nem para passar a um humano — isso já é registrado sozinho.',
+      strict: true,
+      parameters: {
+        type: 'object',
+        properties: {
+          posicao: {
+            type: 'string',
+            enum: [
+              'qualificado', 'proposta_apresentada', 'aguardando_elegibilidade',
+              'perdido_objecao', 'perdido_nao_elegivel', 'nao_qualificado', 'sem_interesse',
+            ],
+            description: 'A etapa em que a conversa está agora.',
+          },
+          motivoFunil: {
+            type: ['string', 'null'],
+            description:
+              'Uma frase curta para a equipe. OBRIGATÓRIA em perdido_objecao e perdido_nao_elegivel '
+              + '(ex.: "achou caro", "plano não credenciado"). null nas demais.',
+          },
+        },
+        required: ['posicao', 'motivoFunil'],
+        additionalProperties: false,
+      },
+    },
+  },
 ] as const
 
 // LIMITAÇÃO CONHECIDA: não há como deixar um recado para quem vai assumir.
@@ -467,6 +512,9 @@ export class FerramentasAgente {
     // `vagasOferecidas`, e é isso que faz a conferência de `agendar_sessao`
     // valer no turno do "15h" — antes, a lista daquele turno estava sempre vazia.
     vagasAnteriores: readonly VagaOferecida[] = [],
+    // Para `atualizar_funil` e para os movimentos automáticos do card (ver
+    // moverCard). Opcional: sem ele o funil simplesmente não se mexe.
+    private readonly funil:        FunilMaiaService | null = null,
   ) {
     this.vagasOferecidas = [...vagasAnteriores]
   }
@@ -530,13 +578,27 @@ export class FerramentasAgente {
       switch (nome) {
         case 'consultar_especialidades_disponiveis': return await this.consultarEspecialidades(args)
         case 'consultar_horarios_disponiveis':       return await this.consultarHorarios(args)
-        case 'agendar_sessao':                       return await this.agendar(args)
+        case 'agendar_sessao': {
+          const r = await this.agendar(args)
+          if (r.ok) await this.moverCard('agendado', null)
+          return r
+        }
         case 'consultar_agendamentos_do_contato':    return await this.consultarDoContato()
         case 'reagendar_sessao':                     return await this.reagendar(args)
         case 'cancelar_sessao':                      return await this.cancelar(args)
-        case 'escalar_para_humano':                  return await this.escalarParaHumano(args)
+        case 'escalar_para_humano': {
+          const r = await this.escalarParaHumano(args)
+          const motivo = this.escalouNesteTurno?.motivoEscalada
+          if (r.ok && motivo) await this.moverCard('encaminhado_humano', ROTULO_ESCALADA[motivo] ?? motivo)
+          return r
+        }
         case 'registrar_dados_do_paciente':          return await this.registrarDadosDoPaciente(args)
-        case 'registrar_tags':                       return await this.registrarTags(args)
+        case 'registrar_tags': {
+          const r = await this.registrarTags(args)
+          if (r.ok && r.aplicado) await this.moverCard('em_qualificacao', null)
+          return r
+        }
+        case 'atualizar_funil':                      return await this.atualizarFunil(args)
         default:
           return recusa(MOTIVO.ERRO_INTERNO, `Ferramenta desconhecida: ${nome}`)
       }
@@ -1236,6 +1298,46 @@ export class FerramentasAgente {
   }
 
   // --------------------------------------------------------------------------
+  // atualizar_funil
+  //
+  // A regra inteira (só avança, trilha, motivo) está em crm.maia_mover_negocio.
+  // Cada código volta como instrução curta: o modelo não deve insistir nem
+  // comentar o funil com o responsável.
+  // --------------------------------------------------------------------------
+  private async atualizarFunil(args: Record<string, any>): Promise<ResultadoFerramenta> {
+    if (!this.funil || !this.contexto.contactId) {
+      return recusa(MOTIVO.ERRO_INTERNO, 'Funil indisponível agora. Siga a conversa normalmente e não repita a tentativa.')
+    }
+    const posicao = String(args.posicao ?? '')
+    if (!POSICOES_FUNIL_MAIA.includes(posicao)) {
+      return recusa(MOTIVO.ERRO_INTERNO, `Posição '${posicao}' não existe. Use uma das opções da ferramenta.`)
+    }
+
+    const codigo = await this.funil.mover(this.contexto.orgId, this.contexto.contactId, posicao, texto(args.motivoFunil) ?? null)
+    if (codigo === 'movido' || codigo === 'ja_esta') {
+      return { ok: true, funil: codigo, avisoInterno: 'Registrado. Não comente isto com o responsável.' }
+    }
+    if (codigo === 'falta_motivo') {
+      return recusa('falta_motivo', 'Esta posição exige motivoFunil. Chame de novo com uma frase curta do motivo.')
+    }
+    // sem_negocio, nao_volta, trilha_diferente, posicao_nao_permitida: nada a
+    // fazer do lado do modelo — o card é da equipe a partir daqui.
+    return { ok: true, funil: codigo, avisoInterno: 'O card não foi movido, e está tudo bem. Siga a conversa normalmente e não repita a chamada.' }
+  }
+
+  // Movimento automático depois de uma ferramenta que deu certo. Nunca lança e
+  // nunca muda o resultado da ferramenta: o funil é secundário ao atendimento —
+  // uma reserva feita não pode virar "erro" porque o card não se mexeu.
+  private async moverCard(slug: string, motivo: string | null): Promise<void> {
+    if (!this.funil || !this.contexto.contactId) return
+    try {
+      await this.funil.mover(this.contexto.orgId, this.contexto.contactId, slug, motivo)
+    } catch (err) {
+      console.warn('[FerramentasAgente] funil não atualizado (atendimento segue):', err)
+    }
+  }
+
+  // --------------------------------------------------------------------------
   // A vaga pedida está entre as oferecidas? Devolve a recusa, ou null se passa.
   //
   // Três casos, três mensagens DIFERENTES — e é a diferença que quebra o laço:
@@ -1341,6 +1443,20 @@ const ROTULO_CAMPO: Record<CampoFicha, string> = {
 // Os valores do enum de `escalar_para_humano`, para validar o que chega do modelo.
 const MOTIVOS_ESCALADA: readonly string[] = [
   'pedido_do_usuario', 'insatisfacao', 'fora_do_alcance',
+] as const
+
+// O motivo da escalada como a equipe lê no card ("Encaminhado para humano"
+// exige motivo).
+const ROTULO_ESCALADA: Record<string, string> = {
+  pedido_do_usuario: 'Pediu para falar com uma pessoa',
+  insatisfacao:      'Insatisfação com o atendimento',
+  fora_do_alcance:   'Pedido fora do alcance da Maia',
+}
+
+// O enum de `atualizar_funil`, para validar o que chega do modelo.
+const POSICOES_FUNIL_MAIA: readonly string[] = [
+  'qualificado', 'proposta_apresentada', 'aguardando_elegibilidade',
+  'perdido_objecao', 'perdido_nao_elegivel', 'nao_qualificado', 'sem_interesse',
 ] as const
 
 // Instrução de volta ao modelo. Vai no resultado da ferramenta porque é ali que

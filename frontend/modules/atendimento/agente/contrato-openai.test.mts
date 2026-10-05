@@ -40,7 +40,7 @@ const ORG_INVASORA = 'ffffffff-ffff-ffff-ffff-ffffffffffff'
 console.log('\n1. os 8 schemas são válidos em strict mode')
 
 checar(DEFINICOES_FERRAMENTAS.length === 6, 'são 6 ferramentas de agenda', DEFINICOES_FERRAMENTAS.length)
-checar(FERRAMENTAS_SEMPRE.length === 2, 'e 2 que não dependem do interruptor', FERRAMENTAS_SEMPRE.length)
+checar(FERRAMENTAS_SEMPRE.length === 3, 'e 3 que não dependem do interruptor', FERRAMENTAS_SEMPRE.length)
 
 // Os DOIS arrays passam pelo mesmo crivo. Validar só as de agenda deixaria a
 // ferramenta que sempre vai ao modelo sem nenhuma verificação de strict mode — e

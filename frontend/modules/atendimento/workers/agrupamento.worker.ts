@@ -22,6 +22,7 @@ import { lerAgentSettings } from '../agente/agent-settings'
 import { resolverModoEfetivo } from '../agente/modo-efetivo'
 import { decidirEntrega } from '../agente/entrega'
 import { createFichaService } from '../services/ficha.service'
+import { FunilMaiaService } from '../services/funil-maia.service'
 import type { FichaPaciente, TagDefinition } from '../types/central.types'
 
 // ============================================================================
@@ -376,6 +377,8 @@ async function processarContato(
     // Semeia a conferência de `agendar_sessao` com o que já foi oferecido: é o
     // que deixa o "15h" do turno seguinte virar reserva sem reconsulta.
     vagasAnteriores?.vagas ?? [],
+    // Para a Maia mover o card do funil (crm.maia_mover_negocio, só service role).
+    new FunilMaiaService(supabase),
   )
 
   // 7. O turno.

@@ -332,7 +332,7 @@ const nomesEnviados = (req: { ferramentas?: unknown } | undefined): string[] =>
   const { provider, requisicoes } = providerDe([resposta({ conteudo: 'oi' })])
   await executarTurno(ENTRADA, deps({ provider, agendamentoHabilitado: true }))
   const nomes = nomesEnviados(requisicoes[0])
-  checar(nomes.length === 7, 'habilitado: as 6 de agenda + escalar_para_humano', nomes.length)
+  checar(nomes.length === 8, 'habilitado: as 6 de agenda + escalar_para_humano + atualizar_funil', nomes.length)
   checar(nomes.includes('agendar_sessao'), 'habilitado: a agenda está lá', nomes)
   checar(nomes.includes('escalar_para_humano'), 'habilitado: e chamar gente também', nomes)
 }
@@ -354,8 +354,8 @@ const nomesEnviados = (req: { ferramentas?: unknown } | undefined): string[] =>
   )
   // E a de chamar gente sobrevive ao interruptor: é justamente com o agendamento
   // desligado que a Maia mais precisa passar a conversa adiante.
-  checar(nomes.length === 1 && nomes[0] === 'escalar_para_humano',
-    'desligado: sobra só escalar_para_humano', nomes)
+  checar(nomes.length === 2 && nomes.includes('escalar_para_humano') && nomes.includes('atualizar_funil'),
+    'desligado: sobram só escalar_para_humano e atualizar_funil', nomes)
 }
 
 // ----------------------------------------------------------------------------
