@@ -4,18 +4,18 @@ import { extractUser } from '@/lib/central/auth'
 import { mapCentralError } from '@/lib/central/errors'
 import { ok, created, badRequest, forbidden, serviceUnavailable } from '@/lib/central/response'
 import { evolutionConfigurada } from '@/modules/atendimento/providers/evolution.api'
-import { listarNumeros, criarNumero } from '@/modules/atendimento/evolution/instancias'
+import { listarNumeros, criarNumero, podeGerenciarNumeros, MENSAGEM_SEM_PERMISSAO_NUMEROS } from '@/modules/atendimento/evolution/instancias'
 
 // GET  /api/central/evolution/instances — números Evolution da organização
 // POST /api/central/evolution/instances — cria um número { nome }
 //
-// Só admin da Central. Números novos entram com ai_mode travado em 'off'
+// Admin e diretoria da Central (podeGerenciarNumeros). Números novos entram com ai_mode travado em 'off'
 // (atendimento humano) e o criador como primeiro membro.
 
 export async function GET() {
   try {
     const { user } = await extractUser()
-    if (user.centralRole !== 'admin') return forbidden('Apenas administradores gerenciam os números')
+    if (!podeGerenciarNumeros(user.centralRole)) return forbidden(MENSAGEM_SEM_PERMISSAO_NUMEROS)
 
     return ok({
       configurada: evolutionConfigurada(),
@@ -29,7 +29,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const { user } = await extractUser()
-    if (user.centralRole !== 'admin') return forbidden('Apenas administradores gerenciam os números')
+    if (!podeGerenciarNumeros(user.centralRole)) return forbidden(MENSAGEM_SEM_PERMISSAO_NUMEROS)
 
     if (!evolutionConfigurada()) {
       return serviceUnavailable('EVOLUTION_NAO_CONFIGURADA', 'A Evolution API ainda não está configurada no servidor')

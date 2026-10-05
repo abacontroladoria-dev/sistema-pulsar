@@ -3,7 +3,7 @@ import type { NextRequest } from 'next/server'
 import { extractUser } from '@/lib/central/auth'
 import { mapCentralError } from '@/lib/central/errors'
 import { ok, forbidden } from '@/lib/central/response'
-import { pedirQr } from '@/modules/atendimento/evolution/instancias'
+import { pedirQr, podeGerenciarNumeros, MENSAGEM_SEM_PERMISSAO_NUMEROS } from '@/modules/atendimento/evolution/instancias'
 
 type Ctx = { params: Promise<{ channelId: string }> }
 
@@ -13,7 +13,7 @@ type Ctx = { params: Promise<{ channelId: string }> }
 export async function GET(_request: NextRequest, ctx: Ctx) {
   try {
     const { user } = await extractUser()
-    if (user.centralRole !== 'admin') return forbidden('Apenas administradores gerenciam os números')
+    if (!podeGerenciarNumeros(user.centralRole)) return forbidden(MENSAGEM_SEM_PERMISSAO_NUMEROS)
     const { channelId } = await ctx.params
 
     return ok(await pedirQr(user.orgId, channelId))

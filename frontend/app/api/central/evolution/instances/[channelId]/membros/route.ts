@@ -4,7 +4,7 @@ import { extractUser } from '@/lib/central/auth'
 import { mapCentralError } from '@/lib/central/errors'
 import { ok, badRequest, forbidden } from '@/lib/central/response'
 import { createCentralUserService } from '@/modules/atendimento/services'
-import { listarMembros, definirMembros } from '@/modules/atendimento/evolution/instancias'
+import { listarMembros, definirMembros, podeGerenciarNumeros, MENSAGEM_SEM_PERMISSAO_NUMEROS } from '@/modules/atendimento/evolution/instancias'
 
 type Ctx = { params: Promise<{ channelId: string }> }
 
@@ -16,7 +16,7 @@ type Ctx = { params: Promise<{ channelId: string }> }
 export async function GET(_request: NextRequest, ctx: Ctx) {
   try {
     const { user } = await extractUser()
-    if (user.centralRole !== 'admin') return forbidden('Apenas administradores gerenciam os números')
+    if (!podeGerenciarNumeros(user.centralRole)) return forbidden(MENSAGEM_SEM_PERMISSAO_NUMEROS)
     const { channelId } = await ctx.params
 
     const [membros, usuarios] = await Promise.all([
@@ -32,7 +32,7 @@ export async function GET(_request: NextRequest, ctx: Ctx) {
 export async function PUT(request: NextRequest, ctx: Ctx) {
   try {
     const { user } = await extractUser()
-    if (user.centralRole !== 'admin') return forbidden('Apenas administradores gerenciam os números')
+    if (!podeGerenciarNumeros(user.centralRole)) return forbidden(MENSAGEM_SEM_PERMISSAO_NUMEROS)
     const { channelId } = await ctx.params
 
     const corpo = (await request.json().catch(() => ({}))) as { userIds?: unknown }

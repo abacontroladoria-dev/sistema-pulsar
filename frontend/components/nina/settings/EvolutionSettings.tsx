@@ -9,7 +9,7 @@ import { toast } from 'sonner'
 import { Button } from '../Button'
 
 // ============================================================================
-// Números WhatsApp — configurações do Connect (só admin)
+// Números WhatsApp — configurações do Connect (admin e diretoria)
 //
 // A Maia atende pelo número oficial da Meta, que não se configura aqui (as
 // credenciais são variáveis de ambiente). Os números Evolution são de
