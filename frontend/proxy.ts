@@ -49,7 +49,9 @@ export async function proxy(request: NextRequest) {
   // client Supabase: fala com /api/ficha-escolar/*, que valida do lado do
   // servidor (busca com piso de 3 letras e teto de 5 resultados, envio conferido
   // pela data de nascimento). Ver os comentários naqueles handlers.
-  const publicRoutes = ['/login', '/definir-senha', '/auth/callback', '/disponibilidade-terapeuta/login', '/disponibilidade-terapeuta', '/sem-permissao', '/tv', '/ficha-escolar']
+  // `/disponibilidade-paciente` segue o mesmo desenho (busca pelo CPF da criança,
+  // nome mascarado, envio reconferido pela RPC). Ver /api/disponibilidade-paciente/*.
+  const publicRoutes = ['/login', '/definir-senha', '/auth/callback', '/disponibilidade-terapeuta/login', '/disponibilidade-terapeuta', '/sem-permissao', '/tv', '/ficha-escolar', '/disponibilidade-paciente']
 
   const isPublicRoute = publicRoutes.some(
     (route) => pathname === route || pathname.startsWith(route + '/')

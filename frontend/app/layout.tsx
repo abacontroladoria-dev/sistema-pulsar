@@ -57,7 +57,7 @@ export default function RootLayout({
 
           Manter em sincronia com `ROTAS_SEMPRE_CLARAS` em lib/tema.ts.
         */}
-        <script dangerouslySetInnerHTML={{ __html: `try{var t=localStorage.getItem('theme');var c=/^\\/(ficha-escolar)(\\/|$)/.test(location.pathname);if(t==='dark'&&!c)document.documentElement.classList.add('dark');}catch(e){}` }} />
+        <script dangerouslySetInnerHTML={{ __html: `try{var t=localStorage.getItem('theme');var c=/^\\/(ficha-escolar|disponibilidade-paciente)(\\/|$)/.test(location.pathname);if(t==='dark'&&!c)document.documentElement.classList.add('dark');}catch(e){}` }} />
       </head>
       <body>
         <ServiceWorkerRegistration />
