@@ -395,6 +395,13 @@ export interface MessagingProvider {
     channel: Channel,
     mediaId: string,
   ): Promise<{ bytes: ArrayBuffer; mimeType: string; fileSize: number }>
+  // Apaga uma mensagem NOSSA também no WhatsApp do contato ("apagar para
+  // todos"). Opcional: a API oficial da Meta não tem essa operação, e sem o
+  // método o MessageService só esconde a mensagem no Pulsar.
+  apagarParaTodos?(
+    channel: Channel,
+    alvo: { externalId: string; telefone: string },
+  ): Promise<void>
   getStatus(channel: Channel): Promise<ChannelStatus>
   processWebhook(raw: unknown): Promise<NormalizedIncomingMessage>
 }

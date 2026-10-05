@@ -34,22 +34,26 @@ export async function GET(request: NextRequest) {
     // Mesma limitação conhecida da rota de caixas: usa o padrão da ORGANIZAÇÃO.
     // Uma inbox com ai_mode próprio não é respeitada aqui. Hoje não existe
     // nenhuma; quando existir, o recorte passa a ser por inbox nas duas rotas.
-    const settings   = await lerAgentSettingsDaOrg(supabase, user.orgId).catch(() => null)
-    const modoPadrao = settings?.ai_mode ?? 'off'
-
+    //
+    // As duas consultas em paralelo: uma não depende da outra, e esta rota roda
+    // a cada 5s por atendente com a inbox aberta.
     const service = createConversationService(supabase)
-    const result  = await service.list({
-      orgId:          user.orgId,
-      inboxId,
-      channelIds,
-      status,
-      assignedUserId,
-      contactId,
-      limit,
-      // cursor é last_message_at do último item — repassado como offset ISO
-      // ConversationRepository.list usa .range(offset, ...) não cursor por enquanto;
-      // passar como limit+offset até implementar cursor nativo na query
-    })
+    const [settings, result] = await Promise.all([
+      lerAgentSettingsDaOrg(supabase, user.orgId).catch(() => null),
+      service.list({
+        orgId:          user.orgId,
+        inboxId,
+        channelIds,
+        status,
+        assignedUserId,
+        contactId,
+        limit,
+        // cursor é last_message_at do último item — repassado como offset ISO
+        // ConversationRepository.list usa .range(offset, ...) não cursor por enquanto;
+        // passar como limit+offset até implementar cursor nativo na query
+      }),
+    ])
+    const modoPadrao = settings?.ai_mode ?? 'off'
 
     const lastItem  = result.data.at(-1)
     const nextCursor = lastItem

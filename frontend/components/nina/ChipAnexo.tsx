@@ -62,7 +62,7 @@ export const ChipAnexo: React.FC<{ anexo: AnexoUI; claro: boolean }> = ({ anexo,
     if (estado.fase === 'buscando' || estado.fase === 'aberto') return
     setEstado({ fase: 'buscando' })
     try {
-      const res  = await fetch(`/api/central/anexos/${anexo.id}`, { cache: 'no-store' })
+      const res  = await fetch(`/api/central/anexos/${anexo.id}/`, { cache: 'no-store' })
       const json = await res.json().catch(() => null)
       if (!res.ok) {
         // A mensagem do backend é a boa: para 422 ANEXO_INDISPONIVEL ela diz

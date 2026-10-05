@@ -8,7 +8,7 @@ import { processarConexao } from './ingestao'
 import { ChannelNotFoundError, ProviderError } from '../types/errors.types'
 
 // ============================================================================
-// Gestão dos números Evolution (só admin — a rota confere o papel)
+// Gestão dos números Evolution (admin e diretoria — a rota confere o papel)
 //
 // Service role em tudo: a connection guarda o segredo do webhook, que
 // `authenticated` não lê, e criar inbox/canal exige a RPC security definer.
@@ -17,6 +17,16 @@ import { ChannelNotFoundError, ProviderError } from '../types/errors.types'
 // ============================================================================
 
 const EVENTOS_WEBHOOK = ['MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'CONNECTION_UPDATE', 'SEND_MESSAGE']
+
+// Quem cria, conecta (QR), reinicia, remove e distribui os números. É o ÚNICO
+// portão: tudo abaixo roda com service role e a RPC criar_canal_evolution não
+// confere papel. A diretoria entrou em 02/10/2026 a pedido — antes ela abria
+// /connect/settings inteira e tomava 403 só neste bloco.
+export function podeGerenciarNumeros(centralRole: string): boolean {
+  return centralRole === 'admin' || centralRole === 'director'
+}
+
+export const MENSAGEM_SEM_PERMISSAO_NUMEROS = 'Apenas administradores e diretoria gerenciam os números'
 
 export interface NumeroEvolution {
   channelId: string
