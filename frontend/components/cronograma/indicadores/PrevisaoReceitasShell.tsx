@@ -33,6 +33,9 @@ import { useOcupacaoSalas } from "@/hooks/useOcupacaoSalas"
 import { useConvenioValoresCalculo } from "@/hooks/useConvenioValores"
 import { useFeriados } from "@/hooks/useFeriados"
 import { useLinhasMesInteiro } from "@/hooks/useLinhasMesInteiro"
+import { useConvenioCadastroPacientes } from "@/hooks/useConvenioCadastroPacientes"
+import { aplicarConvenioCadastro } from "@/lib/cronograma/convenioCadastro"
+import { AvisoConvenioCadastro } from "./AvisoConvenioCadastro"
 import { usePrevisaoReceitasHistorico } from "@/hooks/usePrevisaoReceitasHistorico"
 import { useResumoHistoricoReceitasComEfetivado } from "@/hooks/useResumoHistoricoReceitasComEfetivado"
 import { useReceitasFaturamento } from "@/hooks/useReceitasFaturamento"
@@ -592,6 +595,12 @@ const RENOME_AMBIENTE_NATURAL = `${AMBIENTE_NATURAL} (Total)`
 // (decisão de produto: só estas 3, não a Unidade Terceirizada).
 const UNIDADES_COM_OPCAO_AMBIENTE_NATURAL = new Set(["Fazendinha", "Padre Miguel", "Realengo"])
 
+// Primeira competência cujo retrato histórico (Edge Function
+// snapshot-previsao-receitas) grava o convênio do CADASTRO da TiTa. Meses
+// anteriores ficaram congelados com o convênio da agenda e nunca são
+// reprocessados (decisão do usuário, 2026-10-05) — a tela só avisa.
+const COMPETENCIA_INICIO_CONVENIO_CADASTRO = "2026-10"
+
 /**
  * Unidade física de cada paciente — a mais frequente entre as sessões dele no
  * mês, EXCLUINDO Ambiente Natural e "Consertar Unidade no sistema" (não são
@@ -626,7 +635,14 @@ export function PrevisaoReceitasShell() {
   const semanaRef = useMemo(() => getRefWeekDoMes(periodo.ano, periodo.mes), [periodo.ano, periodo.mes])
   const { resumos: resumosHistorico } = useResumoHistoricoReceitasComEfetivado()
 
-  const { linhas, loading: loadingSalas, error: errorSalas } = useOcupacaoSalas(semanaRef.inicio, semanaRef.fim)
+  const { linhas: linhasAgenda, loading: loadingSalas, error: errorSalas } = useOcupacaoSalas(semanaRef.inicio, semanaRef.fim)
+  // Convênio pelo CADASTRO da TiTa (mesmo módulo e mesmo hook da aba Pacientes),
+  // trocado nas linhas ANTES de qualquer cálculo: agrupamento, preço
+  // (resolverValorSessao), dedução por falta, pacotes, "Por paciente" e o export
+  // "tudo" passam a ver o mesmo convênio. Sem cadastro (TiTa falhou), as linhas
+  // seguem com o convênio da agenda e a faixa âmbar avisa.
+  const cadastro = useConvenioCadastroPacientes()
+  const linhas = useMemo(() => aplicarConvenioCadastro(linhasAgenda, cadastro.mapa), [linhasAgenda, cadastro.mapa])
   const { regrasGerais, excecoesPaciente, pacotesAvaliacao, loading: loadingValores, error: errorValores } = useConvenioValoresCalculo()
   const { feriados, loading: loadingFeriados } = useFeriados()
 
@@ -645,7 +661,8 @@ export function PrevisaoReceitasShell() {
 
   // Opções vêm de linhasMes (mês inteiro) SEM aplicar o próprio filtro, senão
   // a lista de opções encolheria conforme o usuário marca unidades.
-  const { linhasMes, faltas, loading: loadingMes, error: errorMes } = useLinhasMesInteiro(periodo.ano, periodo.mes)
+  const { linhasMes: linhasMesAgenda, faltas, loading: loadingMes, error: errorMes } = useLinhasMesInteiro(periodo.ano, periodo.mes)
+  const linhasMes = useMemo(() => aplicarConvenioCadastro(linhasMesAgenda, cadastro.mapa), [linhasMesAgenda, cadastro.mapa])
   const unidadesDisponiveis = useMemo(
     () => [...new Set(linhasMes.map(unidadeDaLinha))].sort(),
     [linhasMes],
@@ -739,7 +756,8 @@ export function PrevisaoReceitasShell() {
     }
   }, [previsaoHistorico, sessoesMensais])
 
-  const loading = loadingSalas || loadingValores || loadingFeriados || loadingMes || (mesEhPassado && historico.loading)
+  // Espera o cadastro junto: sem isso a tela pintaria o convênio da agenda e trocaria em seguida.
+  const loading = loadingSalas || loadingValores || loadingFeriados || loadingMes || cadastro.loading || (mesEhPassado && historico.loading)
   const error = errorSalas || errorValores || errorMes || historico.error
 
   const { setRightContent } = useHeader()
@@ -866,6 +884,11 @@ export function PrevisaoReceitasShell() {
             Filtro por unidade não disponível pra meses passados (retrato histórico não guarda a unidade da sessão).
           </span>
         )}
+        {usarHistorico && competenciaSelecionada < COMPETENCIA_INICIO_CONVENIO_CADASTRO && (
+          <span className="text-[11px] text-muted-foreground">
+            Neste mês o convênio é o da agenda (registrado antes da mudança para o cadastro da TiTa).
+          </span>
+        )}
         {mesEhPassado && !usarHistorico && (
           <span className="text-[11px] text-muted-foreground">
             {mesSelecionadoLabel} já passou e ainda não tem retrato histórico congelado — valores recalculados agora com as regras vigentes hoje.
@@ -877,6 +900,9 @@ export function PrevisaoReceitasShell() {
           </span>
         )}
       </div>
+
+      {/* Retrato histórico já traz o convênio gravado; o aviso vale só pro cálculo ao vivo. */}
+      {!usarHistorico && <AvisoConvenioCadastro cadastro={cadastro} />}
 
       <EvolucaoReceitasChart
         resumos={resumosHistorico}
