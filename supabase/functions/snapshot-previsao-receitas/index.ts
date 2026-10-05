@@ -7,19 +7,30 @@
 // cross-função) — ver comentário PORTED abaixo em cada trecho copiado do
 // frontend, e manter em sincronia se a lógica de origem mudar.
 //
-// Diferente de sync-grade-csv, esta function NÃO chama a API do TiTa — só lê
-// dados já sincronizados em csv_grades_profissionais/fila_autorizacoes e
-// grava o retrato. Isso mantém o tempo de execução bem abaixo do timeout de
-// 150s da Supabase mesmo processando o mês inteiro (ver
-// project_sync_grade_csv_deploy_drift_fix na memória do projeto pro histórico
-// desse limite).
+// A grade vem de dados já sincronizados (vw_grade_base/fila_autorizacoes). Da
+// TiTa, a function faz UMA chamada só: o cadastro de pacientes
+// (csv_situacao_favorecidos, ~600 linhas, < 1s), para gravar o convênio do
+// CADASTRO e não o da agenda — a mesma regra da tela ao vivo
+// (frontend/lib/cronograma/convenioCadastro.ts). Isso mantém o tempo de
+// execução bem abaixo do timeout de 150s da Supabase mesmo processando o mês
+// inteiro (ver project_sync_grade_csv_deploy_drift_fix na memória do projeto
+// pro histórico desse limite). Se a TiTa falhar, o retrato sai com o convênio
+// da agenda, como antes — nunca deixa de ser gravado por causa disso.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
 const SUPABASE_URL              = Deno.env.get("SUPABASE_URL")!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+const TITA_TOKEN                = Deno.env.get("TITA_TOKEN") ?? ""
+const TITA_BASE_URL             = Deno.env.get("TITA_API_URL") || "https://apiv2.apptita.com.br/api"
 const PAGE = 1000
+
+// Primeira competência gravada com o convênio do CADASTRO. Meses anteriores
+// ficaram congelados com o convênio da agenda e não são reescritos com o
+// cadastro de hoje nem num reprocessamento manual (decisão do usuário,
+// 2026-10-05). Mesma constante em PrevisaoReceitasShell.tsx.
+const COMPETENCIA_INICIO_CONVENIO_CADASTRO = "2026-10"
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } })
@@ -127,6 +138,119 @@ function isTerapiaDiagnostico(r: AgendaSalaRow): boolean {
   const acao = cleanTxt(r.terapia_nome)
   if (acao) return PROCESSO_DIAGNOSTICO_NAMES.has(acao)
   return PROCESSO_DIAGNOSTICO_NAMES.has(cleanTxt(r.terapia_exibicao_nome))
+}
+
+// ─── PORTED de frontend/services/tita/situacaoFavorecidos.ts ────────────────
+// Só o que o convênio precisa (ID Favorecido + Plano de Saúde). Mesmo parser
+// (aspas, "" escapado, BOM) e mesmos candidatos de cabeçalho.
+function parseCSVLine(line: string): string[] {
+  const result: string[] = []
+  let current = ""
+  let insideQuotes = false
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i]
+    if (char === '"') {
+      if (insideQuotes && line[i + 1] === '"') { current += '"'; i++ }
+      else insideQuotes = !insideQuotes
+    } else if (char === "," && !insideQuotes) {
+      result.push(current.trim()); current = ""
+    } else {
+      current += char
+    }
+  }
+  result.push(current.trim())
+  return result
+}
+
+function normalizarCabecalho(h: string): string {
+  return h
+    .replace(/^﻿/, "")
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+function acharColuna(headers: string[], candidatos: string[]): number {
+  for (const c of candidatos) {
+    const i = headers.indexOf(c)
+    if (i >= 0) return i
+  }
+  for (const c of candidatos) {
+    const i = headers.findIndex(h => h.includes(c))
+    if (i >= 0) return i
+  }
+  return -1
+}
+
+type FavorecidoPlano = { id: number | null; planoSaude: string }
+
+async function buscarPlanosCadastro(): Promise<{ ok: true; favorecidos: FavorecidoPlano[] } | { ok: false; erro: string }> {
+  if (!TITA_TOKEN) return { ok: false, erro: "token_nao_configurado" }
+  let resp: Response
+  try {
+    resp = await fetch(`${TITA_BASE_URL}/integracao/csv_situacao_favorecidos`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-INTEGRACAO-TOKEN": TITA_TOKEN },
+      body: JSON.stringify({}),
+      signal: AbortSignal.timeout(30_000),
+    })
+  } catch (err) {
+    return { ok: false, erro: `falha_de_rede: ${err instanceof Error ? err.message : String(err)}` }
+  }
+  if (!resp.ok) return { ok: false, erro: `tita_http_${resp.status}` }
+  const linhas = (await resp.text()).trim().split(/\r?\n/)
+  if (linhas.length < 2) return { ok: false, erro: "csv_vazio" }
+  const headers = parseCSVLine(linhas[0]).map(normalizarCabecalho)
+  const idxId = acharColuna(headers, ["id favorecido", "id do favorecido", "favorecido id", "id"])
+  const idxPlano = acharColuna(headers, ["plano saude", "plano de saude", "plano", "convenio"])
+  if (idxId < 0 || idxPlano < 0) return { ok: false, erro: "schema_inesperado" }
+  const favorecidos: FavorecidoPlano[] = []
+  for (let i = 1; i < linhas.length; i++) {
+    const v = parseCSVLine(linhas[i])
+    if (v.every(x => !x)) continue
+    const idBruto = Number((v[idxId] ?? "").replace(/\D/g, ""))
+    favorecidos.push({ id: Number.isFinite(idBruto) && idBruto > 0 ? idBruto : null, planoSaude: (v[idxPlano] ?? "").trim() })
+  }
+  return { ok: true, favorecidos }
+}
+
+// ─── PORTED de frontend/lib/cronograma/convenioCadastro.ts ──────────────────
+// Cadastro vale quando o paciente está nele, sem conflito (mesmo ID com dois
+// planos) e com plano preenchido; senão, o convênio da agenda, como sempre.
+const SEM_CONVENIO = "Não informado"
+
+function planoUtil(plano: string): string {
+  const p = cleanTxt(plano)
+  if (!p || p.toLowerCase() === "não informado" || p.toLowerCase() === "nao informado") return ""
+  return p
+}
+
+function montarMapaConvenioCadastro(favorecidos: FavorecidoPlano[]): Map<number, string> {
+  const porPacienteId = new Map<number, string>()
+  const conflitos = new Set<number>()
+  for (const f of favorecidos) {
+    if (f.id == null) continue
+    const plano = planoUtil(f.planoSaude)
+    if (!plano) continue
+    const anterior = porPacienteId.get(f.id)
+    if (anterior !== undefined && anterior !== plano) conflitos.add(f.id)
+    else porPacienteId.set(f.id, plano)
+  }
+  for (const id of conflitos) porPacienteId.delete(id)
+  return porPacienteId
+}
+
+/** aplicarConvenioCadastro: troca convenio_nome pelo do cadastro quando ele responde pelo paciente. */
+function aplicarConvenioCadastro(rows: AgendaSalaRow[], mapa: Map<number, string>): { rows: AgendaSalaRow[]; doCadastro: number } {
+  let doCadastro = 0
+  const out = rows.map(r => {
+    const plano = r.paciente_id != null ? mapa.get(r.paciente_id) : undefined
+    if (plano) { doCadastro++; return { ...r, convenio_nome: plano } }
+    return { ...r, convenio_nome: cleanTxt(r.convenio_nome) || SEM_CONVENIO }
+  })
+  return { rows: out, doCadastro }
 }
 
 // ─── PORTED de frontend/lib/cronograma/faturamentoProjecao.ts ───────────────
@@ -351,7 +475,7 @@ serve(async (req: Request) => {
     // "base" e não "atendimentos" porque esta consulta não recorta unidade e
     // devolve status_agendamento adiante — o mesmo alcance de antes.
     const linhasRaw = await pageAll<AgendaSalaRow>(sb, "vw_grade_base", AGENDA_FIELDS, q => q.gte("data", inicio).lte("data", fim).order("data"))
-    const linhas = linhasRaw
+    const linhasAgenda = linhasRaw
       .map(r => ({
         ...r,
         paciente_nome: fixMojibake(r.paciente_nome),
@@ -360,6 +484,28 @@ serve(async (req: Request) => {
         terapia_exibicao_nome: fixMojibake(r.terapia_exibicao_nome),
       }))
       .filter(r => !isFakePatient(r.paciente_nome, r.paciente_id !== null ? String(r.paciente_id) : null))
+
+    // Convênio do CADASTRO antes de qualquer cálculo (preço, agrupamento,
+    // dedução) — o alias MEMORIAL→ASSIM continua valendo por cima, em
+    // sessoesPorConvenio. Competência anterior ao corte: agenda, sempre.
+    let fonteConvenio: "cadastro" | "agenda" = "agenda"
+    let motivoAgenda: string | null = null
+    let linhas = linhasAgenda
+    let linhasDoCadastro = 0
+    if (competencia < COMPETENCIA_INICIO_CONVENIO_CADASTRO) {
+      motivoAgenda = "competencia_anterior_ao_cadastro"
+    } else {
+      const cadastro = await buscarPlanosCadastro()
+      if (cadastro.ok) {
+        const aplicado = aplicarConvenioCadastro(linhasAgenda, montarMapaConvenioCadastro(cadastro.favorecidos))
+        linhas = aplicado.rows
+        linhasDoCadastro = aplicado.doCadastro
+        fonteConvenio = "cadastro"
+      } else {
+        motivoAgenda = cadastro.erro
+        console.error(`[snapshot-previsao-receitas] cadastro TiTa indisponível (${cadastro.erro}) — retrato ${competencia} com o convênio da agenda`)
+      }
+    }
 
     const regrasGerais = await pageAll<ConvenioValor>(sb, "cronograma_convenio_valores", "convenio_nome, terapia_id, terapia_nome, criterio_aba, valor_sessao", q => q)
     const excecoesPaciente = await pageAll<ConvenioValorPaciente>(sb, "cronograma_convenio_valores_paciente", "convenio_nome, paciente_id, paciente_nome, valor_sessao", q => q)
@@ -461,7 +607,10 @@ serve(async (req: Request) => {
     }, { onConflict: "competencia" })
     if (resumoError) throw new Error(`resumo: ${resumoError.message}`)
 
-    return json({ ok: true, competencia, snapshotData, fechamento: !!body.fechamento, totalSessoes: registros.length, totalLinhasAgenda: linhas.length })
+    return json({
+      ok: true, competencia, snapshotData, fechamento: !!body.fechamento, totalSessoes: registros.length, totalLinhasAgenda: linhas.length,
+      fonteConvenio, motivoAgenda, linhasConvenioCadastro: linhasDoCadastro, linhasConvenioAgenda: linhas.length - linhasDoCadastro,
+    })
   } catch (err) {
     return json({ ok: false, error: String((err as Error)?.message ?? err) }, 500)
   }
