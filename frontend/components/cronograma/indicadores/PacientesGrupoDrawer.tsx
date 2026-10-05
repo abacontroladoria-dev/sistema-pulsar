@@ -105,7 +105,8 @@ export function PacientesGrupoDrawer({ grupo, pacientes, onClose }: {
                 <th className="py-1.5 pl-3 pr-1 font-semibold tabular-nums">#</th>
                 <SortableTh label="Paciente" sortKey="nome" activeKey={sort.key} dir={sort.dir} onClick={onSortClick} />
                 <SortableTh label="Sessões" sortKey="sessoes" activeKey={sort.key} dir={sort.dir} align="right" onClick={onSortClick} />
-                <SortableTh label="CH semanal" sortKey="chSemanal" activeKey={sort.key} dir={sort.dir} align="right" onClick={onSortClick} />
+                {/* Espaço inseparável: o rótulo não quebra em duas linhas (SortableTh é compartilhado, não muda). */}
+                <SortableTh label={"CH semanal"} sortKey="chSemanal" activeKey={sort.key} dir={sort.dir} align="right" onClick={onSortClick} />
                 <th className="py-1.5 px-2 font-semibold">Terapias</th>
                 <th className="py-1.5 pl-2 pr-3 font-semibold">{outraColuna}</th>
               </tr>
