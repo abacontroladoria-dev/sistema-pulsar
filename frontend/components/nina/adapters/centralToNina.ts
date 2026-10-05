@@ -5,6 +5,7 @@ import type {
   Contact,
 } from '@/modules/atendimento/types/central.types'
 import { resolverModoEfetivo } from '@/modules/atendimento/agente/modo-efetivo'
+import { apagaParaTodos } from '@/modules/atendimento/utils/apagar-mensagem'
 import {
   MessageDirection,
   MessageType,
@@ -49,6 +50,9 @@ export interface NinaMessage extends UIMessage {
   // esmagadora maioria das mensagens — é `[]` e não `undefined` para o JSX não
   // precisar de guarda.
   anexos: AnexoUI[]
+  // Apagar esta mensagem a tira também do WhatsApp do contato, ou só do Pulsar?
+  // Decide o que o aviso de confirmação promete; a regra é a mesma do service.
+  apagaParaTodos: boolean
 }
 
 // ----------------------------------------------------------------------------
@@ -262,6 +266,7 @@ export function toUIMessage(m: Message): NinaMessage {
     // confirmou.
     emTransito: !isAiDraft && m.status === 'pending' && !m.external_message_id,
     anexos,
+    apagaParaTodos: apagaParaTodos(m),
   }
 }
 

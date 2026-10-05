@@ -342,17 +342,65 @@ export class MessageRepository {
     if (error) throw error
   }
 
-  // Soft delete — WhatsApp permite que o remetente apague mensagens.
-  // deleted_at preenchido; conteúdo preservado para auditoria.
-  // UI deve exibir "Mensagem apagada" quando deleted_at IS NOT NULL.
+  // Soft delete — deleted_at preenchido; conteúdo preservado para auditoria.
+  // listByConversation já filtra `deleted_at`, então a bolha some da conversa.
+  //
+  // `escrita`, como confirmarEnvio: `authenticated` não tem UPDATE em
+  // central.messages, e com o client do usuário o UPDATE não casava linha
+  // nenhuma e voltava sem erro — a mensagem "apagada" continuava na tela. Quem
+  // chama confere o acesso ANTES, lendo a mensagem com o client do usuário.
   async softDelete(id: string): Promise<void> {
-    const { error } = await (this.supabase as any)
+    const { error } = await (this.escrita as any)
       .schema('central')
       .from('messages')
       .update({ deleted_at: new Date().toISOString() })
       .eq('id', id)
+      .is('deleted_at', null)
 
     if (error) throw error
+  }
+
+  // A prévia da lista (conversations.last_message_preview) depois de apagar.
+  // Os gatilhos de 20260928120000 só a escrevem no INSERT e na confirmação da
+  // IA; apagar a última mensagem deixaria o texto apagado à mostra na lista —
+  // justamente o que quem apagou queria tirar da vista.
+  //
+  // O texto sai de central.previa_mensagem, a mesma função dos gatilhos, para
+  // não haver duas regras de prévia. Mensagem sem prévia (reação, rascunho da
+  // IA) é pulada, como lá.
+  async recalcularPrevia(conversationId: string): Promise<void> {
+    const db = (this.escrita as any).schema('central')
+
+    const { data: recentes, error } = await db
+      .from('messages')
+      .select('body, message_type, sent_by_ai, external_message_id')
+      .eq('conversation_id', conversationId)
+      .is('deleted_at', null)
+      .not('message_type', 'in', '(reaction,system)')
+      .order('sent_at', { ascending: false, nullsFirst: false })
+      .order('created_at', { ascending: false })
+      .limit(10)
+
+    if (error) throw error
+
+    let previa: string | null = null
+    for (const m of (recentes ?? []) as Pick<Message, 'body' | 'message_type' | 'sent_by_ai' | 'external_message_id'>[]) {
+      const { data, error: erroPrevia } = await db.rpc('previa_mensagem', {
+        p_body:         m.body,
+        p_message_type: m.message_type,
+        p_sent_by_ai:   m.sent_by_ai,
+        p_ext_id:       m.external_message_id,
+      })
+      if (erroPrevia) throw erroPrevia
+      if (data) { previa = data as string; break }
+    }
+
+    const { error: erroUpdate } = await db
+      .from('conversations')
+      .update({ last_message_preview: previa })
+      .eq('id', conversationId)
+
+    if (erroUpdate) throw erroUpdate
   }
 
   private normalize(row: Record<string, unknown>): Message {

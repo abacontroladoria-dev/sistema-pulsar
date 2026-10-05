@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import type {
   AIMode,
@@ -39,6 +39,11 @@ import {
 // ============================================================================
 
 const INTERVALO_MS = 5000
+
+// TODA URL daqui termina em barra, inclusive os GETs. `trailingSlash: true`
+// responde 308 a qualquer caminho sem ela, e o navegador segue o redirect: o GET
+// funcionava, mas cada tique do polling eram seis idas ao servidor em vez de
+// três — metade só para ouvir "tente com barra". Medido em produção (02/10).
 
 // Teto real do DTO de contatos (parseListContactsQuery). Pedir mais é clampado
 // em silêncio, e contato que não vem vira "Contato sem nome" na tela sem
@@ -183,6 +188,12 @@ export interface UseCentralInbox {
   canaisSelecionados:  string[]
   alternarCanal:       (id: string) => void
   mostrarTodosCanais:  () => void
+  // A lista na tela ainda é a do filtro anterior, recortada localmente, à
+  // espera da resposta do servidor para os números escolhidos agora.
+  atualizandoLista:    boolean
+  // O botão "Apagar" da bolha. Lança em caso de falha — inclusive quando o
+  // WhatsApp recusa, caso em que a mensagem continua na conversa.
+  apagarMensagem:      (id: string) => Promise<{ apagadaNoWhatsapp: boolean }>
 }
 
 export function useCentralInbox(): UseCentralInbox {
@@ -228,7 +239,7 @@ export function useCentralInbox(): UseCentralInbox {
 
   useEffect(() => {
     const controller = new AbortController()
-    buscar<CanalInbox[]>('/api/central/channels/acessiveis', controller.signal)
+    buscar<CanalInbox[]>('/api/central/channels/acessiveis/', controller.signal)
       .then(lista => {
         setCanais(lista)
         const validos = new Set(lista.map(c => c.id))
@@ -261,6 +272,11 @@ export function useCentralInbox(): UseCentralInbox {
   // ------------------------------------------------------------------------
   // Lista
 
+  // Para qual seleção de números a lista em `conversations` foi buscada. Quando
+  // difere da seleção atual, a resposta nova ainda não chegou — ver
+  // `visiveis`, mais abaixo.
+  const [filtroCarregado, setFiltroCarregado] = useState<string | null>(null)
+
   useEffect(() => {
     const controller = new AbortController()
     let vivo = true
@@ -271,11 +287,11 @@ export function useCentralInbox(): UseCentralInbox {
       if (!primeiraCarga.current && document.visibilityState === 'hidden') return
       try {
         const urlLista = filtroCanais
-          ? `/api/central/conversations?limit=50&channelIds=${filtroCanais}`
-          : '/api/central/conversations?limit=50'
+          ? `/api/central/conversations/?limit=50&channelIds=${filtroCanais}`
+          : '/api/central/conversations/?limit=50'
         const [corpo, contatos] = await Promise.all([
           buscarCorpo(urlLista, controller.signal),
-          buscar<Contact[]>(`/api/central/contacts?limit=${TETO_CONTATOS}`, controller.signal),
+          buscar<Contact[]>(`/api/central/contacts/?limit=${TETO_CONTATOS}`, controller.signal),
         ])
 
         const lista = (corpo.data ?? []) as Conversation[]
@@ -290,6 +306,7 @@ export function useCentralInbox(): UseCentralInbox {
         // cabeçalho. O histórico vem do detalhe, quando o operador abre.
         setConversations(lista.map(c =>
           toUIConversation(c, porId.get(c.contact_id) ?? null, [], modoPadrao)))
+        setFiltroCarregado(filtroCanais)
         setErro(null)
       } catch (e) {
         if (!vivo || (e as Error).name === 'AbortError') return
@@ -309,11 +326,27 @@ export function useCentralInbox(): UseCentralInbox {
     return () => { vivo = false; controller.abort(); clearInterval(t) }
   }, [filtroCanais])
 
+  // Trocar de número responde NA HORA. Antes, a lista antiga ficava parada na
+  // tela até o servidor devolver a nova — com o seletor aberto por cima, parecia
+  // que o clique não tinha pegado. Agora a lista em mãos é recortada pelos
+  // números escolhidos já no clique, e a resposta do servidor só completa o que
+  // estava além das 50 em mãos.
+  //
+  // Voltar para "todos" não tem como ser instantâneo (as conversas dos outros
+  // números não estão em mãos), e é para isso que serve `atualizandoLista`.
+  const visiveis = useMemo(() => {
+    if (!filtroCanais || filtroCanais === filtroCarregado) return conversations
+    const escolhidos = new Set(filtroCanais.split(','))
+    return conversations.filter(c => escolhidos.has(c.canalId))
+  }, [conversations, filtroCanais, filtroCarregado])
+
+  const atualizandoLista = !loading && filtroCarregado !== null && filtroCarregado !== filtroCanais
+
   // ------------------------------------------------------------------------
   // Conversa aberta
 
   const carregarDetalhe = useCallback(async (id: string, signal: AbortSignal) => {
-    const d = await buscar<DetalheConversa>(`/api/central/conversations/${id}`, signal)
+    const d = await buscar<DetalheConversa>(`/api/central/conversations/${id}/`, signal)
     // recentMessages vem DESC (message.repository.ts usa ascending:false). A
     // tela lê de cima para baixo — a inversão acontece UMA vez, aqui na borda.
     const cronologicas = [...(d.recentMessages ?? [])].reverse()
@@ -371,7 +404,18 @@ export function useCentralInbox(): UseCentralInbox {
   // bloco "Marca d'água de leitura" mais abaixo para o que ela protege.
   const naoRemarcar = useRef<string | null>(null)
 
+  // A seleção atual, para `select` (que é estável) poder compará-la.
+  const selecionada = useRef<string | null>(null)
+  useEffect(() => { selecionada.current = selectedId }, [selectedId])
+
   const select = useCallback((id: string | null) => {
+    // Clicar na conversa que já está aberta não faz nada. Antes isto limpava o
+    // chat logo abaixo, e o efeito de carga não rodava de novo (o id não
+    // mudou): a conversa sumia da tela até o próximo tique, até 5s depois.
+    if (id === selecionada.current) return
+    // Já no clique, e não só no efeito: o efeito roda depois da pintura, e no
+    // quadro entre os dois a tela mostraria o vazio "Selecione uma conversa".
+    setLoadingChat(id !== null)
     // Trocar de conversa encerra a decisão de "deixar pendente": ao voltar, a
     // abertura marca como lida normalmente. Sem isto, uma conversa marcada como
     // não lida nunca mais seria marcada como lida nesta sessão.
@@ -408,7 +452,7 @@ export function useCentralInbox(): UseCentralInbox {
 
     setEnviando(true)
     try {
-      const res = await fetch('/api/central/messages', {
+      const res = await fetch('/api/central/messages/', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ conversationId: selectedId, body: corpo }),
@@ -493,7 +537,7 @@ export function useCentralInbox(): UseCentralInbox {
 
     setSalvandoModo(true)
     try {
-      const res = await fetch(`/api/central/conversations/${selectedId}`, {
+      const res = await fetch(`/api/central/conversations/${selectedId}/`, {
         method:  'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ action: 'set_ai_mode', aiMode: modo }),
@@ -562,7 +606,7 @@ export function useCentralInbox(): UseCentralInbox {
     if (!activeChat?.naoLida) return
 
     const controller = new AbortController()
-    fetch(`/api/central/conversations/${selectedId}`, {
+    fetch(`/api/central/conversations/${selectedId}/`, {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ action: 'mark_read' }),
@@ -577,7 +621,7 @@ export function useCentralInbox(): UseCentralInbox {
   }, [selectedId, activeChat?.naoLida])
 
   const marcarComoNaoLida = useCallback(async (id: string) => {
-    const res = await fetch(`/api/central/conversations/${id}`, {
+    const res = await fetch(`/api/central/conversations/${id}/`, {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ action: 'mark_unread' }),
@@ -629,12 +673,31 @@ export function useCentralInbox(): UseCentralInbox {
     }
   }, [selectedId, carregarDetalhe])
 
+  // ------------------------------------------------------------------------
+  // Apagar mensagem
+  //
+  // Refetch em vez de tirar a bolha do estado local, pelo mesmo motivo do envio:
+  // o poll de 5s sobrescreveria a versão otimista. E aqui o servidor pode
+  // RECUSAR (o WhatsApp não apagou) — tirar a bolha antes da resposta seria
+  // mostrar como apagada uma mensagem que o contato continua lendo.
+
+  const apagarMensagem = useCallback(async (id: string) => {
+    const res  = await fetch(`/api/central/messages/${id}/`, { method: 'DELETE' })
+    const json = await res.json().catch(() => null)
+    if (!res.ok) {
+      throw new Error(json?.error?.message ?? `A mensagem não foi apagada (${res.status}).`)
+    }
+    await recarregarDetalhe()
+    return { apagadaNoWhatsapp: json?.data?.apagadaNoWhatsapp === true }
+  }, [recarregarDetalhe])
+
   return {
-    conversations, activeChat, selectedId, select,
+    conversations: visiveis, activeChat, selectedId, select,
     loading, loadingChat, erro, enviar, enviando,
     enviarMidia, enviandoMidia,
     modoIa, definirModoIa, salvandoModo,
     detalhe, recarregarDetalhe, marcarComoNaoLida,
     canais, canaisSelecionados, alternarCanal, mostrarTodosCanais,
+    atualizandoLista, apagarMensagem,
   }
 }
