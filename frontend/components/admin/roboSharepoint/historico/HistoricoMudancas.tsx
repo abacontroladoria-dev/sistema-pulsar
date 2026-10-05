@@ -69,7 +69,9 @@ function Total({ icone: Icone, tom, valor, rotulo, sub }: { icone: typeof Histor
   )
 }
 
-export function HistoricoMudancas() {
+/** `tituloId`: quem embrulha a seção num recolhível já mostra título e
+ *  descrição no botão — passa o id dele e o cabeçalho daqui não se repete. */
+export function HistoricoMudancas({ tituloId }: { tituloId?: string } = {}) {
   const [grao, setGrao] = useState<Grao>('dia')
   const [periodo, setPeriodo] = useState(() => periodoPadrao('dia'))
   const [prestadores, setPrestadores] = useState<Set<string>>(new Set())
@@ -119,7 +121,8 @@ export function HistoricoMudancas() {
   const paginas = Math.max(1, Math.ceil((lista?.total ?? 0) / TAMANHO))
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-6" aria-labelledby="titulo-historico-mudancas">
+    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-6" aria-labelledby={tituloId ?? 'titulo-historico-mudancas'}>
+      {!tituloId && (
       <div className="mb-4 flex flex-col gap-1">
         <h2 id="titulo-historico-mudancas" className="flex items-center gap-2 text-base font-bold text-slate-800">
           <History className="h-4 w-4 text-brand-fg" aria-hidden /> Histórico de mudanças nas evidências
@@ -129,6 +132,7 @@ export function HistoricoMudancas() {
           O que está na pasta agora fica na tela Entregas PEP.
         </p>
       </div>
+      )}
 
       {historico === null && !erro && (
         <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
