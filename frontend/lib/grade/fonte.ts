@@ -291,8 +291,9 @@ export async function medirSaudeGrade(
 /** Quão recente é a captura da grade de um período FUTURO. Ver `medirFrescorGrade()`. */
 export interface FrescorGrade {
   /**
-   * Instante em que a TiTa confirmou pela última vez alguma linha do período
-   * (o `visto_em` mais recente). `null` quando o período não tem nenhuma linha.
+   * Instante em que o sync confirmou pela última vez o dia MENOS recente do
+   * período (o pior dia, de `grade_sync_dia`). `null` quando nenhum dia do
+   * período foi sincronizado ainda.
    */
   visto: string | null
   /** Horas decorridas desde `visto`. `null` junto com ele. */
@@ -321,11 +322,13 @@ export const HORAS_FRESCOR_GRADE = 48
  * 134 sessões reais invisíveis (57 pacientes) e 169 horários oferecidos que já
  * não existiam. A tela não tinha como saber — e é isso que esta função conserta.
  *
- * Lê `visto_em` da TABELA, não das views: nenhuma das duas projeta a coluna, e
- * `visto_em` é justamente "a última vez que a TiTa confirmou esta linha" (ver o
- * cabeçalho de sync-grade-csv). Uma requisição, uma linha, ordenada desc.
+ * Lê `grade_sync_dia`, o carimbo que o sync grava a cada dia processado — e
+ * pega o MAIS ANTIGO da janela: basta um dia parado para a tela mentir. Até
+ * 05/10/2026 media o `visto_em` mais recente de `csv_grades_profissionais`, mas
+ * linha inalterada só é recarimbada a cada 7 dias (DIAS_REVALIDACAO no sync):
+ * grade que não mudava por 2 dias acendia o aviso com o sync saudável.
  *
- * NÃO é alarme de agenda vazia: período sem nenhuma linha devolve
+ * NÃO é alarme de agenda vazia: período nunca sincronizado devolve
  * `desatualizado: false`, porque aí não há o que reconfirmar e o silêncio é
  * legítimo. O alarme é só para "existe grade, e ela está velha".
  */
@@ -336,19 +339,19 @@ export async function medirFrescorGrade(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const sb: any = cliente ?? getSupabaseClient()
 
-  let q = sb.from(TABELA_GRADE)
-    .select("visto_em")
+  let q = sb.from("grade_sync_dia")
+    .select("sincronizado_em")
     .gte("data", de)
     .lte("data", ate)
-    .eq("ativo", true)
-    .order("visto_em", { ascending: false })
+    .eq("modo", "grade")
+    .order("sincronizado_em", { ascending: true })
     .limit(1)
   if (unidade !== undefined) q = q.eq("unidade_id", unidade)
 
   const { data, error } = await q
   if (error) throw new Error(error.message)
 
-  const visto = (data ?? [])[0]?.visto_em ?? null
+  const visto = (data ?? [])[0]?.sincronizado_em ?? null
   if (!visto) return { visto: null, horas: null, desatualizado: false }
 
   const horas = (agora.getTime() - new Date(visto).getTime()) / 3_600_000

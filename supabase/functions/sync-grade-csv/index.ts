@@ -695,6 +695,25 @@ async function aplicarExecucao(sb: SupabaseClient, linhas: Record<string, unknow
   return total
 }
 
+// ─── Carimbo por dia ──────────────────────────────────────────────────────────
+
+/**
+ * Registra em `grade_sync_dia` que o dia acabou de ser confirmado pela TiTa.
+ *
+ * É o sinal de frescor que a tela lê (medirFrescorGrade). `visto_em` por linha
+ * não serve: linha inalterada só é recarimbada a cada DIAS_REVALIDACAO, e em
+ * 05/10/2026 isso acendeu "Grade desatualizada" com o sync saudável.
+ *
+ * Falhar aqui não pode derrubar a fatia — a grade entrou; só o carimbo faltou.
+ */
+async function carimbarDia(sb: SupabaseClient, dia: string, modo: Modo, recebidos: number) {
+  const { error } = await sb.from("grade_sync_dia").upsert({
+    data: dia, modo, unidade_id: UNIDADE,
+    sincronizado_em: new Date().toISOString(), recebidos,
+  })
+  if (error) console.error(`[sync-grade-csv] carimbo de ${dia} (${modo}) falhou: ${error.message}`)
+}
+
 // ─── TiTa ─────────────────────────────────────────────────────────────────────
 
 async function buscarRegistros(dataInicio: string, dataFim: string): Promise<Registro[] | null> {
@@ -1319,6 +1338,7 @@ serve(async (req: Request) => {
       // caso normal de fim de semana; não é erro e não interrompe o laço.
       if (recebidos === null) {
         fatias.push({ data: dia, ok: true, recebidos: 0 })
+        await carimbarDia(clientePorFatia(), dia, modo, 0)
         continue
       }
 
@@ -1326,6 +1346,7 @@ serve(async (req: Request) => {
       const r = modo === "execucao"
         ? await sincronizarExecucao(sb, recebidos, dia, dia)
         : await sincronizarGrade(sb, recebidos, dia, dia, hoje)
+      await carimbarDia(sb, dia, modo, r.recebidos)
 
       // Só os números por dia. Guardar o objeto inteiro de cada fatia fazia a
       // resposta (e a memória) crescerem com a janela — numa janela de 60 dias
