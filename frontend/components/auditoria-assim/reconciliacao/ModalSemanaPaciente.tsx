@@ -369,6 +369,13 @@ export default function ModalSemanaPaciente({
 
   const dias = useMemo(() => diasUteisDe(analise.semanaInicio), [analise.semanaInicio])
 
+  // A emissão de cada guia do paciente no período inteiro, não só na semana:
+  // é a prova que a grade exige antes de dizer que o par está "noutra semana".
+  const execucaoDaGuia = useMemo(
+    () => new Map(analise.autorizacoesVisiveis.map((a) => [a.guia, a.data_execucao] as const)),
+    [analise.autorizacoesVisiveis]
+  )
+
   const linhas = useMemo(
     () =>
       montarGrade(
@@ -619,6 +626,7 @@ export default function ModalSemanaPaciente({
                 codigosGlosa={codigosGlosa}
                 chaveAberta={detalhe?.chave ?? null}
                 onAbrirDetalhe={setDetalhe}
+                execucaoDaGuia={execucaoDaGuia}
                 selecao={
                   vinculo
                     ? {

@@ -48,6 +48,19 @@ export const TIPO_COR: Record<AppointmentType, { ponto: string; suave: string }>
   other:    { ponto: 'bg-slate-500',   suave: 'bg-slate-500/15   text-slate-950   hover:bg-slate-500/25   dark:bg-slate-400/20   dark:text-slate-50   dark:hover:bg-slate-400/30' },
 }
 
+// Leitura de cor e rótulo pelo tipo que veio do banco. O `Record` acima só
+// cobre os valores que este arquivo conhece: um valor novo em
+// central.appointment_type que chegue antes do front faria `TIPO_COR[t].ponto`
+// lançar TypeError e derrubar a agenda inteira. Aqui ele cai em "Outro" com a
+// cor neutra, e o rótulo mostra o próprio valor.
+export function corDoTipo(tipo: string): { ponto: string; suave: string } {
+  return TIPO_COR[tipo as AppointmentType] ?? TIPO_COR.other
+}
+
+export function rotuloDoTipo(tipo: string): string {
+  return TIPO_LABEL[tipo as AppointmentType] ?? tipo
+}
+
 export const STATUS_LABEL: Record<string, string> = {
   scheduled: 'Agendado',
   confirmed: 'Confirmado',
@@ -95,7 +108,9 @@ export function minutosDoDia(hora: string | null): number {
   return h * 60 + (m || 0)
 }
 
-// Sessão terapêutica tem 40 min; é a duração assumida quando o registro não traz.
+// Sessão terapêutica tem 40 min. É a duração assumida só para DESENHAR o bloco
+// na grade e decidir se ele já acabou — nunca para escrever "40 min" ou um
+// horário de fim como se fossem dado do registro.
 export const DURACAO_PADRAO = 40
 
 export function duracaoPorExtenso(min: number): string {

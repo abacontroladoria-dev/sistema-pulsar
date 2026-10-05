@@ -242,15 +242,23 @@ export default function ListaPendencias({
 
   const comPendencia = useMemo(() => naUnidade.filter((p) => p.contagem.total > 0), [naUnidade])
 
+  // Os chips somam DISCREPÂNCIAS, não pacientes: um paciente com 3 glosas conta
+  // 3 no chip de Glosas. "Todas" soma `contagem.total`, que já deixa o
+  // cancelamento de fora (ver `contarPendencias`).
   const contagemChips = useMemo(() => {
     const mapa = new Map<TipoPendencia, number>(PENDENCIAS.map((p) => [p.chave, 0]))
     for (const p of comPendencia) {
       for (const { chave } of PENDENCIAS) {
-        if (p.contagem[chave] > 0) mapa.set(chave, (mapa.get(chave) ?? 0) + 1)
+        mapa.set(chave, (mapa.get(chave) ?? 0) + p.contagem[chave])
       }
     }
     return mapa
   }, [comPendencia])
+
+  const totalDiscrepancias = useMemo(
+    () => comPendencia.reduce((soma, p) => soma + p.contagem.total, 0),
+    [comPendencia]
+  )
 
   const visiveis = useMemo(() => {
     const termo = normalizar(busca.trim())
@@ -392,7 +400,7 @@ export default function ListaPendencias({
         </div>
       </div>
 
-      {/* ── Chips: quantos pacientes têm cada espécie de pendência ─────────── */}
+      {/* ── Chips: quantas discrepâncias de cada espécie há no mês ─────────── */}
       {/* Os contadores das chips vivem FORA do ramo do esqueleto, então eles
           pintavam número parcial mesmo com o esqueleto na tela — a outra metade
           do defeito relatado ("pisca e traz os valores reais"). Enquanto carrega
@@ -411,7 +419,7 @@ export default function ListaPendencias({
           }`}
         >
           <span className="font-semibold tabular-nums">
-            {carregando ? '—' : comPendencia.length}
+            {carregando ? '—' : totalDiscrepancias}
           </span>
           Todas
         </button>

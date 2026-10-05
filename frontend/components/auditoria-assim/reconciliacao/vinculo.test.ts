@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { candidataElegivel, distanciaCurta, mapearCandidatas, sessaoDoBloco } from './vinculo'
+import {
+  blocoRealDaFalta, candidataElegivel, distanciaCurta, guiaPosteriorAoVinculo, mapearCandidatas,
+  sessaoDoBloco,
+} from './vinculo'
 import type { CandidataVinculo } from '../types'
 
 /** As quatro semanas de agosto/2026 que o mês carregado cobre. */
@@ -209,14 +212,56 @@ describe('sessaoDoBloco', () => {
     })
   })
 
+  it('lê dia e hora do bloco sintético de falta (substituição)', () => {
+    // A guia 321907 (21/09) cobria a falta das 09:20 e o cartão dela não dizia
+    // qual sessão: o bloco tem cinco pedaços e a hora antes do TUSS.
+    expect(sessaoDoBloco('falta_11635_2026-09-21_09:20:00_22070397')).toEqual({
+      dia: '2026-09-21',
+      hora: '09:20',
+    })
+  })
+
   it('devolve nulo em vez de adivinhar quando o formato não bate', () => {
-    // Bloco sintético de falta, id vazio, e um bloco com pedaço a menos: nenhum
-    // deles recebe vínculo, e inventar uma data aqui viraria um "cobre Qui
-    // 30/07" que não existe.
+    // Falta malformada, id vazio, e um bloco com pedaço a menos: inventar uma
+    // data aqui viraria um "cobre Qui 30/07" que não existe.
     expect(sessaoDoBloco('falta_abc')).toBeNull()
     expect(sessaoDoBloco(null)).toBeNull()
     expect(sessaoDoBloco('11649_2026-08-03_22070435')).toBeNull()
     expect(sessaoDoBloco('11649_03/08/2026_22070435_11:20:00')).toBeNull()
+  })
+})
+
+describe('blocoRealDaFalta', () => {
+  it('reordena a falta para o bloco da sessão real (hora e TUSS trocam de lugar)', () => {
+    expect(blocoRealDaFalta('falta_11635_2026-09-21_09:20:00_22070397')).toBe(
+      '11635_2026-09-21_22070397_09:20:00'
+    )
+  })
+
+  it('devolve nulo para o que não é falta', () => {
+    expect(blocoRealDaFalta('11635_2026-09-21_22070397_09:20:00')).toBeNull()
+    expect(blocoRealDaFalta('falta_abc')).toBeNull()
+  })
+})
+
+describe('guiaPosteriorAoVinculo', () => {
+  it('recusa a guia reemitida depois da triagem (15032: vínculo 24/08, emissão 01/09)', () => {
+    expect(guiaPosteriorAoVinculo('2026-09-01T14:09:00', '2026-08-24T18:17:54.93564+00:00')).toBe(true)
+  })
+
+  it('aceita a guia que já existia quando foi vinculada', () => {
+    expect(guiaPosteriorAoVinculo('2026-09-21T09:29:00', '2026-09-22T17:53:11.380222+00:00')).toBe(false)
+  })
+
+  it('lê data_execucao como hora de Brasília', () => {
+    // 15:30 BRT = 18:30 UTC: vinculada às 18:20 UTC, a guia ainda não existia.
+    expect(guiaPosteriorAoVinculo('2026-09-01T15:30:00', '2026-09-01T18:20:00+00:00')).toBe(true)
+    expect(guiaPosteriorAoVinculo('2026-09-01T15:10:00', '2026-09-01T18:20:00+00:00')).toBe(false)
+  })
+
+  it('sem uma das datas não afirma nada', () => {
+    expect(guiaPosteriorAoVinculo(null, '2026-09-01T18:20:00+00:00')).toBe(false)
+    expect(guiaPosteriorAoVinculo('2026-09-01T15:30:00', null)).toBe(false)
   })
 })
 

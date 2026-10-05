@@ -37,7 +37,11 @@ import {
   SEM_VINCULOS,
   type Vinculos,
 } from '@/components/auditoria-assim/reconciliacao/grade'
-import type { EstadoAutorizacao } from '@/components/auditoria-assim/reconciliacao/vinculo'
+import {
+  blocoRealDaFalta,
+  guiaPosteriorAoVinculo,
+  type EstadoAutorizacao,
+} from '@/components/auditoria-assim/reconciliacao/vinculo'
 import {
   comoData,
   comoIso,
@@ -615,17 +619,31 @@ export function useAnaliseReincidencia(dataInicial: string, pacienteInicial: str
    * falta usa na grade. Indexá-los aqui é o que faz o slot mostrar de onde veio
    * a autorização. Quem decide cobertura segue sendo `situacaoComVinculo`, e
    * dos quatro tipos só `vinculo` e `substituicao` a afirmam (`TIPOS_QUE_COBREM`).
+   *
+   * A substituição entra TAMBÉM pela chave da sessão real: ela devolve o slot à
+   * Conferência como sessão, e o cartão sintético da falta some — ver
+   * `blocoRealDaFalta`.
+   *
+   * `porGuia` recusa a guia EMITIDA DEPOIS da triagem: é outro atendimento com
+   * o número reciclado (ver `guiaPosteriorAoVinculo`). `porBloco` não muda — a
+   * sessão continua coberta pela guia antiga, que existiu de fato.
    */
   const vinculos = useMemo<Vinculos>(() => {
     if (triagens.length === 0) return SEM_VINCULOS
+    const execucaoDaGuia = new Map(autorizacoes.map((a) => [a.guia, a.data_execucao]))
     const porGuia = new Map<string, VinculoAutorizacao>()
     const porBloco = new Map<string, VinculoAutorizacao>()
     for (const v of triagens) {
-      porGuia.set(v.guia, v)
-      if (v.tipo !== 'sem_sessao' && v.bloco_id) porBloco.set(v.bloco_id, v)
+      if (!guiaPosteriorAoVinculo(execucaoDaGuia.get(v.guia) ?? null, v.vinculado_em)) {
+        porGuia.set(v.guia, v)
+      }
+      if (v.tipo === 'sem_sessao' || !v.bloco_id) continue
+      porBloco.set(v.bloco_id, v)
+      const real = v.tipo === 'substituicao' ? blocoRealDaFalta(v.bloco_id) : null
+      if (real && !porBloco.has(real)) porBloco.set(real, v)
     }
     return { porGuia, porBloco }
-  }, [triagens])
+  }, [triagens, autorizacoes])
 
   /**
    * As reclassificações ativas indexadas pelo bloco — a única ponta que existe.
