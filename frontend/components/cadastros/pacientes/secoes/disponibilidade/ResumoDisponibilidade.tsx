@@ -48,42 +48,44 @@ export function ResumoDisponibilidade({ disponibilidade }: { disponibilidade: Di
           const sessoes = sessoesNaJanela(j)
           const conflito = conflitoComEscola(disponibilidade, dia.chave)
           return (
-            <li
-              key={dia.chave}
-              className={`flex items-center justify-between gap-3 rounded-md border px-3 py-2 sm:flex-col sm:items-start sm:justify-start sm:gap-1 ${
-                conflito
-                  ? "border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30"
-                  : j
-                    ? "border-emerald-200 bg-emerald-50/60 dark:border-emerald-900 dark:bg-emerald-950/30"
-                    : "border-border bg-muted/30"
-              }`}
-            >
-              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{dia.curto}</span>
-              {j ? (
-                <span className="text-right sm:text-left">
-                  <span className="block text-sm font-semibold tabular-nums text-foreground">
-                    {j.inicio}–{j.fim}
-                  </span>
-                  <span className="block text-xs text-muted-foreground">
-                    {sessoes} {sessoes === 1 ? "sessão" : "sessões"}
-                    {(foraDaGrade(j.inicio, INICIOS_SESSAO) || foraDaGrade(j.fim, FINS_SESSAO)) && (
-                      <span
-                        className="ml-1 text-amber-700 dark:text-amber-400"
-                        title="Horário fora da grade de sessões (veio da importação). Ao editar, ajuste para a grade."
-                      >
-                        · fora da grade
-                      </span>
-                    )}
-                  </span>
-                  {conflito && (
-                    <span className="mt-0.5 flex items-center gap-1 text-xs font-medium text-amber-800 dark:text-amber-300 sm:justify-start">
-                      <TriangleAlert className="h-3 w-3 shrink-0" aria-hidden="true" />
-                      Conflito com a escola {conflito.inicio}–{conflito.fim}
+            <li key={dia.chave} className="min-w-0">
+              <div
+                className={`flex items-center justify-between gap-3 rounded-md border px-3 py-2 sm:flex-col sm:items-start sm:justify-start sm:gap-1 ${
+                  conflito
+                    ? "border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30"
+                    : j
+                      ? "border-emerald-200 bg-emerald-50/60 dark:border-emerald-900 dark:bg-emerald-950/30"
+                      : "border-border bg-muted/30"
+                }`}
+              >
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{dia.curto}</span>
+                {j ? (
+                  <span className="text-right sm:text-left">
+                    <span className="block text-sm font-semibold tabular-nums text-foreground">
+                      {j.inicio}–{j.fim}
                     </span>
-                  )}
-                </span>
-              ) : (
-                <span className="text-sm text-muted-foreground">—</span>
+                    <span className="block text-xs text-muted-foreground">
+                      {sessoes} {sessoes === 1 ? "sessão" : "sessões"}
+                      {(foraDaGrade(j.inicio, INICIOS_SESSAO) || foraDaGrade(j.fim, FINS_SESSAO)) && (
+                        <span
+                          className="ml-1 text-amber-700 dark:text-amber-400"
+                          title="Horário fora da grade de sessões (veio da importação). Ao editar, ajuste para a grade."
+                        >
+                          · fora da grade
+                        </span>
+                      )}
+                    </span>
+                  </span>
+                ) : (
+                  <span className="text-sm text-muted-foreground">—</span>
+                )}
+              </div>
+              {/* Fora do cartão: o cartão diz o horário, o aviso fica embaixo. */}
+              {conflito && (
+                <p className="mt-1 flex items-center gap-1 px-1 text-xs font-medium text-amber-800 dark:text-amber-300">
+                  <TriangleAlert className="h-3 w-3 shrink-0" aria-hidden="true" />
+                  Conflito com a escola
+                </p>
               )}
             </li>
           )
