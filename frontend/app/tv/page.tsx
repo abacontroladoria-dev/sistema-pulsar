@@ -66,6 +66,8 @@ const POLL_AVISOS_VERSAO_MS = 30000
 // Chrome às vezes engole o `onend` da fala numa aba aberta há horas; sem isso a
 // fila travaria em `falando = true` e a TV ficaria muda pelo resto do dia.
 const WATCHDOG_FALA_MS = 15000
+// Sem `onstart` neste prazo a fala é dada como engolida e refeita com voz local.
+const INICIO_FALA_MS = 2500
 
 // Timbre da chamada. Ficam aqui porque a amostra do seletor precisa usar os
 // mesmos valores — amostra com rate diferente da chamada real é propaganda
@@ -753,11 +755,52 @@ export default function TVPage() {
         processarFila()
       }
 
-      msg.onend = liberar
-      msg.onerror = liberar
+      // Depois de horas no ar o motor de fala do Chrome emperra: `speak()` é
+      // aceito, o sino tocou, e nada sai — nem `onstart`, nem erro. Também a
+      // voz online (Edge/Google) cai calada sem rede. Se a fala não começar em
+      // INICIO_FALA_MS, destrava o motor com `cancel()` e tenta de novo com a
+      // melhor voz LOCAL; a segunda falha só libera a fila.
+      let comecou = false
+      let tentativa = 0
+      const falar = (u: SpeechSynthesisUtterance) => {
+        u.onstart = () => {
+          comecou = true
+          clearTimeout(prazoInicio)
+        }
+        u.onend = liberar
+        u.onerror = () => {
+          if (!comecou && tentativa === 0) return reTentar()
+          liberar()
+        }
+        window.speechSynthesis.resume()
+        window.speechSynthesis.speak(u)
+        const prazoInicio = setTimeout(() => {
+          if (!comecou && tentativa === 0) reTentar()
+        }, INICIO_FALA_MS)
+      }
+      const reTentar = () => {
+        tentativa = 1
+        window.speechSynthesis.cancel()
+        const u2 = new SpeechSynthesisUtterance(msg.text)
+        u2.rate = FALA_RATE
+        u2.pitch = FALA_PITCH
+        const locais = vozesEmPortugues(window.speechSynthesis.getVoices())
+        const local = vozPadrao(locais.filter((v) => v.localService)) ?? msg.voice
+        u2.lang = local ? normalizarLang(local.lang) : 'pt-BR'
+        if (local) u2.voice = local
+        // `cancel()` é assíncrono por dentro no Chrome — ver `ouvirAmostra`.
+        setTimeout(() => falar(u2), 120)
+      }
+
       const watchdog = setTimeout(liberar, WATCHDOG_FALA_MS)
 
-      window.speechSynthesis.speak(msg)
+      // Fila do motor pode estar presa com uma fala fantasma de antes.
+      if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+        window.speechSynthesis.cancel()
+        setTimeout(() => falar(msg), 120)
+      } else {
+        falar(msg)
+      }
     }
 
     const beep = new Audio('/beep.mp3')
