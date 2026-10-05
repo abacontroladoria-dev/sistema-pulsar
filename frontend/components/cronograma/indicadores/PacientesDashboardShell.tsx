@@ -1,8 +1,11 @@
 "use client"
 
 // PacientesDashboardShell — dois dashboards de pacientes ativos (CH, convênio,
-// unidade), adaptados de calcularDashboardPacientes, consumindo dados reais de
-// csv_grades_profissionais via useOcupacaoSalas(). A separação é POR SESSÃO:
+// unidade), adaptados de calcularDashboardPacientes. Sessões, CH, dia e unidade
+// vêm de csv_grades_profissionais via useOcupacaoSalas(); o CONVÊNIO de cada
+// paciente vem do cadastro da TiTa (useConvenioCadastroPacientes, ver
+// lib/cronograma/convenioCadastro.ts), caindo no da agenda quando o paciente
+// não está no cadastro ou a TiTa não responde. A separação é POR SESSÃO:
 //   - "Tratamento Multidisciplinar" (antes "Por convênio"): toda sessão que NÃO
 //     é Avaliação Neuropsicológica nem Psiquiatra/Neurologista.
 //   - "Processo Diagnóstico": só sessões de Avaliação Neuropsicológica e
@@ -14,14 +17,17 @@
 // feita só dessas duas terapias não sobra nenhuma sessão no dashboard geral,
 // então some dele por completo (aparece só no Processo Diagnóstico).
 
-import { useCallback, useEffect } from "react"
-import { Loader2, Users, Clock, CalendarDays, Download } from "lucide-react"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { Loader2, Users, Clock, CalendarDays, Download, ChevronRight, AlertTriangle } from "lucide-react"
 import { StatCard } from "@/components/cronograma/ui/StatCard"
 import { TONE_ACCENT } from "@/components/cronograma/ui/tones"
 import { fmtHDec } from "@/lib/cronograma/helpers"
 import { useHeader } from "@/contexts/HeaderContext"
 import { useOcupacaoSalas, semanaCorrenteRange } from "@/hooks/useOcupacaoSalas"
+import { useConvenioCadastroPacientes } from "@/hooks/useConvenioCadastroPacientes"
+import { calcularDashboardPacientes, listarPacientesDoGrupo, type SegmentoPacientes } from "@/lib/cronograma/pacientesDashboard"
 import { exportarDashboardPacientesXlsx } from "@/lib/cronograma/exportPacientesDashboard"
+import { PacientesGrupoDrawer, type GrupoSelecionado } from "@/components/cronograma/indicadores/PacientesGrupoDrawer"
 import type { ResumoPacientesGrupo, ResumoPacientesSalas, ResumoPacientesDia } from "@/lib/cronograma/salasTypes"
 
 function fmtPct(valor: number, total: number): string {
@@ -30,13 +36,15 @@ function fmtPct(valor: number, total: number): string {
 }
 
 function TabelaGrupo({
-  titulo, linhas, totalPacientes, totalChSemanal,
+  titulo, linhas, totalPacientes, totalChSemanal, onAbrir,
 }: {
   titulo: string
   linhas: ResumoPacientesGrupo[]
   /** Totais do bloco inteiro (ex.: d.pacientesUnicos/d.chSemanalTotal) — base das colunas de %, não a soma das linhas (que pode ter sobreposição de pacientes entre grupos). */
   totalPacientes: number
   totalChSemanal: number
+  /** Clique numa linha → lista dos pacientes daquela linha (PacientesGrupoDrawer). */
+  onAbrir: (chave: string) => void
 }) {
   return (
     <div className="rounded-xl border border-border bg-card p-4">
@@ -45,6 +53,7 @@ function TabelaGrupo({
         <table className="w-full text-xs">
           <thead>
             <tr className="border-b border-border text-left text-muted-foreground">
+              <th className="py-1.5 pr-2 font-semibold"><span className="sr-only">Lista de pacientes</span></th>
               <th className="py-1.5 pr-2 font-semibold">Nome</th>
               <th className="py-1.5 px-2 text-right font-semibold">Pacientes</th>
               <th className="py-1.5 px-2 text-right font-semibold">% Pacientes</th>
@@ -56,11 +65,25 @@ function TabelaGrupo({
           </thead>
           <tbody>
             {linhas.length === 0 && (
-              <tr><td colSpan={7} className="py-3 text-center text-muted-foreground">Sem dados no período.</td></tr>
+              <tr><td colSpan={8} className="py-3 text-center text-muted-foreground">Sem dados no período.</td></tr>
             )}
             {linhas.map(l => (
-              <tr key={l.chave} className="border-b border-border/60 last:border-0">
-                <td className="py-1.5 pr-2 font-medium text-foreground">{l.chave}</td>
+              <tr
+                key={l.chave}
+                role="button"
+                tabIndex={0}
+                aria-label={`${l.chave}: ver os ${l.pacientesUnicos} pacientes`}
+                onClick={() => onAbrir(l.chave)}
+                onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onAbrir(l.chave) } }}
+                className="group cursor-pointer border-b border-border/60 transition-colors last:border-0 hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+              >
+                <td className="w-px py-1.5 pr-3 align-middle">
+                  <span className="inline-flex items-center gap-0.5 whitespace-nowrap text-[10px] font-bold uppercase leading-none tracking-wide text-sky-600 dark:text-sky-400">
+                    Ver pacientes
+                    <ChevronRight size={11} className="shrink-0 transition-transform group-hover:translate-x-0.5 motion-reduce:transform-none" />
+                  </span>
+                </td>
+                <td className="py-1.5 pr-2 align-middle font-medium text-foreground">{l.chave}</td>
                 <td className="py-1.5 px-2 text-right tabular-nums">{l.pacientesUnicos}</td>
                 <td className="py-1.5 px-2 text-right tabular-nums text-muted-foreground">{fmtPct(l.pacientesUnicos, totalPacientes)}</td>
                 <td className="py-1.5 px-2 text-right tabular-nums">{l.sessoesTotal}</td>
@@ -134,9 +157,13 @@ function BarrasPorDia({
 function DashboardBloco({
   tituloConvenio,
   d,
+  cadastroDisponivel,
+  onAbrir,
 }: {
   tituloConvenio: string
   d: ResumoPacientesSalas
+  cadastroDisponivel: boolean
+  onAbrir: (campo: "convenio" | "unidade", chave: string) => void
 }) {
   return (
     <div className="flex flex-col gap-3">
@@ -156,8 +183,16 @@ function DashboardBloco({
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-        <TabelaGrupo titulo={tituloConvenio} linhas={d.porConvenio} totalPacientes={d.pacientesUnicos} totalChSemanal={d.chSemanalTotal} />
-        <TabelaGrupo titulo="Por unidade" linhas={d.porUnidade} totalPacientes={d.pacientesUnicos} totalChSemanal={d.chSemanalTotal} />
+        <div className="flex flex-col gap-1.5">
+          <TabelaGrupo titulo={tituloConvenio} linhas={d.porConvenio} totalPacientes={d.pacientesUnicos} totalChSemanal={d.chSemanalTotal} onAbrir={chave => onAbrir("convenio", chave)} />
+          {cadastroDisponivel && d.pacientesUnicos > 0 && (
+            <div className="px-1 text-[11px] text-muted-foreground">
+              Convênio pelo cadastro TiTa: {d.fonteConvenio.cadastro} {d.fonteConvenio.cadastro === 1 ? "paciente" : "pacientes"}
+              {d.fonteConvenio.agenda > 0 && <> · pela agenda (sem cadastro): {d.fonteConvenio.agenda}</>}
+            </div>
+          )}
+        </div>
+        <TabelaGrupo titulo="Por unidade" linhas={d.porUnidade} totalPacientes={d.pacientesUnicos} totalChSemanal={d.chSemanalTotal} onAbrir={chave => onAbrir("unidade", chave)} />
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -181,13 +216,30 @@ function DashboardBloco({
   )
 }
 
+const SEGMENTO_LABEL: Record<SegmentoPacientes, string> = {
+  multidisciplinar: "Tratamento Multidisciplinar",
+  processoDiagnostico: "Processo Diagnóstico",
+}
+
 export function PacientesDashboardShell() {
-  const { linhas, dashboardPacientes, loading, error } = useOcupacaoSalas()
+  const { linhas, loading: loadingGrade, error } = useOcupacaoSalas()
+  const cadastro = useConvenioCadastroPacientes()
+  const loading = loadingGrade || cadastro.loading
   const { setRightContent } = useHeader()
+  const [grupoAberto, setGrupoAberto] = useState<(GrupoSelecionado & { segmento: SegmentoPacientes }) | null>(null)
+
+  // Calculado aqui, não pelo `dashboardPacientes` de useOcupacaoSalas: só esta
+  // tela recebe o mapa de convênio do cadastro, e o hook é compartilhado.
+  const dashboardPacientes = useMemo(() => calcularDashboardPacientes(linhas, cadastro.mapa), [linhas, cadastro.mapa])
+
+  const pacientesDoGrupo = useMemo(
+    () => grupoAberto ? listarPacientesDoGrupo(linhas, cadastro.mapa, grupoAberto.segmento, grupoAberto.campo, grupoAberto.chave) : [],
+    [grupoAberto, linhas, cadastro.mapa],
+  )
 
   const exportar = useCallback(() => {
-    exportarDashboardPacientesXlsx({ linhas, dashboard: dashboardPacientes, periodo: semanaCorrenteRange() })
-  }, [linhas, dashboardPacientes])
+    exportarDashboardPacientesXlsx({ linhas, dashboard: dashboardPacientes, periodo: semanaCorrenteRange(), mapaConvenio: cadastro.mapa })
+  }, [linhas, dashboardPacientes, cadastro.mapa])
 
   useEffect(() => {
     setRightContent(
@@ -215,11 +267,28 @@ export function PacientesDashboardShell() {
 
   const { multidisciplinar, processoDiagnostico } = dashboardPacientes
 
+  const cadastroDisponivel = !!cadastro.mapa
+  const abrir = (segmento: SegmentoPacientes) => (campo: "convenio" | "unidade", chave: string) =>
+    setGrupoAberto({ segmento, segmentoLabel: SEGMENTO_LABEL[segmento], campo, chave })
+
   return (
     <div className="flex flex-col gap-8">
-      <DashboardBloco tituloConvenio="Tratamento Multidisciplinar" d={multidisciplinar} />
+      {(!cadastroDisponivel || cadastro.obsoleto) && (
+        <div role="status" className="flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+          <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+          <span>
+            {cadastroDisponivel
+              ? "A TiTa não respondeu agora: o convênio vem do último cadastro consultado, que pode estar desatualizado."
+              : `Convênio do cadastro TiTa indisponível${cadastro.erro ? ` (${cadastro.erro})` : ""} — exibindo o convênio da agenda.`}
+          </span>
+        </div>
+      )}
+      <DashboardBloco tituloConvenio={SEGMENTO_LABEL.multidisciplinar} d={multidisciplinar} cadastroDisponivel={cadastroDisponivel} onAbrir={abrir("multidisciplinar")} />
       <div className="border-t border-border" />
-      <DashboardBloco tituloConvenio="Processo Diagnóstico" d={processoDiagnostico} />
+      <DashboardBloco tituloConvenio={SEGMENTO_LABEL.processoDiagnostico} d={processoDiagnostico} cadastroDisponivel={cadastroDisponivel} onAbrir={abrir("processoDiagnostico")} />
+      {grupoAberto && (
+        <PacientesGrupoDrawer grupo={grupoAberto} pacientes={pacientesDoGrupo} onClose={() => setGrupoAberto(null)} />
+      )}
     </div>
   )
 }
