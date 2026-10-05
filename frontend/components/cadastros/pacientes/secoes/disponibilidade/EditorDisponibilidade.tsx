@@ -18,7 +18,7 @@ import {
   type Rascunho,
 } from "@/lib/disponibilidadePaciente"
 import { PARENTESCOS } from "@/types/responsavel"
-import { campo, foco, rotulo } from "../../ui/campos"
+import { CampoSelect, campo, foco, rotulo } from "../../ui/campos"
 
 // Editor interno da disponibilidade (equipe do Pulsar).
 //
@@ -31,9 +31,9 @@ import { campo, foco, rotulo } from "../../ui/campos"
 // recepção mudou", e se perderia QUEM da família pediu a mudança — que é
 // justamente o que importa quando pai e mãe declaram coisas diferentes.
 //
-// Horários em `<select>` nativo: no celular abre o seletor do sistema, que é a
-// forma mais rápida de tocar num horário. As listas são a grade de sessões
-// (decisão do usuário), mais o valor atual quando ele veio de fora da grade.
+// Horários em `CampoSelect`, a lista suspensa padrão da ficha do paciente. As
+// listas são a grade de sessões (decisão do usuário), mais o valor atual quando
+// ele veio de fora da grade.
 
 export type ResultadoEditor = {
   disponibilidade: Disponibilidade
@@ -125,14 +125,12 @@ export function EditorDisponibilidade({
         {rascunho.frequenta_escola === true && (
           <div className="grid max-w-md grid-cols-2 gap-3">
             <SelecaoHorario
-              id="escola-inicio"
               rotuloCampo="Entrada"
               valor={rascunho.escolaInicio}
               opcoes={opcoesEscola(rascunho.escolaInicio)}
               aoMudar={(v) => mudarEscola({ escolaInicio: v })}
             />
             <SelecaoHorario
-              id="escola-fim"
               rotuloCampo="Saída"
               valor={rascunho.escolaFim}
               opcoes={opcoesEscola(rascunho.escolaFim, rascunho.escolaInicio || null)}
@@ -170,14 +168,12 @@ export function EditorDisponibilidade({
                   {e.ativo ? (
                     <div className="grid flex-1 grid-cols-2 gap-3 sm:max-w-xs">
                       <SelecaoHorario
-                        id={`${dia.chave}-inicio`}
                         rotuloCampo="Início"
                         valor={e.inicio}
                         opcoes={opcoesInicio(e.inicio)}
                         aoMudar={(v) => mudarDia(dia.chave, { inicio: v })}
                       />
                       <SelecaoHorario
-                        id={`${dia.chave}-fim`}
                         rotuloCampo="Fim"
                         valor={e.fim}
                         opcoes={opcoesFim(e.inicio || null, e.fim)}
@@ -219,20 +215,13 @@ export function EditorDisponibilidade({
               className={`${campo} mt-1`}
             />
           </div>
-          <div>
-            <label htmlFor="informado-parentesco" className="text-xs text-muted-foreground">Parentesco</label>
-            <select
-              id="informado-parentesco"
-              value={informadoParentesco}
-              onChange={(e) => setInformadoParentesco(e.target.value)}
-              className={`${campo} mt-1`}
-            >
-              <option value="">Não informado</option>
-              {PARENTESCOS.map((p) => (
-                <option key={p} value={p}>{p}</option>
-              ))}
-            </select>
-          </div>
+          <CampoSelect<string>
+            label="Parentesco"
+            value={informadoParentesco || null}
+            onChange={(v) => setInformadoParentesco(v ?? "")}
+            disabled={false}
+            opcoes={PARENTESCOS.map((p) => ({ valor: p, rotulo: p }))}
+          />
         </div>
         <div>
           <label htmlFor="observacao" className="text-xs text-muted-foreground">Observação</label>
@@ -277,30 +266,32 @@ export function EditorDisponibilidade({
   )
 }
 
+/**
+ * Lista de horário no padrão do Pulsar: o mesmo `CampoSelect` do Cadastro do
+ * paciente (botão + painel com "Digite para buscar..." e marca na escolhida),
+ * em vez do `<select>` nativo, que destoava do resto da ficha.
+ */
 function SelecaoHorario({
-  id,
   rotuloCampo,
   valor,
   opcoes,
   aoMudar,
 }: {
-  id: string
   rotuloCampo: string
   valor: string
   opcoes: OpcaoHorario[]
   aoMudar: (v: string) => void
 }) {
   return (
-    <div className="min-w-0">
-      <label htmlFor={id} className="text-xs text-muted-foreground">{rotuloCampo}</label>
-      <select id={id} value={valor} onChange={(e) => aoMudar(e.target.value)} className={`${campo} mt-0.5 min-h-11 tabular-nums sm:min-h-0`}>
-        <option value="">—</option>
-        {opcoes.map((o) => (
-          <option key={o.valor} value={o.valor}>
-            {o.valor}{o.foraDaGrade ? " (fora da grade)" : ""}
-          </option>
-        ))}
-      </select>
+    <div className="min-w-0 tabular-nums">
+      <CampoSelect<string>
+        label={rotuloCampo}
+        value={valor || null}
+        onChange={(v) => aoMudar(v ?? "")}
+        disabled={false}
+        vazio="—"
+        opcoes={opcoes.map((o) => ({ valor: o.valor, rotulo: o.foraDaGrade ? `${o.valor} (fora da grade)` : o.valor }))}
+      />
     </div>
   )
 }
