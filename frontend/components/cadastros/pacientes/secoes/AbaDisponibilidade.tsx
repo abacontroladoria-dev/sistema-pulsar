@@ -11,7 +11,6 @@ import {
   Loader2,
   Lock,
   LockOpen,
-  MessageCircle,
   Pencil,
   ShieldQuestion,
   UserRoundCog,
@@ -498,14 +497,6 @@ function BotoesLink({ pacienteNome, pacienteCpf }: { pacienteNome: string; pacie
         <button type="button" onClick={() => void copiar(mensagem(), "Mensagem copiada.")} className={botao}>
           <Copy className="h-4 w-4" aria-hidden="true" />
           Copiar mensagem
-        </button>
-        <button
-          type="button"
-          onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(mensagem())}`, "_blank", "noopener,noreferrer")}
-          className={botao}
-        >
-          <MessageCircle className="h-4 w-4" aria-hidden="true" />
-          Abrir no WhatsApp
         </button>
       </div>
       {semCpf && (
