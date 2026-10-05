@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   calcularTotais,
+  conflitoComEscola,
   deColunas,
   diferencas,
   disponibilidadeVazia,
@@ -185,6 +186,38 @@ describe("rascunho", () => {
   it("ida e volta preserva a disponibilidade", () => {
     const d = com({ qui: { inicio: "13:00", fim: "17:00" } }, { frequenta_escola: true, escola: { inicio: "07:30", fim: "12:00" } })
     expect(lerRascunho(rascunhoDe(d))).toEqual({ disponibilidade: d, erros: [] })
+  })
+})
+
+describe("conflito com a escola", () => {
+  // O caso do print: escola 06:30–11:20.
+  const d = com(
+    {
+      seg: { inicio: "13:00", fim: "17:40" },
+      ter: { inicio: "08:00", fim: "12:00" },
+      qua: { inicio: "15:00", fim: "17:00" },
+      sab: { inicio: "08:00", fim: "12:00" },
+    },
+    { frequenta_escola: true, escola: { inicio: "06:30", fim: "11:20" } }
+  )
+
+  it("aponta o trecho sobreposto", () => {
+    expect(conflitoComEscola(d, "ter")).toEqual({ inicio: "08:00", fim: "11:20" })
+  })
+
+  it("janela no outro turno não é conflito", () => {
+    expect(conflitoComEscola(d, "seg")).toBeNull()
+    expect(conflitoComEscola(d, "qua")).toBeNull()
+  })
+
+  it("encostar no fim da escola não é conflito", () => {
+    const e = com({ seg: { inicio: "11:20", fim: "12:00" } }, { frequenta_escola: true, escola: { inicio: "07:00", fim: "11:20" } })
+    expect(conflitoComEscola(e, "seg")).toBeNull()
+  })
+
+  it("sábado não conta e quem não frequenta escola nunca tem conflito", () => {
+    expect(conflitoComEscola(d, "sab")).toBeNull()
+    expect(conflitoComEscola({ ...d, frequenta_escola: false, escola: null }, "ter")).toBeNull()
   })
 })
 

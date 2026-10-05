@@ -1,10 +1,11 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { AlertCircle, Loader2 } from "lucide-react"
+import { AlertCircle, Loader2, TriangleAlert } from "lucide-react"
 import {
   DIAS,
   calcularTotais,
+  conflitoComEscola,
   formatarHoras,
   lerRascunho,
   opcoesEscola,
@@ -148,11 +149,18 @@ export function EditorDisponibilidade({
           {DIAS.map((dia) => {
             const e = rascunho.dias[dia.chave]
             const erro = erroDe(dia.chave)
+            const conflito = conflitoComEscola(disponibilidade, dia.chave)
             return (
               <li
                 key={dia.chave}
                 className={`rounded-md border px-3 py-2.5 ${
-                  erro ? "border-destructive/60" : e.ativo ? "border-emerald-200 dark:border-emerald-900" : "border-border"
+                  erro
+                    ? "border-destructive/60"
+                    : conflito
+                      ? "border-amber-300 bg-amber-50/60 dark:border-amber-800 dark:bg-amber-950/20"
+                      : e.ativo
+                        ? "border-emerald-200 dark:border-emerald-900"
+                        : "border-border"
                 }`}
               >
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -184,6 +192,12 @@ export function EditorDisponibilidade({
                     <span className="text-sm text-muted-foreground">Não vem neste dia</span>
                   )}
                 </div>
+                {conflito && !erro && (
+                  <p className="mt-1.5 flex items-center gap-1 text-xs font-medium text-amber-800 dark:text-amber-300">
+                    <TriangleAlert className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    Conflito com a escola das {conflito.inicio} às {conflito.fim}. Dá para salvar, mas confirme com a família.
+                  </p>
+                )}
                 {erro && <MensagemErro texto={erro} />}
               </li>
             )

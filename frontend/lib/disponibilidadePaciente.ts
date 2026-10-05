@@ -172,6 +172,28 @@ export function formatarHoras(minutos: number): string {
   return `${Math.floor(minutos / 60)}h${String(minutos % 60).padStart(2, "0")}`
 }
 
+// ─── Conflito com a escola ────────────────────────────────────────────────────
+
+/** Dias em que a escola funciona. Sábado fica de fora: o horário escolar é um só e descreve a semana útil. */
+const DIAS_DE_ESCOLA: readonly DiaChave[] = ["seg", "ter", "qua", "qui", "sex"]
+
+/**
+ * Trecho em que a janela do dia se sobrepõe ao horário da escola, ou `null`.
+ *
+ * Não bloqueia nada: a família pode declarar de propósito (sai mais cedo da
+ * escola às terças, por exemplo). É um ALERTA para a equipe conferir antes de
+ * montar o cronograma — a criança não está em dois lugares ao mesmo tempo.
+ * Encostar não é conflito: escola até 12:00 e clínica a partir de 12:00 é ok.
+ */
+export function conflitoComEscola(d: Disponibilidade, dia: DiaChave): Janela {
+  if (d.frequenta_escola === false || !d.escola || !DIAS_DE_ESCOLA.includes(dia)) return null
+  const j = d.dias[dia]
+  if (!j) return null
+  const ini = Math.max(paraMinutos(j.inicio) ?? 0, paraMinutos(d.escola.inicio) ?? 0)
+  const fim = Math.min(paraMinutos(j.fim) ?? 0, paraMinutos(d.escola.fim) ?? 0)
+  return fim > ini ? { inicio: deMinutos(ini), fim: deMinutos(fim) } : null
+}
+
 // ─── Validação ────────────────────────────────────────────────────────────────
 
 export type ErroDisponibilidade = { campo: DiaChave | "escola"; mensagem: string }
