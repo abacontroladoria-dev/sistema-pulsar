@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { History, LockOpen, UserRoundCog } from "lucide-react"
+import { ChevronRight, History, LockOpen, UserRoundCog } from "lucide-react"
 import { deColunas, diferencas, mudouQuemPreenche } from "@/lib/disponibilidadePaciente"
 import type { LiberacaoEdicao, VersaoDisponibilidade } from "@/services/pacienteDisponibilidade.service"
 import { foco } from "../../ui/campos"
@@ -20,6 +20,9 @@ import { COR_ORIGEM, ROTULO_ORIGEM, declarante, formatarDataHora } from "./forma
 //   2. O QUE MUDOU em relação à versão anterior, em frases ("Seg: 08:00–12:00 →
 //      13:00–17:00"), e não as duas grades lado a lado para o leitor comparar;
 //   3. a disponibilidade COMPLETA daquela versão, recolhida, para quem precisar.
+//
+// Só a versão ATUAL fica aberta. As anteriores aparecem amarelas e reduzidas a
+// uma linha (versão, origem, data, quem) e só mostram o detalhe ao clicar.
 //
 // A troca de pessoa ganha marca própria: é o sinal de que a família pode estar
 // em desacordo, e a equipe deve confirmar antes de montar o cronograma.
@@ -135,28 +138,72 @@ function ItemVersao({
   trocouPessoa: { antes: string; depois: string } | null
   atual: boolean
 }) {
+  const selos = (
+    <>
+      <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${COR_ORIGEM[versao.origem]}`}>
+        {ROTULO_ORIGEM[versao.origem]}
+      </span>
+      <span className="text-xs text-muted-foreground">{formatarDataHora(versao.criado_em)}</span>
+    </>
+  )
+
+  // Versão atual: aberta, é a que vale hoje.
+  if (atual) {
+    return (
+      <li className="relative">
+        <span aria-hidden="true" className="absolute -left-[21px] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-card bg-emerald-500" />
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="text-sm font-semibold text-foreground">Versão {versao.numero_versao}</span>
+          <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
+            atual
+          </span>
+          {selos}
+        </div>
+        <DetalhesVersao versao={versao} anterior={anterior} trocouPessoa={trocouPessoa} />
+      </li>
+    )
+  }
+
+  // Versões antigas: amarelas e recolhidas numa linha — já não valem, e a
+  // linha do tempo precisa ser lida de relance. O detalhe abre com um clique.
+  const quem = declarante(versao)
+  return (
+    <li className="relative">
+      <span aria-hidden="true" className="absolute -left-[21px] top-2.5 h-2.5 w-2.5 rounded-full border-2 border-card bg-amber-400" />
+      <details className="group rounded-md border border-amber-200 bg-amber-50/70 dark:border-amber-900 dark:bg-amber-950/20">
+        <summary
+          className={`flex cursor-pointer list-none flex-wrap items-center gap-x-2 gap-y-1 px-3 py-1.5 text-sm [&::-webkit-details-marker]:hidden ${foco}`}
+        >
+          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-amber-700 transition-transform group-open:rotate-90 dark:text-amber-400" aria-hidden="true" />
+          <span className="font-semibold text-amber-900 dark:text-amber-200">Versão {versao.numero_versao}</span>
+          {selos}
+          {quem && <span className="min-w-0 truncate text-xs text-amber-900/80 dark:text-amber-200/80">· {quem}</span>}
+          {trocouPessoa && (
+            <UserRoundCog className="h-3.5 w-3.5 shrink-0 text-amber-700 dark:text-amber-400" aria-label="Preenchida por outra pessoa" />
+          )}
+        </summary>
+        <div className="border-t border-amber-200 px-3 pb-3 dark:border-amber-900">
+          <DetalhesVersao versao={versao} anterior={anterior} trocouPessoa={trocouPessoa} />
+        </div>
+      </details>
+    </li>
+  )
+}
+
+function DetalhesVersao({
+  versao,
+  anterior,
+  trocouPessoa,
+}: {
+  versao: VersaoDisponibilidade
+  anterior: VersaoDisponibilidade | null
+  trocouPessoa: { antes: string; depois: string } | null
+}) {
   const quem = declarante(versao)
   const mudancas = anterior ? diferencas(deColunas(anterior), deColunas(versao)) : []
 
   return (
-    <li className={`relative ${atual ? "" : "opacity-80"}`}>
-      <span
-        aria-hidden="true"
-        className={`absolute -left-[21px] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-card ${atual ? "bg-emerald-500" : "bg-muted-foreground/50"}`}
-      />
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <span className="text-sm font-semibold text-foreground">Versão {versao.numero_versao}</span>
-        {atual && (
-          <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
-            atual
-          </span>
-        )}
-        <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${COR_ORIGEM[versao.origem]}`}>
-          {ROTULO_ORIGEM[versao.origem]}
-        </span>
-        <span className="text-xs text-muted-foreground">{formatarDataHora(versao.criado_em)}</span>
-      </div>
-
+    <>
       <p className="mt-1 text-sm text-foreground">
         {quem ? (
           <>Preenchido por <span className="font-medium">{quem}</span></>
@@ -195,11 +242,11 @@ function ItemVersao({
         <summary className={`cursor-pointer text-xs font-medium text-primary hover:underline ${foco}`}>
           Ver disponibilidade completa desta versão
         </summary>
-        <div className="mt-2 rounded-md border border-border bg-muted/20 p-3">
+        <div className="mt-2 rounded-md border border-border bg-card p-3">
           <ResumoDisponibilidade disponibilidade={deColunas(versao)} />
         </div>
       </details>
-    </li>
+    </>
   )
 }
 
