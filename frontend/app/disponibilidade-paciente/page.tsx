@@ -329,7 +329,7 @@ export default function DisponibilidadePacientePage() {
           <div className="text-center">
             <p className="text-[21px] font-bold text-white tracking-tight leading-tight">Clínica Universo ABA</p>
             <p className="text-[15px] font-medium mt-1" style={{ color: 'rgba(255,255,255,0.88)' }}>
-              Disponibilidade para terapias
+              Disponibilidade para atendimento
             </p>
           </div>
         </div>
@@ -343,10 +343,10 @@ export default function DisponibilidadePacientePage() {
                   <CalendarClock size={30} strokeWidth={1.75} style={{ color: '#1a4fc4' }} />
                 </div>
                 <h1 ref={refTitulo} tabIndex={-1} className="text-[19px] font-bold focus:outline-none" style={{ color: '#192755' }}>
-                  Em quais horários a criança pode vir?
+                  Em quais horários o paciente pode vir?
                 </h1>
                 <p className="text-[15px] leading-relaxed mt-2" style={{ color: '#64748b', textWrap: 'balance' } as React.CSSProperties}>
-                  Assim a equipe monta os horários de terapia dentro do tempo que vocês têm. Leva cerca de 2 minutos.
+                  Assim teremos a informação dos horários que fazem mais sentido para vocês. Leva cerca de 2 minutos.
                 </p>
               </div>
 
