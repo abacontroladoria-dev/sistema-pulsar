@@ -350,6 +350,23 @@ export interface ResumoPacientesSalas {
   porConvenio: ResumoPacientesGrupo[]
   porUnidade: ResumoPacientesGrupo[]
   porDia: ResumoPacientesDia[]
+  /** Pacientes cujo convênio veio do cadastro da TiTa × da agenda (sem cadastro, conflito ou TiTa indisponível). */
+  fonteConvenio: { cadastro: number; agenda: number }
+}
+
+/** Um paciente na lista "Ver pacientes" de uma linha das tabelas do Dashboard de Pacientes. */
+export interface PacienteDoGrupo {
+  /** paciente_id (id_favorecido) vistos para este nome — normalmente um só. */
+  ids: number[]
+  nome: string
+  sessoes: number
+  chSemanal: number
+  terapias: string[]
+  /** Unidades (na lista por convênio) ou convênios (na lista por unidade). */
+  outraDimensao: string[]
+  /** Convênio(s) como a agenda registra — para mostrar quando o cadastro diverge. */
+  conveniosAgenda: string[]
+  atualizadoPeloCadastro: boolean
 }
 
 export interface ResumoPacientesGrupo {

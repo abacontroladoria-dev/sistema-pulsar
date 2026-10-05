@@ -14,6 +14,7 @@ import { isAgendadoAtivo, isTerapiaDiagnostico, chDaLinha } from "./pacientesDas
 import { normalizarUnidadeOcupacao } from "./ocupacaoProf"
 import { cleanTxt } from "./helpers"
 import { dowDeDiaSemana } from "./salas"
+import { convenioDaLinha, type FonteConvenio, type MapaConvenioCadastro } from "./convenioCadastro"
 import type { AgendaSalaRow, DashboardPacientesGeral, ResumoPacientesGrupo, ResumoPacientesDia } from "./salasTypes"
 
 const SEGMENTO_LABEL = {
@@ -34,10 +35,12 @@ export interface ExportarPacientesOpts {
   linhas: AgendaSalaRow[]
   dashboard: DashboardPacientesGeral
   periodo: { inicio: string; fim: string }
+  /** Convênio pelo cadastro da TiTa — o mesmo mapa que a tela usou. null = TiTa indisponível (tudo pela agenda). */
+  mapaConvenio: MapaConvenioCadastro | null
 }
 
 export function exportarDashboardPacientesXlsx(opts: ExportarPacientesOpts): void {
-  const { linhas, dashboard, periodo } = opts
+  const { linhas, dashboard, periodo, mapaConvenio } = opts
   const ativos = (linhas || []).filter(isAgendadoAtivo)
   if (!ativos.length) {
     toast.error("Nenhuma sessão ativa no período para exportar.")
@@ -53,7 +56,9 @@ export function exportarDashboardPacientesXlsx(opts: ExportarPacientesOpts): voi
     { Parametro: "Periodo_Fim", Valor: periodo.fim },
     { Parametro: "Gerado_Em", Valor: geradoEm.toISOString() },
     { Parametro: "Segmentacao", Valor: "Por SESSAO (nao por paciente) — ver Tratamento Multidisciplinar vs Processo Diagnostico" },
-    { Parametro: "Limitacao_Convenio_Unidade", Valor: "csv_grades_profissionais nao guarda convenio_id/unidade_id — Convenio e Unidade sao texto; Unidade e derivada de sala_nome (unidade_nome na fonte e sempre CLINICA UNIVERSO ABA)" },
+    { Parametro: "Fonte_Convenio", Valor: "Plano de Saude do cadastro TiTa (csv_situacao_favorecidos) por Paciente_ID; sem cadastro, o convenio da agenda (csv_grades_profissionais). Ver colunas Convenio_Agenda/Fonte_Convenio" },
+    { Parametro: "Cadastro_Disponivel", Valor: mapaConvenio ? "sim" : "nao — TiTa indisponivel, todo convenio veio da agenda" },
+    { Parametro: "Limitacao_Unidade", Valor: "Unidade e derivada de sala_nome (unidade_nome na fonte e sempre CLINICA UNIVERSO ABA)" },
     { Parametro: "Limitacao_Pacientes_Unicos", Valor: "Pacientes_Unicos conta por NOME normalizado, nao por Paciente_ID — quando divergirem, o total da tela segue o nome" },
   ]
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(parametros), "Parametros")
@@ -120,18 +125,25 @@ export function exportarDashboardPacientesXlsx(opts: ExportarPacientesOpts): voi
     segmento: SegmentoKey
     r: AgendaSalaRow
     convenio: string
+    convenioAgenda: string
+    fonte: FonteConvenio
     unidade: string
     ch: number
     dow: number | null
   }
-  const normalizadas: LinhaNormalizada[] = ativos.map(r => ({
-    segmento: isTerapiaDiagnostico(r) ? "processoDiagnostico" : "multidisciplinar",
-    r,
-    convenio: cleanTxt(r.convenio_nome) || "Não informado",
-    unidade: normalizarUnidadeOcupacao(r.sala_nome || ""),
-    ch: chDaLinha(r),
-    dow: dowDeDiaSemana(r.dia_semana),
-  }))
+  const normalizadas: LinhaNormalizada[] = ativos.map(r => {
+    const conv = convenioDaLinha(r, mapaConvenio)
+    return {
+      segmento: isTerapiaDiagnostico(r) ? "processoDiagnostico" : "multidisciplinar",
+      r,
+      convenio: conv.convenio,
+      convenioAgenda: conv.convenioAgenda,
+      fonte: conv.fonte,
+      unidade: normalizarUnidadeOcupacao(r.sala_nome || ""),
+      ch: chDaLinha(r),
+      dow: dowDeDiaSemana(r.dia_semana),
+    }
+  })
 
   // Por paciente: uma linha por segmento × paciente × convênio × unidade —
   // chave composta pra manter toda célula atômica (sem juntar convênios/
@@ -141,6 +153,8 @@ export function exportarDashboardPacientesXlsx(opts: ExportarPacientesOpts): voi
     pacienteId: number | null
     pacienteNome: string
     convenio: string
+    conveniosAgenda: Set<string>
+    fontes: Set<FonteConvenio>
     unidade: string
     sessoes: number
     ch: number
@@ -152,10 +166,12 @@ export function exportarDashboardPacientesXlsx(opts: ExportarPacientesOpts): voi
     if (!entry) {
       entry = {
         segmento: n.segmento, pacienteId: n.r.paciente_id ?? null, pacienteNome,
-        convenio: n.convenio, unidade: n.unidade, sessoes: 0, ch: 0,
+        convenio: n.convenio, conveniosAgenda: new Set(), fontes: new Set(), unidade: n.unidade, sessoes: 0, ch: 0,
       }
       porPacienteMap.set(chave, entry)
     }
+    entry.conveniosAgenda.add(n.convenioAgenda)
+    entry.fontes.add(n.fonte)
     entry.sessoes += 1
     entry.ch += n.ch
   })
@@ -164,6 +180,9 @@ export function exportarDashboardPacientesXlsx(opts: ExportarPacientesOpts): voi
     Paciente_ID: e.pacienteId,
     Paciente_Nome: e.pacienteNome,
     Convenio: e.convenio,
+    Convenio_Agenda: [...e.conveniosAgenda].join(", "),
+    Fonte_Convenio: [...e.fontes].join(", "),
+    Convenio_Mudou: [...e.conveniosAgenda].some(c => c !== e.convenio) ? "sim" : "nao",
     Unidade: e.unidade,
     Sessoes_Total: e.sessoes,
     CH_Total_Horas: +e.ch.toFixed(2),
@@ -177,6 +196,8 @@ export function exportarDashboardPacientesXlsx(opts: ExportarPacientesOpts): voi
     Paciente_ID: n.r.paciente_id,
     Paciente_Nome: cleanTxt(n.r.paciente_nome) || "Não informado",
     Convenio: n.convenio,
+    Convenio_Agenda: n.convenioAgenda,
+    Fonte_Convenio: n.fonte,
     Unidade: n.unidade,
     Sala: cleanTxt(n.r.sala_nome) || null,
     Profissional_ID: n.r.profissional_id,

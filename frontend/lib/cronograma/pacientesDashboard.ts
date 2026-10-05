@@ -9,7 +9,8 @@ import { PROCESSO_DIAGNOSTICO_IDS, PROCESSO_DIAGNOSTICO_NAMES } from "./constant
 import { isFakePatient } from "../remuneracao/pacientes"
 import { dowDeDiaSemana } from "./salas"
 import { DOW_PT } from "./ocupacaoConst"
-import type { AgendaSalaRow, ResumoPacientesSalas, ResumoPacientesGrupo, ResumoPacientesDia, DashboardPacientesGeral } from "./salasTypes"
+import { convenioDaLinha, type FonteConvenio, type MapaConvenioCadastro } from "./convenioCadastro"
+import type { AgendaSalaRow, ResumoPacientesSalas, ResumoPacientesGrupo, ResumoPacientesDia, DashboardPacientesGeral, PacienteDoGrupo } from "./salasTypes"
 
 export function chDaLinha(r: AgendaSalaRow): number {
   const ini = pm(r.hora_inicial)
@@ -24,8 +25,12 @@ function pacienteKey(r: AgendaSalaRow): string {
 
 interface AgendamentoNormalizado {
   pacienteKey: string
+  pacienteId: number | null
   paciente: string
   convenio: string
+  convenioFonte: FonteConvenio
+  convenioAgenda: string
+  terapia: string
   unidade: string
   ch: number
   data: string
@@ -114,11 +119,18 @@ function resumoPorDia(agendamentos: AgendamentoNormalizado[], semanas: number): 
   })
 }
 
-function normalizarLinha(r: AgendaSalaRow): AgendamentoNormalizado {
+function normalizarLinha(r: AgendaSalaRow, mapa: MapaConvenioCadastro | null | undefined): AgendamentoNormalizado {
+  // Convênio pelo cadastro da TiTa quando disponível; sem mapa (ou sem o
+  // paciente no cadastro) é o da agenda, como sempre foi. Ver convenioCadastro.ts.
+  const conv = convenioDaLinha(r, mapa)
   return {
     pacienteKey: pacienteKey(r),
+    pacienteId: r.paciente_id ?? null,
     paciente: cleanTxt(r.paciente_nome),
-    convenio: cleanTxt(r.convenio_nome) || "Não informado",
+    convenio: conv.convenio,
+    convenioFonte: conv.fonte,
+    convenioAgenda: conv.convenioAgenda,
+    terapia: cleanTxt(r.terapia_exibicao_nome) || cleanTxt(r.terapia_nome),
     // `unidade_nome` em csv_grades_profissionais é sempre o nome da clínica
     // ("CLÍNICA UNIVERSO ABA"), não a unidade física — a unidade real só
     // existe dentro do texto livre de `sala_nome` (ex.: "Unid. Realengo -
@@ -137,6 +149,15 @@ function montarResumo(agendamentos: AgendamentoNormalizado[]): ResumoPacientesSa
   const chTotal = agendamentos.reduce((sum, a) => sum + a.ch, 0)
   const chSemanalTotal = chTotal / semanas
 
+  // Um paciente só conta como "cadastro" se TODAS as sessões dele saíram do
+  // cadastro — qualquer sessão no convênio da agenda o põe no outro balde.
+  const fontePorPaciente = new Map<string, FonteConvenio>()
+  agendamentos.forEach(a => {
+    if (fontePorPaciente.get(a.pacienteKey) !== "agenda") fontePorPaciente.set(a.pacienteKey, a.convenioFonte)
+  })
+  let pacientesConvenioCadastro = 0
+  fontePorPaciente.forEach(f => { if (f === "cadastro") pacientesConvenioCadastro++ })
+
   return {
     pacientesUnicos,
     sessoesTotal: agendamentos.length,
@@ -146,6 +167,7 @@ function montarResumo(agendamentos: AgendamentoNormalizado[]): ResumoPacientesSa
     porConvenio: resumoGrupo(agendamentos, "convenio", semanas),
     porUnidade: resumoGrupo(agendamentos, "unidade", semanas),
     porDia: resumoPorDia(agendamentos, semanas),
+    fonteConvenio: { cadastro: pacientesConvenioCadastro, agenda: pacientesUnicos - pacientesConvenioCadastro },
   }
 }
 
@@ -167,14 +189,77 @@ function montarResumo(agendamentos: AgendamentoNormalizado[]): ResumoPacientesSa
  *     quem também aparece no dashboard multidisciplinar por causa de outras
  *     terapias (a sessão diagnóstica dele conta aqui, nunca lá).
  */
-export function calcularDashboardPacientes(rows: AgendaSalaRow[]): DashboardPacientesGeral {
-  const ativos = (rows || []).filter(isAgendadoAtivo)
-
-  const rowsMultidisciplinar = ativos.filter(r => !isTerapiaDiagnostico(r))
-  const rowsDiagnostico = ativos.filter(isTerapiaDiagnostico)
-
+export function calcularDashboardPacientes(rows: AgendaSalaRow[], mapa?: MapaConvenioCadastro | null): DashboardPacientesGeral {
+  const { multidisciplinar, processoDiagnostico } = normalizarPorSegmento(rows, mapa)
   return {
-    multidisciplinar: montarResumo(rowsMultidisciplinar.map(normalizarLinha)),
-    processoDiagnostico: montarResumo(rowsDiagnostico.map(normalizarLinha)),
+    multidisciplinar: montarResumo(multidisciplinar),
+    processoDiagnostico: montarResumo(processoDiagnostico),
   }
+}
+
+function normalizarPorSegmento(rows: AgendaSalaRow[], mapa: MapaConvenioCadastro | null | undefined) {
+  const ativos = (rows || []).filter(isAgendadoAtivo)
+  return {
+    multidisciplinar: ativos.filter(r => !isTerapiaDiagnostico(r)).map(r => normalizarLinha(r, mapa)),
+    processoDiagnostico: ativos.filter(isTerapiaDiagnostico).map(r => normalizarLinha(r, mapa)),
+  }
+}
+
+export type SegmentoPacientes = keyof DashboardPacientesGeral
+
+/**
+ * Pacientes de UMA linha das tabelas "convênio" / "Por unidade" (o clique em
+ * "Ver pacientes"). Mesmo pipeline e mesma chave de `calcularDashboardPacientes`
+ * — filtro, segmento por sessão, `pacienteKey` por nome normalizado — para a
+ * lista ter exatamente o número da coluna "Pacientes" daquela linha. CH semanal
+ * usa as semanas do BLOCO inteiro, como a tabela.
+ */
+export function listarPacientesDoGrupo(
+  rows: AgendaSalaRow[],
+  mapa: MapaConvenioCadastro | null | undefined,
+  segmento: SegmentoPacientes,
+  campo: "convenio" | "unidade",
+  chave: string,
+): PacienteDoGrupo[] {
+  const doSegmento = normalizarPorSegmento(rows, mapa)[segmento]
+  const semanas = semanasNoPeriodo(doSegmento.map(a => a.data).filter(Boolean))
+
+  const porPaciente = new Map<string, {
+    ids: Set<number>; nome: string; sessoes: number; ch: number
+    terapias: Set<string>; outros: Set<string>; conveniosAgenda: Set<string>; fontes: Set<FonteConvenio>
+  }>()
+  doSegmento.forEach(a => {
+    if ((a[campo] || "Não informado") !== chave) return
+    let e = porPaciente.get(a.pacienteKey)
+    if (!e) {
+      e = { ids: new Set(), nome: a.paciente, sessoes: 0, ch: 0, terapias: new Set(), outros: new Set(), conveniosAgenda: new Set(), fontes: new Set() }
+      porPaciente.set(a.pacienteKey, e)
+    }
+    if (a.pacienteId != null) e.ids.add(a.pacienteId)
+    e.sessoes += 1
+    e.ch += a.ch
+    if (a.terapia) e.terapias.add(a.terapia)
+    e.outros.add(campo === "convenio" ? a.unidade : a.convenio)
+    e.conveniosAgenda.add(a.convenioAgenda)
+    e.fontes.add(a.convenioFonte)
+  })
+
+  const ordenar = (s: Set<string>) => [...s].filter(Boolean).sort((x, y) => x.localeCompare(y, "pt-BR"))
+  return [...porPaciente.values()]
+    .map(e => {
+      const conveniosAgenda = ordenar(e.conveniosAgenda)
+      return {
+        ids: [...e.ids].sort((x, y) => x - y),
+        nome: e.nome,
+        sessoes: e.sessoes,
+        chSemanal: e.ch / semanas,
+        terapias: ordenar(e.terapias),
+        outraDimensao: ordenar(e.outros),
+        conveniosAgenda,
+        // Só faz sentido na lista por convênio: o cadastro deu um convênio
+        // diferente do que a agenda registra para este paciente.
+        atualizadoPeloCadastro: campo === "convenio" && e.fontes.has("cadastro") && conveniosAgenda.some(c => c !== chave),
+      }
+    })
+    .sort((x, y) => x.nome.localeCompare(y.nome, "pt-BR"))
 }
