@@ -219,7 +219,7 @@ export function EditorDisponibilidade({
         </p>
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
-            <label htmlFor="informado-nome" className="text-xs text-muted-foreground">Nome</label>
+            <label htmlFor="informado-nome" className={rotulo}>Nome</label>
             <input
               id="informado-nome"
               type="text"
@@ -238,7 +238,7 @@ export function EditorDisponibilidade({
           />
         </div>
         <div>
-          <label htmlFor="observacao" className="text-xs text-muted-foreground">Observação</label>
+          <label htmlFor="observacao" className={rotulo}>Observação</label>
           <textarea
             id="observacao"
             rows={2}
