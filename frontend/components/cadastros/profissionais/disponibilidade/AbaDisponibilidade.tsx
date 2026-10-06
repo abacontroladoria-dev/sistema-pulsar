@@ -27,6 +27,7 @@ export function AbaDisponibilidade({
   carregando,
   erro,
   migrationPendente,
+  versaoInicialId,
   onMudou,
 }: {
   prof: Profissional
@@ -36,12 +37,14 @@ export function AbaDisponibilidade({
   carregando: boolean
   erro: string | null
   migrationPendente: boolean
+  /** Versão a abrir (vinda do "Abrir" do Histórico). */
+  versaoInicialId?: string | null
   onMudou: () => Promise<void> | void
 }) {
   const { profissionais } = useProfissionais()
   const ordenadas = useMemo(() => [...versoes].sort((a, b) => b.vigente_de.localeCompare(a.vigente_de)), [versoes])
   const vigente = ordenadas.find(v => v.situacao === "vigente") ?? null
-  const [selecionadaId, setSelecionadaId] = useState<string | null>(null)
+  const [selecionadaId, setSelecionadaId] = useState<string | null>(versaoInicialId ?? null)
   const selecionada = ordenadas.find(v => v.id === selecionadaId) ?? vigente ?? ordenadas[0] ?? null
 
   const [edicao, setEdicao] = useState<Edicao | null>(null)

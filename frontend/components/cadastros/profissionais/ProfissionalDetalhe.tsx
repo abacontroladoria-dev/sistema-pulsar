@@ -19,6 +19,7 @@ import { AbaCadastro } from "./AbaCadastro"
 import { AbaTerapias } from "./AbaTerapias"
 import { AvatarProfissional, estiloCor } from "./pecas"
 import { AbaDisponibilidade } from "./disponibilidade/AbaDisponibilidade"
+import { AbaHistorico } from "./disponibilidade/AbaHistorico"
 import { SeloGrade } from "./disponibilidade/pecasDisponibilidade"
 
 // Ficha do profissional — linguagem visual pastel da tela Entregas PEP
@@ -43,6 +44,7 @@ export function ProfissionalDetalhe({ id, abaInicial }: { id: number; abaInicial
   const [aba, setAba] = useState<AbaProfissional>(abaInicial ?? "cadastro")
   const [editando, setEditando] = useState(false)
   const [verHistorico, setVerHistorico] = useState(false)
+  const [versaoFoco, setVersaoFoco] = useState<string | null>(null)
   const [alternandoAtivo, setAlternandoAtivo] = useState(false)
 
   const { registerGuard } = useUnsavedChangesGuard()
@@ -247,7 +249,7 @@ export function ProfissionalDetalhe({ id, abaInicial }: { id: number; abaInicial
             aria-selected={aba === a.id}
             aria-controls={`prof-painel-${a.id}`}
             tabIndex={aba === a.id ? 0 : -1}
-            onClick={() => setAba(a.id)}
+            onClick={() => { setVersaoFoco(null); setAba(a.id) }}
             onKeyDown={teclaNaAba}
             className={`${tom(a.t)} pp-aba !min-h-[64px] !gap-2.5 !rounded-[20px] !p-3 @xl:!min-h-[88px] @xl:!gap-3 @xl:!rounded-[24px] @xl:!px-4 @xl:!py-4`}
           >
@@ -283,13 +285,18 @@ export function ProfissionalDetalhe({ id, abaInicial }: { id: number; abaInicial
             carregando={disp.loading}
             erro={disp.erro}
             migrationPendente={disp.migrationPendente}
+            versaoInicialId={versaoFoco}
             onMudou={async () => { await disp.recarregar(); void refetchProfissionais() }}
           />
         )}
         {aba === "historico" && (
-          <SecaoPastel titulo="hist-em-breve">
-            <p id="hist-em-breve" className="text-sm font-semibold text-[var(--pp-ink-muted)]">Histórico — em construção.</p>
-          </SecaoPastel>
+          <AbaHistorico
+            versoes={disp.versoes}
+            eventos={disp.eventos}
+            catalogo={catalogo}
+            onAbrirVersao={versaoId => { setVersaoFoco(versaoId); setAba("disponibilidade") }}
+            onVerAlteracoesCadastro={() => setVerHistorico(true)}
+          />
         )}
       </div>
 
