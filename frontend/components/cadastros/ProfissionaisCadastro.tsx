@@ -4,7 +4,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import toast from "react-hot-toast"
 import {
-  AlertCircle, ArrowDownUp, BadgeCheck, Briefcase, Check, ChevronLeft, ChevronRight, CloudDownload, Database,
+  AlertCircle, ArrowDownUp, BadgeCheck, IdCard, Briefcase, Check, ChevronLeft, ChevronRight, CloudDownload, Database,
   History, ListFilter, Loader2, Phone, Search, UserPlus, X,
 } from "lucide-react"
 import { HistoricoCadastrosModal } from "@/components/cadastros/historico/HistoricoCadastrosModal"
@@ -24,7 +24,7 @@ import { AvatarProfissional, ChipTerapia, estiloCor } from "./profissionais/peca
 import { NovoCadastroProfissionalModal } from "./profissionais/NovoCadastroProfissionalModal"
 import { SeloGrade } from "./profissionais/disponibilidade/pecasDisponibilidade"
 import type { SituacaoGrade, SituacaoGradeProfissional } from "@/types/disponibilidadeProfissional"
-import { BarraAlfabeto, LinhaDado, SeletorModo, type ModoExibicao } from "./shared/ListaCadastro"
+import { BarraAlfabeto, SeletorModo, type ModoExibicao } from "./shared/ListaCadastro"
 
 // Listagem do cadastro de profissionais — mesmo desenho da de pacientes (cards,
 // A–Z, grade/lista), com a cor da terapia focal como destaque do card.
@@ -81,7 +81,8 @@ export function ProfissionaisCadastro() {
   }, [buscaTexto])
   const [situacoes, setSituacoes] = useState<Set<SituacaoFiltro>>(() => new Set(["ativo"]))
   const [filtroTerapias, setFiltroTerapias] = useState<Set<number>>(new Set())
-  const [filtroGrades, setFiltroGrades] = useState<Set<SituacaoGrade>>(() => new Set(GRADES.map(g => g.valor)))
+  // Vazio = todas (como o filtro de Terapia): marcar restringe.
+  const [filtroGrades, setFiltroGrades] = useState<Set<SituacaoGrade>>(() => new Set())
   const [letra, setLetra] = useState<string | null>(null)
   const [pagina, setPagina] = useState(1)
   const [modalNovo, setModalNovo] = useState(false)
@@ -146,7 +147,7 @@ export function ProfissionaisCadastro() {
 
   const filtradasSemLetra = useMemo(() => {
     let lista = linhas.filter(l => situacoes.has(l.prof.ativo ? "ativo" : "inativo"))
-    if (!situacaoIndisponivel && filtroGrades.size < GRADES.length) {
+    if (!situacaoIndisponivel && filtroGrades.size > 0) {
       lista = lista.filter(l => l.situacaoGrade !== null && filtroGrades.has(l.situacaoGrade))
     }
     if (filtroTerapias.size) {
@@ -238,12 +239,12 @@ export function ProfissionaisCadastro() {
   const { setRightContent } = useHeader()
   useEffect(() => {
     setRightContent(
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="relative min-w-[15rem] flex-1">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <div className="relative w-full min-w-0 sm:w-72">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
           <input
             type="text"
-            className={`${campo} pl-9 ${buscaTexto ? "pr-9" : ""} w-full`}
+            className={`${campo} h-9 pl-9 ${buscaTexto ? "pr-9" : ""} w-full`}
             placeholder="Buscar nome, CPF, registro ou ID"
             value={buscaTexto}
             onChange={e => { setBuscaTexto(e.target.value); setPagina(1) }}
@@ -260,58 +261,21 @@ export function ProfissionaisCadastro() {
             </button>
           )}
         </div>
-        <FiltroSituacao value={situacoes} onChange={v => { setSituacoes(v); setPagina(1) }} />
-        {!situacaoIndisponivel && (
-          <div className="w-48 shrink-0">
-            <MultiSearchCombobox
-              opcoes={GRADES.map(g => ({ id: g.valor, nome: g.rotulo }))}
-              selecionados={filtroGrades}
-              onToggle={id => {
-                setFiltroGrades(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
-                setPagina(1)
-              }}
-              onMarcarTodos={() => { setFiltroGrades(new Set(GRADES.map(g => g.valor))); setPagina(1) }}
-              onDesmarcarTodos={() => { setFiltroGrades(new Set()); setPagina(1) }}
-              ariaLabel="Filtrar pela situação da grade"
-              nomePlural="situações"
-              placeholder="Grade: nenhuma"
-            />
-          </div>
-        )}
-        <div className="w-56 shrink-0">
-          <MultiSearchCombobox
-            opcoes={opcoesTerapia}
-            selecionados={filtroTerapias}
-            onToggle={id => {
-              setFiltroTerapias(prev => {
-                const n = new Set(prev)
-                if (n.has(id)) n.delete(id)
-                else n.add(id)
-                return n
-              })
-              setPagina(1)
-            }}
-            onDesmarcarTodos={() => { setFiltroTerapias(new Set()); setPagina(1) }}
-            ariaLabel="Filtrar por terapia"
-            nomePlural="terapias"
-            placeholder="Terapia: todas"
-          />
-        </div>
-        <OrdenarPor value={ordem} onChange={trocarOrdem} />
-        <SeletorModo value={modo} onChange={trocarModo} />
         <button
           type="button"
           onClick={() => setVerHistorico(true)}
-          className={`inline-flex shrink-0 items-center gap-2 rounded-md border border-border px-3 py-2 text-sm font-semibold text-foreground hover:bg-muted ${foco}`}
+          title="Histórico de alterações"
+          aria-label="Histórico de alterações"
+          className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border text-foreground hover:bg-muted ${foco}`}
         >
-          <History className="h-4 w-4" aria-hidden="true" /> Histórico
+          <History className="h-4 w-4" aria-hidden="true" />
         </button>
         <button
           type="button"
           onClick={importar}
           disabled={importando || migrationPendente}
           title="Traz quem está na grade da TiTa e completa campos vazios. Nunca sobrescreve o que foi editado aqui."
-          className={`inline-flex shrink-0 items-center gap-2 rounded-md border border-border px-3 py-2 text-sm font-semibold text-foreground hover:bg-muted disabled:opacity-50 ${foco}`}
+          className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-md border border-border px-3 text-sm font-semibold text-foreground hover:bg-muted disabled:opacity-50 ${foco}`}
         >
           {importando ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <CloudDownload className="h-4 w-4" aria-hidden="true" />}
           Importar da TiTa
@@ -320,14 +284,14 @@ export function ProfissionaisCadastro() {
           type="button"
           onClick={() => setModalNovo(true)}
           disabled={migrationPendente}
-          className={`inline-flex shrink-0 items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 ${foco}`}
+          className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-md bg-primary px-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 ${foco}`}
         >
           <UserPlus className="h-4 w-4" aria-hidden="true" /> Novo profissional
         </button>
       </div>
     )
     return () => setRightContent(null)
-  }, [buscaTexto, situacoes, filtroTerapias, filtroGrades, situacaoIndisponivel, opcoesTerapia, modo, trocarModo, ordem, trocarOrdem, importando, importar, migrationPendente, setRightContent])
+  }, [buscaTexto, importando, importar, migrationPendente, setRightContent])
 
   if (migrationPendente) {
     return (
@@ -370,6 +334,53 @@ export function ProfissionaisCadastro() {
         </div>
       ) : (
         <>
+          {/* Filtros, ordem e exibição — fora do cabeçalho, numa linha só, todos
+              com a mesma altura. */}
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <FiltroSituacao value={situacoes} onChange={v => { setSituacoes(v); setPagina(1) }} />
+            {!situacaoIndisponivel && (
+              <div className="w-full shrink-0 sm:w-52">
+                <MultiSearchCombobox
+                  opcoes={GRADES.map(g => ({ id: g.valor, nome: g.rotulo }))}
+                  selecionados={filtroGrades}
+                  onToggle={id => {
+                    setFiltroGrades(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
+                    setPagina(1)
+                  }}
+                  onDesmarcarTodos={() => { setFiltroGrades(new Set()); setPagina(1) }}
+                  ariaLabel="Filtrar pela situação da grade"
+                  nomePlural="situações"
+                  placeholder="Grade: todas"
+                  className="h-9 text-sm"
+                />
+              </div>
+            )}
+            <div className="w-full shrink-0 sm:w-60">
+              <MultiSearchCombobox
+                opcoes={opcoesTerapia}
+                selecionados={filtroTerapias}
+                onToggle={id => {
+                  setFiltroTerapias(prev => {
+                    const n = new Set(prev)
+                    if (n.has(id)) n.delete(id)
+                    else n.add(id)
+                    return n
+                  })
+                  setPagina(1)
+                }}
+                onDesmarcarTodos={() => { setFiltroTerapias(new Set()); setPagina(1) }}
+                ariaLabel="Filtrar por terapia"
+                nomePlural="terapias"
+                placeholder="Terapia: todas"
+                className="h-9 text-sm"
+              />
+            </div>
+            <div className="ml-auto flex items-center gap-2">
+              <OrdenarPor value={ordem} onChange={trocarOrdem} />
+              <SeletorModo value={modo} onChange={trocarModo} />
+            </div>
+          </div>
+
           <BarraAlfabeto value={letra} disponiveis={letrasDisponiveis} onChange={v => { setLetra(v); setPagina(1) }} />
 
           {loading ? (
@@ -416,7 +427,7 @@ export function ProfissionaisCadastro() {
                       <CabecalhoGrupo nome={g.nome} cor={g.cor} total={totalPorFocal.get(g.nome ?? "") ?? g.itens.length} />
                     </div>
                   )}
-                  <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+                  <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                     {g.itens.map(l => <CardProfissional key={l.prof.id} linha={l} />)}
                   </ul>
                 </section>
@@ -493,7 +504,7 @@ function OrdenarPor({ value, onChange }: { value: Ordem; onChange: (v: Ordem) =>
   return (
     <div ref={ref} className="relative shrink-0">
       <button type="button" onClick={() => setAberto(a => !a)} aria-expanded={aberto} aria-haspopup="listbox"
-        className={`inline-flex w-52 items-center gap-2 rounded-md border border-border px-3 py-2 text-sm font-semibold text-foreground hover:bg-muted ${foco}`}>
+        className={`inline-flex h-9 w-52 items-center gap-2 rounded-md border border-border bg-card px-3 text-sm font-semibold text-foreground hover:bg-muted ${foco}`}>
         <ArrowDownUp className="h-4 w-4 shrink-0" aria-hidden />
         <span className="truncate">Ordenar: {ORDENS.find(o => o.valor === value)?.rotulo}</span>
       </button>
@@ -533,9 +544,9 @@ function FiltroSituacao({ value, onChange }: { value: Set<SituacaoFiltro>; onCha
   const resumo = value.size === 0 ? "Nenhuma" : value.size === SITUACOES.length ? "Todos" : SITUACOES.filter(s => value.has(s.valor)).map(s => s.rotulo).join(", ")
 
   return (
-    <div ref={ref} className="relative shrink-0">
+    <div ref={ref} className="relative w-full shrink-0 sm:w-auto">
       <button type="button" onClick={() => setAberto(a => !a)} aria-expanded={aberto}
-        className={`inline-flex w-44 items-center gap-2 rounded-md border border-border px-3 py-2 text-sm font-semibold text-foreground hover:bg-muted ${foco}`}>
+        className={`inline-flex h-9 w-full items-center gap-2 rounded-md border border-border bg-card px-3 text-sm font-semibold text-foreground hover:bg-muted sm:w-44 ${foco}`}>
         <ListFilter className="h-4 w-4 shrink-0" aria-hidden="true" />
         <span className="truncate">Situação: {resumo}</span>
       </button>
@@ -578,6 +589,23 @@ function ChipsTerapias({ terapias, max = 3, destacarPrimeira = false }: { terapi
   )
 }
 
+/**
+ * Linha "rótulo: valor" do card. Diferente da LinhaDado de Pacientes, o valor
+ * QUEBRA linha em vez de ser cortado com reticências — celular e registro têm
+ * de aparecer inteiros.
+ */
+function LinhaCard({ icone: Icone, rotulo, valor }: { icone: typeof Phone; rotulo: string; valor: string | null }) {
+  return (
+    <div className="flex items-start gap-2">
+      <dt className="flex w-[5.25rem] shrink-0 items-center gap-1.5 text-muted-foreground">
+        <Icone className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+        {rotulo}
+      </dt>
+      <dd className="min-w-0 break-words font-semibold tabular-nums text-foreground">{valor || "—"}</dd>
+    </div>
+  )
+}
+
 const CardProfissional = memo(function CardProfissional({ linha }: { linha: Linha }) {
   const { prof, terapias, cor } = linha
   const focal = terapias[0]
@@ -588,10 +616,11 @@ const CardProfissional = memo(function CardProfissional({ linha }: { linha: Linh
         style={estiloCor(cor)}
         className={`group relative flex h-full flex-col overflow-hidden rounded-xl border border-border bg-card p-5 shadow-sm transition-all duration-200 ease-out hover:-translate-y-1.5 hover:border-[var(--t-linha)] hover:shadow-lg motion-reduce:transform-none motion-reduce:transition-none ${foco} ${prof.ativo ? "" : "opacity-75"}`}
       >
-        {/* Véu da terapia focal no topo — some em degradê até o meio do avatar. */}
+        {/* Tarja reta e fina na cor da terapia principal, na borda de cima. A
+            linha interna segura as cores muito claras (Psicopedagogia). */}
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-[var(--t-faixa)] to-transparent"
+          className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[var(--t-cor)] shadow-[inset_0_-1px_0_rgba(15,23,42,0.08)]"
         />
         <div className="relative flex items-start justify-between gap-2">
           <span className="text-sm text-muted-foreground">
@@ -620,9 +649,10 @@ const CardProfissional = memo(function CardProfissional({ linha }: { linha: Linh
         <hr className="relative my-4 border-border" />
 
         <dl className="relative space-y-3 pb-4 text-sm">
-          <LinhaDado icone={BadgeCheck} rotulo="Registro" valor={registroCompleto(prof)} />
-          <LinhaDado icone={Briefcase} rotulo="CBO" valor={prof.cbo} />
-          <LinhaDado icone={Phone} rotulo="Celular" valor={formatarCelular(prof.celular)} />
+          <LinhaCard icone={IdCard} rotulo="Tipo" valor={prof.tipo_registro} />
+          <LinhaCard icone={BadgeCheck} rotulo="Registro" valor={[prof.codigo_registro, prof.uf_registro].filter(Boolean).join(" · ") || null} />
+          <LinhaCard icone={Briefcase} rotulo="CBO" valor={prof.cbo} />
+          <LinhaCard icone={Phone} rotulo="Celular" valor={formatarCelular(prof.celular)} />
         </dl>
 
         {linha.situacaoGrade && (
@@ -677,7 +707,7 @@ const LinhaProfissional = memo(function LinhaProfissional({ linha }: { linha: Li
 
 function GridEsqueleto() {
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {Array.from({ length: 10 }).map((_, i) => (
         <div key={i} className="rounded-xl border border-border bg-card p-5 shadow-sm">
           <div className="flex items-start justify-between">
