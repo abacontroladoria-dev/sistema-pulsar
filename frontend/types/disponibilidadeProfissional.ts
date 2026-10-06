@@ -1,7 +1,9 @@
 // Disponibilidade do profissional — versões imutáveis com vigência. Ver
-// supabase/migrations/20261006140000_profissionais_disponibilidade.sql.
+// supabase/migrations/20261006140000_profissionais_disponibilidade.sql e
+// 20261006170000_disponibilidade_substituir_e_valer_hoje.sql.
 
-export type SituacaoVersao = "vigente" | "agendada" | "encerrada"
+/** "substituida" = trocada por outra antes de valer (ou no dia em que começou). */
+export type SituacaoVersao = "vigente" | "agendada" | "encerrada" | "substituida"
 export type SituacaoGrade = "vigente" | "agendada" | "inativa" | "sem_grade"
 export type OrigemVersao = "manual" | "preenchido_tita" | "restaurada"
 
@@ -33,6 +35,9 @@ export type VersaoDisponibilidade = {
   motivo: string | null
   criado_por_nome: string | null
   criado_em: string
+  /** Quando e por qual versão foi substituída (null = não foi). */
+  substituida_em: string | null
+  substituida_por: string | null
   situacao: SituacaoVersao
   faixas: FaixaGravada[]
 }
@@ -40,9 +45,9 @@ export type VersaoDisponibilidade = {
 export type EventoDisponibilidade = {
   id: number
   versao_id: string | null
-  tipo: "criar" | "encerrar" | "alterar_vigencia" | "restaurar"
+  tipo: "criar" | "encerrar" | "alterar_vigencia" | "restaurar" | "substituir" | "antecipar"
   antes: { vigente_de?: string; vigente_ate?: string | null } | null
-  depois: { vigente_de?: string; vigente_ate?: string | null; faixas?: number } | null
+  depois: { vigente_de?: string; vigente_ate?: string | null; faixas?: number; substituida_por?: string } | null
   motivo: string | null
   usuario_nome: string | null
   criado_em: string

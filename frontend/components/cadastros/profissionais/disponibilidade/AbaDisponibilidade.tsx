@@ -2,13 +2,13 @@
 
 import { useMemo, useState } from "react"
 import toast from "react-hot-toast"
-import { CalendarDays, CalendarRange, CircleSlash, Database, Loader2, Pencil, Plus, RotateCcw, X } from "lucide-react"
+import { CalendarDays, CalendarRange, CircleSlash, Database, FastForward, Loader2, Pencil, Plus, Replace, RotateCcw, X } from "lucide-react"
 import { InlineNotice } from "@/components/cronograma/ui/InlineNotice"
-import { CabecalhoPastel, SecaoPastel, tom } from "@/components/ui/pastel/pecas"
+import { CabecalhoPastel, SecaoPastel, avisoFeito, tom } from "@/components/ui/pastel/pecas"
 import { useConfirmacao } from "@/components/ui/pastel/confirmacao"
 import { useProfissionais } from "@/hooks/useProfissionais"
-import { rascunhoDeVersao, periodoBR, totaisDaSemana } from "@/lib/disponibilidadeProfissional"
-import { listarLocais, listarOcupacoesDeOutros } from "@/services/profissionalDisponibilidade.service"
+import { dataBR, hojeBrasilia, rascunhoDeVersao, periodoBR, somarDias, totaisDaSemana } from "@/lib/disponibilidadeProfissional"
+import { listarLocais, listarOcupacoesDeOutros, valerHoje } from "@/services/profissionalDisponibilidade.service"
 import type {
   LocalDisponivel, OcupacaoLocal, OrigemVersao, RascunhoDisponibilidade, VersaoDisponibilidade,
 } from "@/types/disponibilidadeProfissional"
@@ -44,7 +44,12 @@ export function AbaDisponibilidade({
 }) {
   const { profissionais } = useProfissionais()
   const { confirmar, dialogo } = useConfirmacao()
-  const ordenadas = useMemo(() => [...versoes].sort((a, b) => b.vigente_de.localeCompare(a.vigente_de)), [versoes])
+  // Mais nova primeiro; as substituídas (que nunca valeram como planejado) no fim.
+  const ordenadas = useMemo(
+    () => [...versoes].sort((a, b) =>
+      Number(a.situacao === "substituida") - Number(b.situacao === "substituida") || b.vigente_de.localeCompare(a.vigente_de)),
+    [versoes]
+  )
   const vigente = ordenadas.find(v => v.situacao === "vigente") ?? null
   const [selecionadaId, setSelecionadaId] = useState<string | null>(versaoInicialId ?? null)
   const selecionada = ordenadas.find(v => v.id === selecionadaId) ?? vigente ?? ordenadas[0] ?? null
@@ -54,6 +59,37 @@ export function AbaDisponibilidade({
   const [locais, setLocais] = useState<LocalDisponivel[]>([])
   const [ocupacoes, setOcupacoes] = useState<OcupacaoLocal[]>([])
   const [vigencia, setVigencia] = useState<{ versao: VersaoDisponibilidade; modo: "encerrar" | "ajustar" } | null>(null)
+  const [antecipando, setAntecipando] = useState(false)
+
+  /** A versão agendada passa a valer hoje, mantendo o número. */
+  const fazerValerHoje = async (v: VersaoDisponibilidade) => {
+    const hoje = hojeBrasilia()
+    const atual = versoes.find(x => x.situacao === "vigente") ?? null
+    const efeito = !atual
+      ? ""
+      : atual.vigente_de >= hoje
+        ? ` A versão nº ${atual.numero}, que começou hoje, fica substituída (continua no histórico).`
+        : ` A versão nº ${atual.numero} passa a terminar ontem, ${dataBR(somarDias(hoje, -1))}.`
+    const ok = await confirmar({
+      titulo: `Fazer a versão nº ${v.numero} valer a partir de hoje?`,
+      texto: `Ela começa a valer hoje, ${dataBR(hoje)}, em vez de ${dataBR(v.vigente_de)}.${efeito}`,
+      confirmar: "Valer a partir de hoje",
+      t: "verde",
+      Icone: FastForward,
+    })
+    if (!ok) return
+    setAntecipando(true)
+    try {
+      await valerHoje(v.id)
+      avisoFeito(`Versão nº ${v.numero} valendo a partir de hoje`)
+      setSelecionadaId(v.id)
+      await onMudou()
+    } catch (e) {
+      toast.error(String((e as Error)?.message ?? e), { duration: 8000 })
+    } finally {
+      setAntecipando(false)
+    }
+  }
 
   const catalogoPorId = useMemo(() => new Map(catalogo.map(t => [t.id, t])), [catalogo])
   const corDaTerapia = (id: number) => catalogoPorId.get(id)?.cor_hex ?? "#CBD5E1"
@@ -160,6 +196,8 @@ export function AbaDisponibilidade({
           ajuda={[
             { t: "teal", Icone: Pencil, texto: "É só editar: ao salvar uma mudança, o sistema guarda a anterior e cria a versão nova, com data para começar e (se quiser) para terminar." },
             { t: "vermelho", Icone: CircleSlash, texto: "Passou a data de fim e não há outra versão: a grade fica inativa." },
+            { t: "verde", Icone: FastForward, texto: "Versão agendada para depois? \"Valer a partir de hoje\" antecipa sem mudar o número." },
+            { t: "cinza", Icone: Replace, texto: "Trocada antes de valer (ou no mesmo dia em que começou), a versão fica \"Substituída\" no histórico." },
             { t: "aco", Icone: RotateCcw, texto: "Versões antigas nunca são apagadas — dá para restaurar qualquer uma." },
           ]}
         />
@@ -202,7 +240,7 @@ export function AbaDisponibilidade({
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
-              {selecionada.situacao === "encerrada" ? (
+              {selecionada.situacao === "encerrada" || selecionada.situacao === "substituida" ? (
                 <button type="button" disabled={preparando}
                   onClick={() => abrirEditor({ base: rascunhoDeVersao(selecionada), origem: "restaurada", restauradaDe: selecionada })}
                   className={`${tom("aco")} pp-btn pp-btn-suave`}>
@@ -215,6 +253,12 @@ export function AbaDisponibilidade({
                     className={`${tom("teal")} pp-btn`}>
                     {preparando ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Pencil className="h-4 w-4" aria-hidden />} Editar
                   </button>
+                  {selecionada.situacao === "agendada" && (
+                    <button type="button" disabled={antecipando} onClick={() => fazerValerHoje(selecionada)} className={`${tom("verde")} pp-btn pp-btn-suave`}>
+                      {antecipando ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <FastForward className="h-4 w-4" aria-hidden />}
+                      Valer a partir de hoje
+                    </button>
+                  )}
                   <button type="button" onClick={() => setVigencia({ versao: selecionada, modo: "ajustar" })} className={`${tom("aco")} pp-btn pp-btn-suave`}>
                     <CalendarRange className="h-4 w-4" aria-hidden /> Vigência
                   </button>
@@ -226,11 +270,18 @@ export function AbaDisponibilidade({
             </div>
           </div>
           <div className="mb-4">
-            <FaixaSituacao situacao={selecionada.situacao} de={selecionada.vigente_de} ate={selecionada.vigente_ate} />
+            <FaixaSituacao
+              situacao={selecionada.situacao}
+              de={selecionada.vigente_de}
+              ate={selecionada.vigente_ate}
+              substituidaPor={selecionada.substituida_por ? versoes.find(x => x.id === selecionada.substituida_por)?.numero : null}
+            />
           </div>
           <SemanaLeitura rascunho={rascunhoSel} corDaTerapia={corDaTerapia} nomeTerapia={nomeTerapia} />
         </SecaoPastel>
       )}
+
+      {dialogo}
 
       {vigencia && (
         <VigenciaModal

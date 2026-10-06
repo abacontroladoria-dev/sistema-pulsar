@@ -34,20 +34,26 @@ function falha(e: ErroPg): never {
 }
 
 const COLS_VERSAO =
-  "id, profissional_id, numero, vigente_de, vigente_ate, dias_ativos, origem, restaurada_de, motivo, criado_por_nome, criado_em, situacao"
+  "id, profissional_id, numero, vigente_de, vigente_ate, dias_ativos, origem, restaurada_de, motivo, criado_por_nome, criado_em, substituida_em, substituida_por, situacao"
+// O localhost usa o banco de produção: sem a migration 20261006170000 a view não
+// tem as colunas de substituição — a tela segue sem elas em vez de quebrar.
+const COLS_VERSAO_ANTIGAS = COLS_VERSAO.replace("substituida_em, substituida_por, ", "")
 const COLS_FAIXA =
   "id, versao_id, dia_semana, hora_inicio, hora_fim, duracao_min, intervalo_ativo, intervalo_inicio, intervalo_fim, local_id, local_nome, unidade_nome, ordem, profissionais_disponibilidade_faixa_terapias(terapia_id, terapia_nome)"
 
 /** Todas as versões do profissional com as faixas (mais recente primeiro). */
 export async function listarVersoes(profissionalId: number): Promise<VersaoDisponibilidade[]> {
   const sb = getSupabaseClient()
-  const { data: versoes, error } = await sb
-    .from("vw_profissionais_disponibilidade_versoes")
-    .select(COLS_VERSAO)
-    .eq("profissional_id", profissionalId)
-    .order("vigente_de", { ascending: false })
+  type Resposta = { data: unknown[] | null; error: ErroPg | null }
+  const ler = (cols: string) =>
+    sb.from("vw_profissionais_disponibilidade_versoes")
+      .select(cols)
+      .eq("profissional_id", profissionalId)
+      .order("vigente_de", { ascending: false }) as unknown as PromiseLike<Resposta>
+  let { data: versoes, error } = await ler(COLS_VERSAO)
+  if (error && (error.code === "42703" || error.code === "PGRST204")) ({ data: versoes, error } = await ler(COLS_VERSAO_ANTIGAS))
   if (error) falha(error)
-  const lista = (versoes ?? []) as unknown as Omit<VersaoDisponibilidade, "faixas">[]
+  const lista = (versoes ?? []).map(v => ({ substituida_em: null, substituida_por: null, ...(v as object) })) as Omit<VersaoDisponibilidade, "faixas">[]
   if (!lista.length) return []
 
   const { data: faixas, error: e2 } = await sb
@@ -161,6 +167,23 @@ export async function alterarVigencia(versaoId: string, vigenteDe: string, vigen
     p_motivo: motivo,
   })
   if (error) falha(error)
+}
+
+/**
+ * A versão agendada passa a valer HOJE (mesmo número). A que valia antes de hoje
+ * termina ontem; a que começou hoje fica substituída.
+ */
+export async function valerHoje(versaoId: string, motivo?: string): Promise<void> {
+  const { error } = await getSupabaseClient().rpc("profissional_disponibilidade_valer_hoje", {
+    p_versao_id: versaoId,
+    p_motivo: motivo?.trim() || null,
+  })
+  if (error) {
+    if (error.code === "PGRST202" || /could not find the function/i.test(error.message)) {
+      throw new Error("Falta aplicar a migration 20261006170000_disponibilidade_substituir_e_valer_hoje.sql.")
+    }
+    falha(error)
+  }
 }
 
 /**

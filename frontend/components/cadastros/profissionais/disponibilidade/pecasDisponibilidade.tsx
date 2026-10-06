@@ -1,6 +1,6 @@
 "use client"
 
-import { CalendarClock, CircleSlash, CheckCircle2, MapPin } from "lucide-react"
+import { CalendarClock, CircleSlash, CheckCircle2, MapPin, Replace } from "lucide-react"
 import { tom, type Tom } from "@/components/ui/pastel/pecas"
 import { COR_NEUTRA } from "@/lib/cadastros/terapias"
 import { DIAS_SEMANA, dataBR, paraMin, periodoBR, sessoesDaFaixa, somarDias, totaisDaSemana } from "@/lib/disponibilidadeProfissional"
@@ -14,9 +14,11 @@ const ESCALA_INI = 6 * 60
 const ESCALA_FIM = 22 * 60
 const pct = (m: number) => `${((Math.min(Math.max(m, ESCALA_INI), ESCALA_FIM) - ESCALA_INI) / (ESCALA_FIM - ESCALA_INI)) * 100}%`
 
-export const TOM_SITUACAO: Record<SituacaoVersao, Tom> = { vigente: "verde", agendada: "aco", encerrada: "vermelho" }
-export const ROTULO_SITUACAO: Record<SituacaoVersao, string> = { vigente: "Vigente", agendada: "Agendada", encerrada: "Encerrada" }
-const ICONE_SITUACAO = { vigente: CheckCircle2, agendada: CalendarClock, encerrada: CircleSlash }
+export const TOM_SITUACAO: Record<SituacaoVersao, Tom> = { vigente: "verde", agendada: "aco", encerrada: "vermelho", substituida: "cinza" }
+export const ROTULO_SITUACAO: Record<SituacaoVersao, string> = {
+  vigente: "Vigente", agendada: "Agendada", encerrada: "Encerrada", substituida: "Substituída",
+}
+const ICONE_SITUACAO = { vigente: CheckCircle2, agendada: CalendarClock, encerrada: CircleSlash, substituida: Replace }
 
 export function SeloSituacao({ situacao, compacto = false }: { situacao: SituacaoVersao; compacto?: boolean }) {
   const Icone = ICONE_SITUACAO[situacao]
@@ -132,7 +134,17 @@ export function SemanaLeitura({
 }
 
 /** Linha "Grade inativa desde …" / "Começa a valer em …" acima da semana. */
-export function FaixaSituacao({ situacao, de, ate }: { situacao: SituacaoVersao; de: string; ate: string | null }) {
+export function FaixaSituacao({
+  situacao, de, ate, substituidaPor,
+}: { situacao: SituacaoVersao; de: string; ate: string | null; substituidaPor?: number | null }) {
+  if (situacao === "substituida") {
+    return (
+      <p className={`${tom("cinza")} flex items-center gap-2 rounded-[16px] bg-[var(--c-suave)] px-4 py-3 text-sm font-bold text-[var(--c-tinta)]`}>
+        <Replace className="h-4 w-4 shrink-0" aria-hidden />
+        Substituída{substituidaPor ? ` pela versão nº ${substituidaPor}` : ""} — não vale mais. Era para valer {periodoBR(de, ate)}.
+      </p>
+    )
+  }
   if (situacao === "vigente") {
     return (
       <p className={`${tom("verde")} flex items-center gap-2 rounded-[16px] bg-[var(--c-suave)] px-4 py-3 text-sm font-bold text-[var(--c-tinta)]`}>

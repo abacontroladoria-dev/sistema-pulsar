@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react"
 import toast from "react-hot-toast"
 import {
-  AlertTriangle, CalendarRange, Check, ChevronDown, CloudDownload, Info, Loader2, MapPin, Plus, Trash2, Users, X,
+  AlertTriangle, CalendarRange, Check, ChevronDown, CloudDownload, Info, Loader2, MapPin, Plus, Replace, Trash2, Users, X,
 } from "lucide-react"
 import { CampoSelect, rotulo } from "@/components/cadastros/pacientes/ui/campos"
 import { MultiSearchCombobox } from "@/components/cronograma/ui/MultiSearchCombobox"
@@ -82,17 +82,18 @@ export function EditorDisponibilidade({
 }) {
   const hoje = hojeBrasilia()
   const { confirmar, dialogo } = useConfirmacao()
-  const vigente = versoes.find(v => v.situacao === "vigente") ?? null
-  // Começar no mesmo dia da vigente seria "versão começando no mesmo dia": o
-  // padrão é hoje, ou o dia seguinte ao início da vigente se ela começou hoje.
-  const dePadrao = vigente && vigente.vigente_de >= hoje ? somarDias(vigente.vigente_de, 1) : hoje
+  // Substituídas saíram da linha do tempo: não contam para nada aqui.
+  const ativas = useMemo(() => versoes.filter(v => v.situacao !== "substituida"), [versoes])
+  // Vale a partir de hoje. Se a vigente também começou hoje, ela fica
+  // substituída por esta (a RPC faz isso; o aviso abaixo mostra antes).
+  const dePadrao = hoje
 
   const [r, setR] = useState<RascunhoDisponibilidade>(base)
   const [origem, setOrigem] = useState<OrigemVersao>(origemInicial)
   const [vigenteDe, setVigenteDe] = useState(dePadrao)
   // Já existe versão agendada mais à frente: a nova termina na véspera dela, em
   // vez de nascer cruzando o período (o que a RPC recusaria).
-  const proximaFutura = versoes
+  const proximaFutura = ativas
     .filter(v => v.vigente_de > dePadrao)
     .sort((a, b) => a.vigente_de.localeCompare(b.vigente_de))[0] ?? null
   const [indeterminado, setIndeterminado] = useState(!proximaFutura)
@@ -131,21 +132,29 @@ export function EditorDisponibilidade({
     [r, vigenteDe, ate, ocupacoes, locaisPorId, nomeProfissional]
   )
 
-  // O que acontece com as outras versões ao salvar (espelho da RPC).
+  // O que acontece com as outras versões ao salvar (espelho da RPC):
+  // a que valia antes termina na véspera; as que começam na mesma data ou
+  // depois e ainda não valeram ficam substituídas; as que já valeram bloqueiam.
   const efeitoVigencia = useMemo(() => {
-    if (!vigenteDe) return { bloqueio: "Informe a data de início.", encerra: null as VersaoDisponibilidade | null }
-    if (ate && ate < vigenteDe) return { bloqueio: "O fim é anterior ao início.", encerra: null }
+    const nada = { encerra: null as VersaoDisponibilidade | null, substitui: [] as VersaoDisponibilidade[] }
+    if (!vigenteDe) return { ...nada, bloqueio: "Informe a data de início." as string | null }
+    if (ate && ate < vigenteDe) return { ...nada, bloqueio: "O fim é anterior ao início." }
     const cruza = (v: VersaoDisponibilidade) => v.vigente_de <= (ate ?? "9999-12-31") && vigenteDe <= (v.vigente_ate ?? "9999-12-31")
-    const futura = versoes.find(v => v.vigente_de >= vigenteDe && cruza(v))
-    if (futura) {
+    const jaValeu = ativas.find(v => v.vigente_de >= vigenteDe && v.vigente_de < hoje && cruza(v))
+    if (jaValeu) {
       return {
-        bloqueio: `A versão nº ${futura.numero} (${periodoBR(futura.vigente_de, futura.vigente_ate)}) cruza este período. Ajuste a vigência dela no Histórico antes.`,
-        encerra: null,
+        ...nada,
+        bloqueio: `A versão nº ${jaValeu.numero} (${periodoBR(jaValeu.vigente_de, jaValeu.vigente_ate)}) já valeu e cruza este período. Escolha uma data de início depois dela.`,
       }
     }
-    const anterior = versoes.find(v => v.vigente_de < vigenteDe && (v.vigente_ate === null || v.vigente_ate >= vigenteDe)) ?? null
-    return { bloqueio: null as string | null, encerra: anterior }
-  }, [vigenteDe, ate, versoes])
+    return {
+      bloqueio: null,
+      encerra: ativas.find(v => v.vigente_de < vigenteDe && (v.vigente_ate === null || v.vigente_ate >= vigenteDe)) ?? null,
+      substitui: ativas.filter(v => v.vigente_de >= vigenteDe && cruza(v)).sort((a, b) => a.numero - b.numero),
+    }
+  }, [vigenteDe, ate, ativas, hoje])
+  const textoSubstitui = (v: VersaoDisponibilidade) =>
+    `a versão nº ${v.numero} (${v.vigente_de === hoje ? "começou hoje" : `começaria em ${dataBR(v.vigente_de)}`})`
 
   const mudar = (chave: string, patch: Partial<FaixaRascunho>) =>
     setR(prev => ({ ...prev, faixas: prev.faixas.map(f => (f.chave === chave ? { ...f, ...patch } : f)) }))
@@ -236,6 +245,14 @@ export function EditorDisponibilidade({
       toast.error(efeitoVigencia.bloqueio ?? "Corrija os pontos marcados em vermelho.")
       return
     }
+    if (efeitoVigencia.substitui.length && !(await confirmar({
+      titulo: efeitoVigencia.substitui.length === 1 ? `Substituir a versão nº ${efeitoVigencia.substitui[0].numero}?` : "Substituir versões?",
+      texto: `Ao salvar, ${efeitoVigencia.substitui.map(textoSubstitui).join(" e ")} fica substituída por esta e deixa de valer. Ela continua no histórico e pode ser restaurada.`,
+      confirmar: "Salvar e substituir",
+      cancelar: "Revisar",
+      t: "aco",
+      Icone: Replace,
+    }))) return
     const estouro = [...conflitos.values()].filter(c => c.excedeu)
     if (estouro.length) {
       const lista = estouro.map(c => `• ${c.local.nome_exibicao}: ${c.outros.join(", ")}`).join("\n")
@@ -315,11 +332,12 @@ export function EditorDisponibilidade({
             <p className={`${tom("vermelho")} flex items-start gap-2 rounded-[14px] bg-[var(--c-suave)] px-3 py-2 text-[13px] font-bold text-[var(--c-tinta)]`}>
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden /> {efeitoVigencia.bloqueio}
             </p>
-          ) : (efeitoVigencia.encerra && !semMudanca) || (ate && ate < hoje) ? (
+          ) : !semMudanca && (efeitoVigencia.encerra || efeitoVigencia.substitui.length > 0 || (ate && ate < hoje)) ? (
             <p className={`${tom("teal")} flex items-start gap-2 rounded-[14px] bg-[var(--c-suave)] px-3 py-2 text-[13px] font-bold text-[var(--c-tinta)]`}>
               <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
               <span>
-                {efeitoVigencia.encerra && !semMudanca && `Ao salvar, a versão nº ${efeitoVigencia.encerra.numero} passa a terminar em ${dataBR(somarDias(vigenteDe, -1))}.`}
+                {efeitoVigencia.encerra && `Ao salvar, a versão nº ${efeitoVigencia.encerra.numero} passa a terminar em ${dataBR(somarDias(vigenteDe, -1))}.`}
+                {efeitoVigencia.substitui.length > 0 && ` Ao salvar, ${efeitoVigencia.substitui.map(textoSubstitui).join(" e ")} fica substituída por esta (continua no histórico).`}
                 {ate && ate < hoje && " Como o fim já passou, esta já nasce como grade inativa."}
               </span>
             </p>

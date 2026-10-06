@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react"
 import {
-  ArrowUpRight, CalendarRange, ChevronDown, CircleSlash, FileClock, GitCompare, History, Plus, RotateCcw, UserRound,
+  ArrowUpRight, CalendarRange, ChevronDown, CircleSlash, FastForward, FileClock, GitCompare, History, Plus, Replace, RotateCcw, UserRound,
 } from "lucide-react"
 import { CabecalhoPastel, SecaoPastel, tom, type Tom } from "@/components/ui/pastel/pecas"
 import {
@@ -21,6 +21,8 @@ const EVENTO: Record<EventoDisponibilidade["tipo"], { t: Tom; Icone: typeof Plus
   encerrar: { t: "vermelho", Icone: CircleSlash, verbo: "encerrou" },
   alterar_vigencia: { t: "aco", Icone: CalendarRange, verbo: "ajustou a vigência de" },
   restaurar: { t: "azul", Icone: RotateCcw, verbo: "restaurou como" },
+  substituir: { t: "cinza", Icone: Replace, verbo: "substituiu" },
+  antecipar: { t: "verde", Icone: FastForward, verbo: "fez valer a partir de hoje" },
 }
 
 const ORIGEM: Record<VersaoDisponibilidade["origem"], string> = {
@@ -103,7 +105,7 @@ export function AbaHistorico({
                     {v.numero}
                   </span>
                   <div className={`min-w-0 flex-1 rounded-[20px] p-4 ${
-                    v.situacao === "encerrada"
+                    v.situacao === "encerrada" || v.situacao === "substituida"
                       ? "bg-[var(--pp-muted)] shadow-[inset_0_0_0_1px_var(--pp-border)]"
                       : "bg-[var(--pp-surface)] shadow-[var(--pp-sombra),inset_0_0_0_1.5px_var(--c-linha)]"
                   }`}>
@@ -123,6 +125,12 @@ export function AbaHistorico({
                       <span>· {v.dias_ativos.length ? v.dias_ativos.map(curtoDia).join(", ") : "nenhum dia"}</span>
                     </p>
                     {v.motivo && <p className="mt-2 text-[13px] font-semibold">“{v.motivo}”</p>}
+                    {v.substituida_em && (
+                      <p className="mt-2 text-[13px] font-bold text-[var(--pp-ink-muted)]">
+                        Substituída{v.substituida_por && numeroDe.get(v.substituida_por) ? ` pela versão nº ${numeroDe.get(v.substituida_por)}` : ""} em{" "}
+                        {new Date(v.substituida_em).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" })} — não chegou a valer como planejada.
+                      </p>
+                    )}
 
                     {difs && (
                       <div className="mt-3">
@@ -174,7 +182,10 @@ export function AbaHistorico({
                     <p className="font-semibold">
                       <span className="font-extrabold">{e.usuario_nome ?? "Alguém"}</span> {cfg.verbo} a versão nº {n ?? "?"}
                       {e.tipo === "criar" && periodoDepois && <> · {periodoDepois}</>}
-                      {(e.tipo === "encerrar" || e.tipo === "alterar_vigencia") && periodoDepois && (
+                      {e.tipo === "substituir" && e.depois?.substituida_por && numeroDe.get(e.depois.substituida_por) && (
+                        <> pela nº {numeroDe.get(e.depois.substituida_por)}</>
+                      )}
+                      {(e.tipo === "encerrar" || e.tipo === "alterar_vigencia" || e.tipo === "antecipar") && periodoDepois && (
                         <> · <span className="text-[var(--pp-ink-muted)] line-through decoration-1">{periodoAntes}</span> → {periodoDepois}</>
                       )}
                     </p>
