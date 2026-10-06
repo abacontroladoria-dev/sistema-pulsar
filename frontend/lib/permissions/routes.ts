@@ -116,6 +116,9 @@ export const CODIGO_PARA_ROTAS: Record<string, string[]> = {
   // paciente ("Filiação e responsáveis"), e a RLS de public.responsaveis já é
   // gated por esta mesma permissão (20260826100200).
   cadastros_pacientes: ['/cadastros/pacientes'],
+  // Catálogo de terapias/procedimentos com a cor (hex) usada no Cadastro de
+  // Profissionais. Ver 20261006120000_cadastro_terapias.sql.
+  cadastros_terapias: ['/cadastros/terapias'],
   // `cadastros_profissionais`, `cronograma_por_paciente` e
   // `cronograma_por_profissional` saíram em 29/09/2026: as rotas nunca ganharam
   // página e o catálogo passou a espelhar o Sidebar. Voltam junto com a tela.

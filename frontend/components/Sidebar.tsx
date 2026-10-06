@@ -707,13 +707,15 @@ export default function Sidebar() {
           {/* Cadastros */}
           {(canAccess("/cadastros/cadastro-valores") || canAccess("/cadastros/feriados") ||
             canAccess("/cadastros/contratos") || canAccess("/cadastros/taxas-e-parametros") ||
-            canAccess("/cadastros/pacientes") || canAccess("/cadastros/convenios")) && (
+            canAccess("/cadastros/pacientes") || canAccess("/cadastros/convenios") ||
+            canAccess("/cadastros/terapias")) && (
             <SidebarGroup
               title={GRUPO.cadastros.nome}
               icon={GRUPO.cadastros.icon}
               defaultOpen={pathname.startsWith("/cadastros")}
             >
               {canAccess("/cadastros/pacientes") && <Item codigo="cadastros_pacientes" />}
+              {canAccess("/cadastros/terapias") && <Item codigo="cadastros_terapias" />}
               {canAccess("/cadastros/convenios") && <Item codigo="cadastros_convenios" />}
               {canAccess("/cadastros/cadastro-valores") && <Item codigo="cronograma_valores_convenio" />}
               {canAccess("/cadastros/feriados") && <Item codigo="cadastros_feriados" />}
