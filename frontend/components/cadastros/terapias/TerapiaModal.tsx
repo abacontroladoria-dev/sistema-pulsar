@@ -5,7 +5,9 @@ import { Loader2 } from "lucide-react"
 import { ScheduleModal } from "@/components/cronograma/ui/ScheduleModal"
 import { CampoCor, campo, rotulo } from "@/components/cadastros/pacientes/ui/campos"
 import { normTxt } from "@/lib/cronograma/constants"
-import { COR_NEUTRA, luminancia } from "@/lib/cadastros/terapias"
+import { COR_NEUTRA } from "@/lib/cadastros/terapias"
+import { ICONES_TERAPIA, IconeTerapia } from "@/lib/cadastros/iconesTerapia"
+import { estiloTons } from "@/lib/cadastros/tonsTerapia"
 import { TIPO_TERAPIA_LABEL, type CadastroTerapia, type CadastroTerapiaEdit, type TipoTerapia } from "@/types/terapia"
 
 export function TerapiaModal({
@@ -25,6 +27,7 @@ export function TerapiaModal({
     nome: terapia?.nome ?? "",
     tipo: terapia?.tipo ?? "terapia",
     cor_hex: terapia?.cor_hex ?? COR_NEUTRA,
+    icone: terapia?.icone ?? null,
   })
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
@@ -41,7 +44,6 @@ export function TerapiaModal({
 
   const nomeValido = form.nome.trim().length >= 2
   const podeSalvar = nomeValido && !repetida && !salvando
-  const textoEscuro = luminancia(form.cor_hex) > 0.45
 
   const salvar = async () => {
     if (!podeSalvar) return
@@ -84,18 +86,16 @@ export function TerapiaModal({
       }
     >
       <div className="space-y-5 p-5">
-        {/* Prévia: como a terapia aparece nos chips e cards */}
-        <div className="flex items-center gap-3 rounded-xl border border-border bg-muted/30 p-3">
-          <span
-            className="inline-flex items-center rounded-full px-3 py-1 text-sm font-semibold"
-            style={{ backgroundColor: form.cor_hex, color: textoEscuro ? "#0f172a" : "#ffffff" }}
-          >
-            {form.nome.trim() || "Nome da terapia"}
+        {/* Prévia: como a terapia aparece no card do profissional (avatar e chip) */}
+        <div style={estiloTons(form.cor_hex)} className="ua-tons flex items-center gap-4 rounded-xl border border-border bg-[var(--t-50)] p-3">
+          <span className="ua-avatar h-14 w-14">
+            <IconeTerapia chave={form.icone} className="h-7 w-7" strokeWidth={1.75} />
           </span>
-          <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
-            <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: form.cor_hex }} aria-hidden="true" />
-            prévia no card
-          </span>
+          <div className="min-w-0 space-y-1.5">
+            <span className="ua-role"><span className="truncate">{form.nome.trim() || "Nome da terapia"}</span></span>
+            <div><span className="ua-chip"><span className="truncate">{form.nome.trim() || "Nome da terapia"}</span></span></div>
+          </div>
+          <span className="ml-auto self-start text-xs text-muted-foreground">prévia no card</span>
         </div>
 
         <div>
@@ -146,6 +146,35 @@ export function TerapiaModal({
           sugestoes={paleta}
           dica="Usada no destaque do card do profissional, nos chips e na linha do tempo da disponibilidade."
         />
+
+        <div>
+          <span className={rotulo}>Ícone no card do profissional</span>
+          <div role="radiogroup" aria-label="Ícone" className="mt-1.5 grid grid-cols-8 gap-1.5 sm:grid-cols-10">
+            {ICONES_TERAPIA.map(o => {
+              const marcado = (form.icone ?? "sparkles") === o.chave
+              return (
+                <button
+                  key={o.chave}
+                  type="button"
+                  role="radio"
+                  aria-checked={marcado}
+                  aria-label={o.rotulo}
+                  title={o.rotulo}
+                  onClick={() => setForm(f => ({ ...f, icone: o.chave === "sparkles" ? null : o.chave }))}
+                  style={marcado ? estiloTons(form.cor_hex) : undefined}
+                  className={`ua-tons flex aspect-square items-center justify-center rounded-lg border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                    marcado
+                      ? "border-[var(--t-300)] bg-[var(--t-50)] text-[var(--t-700)] ring-1 ring-[var(--t-300)]"
+                      : "border-border text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                  }`}
+                >
+                  <o.Icone className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
+                </button>
+              )
+            })}
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">Aparece no avatar de todos os profissionais que têm esta terapia como principal.</p>
+        </div>
 
         {terapia?.tita_terapia_id && (
           <p className="text-xs text-muted-foreground">

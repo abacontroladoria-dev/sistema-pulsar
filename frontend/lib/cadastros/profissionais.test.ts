@@ -4,7 +4,7 @@ import { indicePorNome, separarTerapias } from "./terapias"
 import type { CadastroTerapia } from "@/types/terapia"
 
 const t = (id: number, nome: string, cor: string): CadastroTerapia => ({
-  id, nome, cor_hex: cor, tipo: "terapia", tita_terapia_id: null, ativo: true, atualizado_em: "",
+  id, nome, cor_hex: cor, tipo: "terapia", tita_terapia_id: null, icone: null, ativo: true, atualizado_em: "",
 })
 const CATALOGO = [t(1, "Psicomotricidade", "#39A8F9"), t(2, "Psicopedagogia", "#FFFB73"), t(3, "Terapia Ocupacional", "#0B13CA")]
 const porId = new Map(CATALOGO.map(c => [c.id, c]))

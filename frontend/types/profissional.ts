@@ -69,6 +69,8 @@ export type TerapiaDoProfissional = {
   cor: string
   /** Id no catálogo; null quando a grade usa um nome que o catálogo não tem. */
   terapiaId: number | null
+  /** Chave do ícone no catálogo (null = estrelinhas). */
+  icone: string | null
   habilitada: boolean
   /** Horários na grade TiTa (últimos 90 dias em diante). 0 = não aparece na grade. */
   horariosGrade: number

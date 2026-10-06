@@ -7,7 +7,8 @@ import { HistoricoCadastrosModal } from "@/components/cadastros/historico/Histor
 import { InlineNotice } from "@/components/cronograma/ui/InlineNotice"
 import { useCadastroTerapias } from "@/hooks/useCadastroTerapias"
 import { normTxt } from "@/lib/cronograma/constants"
-import { compararTom } from "@/lib/cadastros/terapias"
+import { compararTom, luminancia } from "@/lib/cadastros/terapias"
+import { IconeTerapia } from "@/lib/cadastros/iconesTerapia"
 import { atualizarTerapia, criarTerapia } from "@/services/cadastroTerapias.service"
 import { TIPO_TERAPIA_LABEL, type CadastroTerapia, type CadastroTerapiaEdit, type TipoTerapia } from "@/types/terapia"
 import { TerapiaModal } from "./terapias/TerapiaModal"
@@ -246,10 +247,12 @@ function CartaoTerapia({
         className="flex min-w-0 flex-1 items-center gap-3 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <span
-          className="h-10 w-10 shrink-0 rounded-lg border border-black/10 shadow-inner"
-          style={{ backgroundColor: terapia.cor_hex }}
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-black/10 shadow-inner"
+          style={{ backgroundColor: terapia.cor_hex, color: luminancia(terapia.cor_hex) > 0.45 ? "#0f172a" : "#ffffff" }}
           aria-hidden="true"
-        />
+        >
+          <IconeTerapia chave={terapia.icone} className="h-5 w-5" strokeWidth={1.75} />
+        </span>
         <span className="min-w-0">
           <span className="block truncate font-semibold text-foreground">{terapia.nome}</span>
           <span className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">

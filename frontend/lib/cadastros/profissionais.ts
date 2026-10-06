@@ -22,7 +22,7 @@ export function terapiasDoProfissional(
   for (const id of habilitadasIds) {
     const t = catalogoPorId.get(id)
     if (!t) continue
-    porChave.set(normTxt(t.nome), { nome: t.nome, cor: t.cor_hex, terapiaId: t.id, habilitada: true, horariosGrade: 0 })
+    porChave.set(normTxt(t.nome), { nome: t.nome, cor: t.cor_hex, terapiaId: t.id, icone: t.icone ?? null, habilitada: true, horariosGrade: 0 })
   }
 
   for (const g of daGrade) {
@@ -37,6 +37,7 @@ export function terapiasDoProfissional(
       nome: doCatalogo?.nome ?? g.terapia,
       cor: corDaTerapia(g.terapia, indicePorNome),
       terapiaId: doCatalogo?.id ?? null,
+      icone: doCatalogo?.icone ?? null,
       habilitada: false,
       horariosGrade: g.horarios,
     })

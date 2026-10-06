@@ -6,7 +6,20 @@ import type { CadastroTerapia, CadastroTerapiaEdit } from "@/types/terapia"
 // Ver supabase/migrations/20261006120000_cadastro_terapias.sql.
 
 const TABLE = "cadastro_terapias"
-const COLUNAS = "id, nome, tipo, cor_hex, tita_terapia_id, ativo, atualizado_em"
+const COLUNAS = "id, nome, tipo, cor_hex, tita_terapia_id, icone, ativo, atualizado_em"
+const COLUNAS_SEM_ICONE = "id, nome, tipo, cor_hex, tita_terapia_id, ativo, atualizado_em"
+
+// O localhost usa o banco de produção: enquanto a migration 20261006150000
+// (coluna `icone`) não estiver aplicada, a tela segue sem ícone em vez de quebrar.
+let semColunaIcone = false
+const colunas = () => (semColunaIcone ? COLUNAS_SEM_ICONE : COLUNAS)
+const semIcone = <T extends { icone?: string | null }>(input: T) => {
+  if (!semColunaIcone) return input
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { icone, ...resto } = input
+  return resto
+}
+const comIconeNulo = (linhas: unknown[]) => linhas.map(l => ({ icone: null, ...(l as object) }))
 
 /** Erro com aviso próprio para a tela: a tabela ainda não existe no banco. */
 export class MigrationPendenteError extends Error {
@@ -31,23 +44,29 @@ function mensagem(error: { message: string; code?: string }): string {
 }
 
 export async function listarTerapias(): Promise<CadastroTerapia[]> {
-  const { data, error } = await getSupabaseClient().from(TABLE).select(COLUNAS).order("nome")
+  type Resposta = { data: unknown[] | null; error: { message: string; code?: string } | null }
+  const ler = () => getSupabaseClient().from(TABLE).select(colunas()).order("nome") as unknown as PromiseLike<Resposta>
+  let { data, error } = await ler()
+  if (error && !semColunaIcone && (error.code === "42703" || error.code === "PGRST204")) {
+    semColunaIcone = true
+    ;({ data, error } = await ler())
+  }
   if (error) {
     if (ehMigrationPendente(error)) throw new MigrationPendenteError("terapias")
     throw new Error(mensagem(error))
   }
-  return (data ?? []) as CadastroTerapia[]
+  return comIconeNulo(data ?? []) as CadastroTerapia[]
 }
 
 export async function criarTerapia(input: CadastroTerapiaEdit): Promise<CadastroTerapia> {
   const { data, error } = await getSupabaseClient()
     .from(TABLE)
-    .insert(input)
-    .select(COLUNAS)
+    .insert(semIcone(input))
+    .select(colunas())
     .single()
   if (error) throw new Error(mensagem(error))
 
-  const terapia = data as CadastroTerapia
+  const terapia = comIconeNulo([data])[0] as unknown as CadastroTerapia
   await registrarAuditoria({
     tabela: "terapia",
     registroId: terapia.id,
@@ -64,13 +83,13 @@ export async function atualizarTerapia(
 ): Promise<CadastroTerapia> {
   const { data, error } = await getSupabaseClient()
     .from(TABLE)
-    .update(input)
+    .update(semIcone(input))
     .eq("id", antes.id)
-    .select(COLUNAS)
+    .select(colunas())
     .single()
   if (error) throw new Error(mensagem(error))
 
-  const terapia = data as CadastroTerapia
+  const terapia = comIconeNulo([data])[0] as unknown as CadastroTerapia
   const acao =
     input.ativo === undefined || input.ativo === antes.ativo
       ? "editar"

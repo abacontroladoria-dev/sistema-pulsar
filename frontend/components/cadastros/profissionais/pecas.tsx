@@ -1,7 +1,7 @@
 "use client"
 
 import type { CSSProperties } from "react"
-import { iniciaisNome } from "@/lib/cadastros/profissionais"
+import { IconeTerapia } from "@/lib/cadastros/iconesTerapia"
 import { varsDaCor } from "@/lib/cadastros/terapias"
 import { estiloTons } from "@/lib/cadastros/tonsTerapia"
 import type { TerapiaDoProfissional } from "@/types/profissional"
@@ -22,33 +22,38 @@ export function estiloCor(hex: string): CSSProperties {
 export const corDoCatalogo = (t: Pick<TerapiaDoProfissional, "cor" | "terapiaId"> | null | undefined) =>
   t && t.terapiaId !== null ? t.cor : null
 
-/** Avatar branco com anel na cor da terapia e iniciais no tom de texto. */
+/**
+ * Avatar branco com anel na cor da terapia e, no meio, o ÍCONE da terapia
+ * principal (escolhido no Cadastro de Terapias) no tom de texto — no lugar das
+ * iniciais, como os bichinhos de Pacientes (pedido de 06/10/2026).
+ */
 export function AvatarProfissional({
-  nome,
+  icone,
   cor,
   tamanho = "lg",
   inativo = false,
 }: {
-  nome: string
+  /** Chave do ícone da terapia principal; null = estrelinhas. */
+  icone: string | null
   /** Cor cadastrada da terapia principal; null = neutro. */
   cor: string | null
   /** "xl" no hero do detalhe (112px), "lg" no card (76px), "sm" na lista (40px). */
   tamanho?: "xl" | "lg" | "sm"
   inativo?: boolean
 }) {
-  const caixa =
+  const [caixa, desenho] =
     tamanho === "xl"
-      ? "h-28 w-28 text-4xl !border-4"
+      ? ["h-28 w-28 !border-4", "h-12 w-12"]
       : tamanho === "lg"
-        ? "h-[76px] w-[76px] text-[26px]"
-        : "h-10 w-10 text-sm !border-2"
+        ? ["h-[76px] w-[76px]", "h-9 w-9"]
+        : ["h-10 w-10 !border-2", "h-5 w-5"]
   return (
     <span
       style={estiloTons(cor)}
       className={`ua-tons ua-avatar ${inativo ? "is-inactive" : ""} ${caixa}`}
       aria-hidden="true"
     >
-      {iniciaisNome(nome)}
+      <IconeTerapia chave={icone} className={desenho} strokeWidth={1.75} />
     </span>
   )
 }

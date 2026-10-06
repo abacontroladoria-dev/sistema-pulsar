@@ -167,7 +167,7 @@ export function ProfissionalDetalhe({ id, abaInicial }: { id: number; abaInicial
           className="pointer-events-none absolute inset-x-0 top-0 h-1.5 shadow-[inset_0_-1px_0_rgba(15,23,42,0.08)]"
         />
         <div className="relative flex flex-col gap-5 @2xl:flex-row @2xl:items-center">
-          <AvatarProfissional nome={prof.nome} cor={cor} tamanho="xl" />
+          <AvatarProfissional icone={focal?.icone ?? null} cor={focal?.terapiaId != null ? cor : null} tamanho="xl" inativo={!prof.ativo} />
           <div className="min-w-0 flex-1">
             <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] font-bold text-[var(--pp-ink-muted)]">
               <span>ID {idExibicaoProfissional(prof)}</span>
