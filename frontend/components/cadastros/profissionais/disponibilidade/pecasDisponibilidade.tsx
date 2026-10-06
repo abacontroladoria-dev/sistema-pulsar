@@ -94,18 +94,24 @@ export function SemanaLeitura({
       {DIAS_SEMANA.map(d => {
         const faixas = rascunho.faixas.filter(f => f.dia === d.n).sort((a, b) => paraMin(a.inicio) - paraMin(b.inicio))
         const ligado = ativos.has(d.n) && faixas.length > 0
+        // Dia sem horário: uma linha só, sem régua nem lista vazia.
+        if (!ligado) {
+          return (
+            <p key={d.n} className="rounded-[16px] bg-[var(--pp-muted)] px-4 py-2.5 text-[14px] font-bold text-[var(--pp-ink-muted)]">
+              {d.nome} indisponível
+            </p>
+          )
+        }
         return (
-          <div key={d.n} className={`rounded-[20px] p-4 ${ligado ? "bg-[var(--pp-surface)] shadow-[inset_0_0_0_1px_var(--pp-border)]" : "bg-[var(--pp-muted)]"}`}>
+          <div key={d.n} className="rounded-[20px] bg-[var(--pp-surface)] p-4 shadow-[inset_0_0_0_1px_var(--pp-border)]">
             <div className="grid gap-3 @3xl:grid-cols-[9rem_minmax(0,1fr)_minmax(0,1.4fr)] @3xl:items-center">
               <div className="flex items-center justify-between gap-2 @3xl:block">
-                <p className={`text-[15px] font-extrabold ${ligado ? "" : "text-[var(--pp-ink-muted)]"}`}>{d.nome}</p>
-                <p className="text-xs font-semibold text-[var(--pp-ink-muted)]">
-                  {ligado ? `${totais.porDia.get(d.n) ?? 0} sessões` : ativos.has(d.n) ? "Sem faixa" : "Não atende"}
-                </p>
+                <p className="text-[15px] font-extrabold">{d.nome}</p>
+                <p className="text-xs font-semibold text-[var(--pp-ink-muted)]">{totais.porDia.get(d.n) ?? 0} sessões</p>
               </div>
-              <LinhaDoTempo faixas={ligado ? faixas : []} corDaTerapia={corDaTerapia} />
+              <LinhaDoTempo faixas={faixas} corDaTerapia={corDaTerapia} />
               <ul className="space-y-1.5">
-                {ligado ? faixas.map(f => (
+                {faixas.map(f => (
                   <li key={f.chave} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px]">
                     <span className="font-extrabold tabular-nums">{f.inicio}–{f.fim}</span>
                     {f.intervaloAtivo && <span className="text-xs font-semibold text-[var(--pp-ink-muted)]">intervalo {f.intervaloInicio}–{f.intervaloFim}</span>}
@@ -121,9 +127,7 @@ export function SemanaLeitura({
                       ))}
                     </span>
                   </li>
-                )) : (
-                  <li className="text-xs font-semibold text-[var(--pp-ink-muted)]">—</li>
-                )}
+                ))}
               </ul>
             </div>
           </div>

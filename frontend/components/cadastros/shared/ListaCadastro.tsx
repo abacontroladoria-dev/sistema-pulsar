@@ -26,10 +26,13 @@ export function BarraAlfabeto({
   value,
   disponiveis,
   onChange,
+  rotuloTodos = "Todos",
 }: {
   value: string | null
   disponiveis: Set<string>
   onChange: (v: string | null) => void
+  /** Texto do botão que limpa a letra (Pacientes: "Todos"; Profissionais: "TUDO"). */
+  rotuloTodos?: string
 }) {
   return (
     <div
@@ -49,7 +52,7 @@ export function BarraAlfabeto({
             value === null ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"
           } ${foco} focus-visible:ring-inset`}
         >
-          Todos
+          {rotuloTodos}
         </button>
         {LETRAS.map((l) => {
           const tem = disponiveis.has(l)

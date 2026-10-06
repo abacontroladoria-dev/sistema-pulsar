@@ -370,7 +370,7 @@ export function ProfissionaisCadastro() {
         </div>
       ) : (
         <>
-          <BarraAlfabeto value={letra} disponiveis={letrasDisponiveis} onChange={v => { setLetra(v); setPagina(1) }} />
+          <BarraAlfabeto value={letra} disponiveis={letrasDisponiveis} onChange={v => { setLetra(v); setPagina(1) }} rotuloTodos="TUDO" />
 
           {loading ? (
             <GridEsqueleto />
