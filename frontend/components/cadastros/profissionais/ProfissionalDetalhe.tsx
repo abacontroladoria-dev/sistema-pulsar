@@ -265,15 +265,15 @@ export function ProfissionalDetalhe({ id, abaInicial }: { id: number; abaInicial
             tabIndex={aba === a.id ? 0 : -1}
             onClick={() => { setVersaoFoco(null); setAba(a.id) }}
             onKeyDown={teclaNaAba}
-            className={`${tom(a.t)} pp-aba after:!hidden !min-h-[64px] !gap-2.5 !rounded-[20px] !p-3 @xl:!min-h-[88px] @xl:!gap-3 @xl:!rounded-[24px] @xl:!px-4 @xl:!py-4`}
+            className={`${tom(a.t)} pp-aba after:!top-full after:!bottom-auto after:!h-[10px] after:!w-[20px] after:!ml-[-10px] after:![transform:none] after:!rounded-none after:![clip-path:polygon(0_0,100%_0,50%_100%)] !min-h-[64px] !gap-2.5 !rounded-[20px] !p-3 @xl:!min-h-[88px] @xl:!gap-2.5 @xl:!rounded-[24px] @xl:!px-4 @xl:!py-4`}
           >
             <span className="pp-aba-marca" aria-hidden><a.Icone /></span>
             <span className="pp-aba-icone !h-10 !w-10 !rounded-[14px] @xl:!h-11 @xl:!w-11" aria-hidden><a.Icone className="h-5 w-5" /></span>
             <span className="relative min-w-0 flex-1">
-              <span className="block truncate text-[14px] font-extrabold leading-tight @xl:text-[16px]">{a.titulo}</span>
+              <span className="block truncate text-[14px] font-extrabold leading-tight @xl:text-[15px]">{a.titulo}</span>
               <span className="pp-aba-meta !hidden @xl:!flex"><span className="truncate">{a.meta}</span></span>
             </span>
-            <span className="pp-aba-num !hidden @xl:!block !text-[28px] !leading-[28px]">{a.numero}</span>
+            <span className="pp-aba-num !hidden @xl:!block !text-[26px] !leading-[26px]">{a.numero}</span>
           </button>
         ))}
       </div>
