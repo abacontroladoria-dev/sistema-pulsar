@@ -84,3 +84,52 @@ export async function estadoDoFormulario(pacienteId: number): Promise<EstadoForm
     valoresAtuais,
   }
 }
+
+/**
+ * Teto do corpo dos POSTs públicos. O formulário inteiro tem menos de 1 KB; 16
+ * KB é folga de sobra. Sem teto, `request.json()` aceitaria um corpo de vários
+ * MB numa rota sem login — memória do processo por conta de quem quiser.
+ */
+export const LIMITE_CORPO_BYTES = 16 * 1024
+
+/**
+ * Lê o JSON do corpo com teto de tamanho. `null` = vazio, grande demais ou JSON
+ * inválido — o handler responde com a mesma recusa genérica nos três casos.
+ */
+export async function lerJsonLimitado(request: Request): Promise<Record<string, unknown> | null> {
+  const declarado = Number(request.headers.get("content-length") ?? "0")
+  if (declarado > LIMITE_CORPO_BYTES) return null
+  // O content-length pode faltar ou mentir (chunked): confere o que chegou.
+  const texto = await request.text().catch(() => "")
+  if (!texto || texto.length > LIMITE_CORPO_BYTES) return null
+  try {
+    const valor = JSON.parse(texto)
+    return valor && typeof valor === "object" && !Array.isArray(valor) ? (valor as Record<string, unknown>) : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * O CPF digitado é o deste paciente (ativo, não fictício)?
+ *
+ * Roda ANTES de qualquer outra leitura sobre o paciente no envio. Sem isso o
+ * handler consultava a versão atual de um `paciente_id` qualquer (vindo do
+ * navegador) e respondia "horário inválido" ou seguia adiante conforme o valor
+ * gravado — um oráculo que deixava descobrir, um horário por vez, a
+ * disponibilidade de qualquer paciente sem saber o CPF. A RPC reconfere no
+ * banco; esta checagem existe para nada vazar antes dela.
+ */
+export async function cpfDoPacienteConfere(pacienteId: number, cpf: string): Promise<boolean> {
+  const { data, error } = await supabaseService
+    .from("pacientes")
+    .select("cpf")
+    .eq("id_paciente", pacienteId)
+    .eq("ativo", true)
+    .eq("ficticio", false)
+    .maybeSingle()
+
+  if (error) throw error
+  const cadastro = onlyDigits((data as { cpf: string | null } | null)?.cpf ?? "")
+  return cadastro.length === 11 && cadastro === onlyDigits(cpf)
+}

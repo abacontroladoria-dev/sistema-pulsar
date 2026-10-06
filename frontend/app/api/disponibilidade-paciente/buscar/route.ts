@@ -3,7 +3,7 @@ import type { NextRequest } from 'next/server'
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit'
 import { onlyDigits, validarCpf } from '@/lib/remuneracao/formatacao'
 import { nomeMascarado } from '@/lib/disponibilidadePaciente'
-import { estadoDoFormulario, pacientesPorCpf } from '@/lib/disponibilidadePaciente.server'
+import { estadoDoFormulario, lerJsonLimitado, pacientesPorCpf } from '@/lib/disponibilidadePaciente.server'
 
 // Busca do paciente pelo CPF para o formulário público /disponibilidade-paciente,
 // que o responsável abre por um link único do WhatsApp — sem conta, sem token.
@@ -46,8 +46,8 @@ async function buscar(request: NextRequest) {
     )
   }
 
-  const body = await request.json().catch(() => null)
-  const cpf = onlyDigits(body && typeof body === 'object' ? (body as { cpf?: unknown }).cpf : '')
+  const body = await lerJsonLimitado(request)
+  const cpf = onlyDigits(body?.cpf ?? '')
 
   if (cpf.length !== 11 || !validarCpf(cpf)) {
     return NextResponse.json({ error: 'CPF inválido. Confira os números.' }, { status: 400, headers: SEM_CACHE })
