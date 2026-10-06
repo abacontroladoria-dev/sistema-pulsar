@@ -25,6 +25,13 @@ export type Profissional = {
   terapia_focal_id: number | null
   ativo: boolean
   observacoes: string | null
+  /**
+   * Path no bucket privado pacientes-fotos (profissionais/{id}/foto-*.ext).
+   * Quando existe, a foto substitui o ícone da terapia no avatar.
+   */
+  foto_path: string | null
+  /** Path da foto da assinatura/carimbo (profissionais/{id}/assinatura-*.ext). */
+  assinatura_path: string | null
   /** Último retrato da TiTa — referência para mostrar divergência, não é o cadastro. */
   dados_tita: Partial<Record<CampoTita, string>> | null
   sincronizado_tita_em: string | null
@@ -41,7 +48,7 @@ export type Profissional = {
 export type ProfissionalLista = Pick<
   Profissional,
   | "id" | "tita_profissional_id" | "origem" | "nome" | "cpf" | "celular"
-  | "tipo_registro" | "uf_registro" | "codigo_registro" | "cbo" | "terapia_focal_id" | "ativo"
+  | "tipo_registro" | "uf_registro" | "codigo_registro" | "cbo" | "terapia_focal_id" | "ativo" | "foto_path"
 >
 
 /** Campos que a importação da TiTa conhece (chaves de dados_tita). */
@@ -62,6 +69,9 @@ export type ProfissionalEdit = Pick<
   | "cep" | "logradouro" | "numero" | "complemento" | "bairro" | "cidade" | "uf"
   | "terapia_focal_id" | "ativo" | "observacoes"
 >
+
+/** Imagens do profissional, gravadas na hora (fora do "Editar"), como a foto do paciente. */
+export type ProfissionalArquivos = Pick<Profissional, "foto_path" | "assinatura_path">
 
 /** Uma terapia do profissional, juntando o que está habilitado e o que a grade TiTa mostra. */
 export type TerapiaDoProfissional = {

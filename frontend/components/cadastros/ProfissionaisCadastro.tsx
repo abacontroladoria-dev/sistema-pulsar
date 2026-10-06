@@ -621,7 +621,7 @@ const CardProfissional = memo(function CardProfissional({ linha }: { linha: Linh
             <span className="ua-id">ID <b>{idExibicaoProfissional(prof)}</b></span>
             <Situacao ativo={prof.ativo} />
           </div>
-          <AvatarProfissional icone={principal?.icone ?? null} cor={corDoCatalogo(principal)} inativo={inativo} />
+          <AvatarProfissional icone={principal?.icone ?? null} fotoPath={prof.foto_path} cor={corDoCatalogo(principal)} inativo={inativo} />
           <h2 className="ua-name"><span className="line-clamp-2" title={prof.nome}>{prof.nome}</span></h2>
           {principal
             ? <span className="ua-role"><span className="truncate">{principal.nome}</span></span>
@@ -659,7 +659,7 @@ const LinhaProfissional = memo(function LinhaProfissional({ linha }: { linha: Li
         className={`group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 px-4 py-3 text-sm transition-colors hover:bg-muted/50 motion-reduce:transition-none ${COLUNAS_LISTA} ${foco} focus-visible:ring-inset`}
       >
         <div className="flex min-w-0 items-center gap-3">
-          <AvatarProfissional icone={principal?.icone ?? null} cor={corDoCatalogo(principal)} tamanho="sm" inativo={!prof.ativo} />
+          <AvatarProfissional icone={principal?.icone ?? null} fotoPath={prof.foto_path} cor={corDoCatalogo(principal)} tamanho="sm" inativo={!prof.ativo} />
           <div className="min-w-0">
             <span className="block truncate font-medium text-primary group-hover:underline" title={prof.nome}>{prof.nome}</span>
             <p className="mt-0.5 truncate text-xs text-muted-foreground md:hidden">

@@ -22,11 +22,14 @@ export function AbaCadastro({
   form,
   set,
   editando,
+  imagens,
 }: {
   prof: Profissional
   form: FormProfissional
   set: (patch: Partial<FormProfissional>) => void
   editando: boolean
+  /** Foto de perfil + assinatura/carimbo (gravadas na hora, fora do "Editar"). */
+  imagens?: React.ReactNode
 }) {
   const erros = useMemo(() => (editando ? errosDoForm(form) : {}), [editando, form])
   const disabled = !editando
@@ -92,6 +95,8 @@ export function AbaCadastro({
             extra={divergencia("cbo", form.cbo)} />
         </div>
       </SecaoPastel>
+
+      {imagens}
 
       <SecaoPastel titulo="cad-endereco">
         <CabecalhoPastel id="cad-endereco" titulo="Endereço" t="teal" Icone={MapPin} tamanho="medio" nivel="h3" apoio="Residência do profissional" />

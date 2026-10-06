@@ -7,7 +7,7 @@ import { MigrationPendenteError } from "@/services/cadastroTerapias.service"
 import {
   atualizarProfissional, getProfissional, listarHabilitadas, listarTerapiasDaGrade, salvarHabilitadas,
 } from "@/services/profissionais.service"
-import type { Profissional, ProfissionalEdit } from "@/types/profissional"
+import type { Profissional, ProfissionalArquivos, ProfissionalEdit } from "@/types/profissional"
 
 // Estado da ficha do profissional: o registro, o formulário da aba Cadastro
 // (com os campos alterados), as terapias habilitadas e as vistas na grade TiTa.
@@ -123,8 +123,10 @@ export function useProfissionalDetalhe(id: number) {
     }
   }, [prof, form, camposSujos])
 
-  /** Grava ativo/inativo ou a terapia da cor do card, fora do modo de edição. */
-  const gravarDireto = useCallback(async (patch: Pick<Partial<ProfissionalEdit>, "ativo" | "terapia_focal_id">) => {
+  /** Grava ativo/inativo, a terapia da cor do card ou uma imagem, fora do modo de edição. */
+  const gravarDireto = useCallback(async (
+    patch: Pick<Partial<ProfissionalEdit>, "ativo" | "terapia_focal_id"> | Partial<ProfissionalArquivos>
+  ) => {
     if (!prof) return false
     try {
       const novo = await atualizarProfissional(prof, patch)

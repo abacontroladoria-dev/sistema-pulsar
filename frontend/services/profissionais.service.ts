@@ -2,7 +2,9 @@ import { getSupabaseClient } from "@/lib/supabase/client"
 import { ehMigrationPendente } from "@/lib/supabase/erro"
 import { registrarAuditoria } from "@/services/cadastrosAuditoria.service"
 import { MigrationPendenteError } from "@/services/cadastroTerapias.service"
-import type { Profissional, ProfissionalEdit, ProfissionalLista, ResultadoImportacao } from "@/types/profissional"
+import type {
+  Profissional, ProfissionalArquivos, ProfissionalEdit, ProfissionalLista, ResultadoImportacao,
+} from "@/types/profissional"
 
 // Ver supabase/migrations/20261006130000_profissionais.sql.
 
@@ -12,19 +14,42 @@ const VIEW_GRADE = "vw_profissionais_terapias_grade"
 
 // Lista explícita: nada de select("*") em tabela com dado pessoal — coluna nova
 // não passa a ser lida sem alguém decidir.
-const COLUNAS = [
+const TODAS = [
   "id", "tita_profissional_id", "origem", "nome", "cpf", "email", "celular",
   "tipo_registro", "uf_registro", "codigo_registro", "cbo",
   "cep", "logradouro", "numero", "complemento", "bairro", "cidade", "uf",
-  "terapia_focal_id", "ativo", "observacoes", "dados_tita", "sincronizado_tita_em",
+  "terapia_focal_id", "ativo", "observacoes", "foto_path", "assinatura_path", "dados_tita", "sincronizado_tita_em",
   "criado_em", "atualizado_em",
-].join(", ")
+]
 
-// A lista não precisa de endereço, e-mail, observações nem do retrato da TiTa.
-const COLUNAS_LISTA = [
+// A lista não precisa de endereço, e-mail, observações, assinatura nem do retrato da TiTa.
+const DA_LISTA = [
   "id", "tita_profissional_id", "origem", "nome", "cpf", "celular",
-  "tipo_registro", "uf_registro", "codigo_registro", "cbo", "terapia_focal_id", "ativo",
-].join(", ")
+  "tipo_registro", "uf_registro", "codigo_registro", "cbo", "terapia_focal_id", "ativo", "foto_path",
+]
+
+// O localhost usa o banco de produção: enquanto a migration 20261006160000
+// (foto_path/assinatura_path) não estiver aplicada, as telas seguem sem foto em
+// vez de quebrar. Um erro de coluna no `select` derruba a instrução inteira
+// (insert/update incluídos), então repetir sem as colunas é seguro.
+const DAS_IMAGENS = ["foto_path", "assinatura_path"]
+let semColunasImagem = false
+const COLUNAS = () => TODAS.filter(c => !semColunasImagem || !DAS_IMAGENS.includes(c)).join(", ")
+const COLUNAS_LISTA = () => DA_LISTA.filter(c => !semColunasImagem || !DAS_IMAGENS.includes(c)).join(", ")
+const comImagensNulas = <T,>(linha: T): T => (linha ? ({ foto_path: null, assinatura_path: null, ...linha }) : linha)
+const ehColunaInexistente = (e: { code?: string } | null) => !!e && (e.code === "42703" || e.code === "PGRST204")
+
+/** Roda a consulta; se faltar a coluna de imagem, liga o modo sem imagens e repete uma vez. */
+async function comFallbackImagens<R extends { error: { message: string; code?: string } | null }>(
+  consulta: () => PromiseLike<R>
+): Promise<R> {
+  const r = await consulta()
+  if (!semColunasImagem && ehColunaInexistente(r.error)) {
+    semColunasImagem = true
+    return consulta()
+  }
+  return r
+}
 
 function mensagem(error: { message: string; code?: string }): string {
   if (error.code === "PGRST116" || error.code === "42501" || /row-level security|permission denied/i.test(error.message)) {
@@ -58,21 +83,25 @@ async function todasAsPaginas<T>(
 
 export async function listarProfissionais(): Promise<ProfissionalLista[]> {
   const sb = getSupabaseClient()
-  return todasAsPaginas<ProfissionalLista>((de, ate) =>
-    sb.from(TABLE).select(COLUNAS_LISTA).order("nome").order("id").range(de, ate) as unknown as PromiseLike<{
-      data: ProfissionalLista[] | null
-      error: { message: string; code?: string } | null
-    }>
+  type Pagina = { data: ProfissionalLista[] | null; error: { message: string; code?: string } | null }
+  const linhas = await todasAsPaginas<ProfissionalLista>((de, ate) =>
+    comFallbackImagens(() =>
+      sb.from(TABLE).select(COLUNAS_LISTA()).order("nome").order("id").range(de, ate) as unknown as PromiseLike<Pagina>
+    )
   )
+  return linhas.map(comImagensNulas)
 }
 
 export async function getProfissional(id: number): Promise<Profissional | null> {
-  const { data, error } = await getSupabaseClient().from(TABLE).select(COLUNAS).eq("id", id).maybeSingle()
+  type Resposta = { data: Profissional | null; error: { message: string; code?: string } | null }
+  const { data, error } = await comFallbackImagens(() =>
+    getSupabaseClient().from(TABLE).select(COLUNAS()).eq("id", id).maybeSingle() as unknown as PromiseLike<Resposta>
+  )
   if (error) {
     if (ehMigrationPendente(error)) throw new MigrationPendenteError("profissionais")
     throw new Error(mensagem(error))
   }
-  return (data as unknown as Profissional) ?? null
+  return data ? comImagensNulas(data) : null
 }
 
 /** profissional_id (Pulsar) → ids de terapia do catálogo. */
@@ -122,9 +151,12 @@ export async function importarDaTita(): Promise<ResultadoImportacao> {
 
 export async function criarProfissional(input: ProfissionalEdit, terapiaIds: number[]): Promise<Profissional> {
   const sb = getSupabaseClient()
-  const { data, error } = await sb.from(TABLE).insert(input).select(COLUNAS).single()
+  type Resposta = { data: Profissional | null; error: { message: string; code?: string } | null }
+  const { data, error } = await comFallbackImagens(() =>
+    sb.from(TABLE).insert(input).select(COLUNAS()).single() as unknown as PromiseLike<Resposta>
+  )
   if (error) throw new Error(mensagem(error))
-  const prof = data as unknown as Profissional
+  const prof = comImagensNulas(data as Profissional)
 
   if (terapiaIds.length) {
     const { error: e2 } = await sb
@@ -145,16 +177,24 @@ export async function criarProfissional(input: ProfissionalEdit, terapiaIds: num
 
 export async function atualizarProfissional(
   antes: Profissional,
-  input: Partial<ProfissionalEdit>
+  input: Partial<ProfissionalEdit & ProfissionalArquivos>
 ): Promise<Profissional> {
-  const { data, error } = await getSupabaseClient()
-    .from(TABLE)
-    .update(input)
-    .eq("id", antes.id)
-    .select(COLUNAS)
-    .single()
-  if (error) throw new Error(mensagem(error))
-  const prof = data as unknown as Profissional
+  type Resposta = { data: Profissional | null; error: { message: string; code?: string } | null }
+  const { data, error } = await comFallbackImagens(() =>
+    getSupabaseClient()
+      .from(TABLE)
+      .update(input)
+      .eq("id", antes.id)
+      .select(COLUNAS())
+      .single() as unknown as PromiseLike<Resposta>
+  )
+  if (error) {
+    if (ehColunaInexistente(error) && ("foto_path" in input || "assinatura_path" in input)) {
+      throw new Error("A foto ainda não pode ser gravada: falta aplicar a migration 20261006160000_profissionais_foto_assinatura.sql.")
+    }
+    throw new Error(mensagem(error))
+  }
+  const prof = comImagensNulas(data as Profissional)
 
   const acao =
     input.ativo === undefined || input.ativo === antes.ativo ? "editar" : input.ativo ? "reativar" : "inativar"

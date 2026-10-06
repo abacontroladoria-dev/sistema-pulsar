@@ -1,6 +1,7 @@
 "use client"
 
 import type { CSSProperties } from "react"
+import { useUrlAssinada } from "@/hooks/useUrlAssinada"
 import { IconeTerapia } from "@/lib/cadastros/iconesTerapia"
 import { varsDaCor } from "@/lib/cadastros/terapias"
 import { estiloTons } from "@/lib/cadastros/tonsTerapia"
@@ -25,14 +26,18 @@ export const corDoCatalogo = (t: Pick<TerapiaDoProfissional, "cor" | "terapiaId"
 /**
  * Avatar branco com anel na cor da terapia e, no meio, o ÍCONE da terapia
  * principal (escolhido no Cadastro de Terapias) no tom de texto — no lugar das
- * iniciais, como os bichinhos de Pacientes (pedido de 06/10/2026).
+ * iniciais, como os bichinhos de Pacientes (pedido de 06/10/2026). Com foto de
+ * perfil, a foto ocupa o círculo e o anel continua na cor da terapia.
  */
 export function AvatarProfissional({
   icone,
   cor,
+  fotoPath = null,
   tamanho = "lg",
   inativo = false,
 }: {
+  /** Path da foto de perfil no bucket privado; quando existe, substitui o ícone. */
+  fotoPath?: string | null
   /** Chave do ícone da terapia principal; null = estrelinhas. */
   icone: string | null
   /** Cor cadastrada da terapia principal; null = neutro. */
@@ -47,13 +52,19 @@ export function AvatarProfissional({
       : tamanho === "lg"
         ? ["h-[76px] w-[76px]", "h-9 w-9"]
         : ["h-10 w-10 !border-2", "h-5 w-5"]
+  const foto = useUrlAssinada(fotoPath)
   return (
     <span
       style={estiloTons(cor)}
-      className={`ua-tons ua-avatar ${inativo ? "is-inactive" : ""} ${caixa}`}
+      className={`ua-tons ua-avatar overflow-hidden ${inativo ? "is-inactive" : ""} ${caixa}`}
       aria-hidden="true"
     >
-      <IconeTerapia chave={icone} className={desenho} strokeWidth={1.75} />
+      {foto ? (
+        // <img> cru: o projeto não usa next/image, e a URL assinada é dinâmica.
+        <img src={foto} alt="" className={`h-full w-full object-cover ${inativo ? "grayscale" : ""}`} />
+      ) : (
+        <IconeTerapia chave={icone} className={desenho} strokeWidth={1.75} />
+      )}
     </span>
   )
 }
