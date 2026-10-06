@@ -69,3 +69,17 @@ describe("formatação", () => {
     expect(iniciaisNome("Pauline")).toBe("P")
   })
 })
+
+describe("compararTom", () => {
+  it("agrupa por família de cor e deixa os neutros no fim", async () => {
+    const { compararTom } = await import("./terapias")
+    const cores = ["#CBD5E1", "#39A8F9", "#E89D9D", "#FFFB73", "#0B13CA", "#000000", "#E0B00F", "#FFAD98", "#95EF9C"]
+    const ordem = [...cores].sort(compararTom)
+    // Vermelhos/salmões juntos, amarelos juntos, verde, azuis juntos; cinza e preto no fim.
+    expect(ordem.slice(-2)).toEqual(["#CBD5E1", "#000000"])
+    const iAzul1 = ordem.indexOf("#39A8F9"), iAzul2 = ordem.indexOf("#0B13CA")
+    expect(Math.abs(iAzul1 - iAzul2)).toBe(1)
+    const iAm1 = ordem.indexOf("#FFFB73"), iAm2 = ordem.indexOf("#E0B00F")
+    expect(Math.abs(iAm1 - iAm2)).toBeLessThanOrEqual(1)
+  })
+})

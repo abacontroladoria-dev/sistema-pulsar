@@ -1,17 +1,22 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import toast from "react-hot-toast"
-import { ChevronDown, ChevronRight, Database, History, Loader2, Palette, Pencil, Plus, RotateCcw, Search, Trash2 } from "lucide-react"
+import { ArrowDownAZ, ChevronDown, ChevronRight, Database, History, Loader2, Palette, Pencil, Plus, RotateCcw, Search, Trash2 } from "lucide-react"
 import { HistoricoCadastrosModal } from "@/components/cadastros/historico/HistoricoCadastrosModal"
 import { InlineNotice } from "@/components/cronograma/ui/InlineNotice"
 import { useCadastroTerapias } from "@/hooks/useCadastroTerapias"
 import { normTxt } from "@/lib/cronograma/constants"
+import { compararTom } from "@/lib/cadastros/terapias"
 import { atualizarTerapia, criarTerapia } from "@/services/cadastroTerapias.service"
 import { TIPO_TERAPIA_LABEL, type CadastroTerapia, type CadastroTerapiaEdit, type TipoTerapia } from "@/types/terapia"
 import { TerapiaModal } from "./terapias/TerapiaModal"
 
 type FiltroTipo = "todos" | TipoTerapia
+type Ordem = "nome" | "tom"
+
+// Preferência de quem está no navegador; sem storage, fica em "nome".
+const CHAVE_ORDEM = "terapias:ordem"
 
 export function TerapiasCadastro() {
   const { terapias, loading, error, migrationPendente, recarregar } = useCadastroTerapias()
@@ -20,13 +25,27 @@ export function TerapiasCadastro() {
   const [modal, setModal] = useState<{ terapia?: CadastroTerapia } | null>(null)
   const [inativasAbertas, setInativasAbertas] = useState(false)
   const [verHistorico, setVerHistorico] = useState(false)
+  const [ordem, setOrdem] = useState<Ordem>("nome")
+  useEffect(() => {
+    try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- lê storage externo só após hidratar
+      if (localStorage.getItem(CHAVE_ORDEM) === "tom") setOrdem("tom")
+    } catch { /* sem storage */ }
+  }, [])
+  const trocarOrdem = (o: Ordem) => {
+    setOrdem(o)
+    try { localStorage.setItem(CHAVE_ORDEM, o) } catch { /* só não lembra */ }
+  }
 
   const filtradas = useMemo(() => {
     const q = normTxt(busca)
-    return terapias.filter(t =>
+    const lista = terapias.filter(t =>
       (filtroTipo === "todos" || t.tipo === filtroTipo) && (!q || normTxt(t.nome).includes(q))
     )
-  }, [terapias, busca, filtroTipo])
+    return ordem === "tom"
+      ? [...lista].sort((a, b) => compararTom(a.cor_hex, b.cor_hex) || a.nome.localeCompare(b.nome, "pt-BR"))
+      : lista
+  }, [terapias, busca, filtroTipo, ordem])
 
   const ativas = filtradas.filter(t => t.ativo)
   const inativas = filtradas.filter(t => !t.ativo)
@@ -129,6 +148,21 @@ export function TerapiasCadastro() {
             </button>
           ))}
         </div>
+        <div className="inline-flex rounded-full border border-border bg-card p-0.5 sm:ml-auto" role="group" aria-label="Ordenar">
+          {([["nome", "Nome", ArrowDownAZ], ["tom", "Tom de cor", Palette]] as const).map(([valor, rotuloOrdem, Icone]) => (
+            <button
+              key={valor}
+              type="button"
+              aria-pressed={ordem === valor}
+              onClick={() => trocarOrdem(valor)}
+              className={`inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-sm font-semibold transition-colors ${
+                ordem === valor ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Icone className="h-4 w-4" aria-hidden /> {rotuloOrdem}
+            </button>
+          ))}
+        </div>
       </div>
 
       {ativas.length === 0 ? (
@@ -218,7 +252,7 @@ function CartaoTerapia({
             {terapia.tita_terapia_id && (
               <>
                 <span aria-hidden="true">·</span>
-                <span title="Id da terapia na TiTa">TiTa #{terapia.tita_terapia_id}</span>
+                <span title="Id da terapia na TiTa" className="whitespace-nowrap">TiTa #{terapia.tita_terapia_id}</span>
               </>
             )}
           </span>

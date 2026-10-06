@@ -88,3 +88,42 @@ export function varsDaCor(hex: string): Record<string, string> {
     "--t-tinta-escuro": l < 0.25 ? clarearHex(n, 0.6) : clarearHex(n, 0.15),
   }
 }
+
+/** "#RRGGBB" → matiz (0–360), saturação e luminosidade (0–1). */
+export function hexParaHsl(hex: string): { h: number; s: number; l: number } {
+  const n = normalizarHex(hex) ?? COR_NEUTRA
+  const r = parseInt(n.slice(1, 3), 16) / 255, g = parseInt(n.slice(3, 5), 16) / 255, b = parseInt(n.slice(5, 7), 16) / 255
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min
+  const l = (max + min) / 2
+  if (d === 0) return { h: 0, s: 0, l }
+  const s = d / (1 - Math.abs(2 * l - 1))
+  let h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4
+  h *= 60
+  if (h < 0) h += 360
+  return { h, s, l }
+}
+
+/**
+ * Ordena cores "por tom": famílias de matiz em sequência (vermelho → laranja →
+ * amarelo → verde → azul → roxo → rosa) e, dentro da família, do claro ao
+ * escuro; cinzas, branco e preto vão para o fim, do claro ao escuro. As faixas
+ * de 30° juntam cores que o olho lê como "da mesma família" mesmo com pequenas
+ * diferenças de matiz.
+ */
+export function compararTom(a: string, b: string): number {
+  const ka = chaveTom(a), kb = chaveTom(b)
+  return ka[0] - kb[0] || ka[1] - kb[1] || ka[2] - kb[2]
+}
+
+function chaveTom(hex: string): [number, number, number] {
+  const n = normalizarHex(hex) ?? COR_NEUTRA
+  const { h, l } = hexParaHsl(n)
+  // Neutro pela intensidade real (croma = maior canal − menor canal), não pela
+  // saturação HSL: o cinza-azulado #CBD5E1 tem saturação 0,27 mas é cinza aos olhos.
+  const canais = [1, 3, 5].map(i => parseInt(n.slice(i, i + 2), 16) / 255)
+  const croma = Math.max(...canais) - Math.min(...canais)
+  if (croma < 0.15) return [1, 0, -l]
+  // Começa a roda em 345° para os vermelhos-rosados ficarem junto dos vermelhos.
+  const familia = Math.floor(((h + 15) % 360) / 30)
+  return [0, familia, -l]
+}

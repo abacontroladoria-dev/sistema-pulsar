@@ -4,7 +4,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import toast from "react-hot-toast"
 import {
-  AlertCircle, BadgeCheck, Briefcase, Check, ChevronLeft, ChevronRight, CloudDownload, Database,
+  AlertCircle, ArrowDownUp, BadgeCheck, Briefcase, Check, ChevronLeft, ChevronRight, CloudDownload, Database,
   History, ListFilter, Loader2, Phone, Search, UserPlus, X,
 } from "lucide-react"
 import { HistoricoCadastrosModal } from "@/components/cadastros/historico/HistoricoCadastrosModal"
@@ -15,6 +15,7 @@ import { useCadastroTerapias } from "@/hooks/useCadastroTerapias"
 import { useProfissionais } from "@/hooks/useProfissionais"
 import { normTxt } from "@/lib/cronograma/constants"
 import { corFocal, formatarCelular, registroCompleto, terapiasDoProfissional } from "@/lib/cadastros/profissionais"
+import { compararTom } from "@/lib/cadastros/terapias"
 import { onlyDigits } from "@/lib/remuneracao/formatacao"
 import { importarDaTita } from "@/services/profissionais.service"
 import { idExibicaoProfissional, type ProfissionalLista, type TerapiaDoProfissional } from "@/types/profissional"
@@ -47,10 +48,22 @@ const GRADES: { valor: SituacaoGrade; rotulo: string }[] = [
   { valor: "sem_grade", rotulo: "Sem grade" },
 ]
 
+// Ordenação da lista. "terapia" e "tom" agrupam pela terapia principal (a
+// que pinta o card), com um cabeçalho por grupo.
+type Ordem = "nome" | "terapia" | "tom"
+const ORDENS: { valor: Ordem; rotulo: string }[] = [
+  { valor: "nome", rotulo: "Nome" },
+  { valor: "terapia", rotulo: "Terapia principal" },
+  { valor: "tom", rotulo: "Tom da cor" },
+]
+const CHAVE_ORDEM = "profissionais:ordem"
+
 type Linha = {
   prof: ProfissionalLista
   terapias: TerapiaDoProfissional[]
   cor: string
+  /** Terapia que pinta o card (a focal, ou a de mais horários). */
+  focal: string | null
   /** null quando a situação não pôde ser lida (migration pendente). */
   grade: SituacaoGradeProfissional | null
   situacaoGrade: SituacaoGrade | null
@@ -89,6 +102,21 @@ export function ProfissionaisCadastro() {
     try { localStorage.setItem(CHAVE_MODO, novo) } catch { /* só não lembra */ }
   }, [])
 
+  const [ordem, setOrdem] = useState<Ordem>("nome")
+  useEffect(() => {
+    try {
+      const salva = localStorage.getItem(CHAVE_ORDEM)
+      if (salva === "terapia" || salva === "tom") setOrdem(salva)
+    } catch {
+      // Sem storage, fica em "nome".
+    }
+  }, [])
+  const trocarOrdem = useCallback((nova: Ordem) => {
+    setOrdem(nova)
+    setPagina(1)
+    try { localStorage.setItem(CHAVE_ORDEM, nova) } catch { /* só não lembra */ }
+  }, [])
+
   const catalogoPorId = useMemo(() => new Map(catalogo.map(t => [t.id, t])), [catalogo])
 
   // Terapias e cor de cada profissional — calculadas uma vez por carga.
@@ -101,8 +129,9 @@ export function ProfissionaisCadastro() {
       indice
     )
     const g = situacaoGrade.get(prof.id) ?? null
+    const f = corFocal(prof, terapias)
     return {
-      prof, terapias, cor: corFocal(prof, terapias).cor,
+      prof, terapias, cor: f.cor, focal: f.terapia?.nome ?? null,
       grade: g,
       situacaoGrade: situacaoIndisponivel ? null : g?.situacao ?? "sem_grade",
     }
@@ -144,15 +173,43 @@ export function ProfissionaisCadastro() {
     return s
   }, [filtradasSemLetra])
 
-  const filtradas = useMemo(
-    () => (letra ? filtradasSemLetra.filter(l => normTxt(l.prof.nome).toUpperCase().startsWith(letra)) : filtradasSemLetra),
-    [filtradasSemLetra, letra]
-  )
+  const filtradas = useMemo(() => {
+    const lista = letra ? filtradasSemLetra.filter(l => normTxt(l.prof.nome).toUpperCase().startsWith(letra)) : filtradasSemLetra
+    if (ordem === "nome") return lista
+    const porNome = (a: Linha, b: Linha) => a.prof.nome.localeCompare(b.prof.nome, "pt-BR")
+    const porTerapia = (a: Linha, b: Linha) =>
+      a.focal === b.focal ? 0 : a.focal === null ? 1 : b.focal === null ? -1 : a.focal.localeCompare(b.focal, "pt-BR")
+    const semTerapiaPorUltimo = (a: Linha, b: Linha) => (a.focal === null ? 1 : 0) - (b.focal === null ? 1 : 0)
+    return [...lista].sort((a, b) =>
+      ordem === "tom"
+        ? semTerapiaPorUltimo(a, b) || compararTom(a.cor, b.cor) || porTerapia(a, b) || porNome(a, b)
+        : porTerapia(a, b) || porNome(a, b)
+    )
+  }, [filtradasSemLetra, letra, ordem])
+
+  // Quantos de cada terapia no recorte inteiro (o cabeçalho do grupo mostra o
+  // total, não só o que coube na página).
+  const totalPorFocal = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const l of filtradas) m.set(l.focal ?? "", (m.get(l.focal ?? "") ?? 0) + 1)
+    return m
+  }, [filtradas])
 
   const totalPaginas = Math.max(1, Math.ceil(filtradas.length / POR_PAGINA))
   const paginaAtual = Math.min(pagina, totalPaginas)
   const inicio = (paginaAtual - 1) * POR_PAGINA
   const daPagina = useMemo(() => filtradas.slice(inicio, inicio + POR_PAGINA), [filtradas, inicio])
+  // Em "terapia"/"tom", blocos seguidos da mesma terapia principal viram grupos.
+  const grupos = useMemo(() => {
+    if (ordem === "nome") return [{ chave: "todos", nome: null as string | null, cor: "", itens: daPagina }]
+    const out: { chave: string; nome: string | null; cor: string; itens: Linha[] }[] = []
+    for (const l of daPagina) {
+      const ultimo = out[out.length - 1]
+      if (ultimo && ultimo.nome === l.focal) ultimo.itens.push(l)
+      else out.push({ chave: `${l.focal ?? "sem"}-${out.length}`, nome: l.focal, cor: l.cor, itens: [l] })
+    }
+    return out
+  }, [daPagina, ordem])
 
   const irPara = (destino: number) => {
     setPagina(Math.min(Math.max(1, destino), totalPaginas))
@@ -182,11 +239,11 @@ export function ProfissionaisCadastro() {
   useEffect(() => {
     setRightContent(
       <div className="flex flex-wrap items-center gap-3">
-        <div className="relative min-w-0 flex-1">
+        <div className="relative min-w-[15rem] flex-1">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
           <input
             type="text"
-            className={`${campo} pl-9 ${buscaTexto ? "pr-9" : ""} w-64`}
+            className={`${campo} pl-9 ${buscaTexto ? "pr-9" : ""} w-full`}
             placeholder="Buscar nome, CPF, registro ou ID"
             value={buscaTexto}
             onChange={e => { setBuscaTexto(e.target.value); setPagina(1) }}
@@ -240,6 +297,7 @@ export function ProfissionaisCadastro() {
             placeholder="Terapia: todas"
           />
         </div>
+        <OrdenarPor value={ordem} onChange={trocarOrdem} />
         <SeletorModo value={modo} onChange={trocarModo} />
         <button
           type="button"
@@ -269,7 +327,7 @@ export function ProfissionaisCadastro() {
       </div>
     )
     return () => setRightContent(null)
-  }, [buscaTexto, situacoes, filtroTerapias, filtroGrades, situacaoIndisponivel, opcoesTerapia, modo, trocarModo, importando, importar, migrationPendente, setRightContent])
+  }, [buscaTexto, situacoes, filtroTerapias, filtroGrades, situacaoIndisponivel, opcoesTerapia, modo, trocarModo, ordem, trocarOrdem, importando, importar, migrationPendente, setRightContent])
 
   if (migrationPendente) {
     return (
@@ -336,14 +394,34 @@ export function ProfissionaisCadastro() {
                 <span>Terapias</span>
                 <span>Situação</span>
               </div>
-              <ul>
-                {daPagina.map(l => <LinhaProfissional key={l.prof.id} linha={l} />)}
-              </ul>
+              {grupos.map(g => (
+                <div key={g.chave}>
+                  {ordem !== "nome" && (
+                    <div className="border-b border-border bg-muted/30 px-4 py-2">
+                      <CabecalhoGrupo nome={g.nome} cor={g.cor} total={totalPorFocal.get(g.nome ?? "") ?? g.itens.length} />
+                    </div>
+                  )}
+                  <ul>
+                    {g.itens.map(l => <LinhaProfissional key={l.prof.id} linha={l} />)}
+                  </ul>
+                </div>
+              ))}
             </div>
           ) : (
-            <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-              {daPagina.map(l => <CardProfissional key={l.prof.id} linha={l} />)}
-            </ul>
+            <div className="space-y-6">
+              {grupos.map(g => (
+                <section key={g.chave} aria-label={g.nome ?? "Todos"}>
+                  {ordem !== "nome" && (
+                    <div className="mb-3">
+                      <CabecalhoGrupo nome={g.nome} cor={g.cor} total={totalPorFocal.get(g.nome ?? "") ?? g.itens.length} />
+                    </div>
+                  )}
+                  <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+                    {g.itens.map(l => <CardProfissional key={l.prof.id} linha={l} />)}
+                  </ul>
+                </section>
+              ))}
+            </div>
           )}
 
           {!loading && filtradas.length > 0 && (
@@ -377,6 +455,59 @@ export function ProfissionaisCadastro() {
           entidades={["profissional"]}
           onClose={() => setVerHistorico(false)}
         />
+      )}
+    </div>
+  )
+}
+
+/** Cabeçalho de um grupo na ordenação por terapia: bolinha na cor, nome e quantos. */
+function CabecalhoGrupo({ nome, cor, total }: { nome: string | null; cor: string; total: number }) {
+  return (
+    <h3 className="flex items-center gap-2 text-sm font-bold text-foreground">
+      {nome ? (
+        <span className="h-3 w-3 shrink-0 rounded-full ring-1 ring-black/10" style={{ backgroundColor: cor }} aria-hidden />
+      ) : (
+        <span className="h-3 w-3 shrink-0 rounded-full border border-dashed border-muted-foreground" aria-hidden />
+      )}
+      {nome ?? "Sem terapia"}
+      <span className="font-semibold tabular-nums text-muted-foreground">{total}</span>
+      <span className="ml-2 h-px flex-1 bg-border" aria-hidden />
+    </h3>
+  )
+}
+
+/** "Ordenar: Nome / Terapia principal / Tom da cor" — escolha única, no cabeçalho. */
+function OrdenarPor({ value, onChange }: { value: Ordem; onChange: (v: Ordem) => void }) {
+  const [aberto, setAberto] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!aberto) return
+    const fora = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setAberto(false) }
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setAberto(false) }
+    document.addEventListener("mousedown", fora)
+    document.addEventListener("keydown", esc)
+    return () => { document.removeEventListener("mousedown", fora); document.removeEventListener("keydown", esc) }
+  }, [aberto])
+
+  return (
+    <div ref={ref} className="relative shrink-0">
+      <button type="button" onClick={() => setAberto(a => !a)} aria-expanded={aberto} aria-haspopup="listbox"
+        className={`inline-flex w-52 items-center gap-2 rounded-md border border-border px-3 py-2 text-sm font-semibold text-foreground hover:bg-muted ${foco}`}>
+        <ArrowDownUp className="h-4 w-4 shrink-0" aria-hidden />
+        <span className="truncate">Ordenar: {ORDENS.find(o => o.valor === value)?.rotulo}</span>
+      </button>
+      {aberto && (
+        <div role="listbox" aria-label="Ordenar profissionais" className="absolute left-0 top-[calc(100%+4px)] z-[100] w-52 rounded-md border border-border bg-popover p-1 shadow-lg">
+          {ORDENS.map(o => (
+            <button key={o.valor} type="button" role="option" aria-selected={value === o.valor}
+              onClick={() => { onChange(o.valor); setAberto(false) }}
+              className={`flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted ${foco}`}>
+              {o.rotulo}
+              {value === o.valor && <Check className="h-4 w-4 shrink-0 text-primary" aria-hidden />}
+            </button>
+          ))}
+        </div>
       )}
     </div>
   )
@@ -495,7 +626,7 @@ const CardProfissional = memo(function CardProfissional({ linha }: { linha: Linh
         </dl>
 
         {linha.situacaoGrade && (
-          <div className="pp relative -mt-1 pb-3">
+          <div className="pp relative -mt-1 flex justify-center pb-3">
             <SeloGrade
               pequeno
               situacao={linha.situacaoGrade}

@@ -7,7 +7,7 @@ import {
 } from "lucide-react"
 import { HistoricoCadastrosModal } from "@/components/cadastros/historico/HistoricoCadastrosModal"
 import { InlineNotice } from "@/components/cronograma/ui/InlineNotice"
-import { NumeroPastel, SecaoPastel, avisoFeito, tom, type Tom } from "@/components/ui/pastel/pecas"
+import { SecaoPastel, avisoFeito, tom, type Tom } from "@/components/ui/pastel/pecas"
 import { useUnsavedChangesGuard } from "@/contexts/UnsavedChangesContext"
 import { useCadastroTerapias } from "@/hooks/useCadastroTerapias"
 import { refetchProfissionais } from "@/hooks/useProfissionais"
@@ -137,16 +137,28 @@ export function ProfissionalDetalhe({ id, abaInicial }: { id: number; abaInicial
     <div className="pp @container mx-auto w-full max-w-6xl space-y-5 px-4 py-6">
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
       <SecaoPastel titulo="prof-nome" className="relative overflow-hidden">
+        {/* Tarja na cor da terapia focal, na borda de cima — a única cor do hero
+            além do avatar. A linha interna escurece as cores muito claras
+            (Psicopedagogia #FFFB73) para a tarja não sumir no branco. */}
         <span
           aria-hidden
-          style={estiloCor(cor)}
-          className="pointer-events-none absolute inset-x-0 top-0 h-36 bg-gradient-to-b from-[var(--t-faixa)] to-transparent"
+          style={{ backgroundColor: cor }}
+          className="pointer-events-none absolute inset-x-0 top-0 h-1.5 shadow-[inset_0_-1px_0_rgba(15,23,42,0.08)]"
         />
         <div className="relative flex flex-col gap-5 @2xl:flex-row @2xl:items-center">
           <AvatarProfissional nome={prof.nome} cor={cor} tamanho="xl" />
           <div className="min-w-0 flex-1">
-            <p className="text-[13px] font-bold text-[var(--pp-ink-muted)]">
-              ID {idExibicaoProfissional(prof)}{focal ? ` · ${focal.nome}` : ""}
+            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] font-bold text-[var(--pp-ink-muted)]">
+              <span>ID {idExibicaoProfissional(prof)}</span>
+              {focal && (
+                <span style={estiloCor(cor)}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-[var(--t-suave)] py-0.5 pl-1 pr-2.5 text-[var(--t-tinta)] dark:text-[var(--t-tinta-escuro)]">
+                  <span className="flex size-4 items-center justify-center rounded-full bg-[var(--t-cor)] ring-1 ring-black/10" aria-hidden>
+                    <Sparkles className="h-2.5 w-2.5 text-white mix-blend-difference" />
+                  </span>
+                  {focal.nome}
+                </span>
+              )}
             </p>
             <h2 id="prof-nome" className="mt-0.5 text-[28px] font-extrabold leading-8 tracking-[-0.02em]">{prof.nome}</h2>
             <p className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[14px] font-semibold text-[var(--pp-ink-muted)]">
@@ -226,16 +238,18 @@ export function ProfissionalDetalhe({ id, abaInicial }: { id: number; abaInicial
           />
         )}
 
-        <div className="relative mt-5 grid grid-cols-1 gap-3 @md:grid-cols-2 @4xl:grid-cols-4">
-          <NumeroPastel compacto t="rosa" Icone={Sparkles} valor={d.habilitadas.length} rotulo="Terapias habilitadas"
-            apoio={`${terapias.filter(t => t.horariosGrade > 0).length} na grade TiTa`} apagado={d.habilitadas.length === 0} />
-          <NumeroPastel compacto t="aco" Icone={CalendarRange} valor={horariosTita} rotulo="Horários na grade TiTa"
-            apoio="90 dias para trás em diante" apagado={horariosTita === 0} />
-          <NumeroPastel compacto t="teal" Icone={CalendarDays} valor={disp.sessoesSemana ?? "—"} rotulo="Sessões por semana"
-            apoio={disp.vigente ? `Versão nº ${disp.vigente.numero} vigente` : "Nenhuma versão valendo hoje"} apagado={!disp.sessoesSemana} />
-          <NumeroPastel compacto t="verde" Icone={BadgeCheck} valor={`${camposPreenchidos}/${camposTotal}`} rotulo="Campos do cadastro"
+        {/* Resumo em faixa neutra: sem cor nem cartão próprio, para não competir
+            com as abas coloridas logo abaixo (que são o que se clica). */}
+        <dl className="relative mt-5 grid grid-cols-2 gap-px overflow-hidden rounded-[18px] bg-[var(--pp-border)] shadow-[inset_0_0_0_1px_var(--pp-border)] @4xl:grid-cols-4">
+          <Resumo Icone={Sparkles} valor={d.habilitadas.length} rotulo="Terapias habilitadas"
+            apoio={`${terapias.filter(t => t.horariosGrade > 0).length} na grade TiTa`} />
+          <Resumo Icone={CalendarRange} valor={horariosTita.toLocaleString("pt-BR")} rotulo="Horários na grade TiTa"
+            apoio="90 dias para trás em diante" />
+          <Resumo Icone={CalendarDays} valor={disp.sessoesSemana ?? "—"} rotulo="Sessões por semana"
+            apoio={disp.vigente ? `Versão nº ${disp.vigente.numero} vigente` : "Nenhuma versão valendo hoje"} />
+          <Resumo Icone={BadgeCheck} valor={`${camposPreenchidos}/${camposTotal}`} rotulo="Campos do cadastro"
             apoio={prof.sincronizado_tita_em ? `TiTa conferida em ${new Date(prof.sincronizado_tita_em).toLocaleDateString("pt-BR")}` : "Sem importação da TiTa"} />
-        </div>
+        </dl>
       </SecaoPastel>
 
       {/* ── Abas em cartão ───────────────────────────────────────────────── */}
@@ -309,6 +323,20 @@ export function ProfissionalDetalhe({ id, abaInicial }: { id: number; abaInicial
           onClose={() => setVerHistorico(false)}
         />
       )}
+    </div>
+  )
+}
+
+/** Um número da faixa-resumo do hero: neutro, sem tom. */
+function Resumo({ Icone, valor, rotulo, apoio }: { Icone: typeof Contact; valor: ReactNode; rotulo: string; apoio: string }) {
+  return (
+    <div className="min-w-0 bg-[var(--pp-surface)] px-4 py-3">
+      <dt className="flex items-center gap-1.5 text-xs font-bold text-[var(--pp-ink-muted)]">
+        <Icone className="h-3.5 w-3.5 shrink-0" aria-hidden />
+        <span className="truncate">{rotulo}</span>
+      </dt>
+      <dd className="mt-1 text-[22px] font-extrabold leading-7 tabular-nums">{valor}</dd>
+      <dd className="truncate text-xs font-semibold text-[var(--pp-ink-muted)]" title={apoio}>{apoio}</dd>
     </div>
   )
 }
