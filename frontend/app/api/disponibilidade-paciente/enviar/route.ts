@@ -5,7 +5,7 @@ import { checkRateLimit, getClientIp } from '@/lib/rate-limit'
 import { onlyDigits, validarCpf } from '@/lib/remuneracao/formatacao'
 import { PARENTESCOS } from '@/types/responsavel'
 import { conferirTelefone } from '@/lib/responsaveis/conferirTelefone'
-import { COLUNAS_CONTEUDO } from '@/lib/disponibilidadePaciente.server'
+import { COLUNAS_CONTEUDO, cpfDoPacienteConfere, lerJsonLimitado } from '@/lib/disponibilidadePaciente.server'
 import {
   DIAS,
   FINS_SESSAO,
@@ -59,7 +59,7 @@ async function enviar(request: NextRequest) {
     return recusa('Muitos envios. Aguarde alguns minutos.', 429)
   }
 
-  const body = (await request.json().catch(() => null)) as Record<string, unknown> | null
+  const body = await lerJsonLimitado(request)
 
   if (!body || typeof body !== 'object') return recusa('Dados inválidos.')
 
@@ -68,6 +68,13 @@ async function enviar(request: NextRequest) {
 
   const cpf = onlyDigits(body.cpf)
   if (cpf.length !== 11 || !validarCpf(cpf)) return recusa('CPF inválido. Confira os números.')
+
+  // Porteiro ANTES de qualquer leitura sobre o paciente (ver cpfDoPacienteConfere).
+  // Mesma resposta para "paciente não existe" e "CPF de outro": um recado
+  // diferente para cada caso confirmaria se aquele id é paciente da clínica.
+  if (!(await cpfDoPacienteConfere(pacienteId, cpf))) {
+    return recusa('O CPF não confere com o cadastro do paciente.')
+  }
 
   // ===== Quem está preenchendo =====
   const nome = typeof body.preenchido_por_nome === 'string' ? body.preenchido_por_nome.trim() : ''

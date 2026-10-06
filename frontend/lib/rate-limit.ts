@@ -8,6 +8,8 @@ interface RateLimitEntry {
 
 const rateLimitStore = new Map<string, RateLimitEntry>();
 
+const MAX_ENTRADAS_ANTES_DE_LIMPAR = 5000;
+
 /**
  * Check if a request exceeds rate limit
  * @param key Unique identifier (IP, user ID, etc)
@@ -21,6 +23,12 @@ export function checkRateLimit(
   windowMs: number
 ): boolean {
   const now = Date.now();
+
+  // `cleanupRateLimitStore` nunca era chamado por ninguém, então o Map só
+  // crescia (uma entrada por IP/chave, para sempre). Limpar quando passa de um
+  // teto mantém o custo zero no caso normal e fecha o crescimento sem fim.
+  if (rateLimitStore.size > MAX_ENTRADAS_ANTES_DE_LIMPAR) cleanupRateLimitStore();
+
   const entry = rateLimitStore.get(key);
 
   // Initialize or reset if window expired
