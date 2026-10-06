@@ -41,22 +41,19 @@ const SITUACOES: { valor: SituacaoFiltro; rotulo: string }[] = [
 const COLUNAS_LISTA =
   "md:grid-cols-[minmax(0,2.2fr)_minmax(0,0.6fr)_minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1.6fr)_minmax(0,0.6fr)]"
 
-const GRADES: { valor: SituacaoGrade; rotulo: string }[] = [
-  { valor: "vigente", rotulo: "Grade vigente" },
-  { valor: "agendada", rotulo: "Só agendada" },
-  { valor: "inativa", rotulo: "Grade inativa" },
-  { valor: "sem_grade", rotulo: "Sem grade" },
-]
-
-// Ordenação da lista. "terapia" e "tom" agrupam pela terapia principal (a
-// que pinta o card), com um cabeçalho por grupo.
+// Ordenação da lista. "terapia" agrupa por terapia, com cabeçalho — e quem
+// presta mais de uma aparece em cada grupo. "tom" só ordena pela cor do card,
+// sem separar por terapia.
 type Ordem = "nome" | "terapia" | "tom"
 const ORDENS: { valor: Ordem; rotulo: string }[] = [
   { valor: "nome", rotulo: "Nome" },
-  { valor: "terapia", rotulo: "Terapia principal" },
+  { valor: "terapia", rotulo: "Terapia" },
   { valor: "tom", rotulo: "Tom da cor" },
 ]
 const CHAVE_ORDEM = "profissionais:ordem"
+
+/** Um card na tela. Em "terapia", o mesmo profissional gera um por terapia. */
+type Entrada = { linha: Linha; grupo: string | null; corGrupo: string; chave: string }
 
 type Linha = {
   prof: ProfissionalLista
@@ -81,8 +78,6 @@ export function ProfissionaisCadastro() {
   }, [buscaTexto])
   const [situacoes, setSituacoes] = useState<Set<SituacaoFiltro>>(() => new Set(["ativo"]))
   const [filtroTerapias, setFiltroTerapias] = useState<Set<number>>(new Set())
-  // Vazio = todas (como o filtro de Terapia): marcar restringe.
-  const [filtroGrades, setFiltroGrades] = useState<Set<SituacaoGrade>>(() => new Set())
   const [letra, setLetra] = useState<string | null>(null)
   const [pagina, setPagina] = useState(1)
   const [modalNovo, setModalNovo] = useState(false)
@@ -147,9 +142,6 @@ export function ProfissionaisCadastro() {
 
   const filtradasSemLetra = useMemo(() => {
     let lista = linhas.filter(l => situacoes.has(l.prof.ativo ? "ativo" : "inativo"))
-    if (!situacaoIndisponivel && filtroGrades.size > 0) {
-      lista = lista.filter(l => l.situacaoGrade !== null && filtroGrades.has(l.situacaoGrade))
-    }
     if (filtroTerapias.size) {
       lista = lista.filter(l => l.terapias.some(t => t.terapiaId !== null && filtroTerapias.has(t.terapiaId)))
     }
@@ -163,7 +155,7 @@ export function ProfissionaisCadastro() {
       if (p.cpf?.includes(digitos)) return true
       return idExibicaoProfissional(p).includes(digitos)
     })
-  }, [linhas, situacoes, filtroTerapias, filtroGrades, situacaoIndisponivel, busca])
+  }, [linhas, situacoes, filtroTerapias, busca])
 
   const letrasDisponiveis = useMemo(() => {
     const s = new Set<string>()
@@ -174,40 +166,53 @@ export function ProfissionaisCadastro() {
     return s
   }, [filtradasSemLetra])
 
-  const filtradas = useMemo(() => {
+  const entradas = useMemo<Entrada[]>(() => {
     const lista = letra ? filtradasSemLetra.filter(l => normTxt(l.prof.nome).toUpperCase().startsWith(letra)) : filtradasSemLetra
-    if (ordem === "nome") return lista
     const porNome = (a: Linha, b: Linha) => a.prof.nome.localeCompare(b.prof.nome, "pt-BR")
-    const porTerapia = (a: Linha, b: Linha) =>
-      a.focal === b.focal ? 0 : a.focal === null ? 1 : b.focal === null ? -1 : a.focal.localeCompare(b.focal, "pt-BR")
-    const semTerapiaPorUltimo = (a: Linha, b: Linha) => (a.focal === null ? 1 : 0) - (b.focal === null ? 1 : 0)
-    return [...lista].sort((a, b) =>
-      ordem === "tom"
-        ? semTerapiaPorUltimo(a, b) || compararTom(a.cor, b.cor) || porTerapia(a, b) || porNome(a, b)
-        : porTerapia(a, b) || porNome(a, b)
+    const unica = (l: Linha): Entrada => ({ linha: l, grupo: null, corGrupo: "", chave: String(l.prof.id) })
+
+    if (ordem === "nome") return lista.map(unica)
+    if (ordem === "tom") {
+      const semTerapiaPorUltimo = (a: Linha, b: Linha) => (a.focal === null ? 1 : 0) - (b.focal === null ? 1 : 0)
+      return [...lista].sort((a, b) => semTerapiaPorUltimo(a, b) || compararTom(a.cor, b.cor) || porNome(a, b)).map(unica)
+    }
+
+    // "terapia": uma entrada por terapia do profissional. Com o filtro de
+    // terapia ligado, só nos grupos filtrados.
+    const out: Entrada[] = []
+    for (const l of lista) {
+      const ts = l.terapias.filter(t => !filtroTerapias.size || (t.terapiaId !== null && filtroTerapias.has(t.terapiaId)))
+      if (!ts.length) out.push({ linha: l, grupo: null, corGrupo: "", chave: `sem-${l.prof.id}` })
+      for (const t of ts) out.push({ linha: l, grupo: t.nome, corGrupo: t.cor, chave: `${t.nome}-${l.prof.id}` })
+    }
+    return out.sort((a, b) =>
+      (a.grupo === null ? 1 : 0) - (b.grupo === null ? 1 : 0)
+      || (a.grupo ?? "").localeCompare(b.grupo ?? "", "pt-BR")
+      || porNome(a.linha, b.linha)
     )
-  }, [filtradasSemLetra, letra, ordem])
+  }, [filtradasSemLetra, letra, ordem, filtroTerapias])
 
-  // Quantos de cada terapia no recorte inteiro (o cabeçalho do grupo mostra o
-  // total, não só o que coube na página).
-  const totalPorFocal = useMemo(() => {
+  // Quantos cards em cada grupo no recorte inteiro (o cabeçalho mostra o total,
+  // não só o que coube na página) e quantos profissionais distintos há.
+  const totalPorGrupo = useMemo(() => {
     const m = new Map<string, number>()
-    for (const l of filtradas) m.set(l.focal ?? "", (m.get(l.focal ?? "") ?? 0) + 1)
+    for (const e of entradas) m.set(e.grupo ?? "", (m.get(e.grupo ?? "") ?? 0) + 1)
     return m
-  }, [filtradas])
+  }, [entradas])
+  const totalProfissionais = useMemo(() => new Set(entradas.map(e => e.linha.prof.id)).size, [entradas])
 
-  const totalPaginas = Math.max(1, Math.ceil(filtradas.length / POR_PAGINA))
+  const totalPaginas = Math.max(1, Math.ceil(entradas.length / POR_PAGINA))
   const paginaAtual = Math.min(pagina, totalPaginas)
   const inicio = (paginaAtual - 1) * POR_PAGINA
-  const daPagina = useMemo(() => filtradas.slice(inicio, inicio + POR_PAGINA), [filtradas, inicio])
-  // Em "terapia"/"tom", blocos seguidos da mesma terapia principal viram grupos.
+  const daPagina = useMemo(() => entradas.slice(inicio, inicio + POR_PAGINA), [entradas, inicio])
+  // Só "terapia" tem grupos com cabeçalho.
   const grupos = useMemo(() => {
-    if (ordem === "nome") return [{ chave: "todos", nome: null as string | null, cor: "", itens: daPagina }]
-    const out: { chave: string; nome: string | null; cor: string; itens: Linha[] }[] = []
-    for (const l of daPagina) {
+    if (ordem !== "terapia") return [{ chave: "todos", nome: null as string | null, cor: "", itens: daPagina }]
+    const out: { chave: string; nome: string | null; cor: string; itens: Entrada[] }[] = []
+    for (const e of daPagina) {
       const ultimo = out[out.length - 1]
-      if (ultimo && ultimo.nome === l.focal) ultimo.itens.push(l)
-      else out.push({ chave: `${l.focal ?? "sem"}-${out.length}`, nome: l.focal, cor: l.cor, itens: [l] })
+      if (ultimo && ultimo.nome === e.grupo) ultimo.itens.push(e)
+      else out.push({ chave: `${e.grupo ?? "sem"}-${out.length}`, nome: e.grupo, cor: e.corGrupo, itens: [e] })
     }
     return out
   }, [daPagina, ordem])
@@ -338,23 +343,6 @@ export function ProfissionaisCadastro() {
               com a mesma altura. */}
           <div className="mb-4 flex flex-wrap items-center gap-2">
             <FiltroSituacao value={situacoes} onChange={v => { setSituacoes(v); setPagina(1) }} />
-            {!situacaoIndisponivel && (
-              <div className="w-full shrink-0 sm:w-52">
-                <MultiSearchCombobox
-                  opcoes={GRADES.map(g => ({ id: g.valor, nome: g.rotulo }))}
-                  selecionados={filtroGrades}
-                  onToggle={id => {
-                    setFiltroGrades(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
-                    setPagina(1)
-                  }}
-                  onDesmarcarTodos={() => { setFiltroGrades(new Set()); setPagina(1) }}
-                  ariaLabel="Filtrar pela situação da grade"
-                  nomePlural="situações"
-                  placeholder="Grade: todas"
-                  className="h-9 text-sm"
-                />
-              </div>
-            )}
             <div className="w-full shrink-0 sm:w-60">
               <MultiSearchCombobox
                 opcoes={opcoesTerapia}
@@ -385,7 +373,7 @@ export function ProfissionaisCadastro() {
 
           {loading ? (
             <GridEsqueleto />
-          ) : filtradas.length === 0 ? (
+          ) : entradas.length === 0 ? (
             <p className="rounded-xl border border-border bg-card px-4 py-16 text-center text-sm text-muted-foreground">
               {busca
                 ? "Nenhum profissional encontrado para essa busca."
@@ -407,13 +395,13 @@ export function ProfissionaisCadastro() {
               </div>
               {grupos.map(g => (
                 <div key={g.chave}>
-                  {ordem !== "nome" && (
+                  {ordem === "terapia" && (
                     <div className="border-b border-border bg-muted/30 px-4 py-2">
-                      <CabecalhoGrupo nome={g.nome} cor={g.cor} total={totalPorFocal.get(g.nome ?? "") ?? g.itens.length} />
+                      <CabecalhoGrupo nome={g.nome} cor={g.cor} total={totalPorGrupo.get(g.nome ?? "") ?? g.itens.length} />
                     </div>
                   )}
                   <ul>
-                    {g.itens.map(l => <LinhaProfissional key={l.prof.id} linha={l} />)}
+                    {g.itens.map(e => <LinhaProfissional key={e.chave} linha={e.linha} />)}
                   </ul>
                 </div>
               ))}
@@ -422,24 +410,26 @@ export function ProfissionaisCadastro() {
             <div className="space-y-6">
               {grupos.map(g => (
                 <section key={g.chave} aria-label={g.nome ?? "Todos"}>
-                  {ordem !== "nome" && (
+                  {ordem === "terapia" && (
                     <div className="mb-3">
-                      <CabecalhoGrupo nome={g.nome} cor={g.cor} total={totalPorFocal.get(g.nome ?? "") ?? g.itens.length} />
+                      <CabecalhoGrupo nome={g.nome} cor={g.cor} total={totalPorGrupo.get(g.nome ?? "") ?? g.itens.length} />
                     </div>
                   )}
                   <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                    {g.itens.map(l => <CardProfissional key={l.prof.id} linha={l} />)}
+                    {g.itens.map(e => <CardProfissional key={e.chave} linha={e.linha} />)}
                   </ul>
                 </section>
               ))}
             </div>
           )}
 
-          {!loading && filtradas.length > 0 && (
+          {!loading && entradas.length > 0 && (
             <div className="mt-4 flex flex-col items-center gap-3 sm:grid sm:grid-cols-3 sm:items-center">
               <p className="text-xs text-muted-foreground sm:justify-self-start" aria-live="polite">
-                Mostrando {inicio + 1}–{Math.min(inicio + POR_PAGINA, filtradas.length)} de {filtradas.length}{" "}
-                {filtradas.length === 1 ? "profissional" : "profissionais"}
+                Mostrando {inicio + 1}–{Math.min(inicio + POR_PAGINA, entradas.length)} de {entradas.length}{" "}
+                {ordem === "terapia"
+                  ? `cards · ${totalProfissionais} ${totalProfissionais === 1 ? "profissional" : "profissionais"}`
+                  : entradas.length === 1 ? "profissional" : "profissionais"}
               </p>
               {totalPaginas > 1 && (
                 <nav className="flex items-center gap-2 sm:col-start-2 sm:justify-self-center" aria-label="Paginação de profissionais">
@@ -487,7 +477,7 @@ function CabecalhoGrupo({ nome, cor, total }: { nome: string | null; cor: string
   )
 }
 
-/** "Ordenar: Nome / Terapia principal / Tom da cor" — escolha única, no cabeçalho. */
+/** "Ordenar: Nome / Terapia / Tom da cor" — escolha única. */
 function OrdenarPor({ value, onChange }: { value: Ordem; onChange: (v: Ordem) => void }) {
   const [aberto, setAberto] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
