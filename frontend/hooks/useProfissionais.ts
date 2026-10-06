@@ -5,14 +5,14 @@ import { MigrationPendenteError } from "@/services/cadastroTerapias.service"
 import { listarSituacaoGrades } from "@/services/profissionalDisponibilidade.service"
 import { listarHabilitadas, listarProfissionais, listarTerapiasDaGrade } from "@/services/profissionais.service"
 import type { SituacaoGradeProfissional } from "@/types/disponibilidadeProfissional"
-import type { Profissional } from "@/types/profissional"
+import type { ProfissionalLista } from "@/types/profissional"
 
 // Cache de módulo da lista de profissionais (mesmo padrão de usePacientes): a
 // lista e o detalhe compartilham a carga, e salvar no detalhe atualiza o card ao
 // voltar sem refazer a consulta inteira por navegação.
 
 type Estado = {
-  profissionais: Profissional[]
+  profissionais: ProfissionalLista[]
   /** profissional.id → ids de terapia habilitadas */
   habilitadas: Map<number, number[]>
   /** tita_profissional_id → terapias vistas na grade */

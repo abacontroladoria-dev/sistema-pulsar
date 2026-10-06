@@ -2,7 +2,7 @@ import { getSupabaseClient } from "@/lib/supabase/client"
 import { ehMigrationPendente } from "@/lib/supabase/erro"
 import { registrarAuditoria } from "@/services/cadastrosAuditoria.service"
 import { MigrationPendenteError } from "@/services/cadastroTerapias.service"
-import type { Profissional, ProfissionalEdit, ResultadoImportacao } from "@/types/profissional"
+import type { Profissional, ProfissionalEdit, ProfissionalLista, ResultadoImportacao } from "@/types/profissional"
 
 // Ver supabase/migrations/20261006130000_profissionais.sql.
 
@@ -18,6 +18,12 @@ const COLUNAS = [
   "cep", "logradouro", "numero", "complemento", "bairro", "cidade", "uf",
   "terapia_focal_id", "ativo", "observacoes", "dados_tita", "sincronizado_tita_em",
   "criado_em", "atualizado_em",
+].join(", ")
+
+// A lista não precisa de endereço, e-mail, observações nem do retrato da TiTa.
+const COLUNAS_LISTA = [
+  "id", "tita_profissional_id", "origem", "nome", "cpf", "celular",
+  "tipo_registro", "uf_registro", "codigo_registro", "cbo", "terapia_focal_id", "ativo",
 ].join(", ")
 
 function mensagem(error: { message: string; code?: string }): string {
@@ -50,11 +56,11 @@ async function todasAsPaginas<T>(
   }
 }
 
-export async function listarProfissionais(): Promise<Profissional[]> {
+export async function listarProfissionais(): Promise<ProfissionalLista[]> {
   const sb = getSupabaseClient()
-  return todasAsPaginas<Profissional>((de, ate) =>
-    sb.from(TABLE).select(COLUNAS).order("nome").order("id").range(de, ate) as unknown as PromiseLike<{
-      data: Profissional[] | null
+  return todasAsPaginas<ProfissionalLista>((de, ate) =>
+    sb.from(TABLE).select(COLUNAS_LISTA).order("nome").order("id").range(de, ate) as unknown as PromiseLike<{
+      data: ProfissionalLista[] | null
       error: { message: string; code?: string } | null
     }>
   )

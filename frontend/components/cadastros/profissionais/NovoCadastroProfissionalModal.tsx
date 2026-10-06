@@ -13,7 +13,7 @@ import { normTxt } from "@/lib/cronograma/constants"
 import { formatarCelular } from "@/lib/cadastros/profissionais"
 import { maskCpfCnpj, onlyDigits } from "@/lib/remuneracao/formatacao"
 import { criarProfissional } from "@/services/profissionais.service"
-import type { Profissional } from "@/types/profissional"
+import type { ProfissionalLista } from "@/types/profissional"
 
 // Cadastro manual — quem ainda não existe na TiTa (contratação nova). Pede só o
 // essencial; o resto se completa na ficha, que abre logo depois de salvar.
@@ -23,7 +23,7 @@ export function NovoCadastroProfissionalModal({
   onFechar,
 }: {
   /** Para avisar CPF ou nome já cadastrado antes de duplicar. */
-  existentes: Profissional[]
+  existentes: ProfissionalLista[]
   onFechar: () => void
 }) {
   const router = useRouter()

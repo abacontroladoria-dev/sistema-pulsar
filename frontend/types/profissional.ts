@@ -32,6 +32,18 @@ export type Profissional = {
   atualizado_em: string
 }
 
+/**
+ * O que a LISTA carrega de cada profissional: sem endereço, e-mail,
+ * observações nem retrato da TiTa — dado pessoal só sai do banco na ficha, um
+ * profissional por vez. CPF fica (a busca é por ele, e o "Novo profissional"
+ * avisa CPF repetido).
+ */
+export type ProfissionalLista = Pick<
+  Profissional,
+  | "id" | "tita_profissional_id" | "origem" | "nome" | "cpf" | "celular"
+  | "tipo_registro" | "uf_registro" | "codigo_registro" | "cbo" | "terapia_focal_id" | "ativo"
+>
+
 /** Campos que a importação da TiTa conhece (chaves de dados_tita). */
 export type CampoTita =
   | "nome"

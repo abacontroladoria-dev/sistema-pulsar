@@ -17,7 +17,7 @@ import { normTxt } from "@/lib/cronograma/constants"
 import { corFocal, formatarCelular, registroCompleto, terapiasDoProfissional } from "@/lib/cadastros/profissionais"
 import { onlyDigits } from "@/lib/remuneracao/formatacao"
 import { importarDaTita } from "@/services/profissionais.service"
-import { idExibicaoProfissional, type Profissional, type TerapiaDoProfissional } from "@/types/profissional"
+import { idExibicaoProfissional, type ProfissionalLista, type TerapiaDoProfissional } from "@/types/profissional"
 import { campo, foco } from "./pacientes/ui/campos"
 import { AvatarProfissional, ChipTerapia, estiloCor } from "./profissionais/pecas"
 import { NovoCadastroProfissionalModal } from "./profissionais/NovoCadastroProfissionalModal"
@@ -48,7 +48,7 @@ const GRADES: { valor: SituacaoGrade; rotulo: string }[] = [
 ]
 
 type Linha = {
-  prof: Profissional
+  prof: ProfissionalLista
   terapias: TerapiaDoProfissional[]
   cor: string
   /** null quando a situação não pôde ser lida (migration pendente). */
