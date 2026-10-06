@@ -190,6 +190,35 @@ const LABEL_POR_ENTIDADE: Record<EntidadeAuditada, Record<string, string>> = {
     data_pagamento: "Data do pagamento",
     valor_pago: "Valor pago",
   },
+  terapia: {
+    nome: "Nome",
+    tipo: "Tipo",
+    cor_hex: "Cor",
+    tita_terapia_id: "Id na TiTa",
+    ativo: "Ativa",
+  },
+  profissional: {
+    nome: "Nome",
+    cpf: "CPF",
+    email: "E-mail",
+    celular: "Celular",
+    tipo_registro: "Tipo de registro",
+    uf_registro: "UF do registro",
+    codigo_registro: "Código de registro",
+    cbo: "CBO",
+    cep: "CEP",
+    logradouro: "Logradouro",
+    numero: "Número",
+    complemento: "Complemento",
+    bairro: "Bairro",
+    cidade: "Cidade",
+    uf: "UF",
+    terapia_focal_id: "Terapia da cor do card",
+    terapias_habilitadas: "Terapias habilitadas",
+    tita_profissional_id: "Id na TiTa",
+    ativo: "Ativo",
+    observacoes: "Observações",
+  },
 }
 
 const VALOR_LEGIVEL: Record<string, Record<string, string>> = {
@@ -215,6 +244,9 @@ const VALOR_LEGIVEL: Record<string, Record<string, string>> = {
     filiacao_2: "Filiação 2",
     financeiro: "Responsável financeiro",
     pedagogico: "Responsável pedagógico",
+    // Cadastro de Terapias (mesma coluna `tipo`, outra entidade).
+    terapia: "Terapia",
+    procedimento: "Procedimento",
   },
 }
 

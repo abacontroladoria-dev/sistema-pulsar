@@ -34,6 +34,11 @@ export type EntidadeAuditada =
   // `id` (bigserial) de public.previsao_receitas_faturamento. Ver
   // 20260923140000/140300.
   | "previsao_receitas_faturamento"
+  // Cadastro de Terapias e Cadastro de Profissionais (/cadastros/terapias e
+  // /cadastros/profissionais). `registro_id` é o id (identity) de
+  // public.cadastro_terapias / public.profissionais. Ver 20261006120100.
+  | "terapia"
+  | "profissional"
 
 export type AcaoAuditada = "criar" | "editar" | "excluir" | "inativar" | "reativar"
 
@@ -88,6 +93,8 @@ export const ENTIDADE_LABEL: Record<EntidadeAuditada, string> = {
   laudo_acompanhamento: "Acompanhamento de laudo",
   pdi_controle_prazos: "Controle de Prazos PDI",
   previsao_receitas_faturamento: "Receita faturada (pagamento manual)",
+  terapia: "Terapia",
+  profissional: "Profissional",
 }
 
 export const ACAO_LABEL: Record<AcaoAuditada, string> = {

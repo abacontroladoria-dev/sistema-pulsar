@@ -340,3 +340,113 @@ export function CampoToggleSimNao({
     </div>
   )
 }
+
+/**
+ * Cor em hexadecimal: amostra clicável que abre uma paleta (as cores já usadas
+ * no catálogo, para manter a família visual) + campo "#RRGGBB" + seletor livre
+ * do sistema operacional para qualquer outra cor. Grava sempre "#RRGGBB".
+ */
+export function CampoCor({
+  label,
+  value,
+  onChange,
+  disabled,
+  sugestoes = [],
+  dica,
+}: {
+  label: string
+  value: string
+  onChange: (v: string) => void
+  disabled: boolean
+  /** Cores oferecidas na paleta (sem repetição, na ordem recebida). */
+  sugestoes?: string[]
+  dica?: string
+}) {
+  const id = useId()
+  const [aberto, setAberto] = useState(false)
+  // Rascunho só enquanto a pessoa digita; fora disso o campo mostra o valor.
+  const [rascunho, setRascunho] = useState<string | null>(null)
+  const texto = rascunho ?? value
+
+  const valido = /^#[0-9A-Fa-f]{6}$/.test(texto.trim())
+  const paleta = useMemo(
+    () => [...new Set(sugestoes.map(s => s.toUpperCase()))].slice(0, 40),
+    [sugestoes]
+  )
+
+  const confirmarTexto = (v: string) => {
+    setRascunho(v)
+    let n = v.trim().toUpperCase()
+    if (!n.startsWith("#")) n = `#${n}`
+    if (/^#[0-9A-F]{6}$/.test(n)) onChange(n)
+  }
+
+  return (
+    <div>
+      <label className={rotulo} htmlFor={id}>{label}</label>
+      <div className="mt-1 flex items-center gap-2">
+        <Popover.Root open={aberto} onOpenChange={disabled ? undefined : setAberto}>
+          <Popover.Trigger asChild>
+            <button
+              type="button"
+              disabled={disabled}
+              aria-label={`Escolher cor (atual ${value})`}
+              className={`h-9 w-9 shrink-0 rounded-md border border-border shadow-sm disabled:cursor-default ${foco}`}
+              style={{ backgroundColor: value }}
+            />
+          </Popover.Trigger>
+          {!disabled && (
+            <Popover.Portal>
+              <Popover.Content
+                align="start"
+                sideOffset={6}
+                className="z-[100] w-64 rounded-md border border-border bg-popover p-3 text-popover-foreground shadow-md"
+              >
+                <p className="mb-2 text-xs font-semibold text-muted-foreground">Cores já usadas</p>
+                <div className="grid grid-cols-8 gap-1.5">
+                  {paleta.map(cor => (
+                    <button
+                      key={cor}
+                      type="button"
+                      title={cor}
+                      aria-label={cor}
+                      onClick={() => { onChange(cor); setAberto(false) }}
+                      className={`relative h-6 w-6 rounded border border-black/10 ${foco}`}
+                      style={{ backgroundColor: cor }}
+                    >
+                      {cor === value.toUpperCase() && (
+                        <Check className="absolute inset-0 m-auto h-3.5 w-3.5 text-white mix-blend-difference" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+                <label className="mt-3 flex cursor-pointer items-center justify-between gap-2 rounded-md border border-dashed border-border px-2 py-1.5 text-sm hover:bg-muted/50">
+                  Outra cor…
+                  <input
+                    type="color"
+                    value={value}
+                    onChange={e => onChange(e.target.value.toUpperCase())}
+                    className="h-6 w-10 cursor-pointer border-0 bg-transparent p-0"
+                  />
+                </label>
+              </Popover.Content>
+            </Popover.Portal>
+          )}
+        </Popover.Root>
+        <input
+          id={id}
+          type="text"
+          value={texto}
+          disabled={disabled}
+          maxLength={7}
+          spellCheck={false}
+          onChange={e => confirmarTexto(e.target.value)}
+          onBlur={() => setRascunho(null)}
+          aria-invalid={!valido}
+          className={`${campo} font-mono uppercase ${!valido ? "border-rose-400" : ""}`}
+        />
+      </div>
+      {dica && <p className="mt-1 text-xs text-muted-foreground">{dica}</p>}
+    </div>
+  )
+}

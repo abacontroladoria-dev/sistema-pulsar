@@ -19,8 +19,6 @@ import {
   X,
   GraduationCap,
   School,
-  LayoutGrid,
-  List,
 } from "lucide-react"
 import { HistoricoCadastrosModal } from "@/components/cadastros/historico/HistoricoCadastrosModal"
 import { ICONES, getTomAvatar, indiceIconeAvatar } from "@/lib/cadastros/avatarPastel"
@@ -31,6 +29,7 @@ import { idExibicao } from "@/types/paciente"
 import type { Paciente } from "@/types/paciente"
 import { NovoPacienteModal } from "./pacientes/NovoPacienteModal"
 import { campo, foco } from "./pacientes/ui/campos"
+import { BarraAlfabeto, LinhaDado, SeletorModo, type ModoExibicao } from "./shared/ListaCadastro"
 
 // Listagem do cadastro de pacientes. Os fictícios (Horário Administrativo,
 // Notificação Prévia e afins) ficam de fora — não são pessoas. Os inativos
@@ -77,8 +76,6 @@ const ESCOLAS: { valor: EscolaFiltro; rotulo: string }[] = [
 // Grade para reconhecer rosto, lista para varrer muitos nomes de uma vez. A
 // escolha é conveniência de quem está no navegador — por isso localStorage, e
 // por isso a tela funciona igual se ele falhar (aba anônima, dados bloqueados).
-type ModoExibicao = "grade" | "lista"
-
 const CHAVE_MODO = "pacientes:modoExibicao"
 
 // Mesmas colunas no cabeçalho e em cada linha — definidas uma vez para os dois
@@ -665,115 +662,6 @@ function FiltroEscola({
   )
 }
 
-/** Grade | lista — o "Modo de exibição" da tela, dois botões só de ícone. */
-const LETRAS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("")
-
-/**
- * Atalho para achar pela primeira letra do nome — útil quando se conhece o
- * paciente mas não lembra o suficiente pra digitar na busca. Fica acima da
- * grade OU da lista, então filtra os dois do mesmo jeito.
- *
- * Letra sem paciente no recorte atual fica desabilitada, com o mesmo tom das
- * outras (a barra lê como um alfabeto inteiro, não como um mapa de buracos) — não
- * some, porque sumir moveria toda letra depois dela, e o dedo que já mirou
- * "P" acertaria "Q" sem querer.
- */
-function BarraAlfabeto({
-  value,
-  disponiveis,
-  onChange,
-}: {
-  value: string | null
-  disponiveis: Set<string>
-  onChange: (v: string | null) => void
-}) {
-  return (
-    <div
-      role="group"
-      aria-label="Filtrar pela primeira letra do nome"
-      // Do tamanho das letras (w-fit) e centralizada. overflow-x: no celular as
-      // 27 opções não cabem numa tela de 360px;
-      // rolar de lado é melhor do que quebrar linha e virar um bloco confuso.
-      className="mx-auto mb-4 w-fit max-w-full overflow-x-auto rounded-md border border-border bg-card"
-    >
-      <div className="flex w-max divide-x divide-border text-xs font-semibold">
-        <button
-          type="button"
-          onClick={() => onChange(null)}
-          aria-pressed={value === null}
-          className={`shrink-0 px-3 py-1.5 ${
-            value === null ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"
-          } ${foco} focus-visible:ring-inset`}
-        >
-          Todos
-        </button>
-        {LETRAS.map((l) => {
-          const tem = disponiveis.has(l)
-          const ativa = value === l
-          return (
-            <button
-              key={l}
-              type="button"
-              onClick={() => onChange(l)}
-              disabled={!tem}
-              aria-pressed={ativa}
-              className={`w-7 shrink-0 py-1.5 transition-colors motion-reduce:transition-none ${
-                ativa
-                  ? "bg-primary/10 text-primary"
-                  : tem
-                    ? "text-foreground hover:bg-muted"
-                    : "cursor-not-allowed text-foreground"
-              } ${foco} focus-visible:ring-inset`}
-            >
-              {l}
-            </button>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-function SeletorModo({
-  value,
-  onChange,
-}: {
-  value: ModoExibicao
-  onChange: (v: ModoExibicao) => void
-}) {
-  const opcoes = [
-    { valor: "grade" as const, icone: LayoutGrid, rotulo: "Exibir em grade" },
-    { valor: "lista" as const, icone: List, rotulo: "Exibir em lista" },
-  ]
-
-  return (
-    <div
-      role="group"
-      aria-label="Modo de exibição"
-      className="inline-flex shrink-0 rounded-md border border-border p-0.5"
-    >
-      {opcoes.map(({ valor, icone: Icone, rotulo }) => {
-        const ativo = value === valor
-        return (
-          <button
-            key={valor}
-            type="button"
-            onClick={() => onChange(valor)}
-            aria-pressed={ativo}
-            aria-label={rotulo}
-            title={rotulo}
-            className={`inline-flex h-8 w-8 items-center justify-center rounded ${
-              ativo ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-            } ${foco}`}
-          >
-            <Icone className="h-4 w-4" aria-hidden="true" />
-          </button>
-        )
-      })}
-    </div>
-  )
-}
-
 const CardPaciente = memo(function CardPaciente({
   paciente,
   telefoneResponsavel,
@@ -967,26 +855,6 @@ function SeloEscola({ ficha }: { ficha: ResumoEscolar | null }) {
       <span className="shrink-0 text-muted-foreground" title={`Informada ${tempoDecorrido(ficha.criado_em)}`}>
         {tempoDecorrido(ficha.criado_em)}
       </span>
-    </div>
-  )
-}
-
-function LinhaDado({
-  icone: Icone,
-  rotulo,
-  valor,
-}: {
-  icone: typeof IdCard
-  rotulo: string
-  valor: string | null
-}) {
-  return (
-    <div className="flex items-center gap-2">
-      <dt className="flex w-24 shrink-0 items-center gap-1.5 text-muted-foreground">
-        <Icone className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-        {rotulo}
-      </dt>
-      <dd className="truncate text-left font-semibold text-foreground">{valor || "—"}</dd>
     </div>
   )
 }
