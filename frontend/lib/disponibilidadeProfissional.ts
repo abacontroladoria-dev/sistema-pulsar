@@ -143,6 +143,20 @@ export function faixasParaRpc(r: RascunhoDisponibilidade) {
     }))
 }
 
+/**
+ * Mesmo conteúdo (dias ligados + faixas), ignorando a ordem em que as faixas
+ * foram montadas e as chaves internas do editor. É o que decide se "Salvar"
+ * gera uma versão nova ou se não há nada a gravar.
+ */
+export function mesmoConteudo(a: RascunhoDisponibilidade, b: RascunhoDisponibilidade): boolean {
+  const assinatura = (r: RascunhoDisponibilidade) =>
+    JSON.stringify({
+      dias: [...r.diasAtivos].sort((x, y) => x - y),
+      faixas: faixasParaRpc(r).map(f => ({ ...f, ordem: 0, terapias: [...f.terapias].sort((x, y) => x - y) })),
+    })
+  return assinatura(a) === assinatura(b)
+}
+
 // ── Validação (espelho das RPCs + avisos que só a tela dá) ───────────────────
 
 export type ResultadoValidacao = {

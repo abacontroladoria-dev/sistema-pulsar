@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react"
 import toast from "react-hot-toast"
 import {
-  AlertTriangle, CalendarRange, Check, ChevronDown, CloudDownload, Copy, Info, Loader2, MapPin, Plus, Trash2, Users, X,
+  AlertTriangle, CalendarRange, Check, ChevronDown, CloudDownload, Info, Loader2, MapPin, Plus, Trash2, Users, X,
 } from "lucide-react"
 import { CampoSelect, rotulo } from "@/components/cadastros/pacientes/ui/campos"
 import { MultiSearchCombobox } from "@/components/cronograma/ui/MultiSearchCombobox"
@@ -16,7 +16,7 @@ import { normNumeroSala, parseSalaAgenda } from "@/lib/cronograma/salas"
 import { separarTerapias } from "@/lib/cadastros/terapias"
 import {
   DIAS_SEMANA, DURACOES, conflitosDeLocal, copiarDia, dataBR, faixasDaGrade, faixasParaRpc, foraDaExclusividade,
-  hojeBrasilia, novaFaixa, opcoesHorario, paraMin, periodoBR, sessoesDaFaixa, somarDias, totaisDaSemana, validarRascunho,
+  hojeBrasilia, mesmoConteudo, novaFaixa, opcoesHorario, paraMin, periodoBR, sessoesDaFaixa, somarDias, totaisDaSemana, validarRascunho,
   type HorarioGrade,
 } from "@/lib/disponibilidadeProfissional"
 import { criarVersao, lerSemanaTita } from "@/services/profissionalDisponibilidade.service"
@@ -62,6 +62,7 @@ export function EditorDisponibilidade({
   nomeProfissional,
   onSalvo,
   onCancelar,
+  onSemMudanca,
 }: {
   profissional: { id: number; nome: string; tita_profissional_id: number | null }
   /** Rascunho de partida (cópia da vigente, de uma antiga a restaurar, ou vazio). */
@@ -76,6 +77,8 @@ export function EditorDisponibilidade({
   nomeProfissional: (id: number) => string
   onSalvo: () => void
   onCancelar: () => void
+  /** Fechar sem gravar: nada mudou em relação à versão de partida. */
+  onSemMudanca: () => void
 }) {
   const hoje = hojeBrasilia()
   const { confirmar, dialogo } = useConfirmacao()
@@ -119,6 +122,9 @@ export function EditorDisponibilidade({
   const ate = indeterminado ? null : vigenteAte || null
 
   const validacao = useMemo(() => validarRascunho(r, habSet), [r, habSet])
+  // Editando uma versão que já existe: igual a ela = não há versão nova a criar.
+  const editandoExistente = versoes.length > 0 && !restauradaDe
+  const semMudanca = editandoExistente && mesmoConteudo(base, r)
   const totais = useMemo(() => totaisDaSemana(r), [r])
   const conflitos = useMemo(
     () => conflitosDeLocal(r, { de: vigenteDe, ate }, ocupacoes, locaisPorId, nomeProfissional),
@@ -221,6 +227,11 @@ export function EditorDisponibilidade({
   }
 
   const salvar = async () => {
+    if (semMudanca) {
+      avisoFeito("Nada mudou nos horários — nenhuma versão nova")
+      onSemMudanca()
+      return
+    }
     if (validacao.bloqueia || efeitoVigencia.bloqueio) {
       toast.error(efeitoVigencia.bloqueio ?? "Corrija os pontos marcados em vermelho.")
       return
@@ -249,7 +260,7 @@ export function EditorDisponibilidade({
         origem: restauradaDe ? "restaurada" : origem,
         restauradaDe: restauradaDe?.id ?? null,
       })
-      avisoFeito("Nova versão salva")
+      avisoFeito(editandoExistente ? "Disponibilidade salva — a anterior ficou no histórico" : "Disponibilidade salva")
       onSalvo()
     } catch (e) {
       toast.error(String((e as Error)?.message ?? e), { duration: 8000 })
@@ -264,10 +275,12 @@ export function EditorDisponibilidade({
       <SecaoPastel titulo="disp-vigencia">
         <CabecalhoPastel
           id="disp-vigencia"
-          titulo={restauradaDe ? `Restaurar a versão nº ${restauradaDe.numero}` : "Nova versão da disponibilidade"}
+          titulo={restauradaDe ? `Restaurar a versão nº ${restauradaDe.numero}` : editandoExistente ? "Editar disponibilidade" : "Cadastrar disponibilidade"}
           t="teal"
           Icone={CalendarRange}
-          apoio="As versões anteriores ficam guardadas como estão — nada é apagado"
+          apoio={editandoExistente
+            ? "Se algo mudar, o sistema cria uma versão nova e guarda a atual no histórico"
+            : "Nada é apagado: toda mudança futura fica guardada no histórico"}
           direita={profissional.tita_profissional_id ? (
             <button type="button" onClick={preencherDaTita} disabled={lendoTita} className={`${tom("aco")} pp-btn pp-btn-suave`}>
               {lendoTita ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <CloudDownload className="h-4 w-4" aria-hidden />}
@@ -302,16 +315,15 @@ export function EditorDisponibilidade({
             <p className={`${tom("vermelho")} flex items-start gap-2 rounded-[14px] bg-[var(--c-suave)] px-3 py-2 text-[13px] font-bold text-[var(--c-tinta)]`}>
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden /> {efeitoVigencia.bloqueio}
             </p>
-          ) : (
+          ) : (efeitoVigencia.encerra && !semMudanca) || (ate && ate < hoje) ? (
             <p className={`${tom("teal")} flex items-start gap-2 rounded-[14px] bg-[var(--c-suave)] px-3 py-2 text-[13px] font-bold text-[var(--c-tinta)]`}>
               <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
               <span>
-                Esta versão vale de {periodoBR(vigenteDe, ate)}.
-                {efeitoVigencia.encerra && ` A versão nº ${efeitoVigencia.encerra.numero} passa a terminar em ${dataBR(somarDias(vigenteDe, -1))}.`}
-                {ate && ate < hoje && " Como o fim já passou, ela já nasce como grade inativa."}
+                {efeitoVigencia.encerra && !semMudanca && `Ao salvar, a versão nº ${efeitoVigencia.encerra.numero} passa a terminar em ${dataBR(somarDias(vigenteDe, -1))}.`}
+                {ate && ate < hoje && " Como o fim já passou, esta já nasce como grade inativa."}
               </span>
             </p>
-          )}
+          ) : null}
           {avisoTita && (
             <p className={`${tom("amber")} flex items-start gap-2 rounded-[14px] bg-[var(--c-suave)] px-3 py-2 text-[13px] font-bold text-[var(--c-tinta)]`}>
               <CloudDownload className="mt-0.5 h-4 w-4 shrink-0" aria-hidden /> {avisoTita}
@@ -341,7 +353,11 @@ export function EditorDisponibilidade({
           onAlternarAberta={chave => setAbertas(prev => { const n = new Set(prev); if (n.has(chave)) n.delete(chave); else n.add(chave); return n })}
           onAlternarDia={() => alternarDia(d.n)}
           onAdicionar={() => adicionar(d.n)}
-          onCopiar={para => { setR(prev => copiarDia(prev, d.n, para)); avisoFeito(`${d.nome} copiada`) }}
+          onCopiar={para => {
+            setR(prev => copiarDia(prev, d.n, para))
+            const nomes = DIAS_SEMANA.filter(x => para.includes(x.n)).map(x => x.nome.replace("-feira", "").toLowerCase())
+            avisoFeito(`${d.nome} replicada em ${nomes.length > 1 ? `${nomes.slice(0, -1).join(", ")} e ${nomes.at(-1)}` : nomes[0]}`)
+          }}
           onMudar={mudar}
           onRemover={remover}
           erros={validacao.erros}
@@ -375,9 +391,10 @@ export function EditorDisponibilidade({
               <X className="h-4 w-4" aria-hidden /> Cancelar
             </button>
             <button type="button" onClick={salvar} className={`${tom("verde")} pp-btn`}
-              disabled={salvando || validacao.bloqueia || !!efeitoVigencia.bloqueio}>
+              disabled={salvando || (!semMudanca && (validacao.bloqueia || !!efeitoVigencia.bloqueio))}
+              title={semMudanca ? "Nada mudou ainda — salvar só fecha o editor" : undefined}>
               {salvando ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Check className="h-4 w-4" aria-hidden />}
-              Salvar versão
+              Salvar
             </button>
           </div>
         </div>
@@ -412,6 +429,11 @@ function CartaoDia(p: {
 }) {
   const [copiando, setCopiando] = useState(false)
   const [destinos, setDestinos] = useState<Set<number>>(new Set())
+  const abrirReplicar = () => {
+    // Sugestão: os outros dias úteis (seg–sex). O sábado só se marcar.
+    if (!copiando) setDestinos(new Set([1, 2, 3, 4, 5].filter(d => d !== p.dia)))
+    setCopiando(c => !c)
+  }
   const conflitantes = new Set(p.faixas.filter(f => p.erros.get(f.chave)?.some(e => e.startsWith("Cruza"))).map(f => f.chave))
 
   return (
@@ -432,8 +454,9 @@ function CartaoDia(p: {
           {p.ligado ? `${p.sessoes} sessões` : p.faixas.length ? "Desligado — as faixas ficam guardadas" : "Não atende"}
         </span>
         {p.ligado && p.faixas.length > 0 && (
-          <button type="button" onClick={() => setCopiando(c => !c)} className="pp-iconbtn ml-auto" title="Copiar este dia para outros" aria-label={`Copiar ${p.nome} para outros dias`} aria-expanded={copiando}>
-            <Copy className="h-4 w-4" aria-hidden />
+          <button type="button" onClick={abrirReplicar} className={`${tom("teal")} pp-btn pp-btn-suave ml-auto !min-h-9 text-[13px]`}
+            title={`Repetir os horários de ${p.nome.toLowerCase()} em outros dias`} aria-expanded={copiando}>
+            Replicar
           </button>
         )}
       </div>
@@ -441,7 +464,7 @@ function CartaoDia(p: {
       {copiando && (
         <div className="mt-3 flex flex-wrap items-end gap-2 rounded-[16px] bg-[var(--pp-muted)] p-3">
           <div className="min-w-[14rem] flex-1">
-            <span className={rotulo}>Copiar {p.nome.toLowerCase()} para</span>
+            <span className={rotulo}>Replicar {p.nome.toLowerCase()} em</span>
             <div className="mt-1">
               <MultiSearchCombobox
                 opcoes={DIAS_SEMANA.filter(d => d.n !== p.dia).map(d => ({ id: d.n, nome: d.nome }))}
@@ -460,7 +483,7 @@ function CartaoDia(p: {
           <button type="button" disabled={!destinos.size}
             onClick={() => { p.onCopiar([...destinos]); setCopiando(false); setDestinos(new Set()) }}
             className={`${tom("teal")} pp-btn`}>
-            <Copy className="h-4 w-4" aria-hidden /> Copiar
+            <Check className="h-4 w-4" aria-hidden /> Replicar
           </button>
           <p className="w-full text-xs font-semibold text-[var(--pp-ink-muted)]">As faixas dos dias escolhidos são substituídas.</p>
         </div>

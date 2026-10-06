@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react"
 import toast from "react-hot-toast"
-import { CalendarDays, CalendarRange, CircleSlash, Copy, Database, Loader2, Plus, RotateCcw, X } from "lucide-react"
+import { CalendarDays, CalendarRange, CircleSlash, Database, Loader2, Pencil, Plus, RotateCcw, X } from "lucide-react"
 import { InlineNotice } from "@/components/cronograma/ui/InlineNotice"
 import { CabecalhoPastel, SecaoPastel, tom } from "@/components/ui/pastel/pecas"
 import { useConfirmacao } from "@/components/ui/pastel/confirmacao"
@@ -105,8 +105,8 @@ export function AbaDisponibilidade({
         nomeProfissional={id => nomesProf.get(id) ?? `Profissional ${id}`}
         onCancelar={async () => {
           if (await confirmar({
-            titulo: "Descartar esta nova versão?",
-            texto: "O que você montou no editor será perdido. As versões já salvas continuam como estão.",
+            titulo: "Descartar as alterações?",
+            texto: "O que você mudou no editor será perdido. A disponibilidade salva continua como está.",
             confirmar: "Descartar",
             cancelar: "Continuar editando",
             t: "vermelho",
@@ -114,6 +114,7 @@ export function AbaDisponibilidade({
           })) setEdicao(null)
         }}
         onSalvo={async () => { setEdicao(null); setSelecionadaId(null); await onMudou() }}
+        onSemMudanca={() => setEdicao(null)}
       />
       {dialogo}
       </>
@@ -137,7 +138,7 @@ export function AbaDisponibilidade({
           </p>
           <button type="button" onClick={novaVersao} disabled={preparando} className={`${tom("teal")} pp-btn mt-1`}>
             {preparando ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Plus className="h-4 w-4" aria-hidden />}
-            Criar a primeira versão
+            Cadastrar disponibilidade
           </button>
         </div>
       </SecaoPastel>
@@ -157,16 +158,10 @@ export function AbaDisponibilidade({
           Icone={CalendarDays}
           apoio={vigente ? `Versão nº ${vigente.numero} valendo · ${periodoBR(vigente.vigente_de, vigente.vigente_ate)}` : "Nenhuma versão valendo hoje"}
           ajuda={[
-            { t: "teal", Icone: CalendarRange, texto: "Cada mudança vira uma versão nova, com data para começar e (se quiser) para terminar." },
+            { t: "teal", Icone: Pencil, texto: "É só editar: ao salvar uma mudança, o sistema guarda a anterior e cria a versão nova, com data para começar e (se quiser) para terminar." },
             { t: "vermelho", Icone: CircleSlash, texto: "Passou a data de fim e não há outra versão: a grade fica inativa." },
             { t: "aco", Icone: RotateCcw, texto: "Versões antigas nunca são apagadas — dá para restaurar qualquer uma." },
           ]}
-          direita={
-            <button type="button" onClick={novaVersao} disabled={preparando} className={`${tom("teal")} pp-btn`}>
-              {preparando ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Plus className="h-4 w-4" aria-hidden />}
-              Nova versão
-            </button>
-          }
         />
 
         {/* Seletor de versões: da mais nova para a mais antiga */}
@@ -211,14 +206,14 @@ export function AbaDisponibilidade({
                 <button type="button" disabled={preparando}
                   onClick={() => abrirEditor({ base: rascunhoDeVersao(selecionada), origem: "restaurada", restauradaDe: selecionada })}
                   className={`${tom("aco")} pp-btn pp-btn-suave`}>
-                  <RotateCcw className="h-4 w-4" aria-hidden /> Restaurar como nova versão
+                  <RotateCcw className="h-4 w-4" aria-hidden /> Restaurar
                 </button>
               ) : (
                 <>
                   <button type="button" disabled={preparando}
                     onClick={() => abrirEditor({ base: rascunhoDeVersao(selecionada), origem: "manual", restauradaDe: null })}
-                    className={`${tom("teal")} pp-btn pp-btn-suave`}>
-                    <Copy className="h-4 w-4" aria-hidden /> Partir desta
+                    className={`${tom("teal")} pp-btn`}>
+                    {preparando ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Pencil className="h-4 w-4" aria-hidden />} Editar
                   </button>
                   <button type="button" onClick={() => setVigencia({ versao: selecionada, modo: "ajustar" })} className={`${tom("aco")} pp-btn pp-btn-suave`}>
                     <CalendarRange className="h-4 w-4" aria-hidden /> Vigência

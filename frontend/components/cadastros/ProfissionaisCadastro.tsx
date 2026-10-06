@@ -293,6 +293,7 @@ export function ProfissionaisCadastro() {
         </div>
         <FiltroSituacao value={situacoes} onChange={v => { setSituacoes(v); setPagina(1) }} />
         <OrdenarPor value={ordem} onChange={trocarOrdem} />
+        <SeletorModo value={modo} onChange={trocarModo} />
         <span className="mx-1 h-6 w-px shrink-0 bg-border" aria-hidden="true" />
         <button
           type="button"
@@ -326,7 +327,7 @@ export function ProfissionaisCadastro() {
       </div>
     )
     return () => setRightContent(null)
-  }, [buscaTexto, situacoes, filtroTerapias, opcoesTerapia, ordem, trocarOrdem, importando, importar, migrationPendente, setRightContent])
+  }, [buscaTexto, situacoes, filtroTerapias, opcoesTerapia, ordem, trocarOrdem, modo, trocarModo, importando, importar, migrationPendente, setRightContent])
 
   if (migrationPendente) {
     return (
@@ -369,13 +370,7 @@ export function ProfissionaisCadastro() {
         </div>
       ) : (
         <>
-          {/* A–Z no centro e grade/lista à direita, na mesma linha. */}
-          <div className="flex items-start gap-3">
-            <div className="min-w-0 flex-1">
-              <BarraAlfabeto value={letra} disponiveis={letrasDisponiveis} onChange={v => { setLetra(v); setPagina(1) }} />
-            </div>
-            <SeletorModo value={modo} onChange={trocarModo} />
-          </div>
+          <BarraAlfabeto value={letra} disponiveis={letrasDisponiveis} onChange={v => { setLetra(v); setPagina(1) }} />
 
           {loading ? (
             <GridEsqueleto />

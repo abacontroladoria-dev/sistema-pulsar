@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   conflitosDeLocal, copiarDia, dataBR, diferencasEntreVersoes, faixasDaGrade, faixasParaRpc, foraDaExclusividade,
-  hojeBrasilia, novaFaixa, periodoBR, resumoSemana, sessoesDaFaixa, sobraDaFaixa, somarDias, totaisDaSemana, validarRascunho,
+  hojeBrasilia, mesmoConteudo, novaFaixa, periodoBR, resumoSemana, sessoesDaFaixa, sobraDaFaixa, somarDias, totaisDaSemana, validarRascunho,
 } from "./disponibilidadeProfissional"
 import type { LocalDisponivel, RascunhoDisponibilidade } from "@/types/disponibilidadeProfissional"
 
@@ -69,6 +69,14 @@ describe("totais e cópia", () => {
     expect(c.diasAtivos).toEqual([1, 3, 5])
     expect(c.faixas.filter(f => f.dia === 3).map(f => f.inicio)).toEqual(["08:00"])
     expect(new Set(c.faixas.map(f => f.chave)).size).toBe(c.faixas.length)
+  })
+  it("mesmoConteudo ignora chave e ordem das faixas, mas vê qualquer mudança", () => {
+    const a: RascunhoDisponibilidade = { diasAtivos: [2, 1], faixas: [novaFaixa(2, { terapias: [3, 1] }), novaFaixa(1)] }
+    const b: RascunhoDisponibilidade = { diasAtivos: [1, 2], faixas: [novaFaixa(1), novaFaixa(2, { terapias: [1, 3] })] }
+    expect(mesmoConteudo(a, b)).toBe(true)
+    expect(mesmoConteudo(a, { ...b, diasAtivos: [1] })).toBe(false)
+    expect(mesmoConteudo(a, { ...b, faixas: [novaFaixa(1), novaFaixa(2, { terapias: [1, 3], fim: "17:00" })] })).toBe(false)
+    expect(mesmoConteudo(a, copiarDia(a, 1, [3]))).toBe(false)
   })
   it("faixasParaRpc ordena e zera o intervalo desligado", () => {
     const r: RascunhoDisponibilidade = { diasAtivos: [1, 2], faixas: [novaFaixa(2), novaFaixa(1, { intervaloAtivo: false })] }
