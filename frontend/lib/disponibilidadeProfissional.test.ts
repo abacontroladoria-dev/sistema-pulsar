@@ -154,14 +154,14 @@ function addMin(h: string, m: number) {
 describe("resumoSemana", () => {
   const f = (dia: number, ini: string, fim: string) => ({ dia_semana: dia, hora_inicio: `${ini}:00`, hora_fim: `${fim}:00` })
   it("dias soltos e turno", () => {
-    expect(resumoSemana([1, 3, 5], [f(1, "08:00", "12:00"), f(3, "08:00", "11:20"), f(5, "08:40", "12:00")])).toBe("Seg, Qua, Sex · manhã")
+    expect(resumoSemana([1, 3, 5], [f(1, "08:00", "12:00"), f(3, "08:00", "11:20"), f(5, "08:40", "12:00")])).toBe("Seg, Qua, Sex · Manhã")
   })
   it("sequência de 3+ dias vira intervalo; manhã e tarde", () => {
     expect(resumoSemana([1, 2, 3, 4, 6], [f(1, "08:00", "17:40"), f(2, "13:00", "17:00"), f(3, "08:00", "12:00"), f(4, "08:00", "12:00"), f(6, "13:00", "15:00")]))
-      .toBe("Seg a Qui, Sáb · manhã e tarde")
+      .toBe("Seg a Qui, Sáb · Manhã e Tarde")
   })
   it("dia desligado não conta; sem faixa ativa = null", () => {
-    expect(resumoSemana([2], [f(1, "13:00", "17:00"), f(2, "13:00", "17:00")])).toBe("Ter · tarde")
+    expect(resumoSemana([2], [f(1, "13:00", "17:00"), f(2, "13:00", "17:00")])).toBe("Ter · Tarde")
     expect(resumoSemana([], [f(1, "08:00", "12:00")])).toBeNull()
   })
 })

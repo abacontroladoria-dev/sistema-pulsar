@@ -451,6 +451,6 @@ export function resumoSemana(
 
   const manha = validas.some(f => paraMin(f.hora_inicio) < 12 * 60)
   const tarde = validas.some(f => paraMin(f.hora_fim) > 13 * 60)
-  const turno = manha && tarde ? "manhã e tarde" : manha ? "manhã" : "tarde"
+  const turno = manha && tarde ? "Manhã e Tarde" : manha ? "Manhã" : "Tarde"
   return `${textoDias} · ${turno}`
 }
