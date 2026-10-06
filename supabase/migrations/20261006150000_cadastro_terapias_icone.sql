@@ -38,7 +38,7 @@ update public.cadastro_terapias c
     ('aplicador suporte',                    'hand-helping'),
     ('aplicador suporte (mt)',               'music'),
     ('aplicador suporte (ta)',               'utensils-crossed'),
-    ('aplicador suporte (to)',               'shirt'),
+    ('aplicador suporte (to)',               'shapes'),
     ('apoio operacional',                    'wrench'),
     ('arteterapia',                          'palette'),
     ('arteterapia (psicologia aba)',         'paintbrush'),
@@ -72,7 +72,7 @@ update public.cadastro_terapias c
     ('supervisao aba',                       'binoculars'),
     ('tecnico terapeutico particular',       'heart-handshake'),
     ('terapia alimentar',                    'utensils-crossed'),
-    ('terapia ocupacional',                  'shirt'),
+    ('terapia ocupacional',                  'shapes'),
     ('triagem',                              'scan-search'),
     ('trilha socioemocional',                'smile'),
     ('visita guiada',                        'map-pinned')

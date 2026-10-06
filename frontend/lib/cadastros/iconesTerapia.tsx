@@ -2,7 +2,7 @@ import {
   Accessibility, Award, Backpack, Binoculars, Blocks, BookOpen, BookOpenCheck, Brain, Brush, Carrot, ChefHat,
   ClipboardCheck, Cog, Compass, Dumbbell, GraduationCap, HandHelping, Handshake, HeartHandshake, House, Lightbulb,
   MapPinned, MessageCircle, MessageCircleHeart, Music, Paintbrush, Palette, PersonStanding, Piano, Presentation,
-  Route, Salad, ScanSearch, School, Shirt, Smile, Sparkles, Speech, Sprout, Stethoscope, Target, Trophy, Users,
+  Route, Salad, ScanSearch, School, Shapes, Shirt, Smile, Sparkles, Speech, Sprout, Stethoscope, Target, Trophy, Users,
   UtensilsCrossed, Waves, Wrench, type LucideProps,
 } from "lucide-react"
 import type { ComponentType } from "react"
@@ -65,6 +65,7 @@ export const ICONES_TERAPIA: OpcaoIcone[] = [
   { chave: "salad", rotulo: "Salada", Icone: Salad },
   { chave: "carrot", rotulo: "Cenoura", Icone: Carrot },
   { chave: "chef-hat", rotulo: "Chapéu de chef", Icone: ChefHat },
+  { chave: "shapes", rotulo: "Formas", Icone: Shapes },
   { chave: "shirt", rotulo: "Camiseta", Icone: Shirt },
   { chave: "wrench", rotulo: "Chave inglesa", Icone: Wrench },
   { chave: "cog", rotulo: "Engrenagem", Icone: Cog },
