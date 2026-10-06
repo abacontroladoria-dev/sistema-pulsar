@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react"
 import {
   AlertCircle, BadgeCheck, CalendarDays, CalendarRange, Check, CircleSlash, Contact, Database, History,
-  Link2, Loader2, Palette, Pencil, RotateCcw, Sparkles, UserRound, X,
+  Loader2, Palette, Pencil, RotateCcw, Sparkles, UserRound, X,
 } from "lucide-react"
 import { HistoricoCadastrosModal } from "@/components/cadastros/historico/HistoricoCadastrosModal"
 import { InlineNotice } from "@/components/cronograma/ui/InlineNotice"
@@ -167,12 +167,8 @@ export function ProfissionalDetalhe({ id, abaInicial }: { id: number; abaInicial
               {prof.celular && <span>{formatarCelular(prof.celular)}</span>}
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
-              {prof.tita_profissional_id ? (
-                <span className={`${tom("aco")} pp-pilula h-8 pl-1.5 text-[12px]`} title="O cadastro está ligado ao profissional da TiTa com este id">
-                  <span className="pp-pilula-bola size-5"><Link2 className="h-3 w-3" aria-hidden /></span>
-                  Vinculado à TiTa #{prof.tita_profissional_id}
-                </span>
-              ) : (
+              {/* O id da TiTa já aparece como "ID" acima; só sinaliza quem ainda não está lá. */}
+              {!prof.tita_profissional_id && (
                 <span className={`${tom("cinza")} pp-pilula h-8 pl-1.5 text-[12px]`}>
                   <span className="pp-pilula-bola size-5"><UserRound className="h-3 w-3" aria-hidden /></span>
                   Cadastro manual · ainda não está na TiTa
