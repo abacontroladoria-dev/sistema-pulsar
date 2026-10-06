@@ -98,10 +98,10 @@ export function ProfissionalDetalhe({ id, abaInicial }: { id: number; abaInicial
   const multiplasTerapias = terapias.filter(t => t.terapiaId !== null).length > 1
 
   const abas: DefAba[] = [
-    { id: "cadastro", titulo: "Cadastro", meta: "Contato e registro", t: "aco", Icone: Contact,
+    { id: "cadastro", titulo: "Cadastro", meta: "Preenchido", t: "aco", Icone: Contact,
       numero: <>{Math.round((camposPreenchidos / camposTotal) * 100)}<span className="text-[22px]">%</span></> },
     { id: "terapias", titulo: "Terapias", meta: "O que presta", t: "rosa", Icone: Sparkles, numero: d.habilitadas.length },
-    { id: "disponibilidade", titulo: "Disponibilidade", meta: "Sessões por semana", t: "teal", Icone: CalendarDays, numero: disp.sessoesSemana ?? "—" },
+    { id: "disponibilidade", titulo: "Disponibilidade", meta: "Sessões/semana", t: "teal", Icone: CalendarDays, numero: disp.sessoesSemana ?? "—" },
     { id: "historico", titulo: "Histórico", meta: "Versões guardadas", t: "azul", Icone: History, numero: disp.versoes.length },
   ]
 
@@ -255,7 +255,7 @@ export function ProfissionalDetalhe({ id, abaInicial }: { id: number; abaInicial
             className={`${tom(a.t)} pp-aba after:!top-full after:!bottom-auto after:!h-[10px] after:!w-[20px] after:!ml-[-10px] after:![transform:none] after:!rounded-none after:![clip-path:polygon(0_0,100%_0,50%_100%)] !min-h-[64px] !gap-2.5 !rounded-[20px] !p-3 @xl:!min-h-[88px] @xl:!gap-2.5 @xl:!rounded-[24px] @xl:!px-4 @xl:!py-4`}
           >
             <span className="pp-aba-marca" aria-hidden><a.Icone /></span>
-            <span className="pp-aba-icone !h-10 !w-10 !rounded-[14px] @xl:!h-11 @xl:!w-11" aria-hidden><a.Icone className="h-5 w-5" /></span>
+            <span className="pp-aba-icone !h-10 !w-10 !rounded-[14px] @xl:!h-11 @xl:!w-11 @5xl:!hidden" aria-hidden><a.Icone className="h-5 w-5" /></span>
             <span className="relative min-w-0 flex-1">
               <span className="block truncate text-[14px] font-extrabold leading-tight @xl:text-[15px]">{a.titulo}</span>
               <span className="pp-aba-meta !hidden @xl:!flex"><span className="truncate">{a.meta}</span></span>
