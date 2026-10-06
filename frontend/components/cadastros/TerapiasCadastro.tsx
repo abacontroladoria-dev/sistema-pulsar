@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import toast from "react-hot-toast"
-import { ArrowDownAZ, ChevronDown, ChevronRight, Database, History, Loader2, Palette, Pencil, Plus, RotateCcw, Search, Trash2 } from "lucide-react"
+import { ArrowDownAZ, Database, History, Loader2, Palette, Pencil, Plus, RotateCcw, Search, Trash2 } from "lucide-react"
 import { HistoricoCadastrosModal } from "@/components/cadastros/historico/HistoricoCadastrosModal"
 import { InlineNotice } from "@/components/cronograma/ui/InlineNotice"
 import { useCadastroTerapias } from "@/hooks/useCadastroTerapias"
@@ -13,6 +13,12 @@ import { TIPO_TERAPIA_LABEL, type CadastroTerapia, type CadastroTerapiaEdit, typ
 import { TerapiaModal } from "./terapias/TerapiaModal"
 
 type FiltroTipo = "todos" | TipoTerapia
+type FiltroSituacao = "ativas" | "inativas" | "todas"
+const SITUACOES: { valor: FiltroSituacao; rotulo: string }[] = [
+  { valor: "ativas", rotulo: "Ativas" },
+  { valor: "inativas", rotulo: "Inativas" },
+  { valor: "todas", rotulo: "Todas" },
+]
 type Ordem = "nome" | "tom"
 
 // Preferência de quem está no navegador; sem storage, fica em "nome".
@@ -23,7 +29,7 @@ export function TerapiasCadastro() {
   const [busca, setBusca] = useState("")
   const [filtroTipo, setFiltroTipo] = useState<FiltroTipo>("todos")
   const [modal, setModal] = useState<{ terapia?: CadastroTerapia } | null>(null)
-  const [inativasAbertas, setInativasAbertas] = useState(false)
+  const [situacao, setSituacao] = useState<FiltroSituacao>("ativas")
   const [verHistorico, setVerHistorico] = useState(false)
   const [ordem, setOrdem] = useState<Ordem>("nome")
   useEffect(() => {
@@ -40,17 +46,22 @@ export function TerapiasCadastro() {
   const filtradas = useMemo(() => {
     const q = normTxt(busca)
     const lista = terapias.filter(t =>
-      (filtroTipo === "todos" || t.tipo === filtroTipo) && (!q || normTxt(t.nome).includes(q))
+      (filtroTipo === "todos" || t.tipo === filtroTipo)
+      && (situacao === "todas" || t.ativo === (situacao === "ativas"))
+      && (!q || normTxt(t.nome).includes(q))
     )
     return ordem === "tom"
       ? [...lista].sort((a, b) => compararTom(a.cor_hex, b.cor_hex) || a.nome.localeCompare(b.nome, "pt-BR"))
       : lista
-  }, [terapias, busca, filtroTipo, ordem])
+  }, [terapias, busca, filtroTipo, situacao, ordem])
 
-  const ativas = filtradas.filter(t => t.ativo)
-  const inativas = filtradas.filter(t => !t.ativo)
+  // Cada contador respeita o OUTRO filtro: o de tipo conta dentro da situação
+  // escolhida, e o de situação conta dentro do tipo escolhido.
+  const naSituacao = (t: CadastroTerapia, s: FiltroSituacao) => s === "todas" || t.ativo === (s === "ativas")
   const contagem = (tipo: FiltroTipo) =>
-    terapias.filter(t => t.ativo && (tipo === "todos" || t.tipo === tipo)).length
+    terapias.filter(t => naSituacao(t, situacao) && (tipo === "todos" || t.tipo === tipo)).length
+  const contagemSituacao = (s: FiltroSituacao) =>
+    terapias.filter(t => naSituacao(t, s) && (filtroTipo === "todos" || t.tipo === filtroTipo)).length
 
   const salvar = async (input: CadastroTerapiaEdit) => {
     if (modal?.terapia) {
@@ -148,6 +159,22 @@ export function TerapiasCadastro() {
             </button>
           ))}
         </div>
+        <div className="inline-flex rounded-full border border-border bg-card p-0.5" role="group" aria-label="Filtrar por situação">
+          {SITUACOES.map(({ valor, rotulo: rotuloSit }) => (
+            <button
+              key={valor}
+              type="button"
+              aria-pressed={situacao === valor}
+              onClick={() => setSituacao(valor)}
+              className={`inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-sm font-semibold transition-colors ${
+                situacao === valor ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {rotuloSit}
+              <span className="tabular-nums opacity-70">{contagemSituacao(valor)}</span>
+            </button>
+          ))}
+        </div>
         <div className="inline-flex rounded-full border border-border bg-card p-0.5 sm:ml-auto" role="group" aria-label="Ordenar">
           {([["nome", "Nome", ArrowDownAZ], ["tom", "Tom de cor", Palette]] as const).map(([valor, rotuloOrdem, Icone]) => (
             <button
@@ -165,46 +192,26 @@ export function TerapiasCadastro() {
         </div>
       </div>
 
-      {ativas.length === 0 ? (
+      {filtradas.length === 0 ? (
         <div className="flex flex-col items-center gap-2 rounded-2xl border border-border bg-card py-12 text-center text-sm text-muted-foreground">
           <Palette className="h-8 w-8 text-slate-300 dark:text-slate-600" />
-          {busca ? "Nenhuma terapia encontrada com essa busca." : "Nenhuma terapia ativa."}
+          {busca
+            ? "Nenhuma terapia encontrada com essa busca."
+            : situacao === "inativas" ? "Nenhuma terapia inativa." : "Nenhuma terapia neste recorte."}
         </div>
       ) : (
-        <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {ativas.map(t => (
-            <CartaoTerapia key={t.id} terapia={t} onEditar={() => setModal({ terapia: t })} onAlternar={() => alternarAtivo(t)} />
-          ))}
-        </ul>
-      )}
-
-      {inativas.length > 0 && (
-        <div className="overflow-hidden rounded-2xl border border-amber-500/30 bg-amber-500/5">
-          <button
-            type="button"
-            onClick={() => setInativasAbertas(a => !a)}
-            aria-expanded={inativasAbertas}
-            className="flex w-full items-center gap-2 px-5 py-3.5 text-left transition-colors hover:bg-amber-500/10"
-          >
-            {inativasAbertas
-              ? <ChevronDown className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-              : <ChevronRight className="h-4 w-4 text-amber-600 dark:text-amber-400" />}
-            <span className="font-bold text-amber-700 dark:text-amber-400">Inativas</span>
-            <span className="text-sm text-amber-700/80 dark:text-amber-400/80">({inativas.length})</span>
-          </button>
-          {inativasAbertas && (
-            <div className="space-y-3 px-5 pb-5">
-              <p className="text-sm text-amber-700/80 dark:text-amber-400/80">
-                Não aparecem para escolha na disponibilidade. Versões antigas que as usam continuam mostrando o nome e a cor.
-              </p>
-              <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {inativas.map(t => (
-                  <CartaoTerapia key={t.id} terapia={t} onEditar={() => setModal({ terapia: t })} onAlternar={() => alternarAtivo(t)} />
-                ))}
-              </ul>
-            </div>
+        <>
+          {situacao !== "ativas" && filtradas.some(t => !t.ativo) && (
+            <p className="text-sm text-muted-foreground">
+              Inativas não aparecem para escolha na disponibilidade; versões antigas que as usam continuam mostrando o nome e a cor.
+            </p>
           )}
-        </div>
+          <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {filtradas.map(t => (
+              <CartaoTerapia key={t.id} terapia={t} onEditar={() => setModal({ terapia: t })} onAlternar={() => alternarAtivo(t)} />
+            ))}
+          </ul>
+        </>
       )}
 
       {modal && (
