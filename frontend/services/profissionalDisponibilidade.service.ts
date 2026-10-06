@@ -1,4 +1,5 @@
 import { buscarGrade } from "@/lib/grade/fonte"
+import { resumoSemana } from "@/lib/disponibilidadeProfissional"
 import { getSupabaseClient } from "@/lib/supabase/client"
 import { ehMigrationPendente } from "@/lib/supabase/erro"
 import { MigrationPendenteError } from "@/services/cadastroTerapias.service"
@@ -177,4 +178,36 @@ export async function lerSemanaTita(titaProfissionalId: number, de: string, ate:
     refinar: q => q.eq("profissional_id", titaProfissionalId),
     ordem: [{ coluna: "data" }, { coluna: "hora_inicial" }, { coluna: "id" }],
   })
+}
+
+/**
+ * profissional.id → resumo da versão VIGENTE ("Seg, Qua, Sex · manhã") para o
+ * card da lista. Quem não tem versão vigente não entra no mapa.
+ */
+export async function listarResumosVigentes(): Promise<Map<number, string>> {
+  const sb = getSupabaseClient()
+  const { data: versoes, error } = await sb
+    .from("vw_profissionais_disponibilidade_versoes")
+    .select("id, profissional_id, dias_ativos")
+    .eq("situacao", "vigente")
+  if (error) falha(error)
+  const vs = (versoes ?? []) as { id: string; profissional_id: number; dias_ativos: number[] }[]
+  const faixasPorVersao = new Map<string, { dia_semana: number; hora_inicio: string; hora_fim: string }[]>()
+  // Em lotes pequenos: cada versão tem várias faixas e o PostgREST corta em 1000.
+  for (let i = 0; i < vs.length; i += 40) {
+    const { data, error: e2 } = await sb
+      .from("profissionais_disponibilidade_faixas")
+      .select("versao_id, dia_semana, hora_inicio, hora_fim")
+      .in("versao_id", vs.slice(i, i + 40).map(v => v.id))
+    if (e2) falha(e2)
+    for (const f of (data ?? []) as { versao_id: string; dia_semana: number; hora_inicio: string; hora_fim: string }[]) {
+      faixasPorVersao.set(f.versao_id, [...(faixasPorVersao.get(f.versao_id) ?? []), f])
+    }
+  }
+  const out = new Map<number, string>()
+  for (const v of vs) {
+    const r = resumoSemana(v.dias_ativos, faixasPorVersao.get(v.id) ?? [])
+    if (r) out.set(v.profissional_id, r)
+  }
+  return out
 }

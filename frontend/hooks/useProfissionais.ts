@@ -2,7 +2,7 @@
 
 import { useEffect, useSyncExternalStore } from "react"
 import { MigrationPendenteError } from "@/services/cadastroTerapias.service"
-import { listarSituacaoGrades } from "@/services/profissionalDisponibilidade.service"
+import { listarResumosVigentes, listarSituacaoGrades } from "@/services/profissionalDisponibilidade.service"
 import { listarHabilitadas, listarProfissionais, listarTerapiasDaGrade } from "@/services/profissionais.service"
 import type { SituacaoGradeProfissional } from "@/types/disponibilidadeProfissional"
 import type { ProfissionalLista } from "@/types/profissional"
@@ -23,6 +23,8 @@ type Estado = {
   situacaoGrade: Map<number, SituacaoGradeProfissional>
   /** A migration da disponibilidade pode ainda não estar aplicada. */
   situacaoIndisponivel: boolean
+  /** profissional.id → "Seg, Qua, Sex · manhã" (só quem tem versão vigente). */
+  resumoVigente: Map<number, string>
   loading: boolean
   error: string | null
   migrationPendente: boolean
@@ -35,6 +37,7 @@ let estado: Estado = {
   gradeIndisponivel: false,
   situacaoGrade: new Map(),
   situacaoIndisponivel: false,
+  resumoVigente: new Map(),
   loading: true,
   error: null,
   migrationPendente: false,
@@ -60,11 +63,12 @@ export function refetchProfissionais(): Promise<void> {
   publicar({ loading: !carregado, error: null })
   emVoo = (async () => {
     try {
-      const [profissionais, habilitadas, grade, situacao] = await Promise.all([
+      const [profissionais, habilitadas, grade, situacao, resumos] = await Promise.all([
         listarProfissionais(),
         listarHabilitadas(),
         listarTerapiasDaGrade().catch(() => null),
         listarSituacaoGrades().catch(() => null),
+        listarResumosVigentes().catch(() => null),
       ])
       carregado = true
       publicar({
@@ -74,6 +78,7 @@ export function refetchProfissionais(): Promise<void> {
         gradeIndisponivel: grade === null,
         situacaoGrade: situacao ?? new Map(),
         situacaoIndisponivel: situacao === null,
+        resumoVigente: resumos ?? new Map(),
         loading: false,
         error: null,
         migrationPendente: false,

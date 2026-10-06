@@ -1392,3 +1392,106 @@ html {
   .pp *, .pp-confete { animation: none !important; transition: none !important; }
   .pp-aba:hover, .pp-cartao:hover, .pp-btn:active, .pp-opcao:active, .pp-iconbtn:active { transform: none !important; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   .ua-* — card do Cadastro de Profissionais (guia "Card de Profissional:
+   guia de design e cores", 06/10/2026)
+   ══════════════════════════════════════════════════════════════════════════
+   A cor de cada terapia vem SEMPRE de /cadastros/terapias: o componente põe
+   --tl-* (claro) e --td-* (escuro) inline, gerados por tonsDaTerapia()
+   (lib/cadastros/tonsTerapia.ts), e .ua-tons escolhe os do tema em --t-*.
+   Sem cor cadastrada, cai nos tons neutros (slate). Inativo usa os tons stone.
+   Tokens com prefixo --ua- para não colidir com --border/--bg globais. O guia
+   só define o tema claro; o escuro segue os mesmos papéis. */
+
+@layer components {
+  :root {
+    --ua-surface: #ffffff; --ua-border: #e4e7ec;
+    --ua-ink: #111827; --ua-ink-muted: #5b6472; --ua-ink-subtle: #8a929e;
+    --ua-green-50: #ebfcef; --ua-green-500: #32b364; --ua-green-700: #046d36;
+    --ua-amber-50: #fff5e9; --ua-amber-700: #7a5103;
+    --ua-stone-50: #f9f6f4; --ua-stone-300: #d8cbc1; --ua-stone-500: #a69587; --ua-stone-700: #66584d;
+    --ua-slate-50: #f4f7fb; --ua-slate-300: #c2cfe0; --ua-slate-500: #889ab1; --ua-slate-700: #4e5c6f;
+    --ua-shadow: 0 1px 2px rgba(16, 24, 40, .04);
+    --ua-shadow-hover: 0 8px 24px rgba(16, 24, 40, .08);
+  }
+  .dark {
+    --ua-surface: var(--card); --ua-border: oklch(0.32 0 0);
+    --ua-ink: oklch(0.96 0.004 257); --ua-ink-muted: oklch(0.76 0.012 257); --ua-ink-subtle: oklch(0.6 0.012 257);
+    --ua-green-50: oklch(0.28 0.05 155); --ua-green-500: #32b364; --ua-green-700: oklch(0.86 0.12 155);
+    --ua-amber-50: oklch(0.29 0.05 75); --ua-amber-700: oklch(0.88 0.11 80);
+    --ua-stone-50: oklch(0.27 0.012 55); --ua-stone-300: oklch(0.45 0.02 55); --ua-stone-500: oklch(0.64 0.025 55); --ua-stone-700: oklch(0.86 0.02 55);
+    --ua-slate-50: oklch(0.27 0.02 255); --ua-slate-300: oklch(0.45 0.04 255); --ua-slate-500: oklch(0.66 0.05 255); --ua-slate-700: oklch(0.86 0.03 255);
+    --ua-shadow: 0 2px 6px rgba(0, 0, 0, .35);
+    --ua-shadow-hover: 0 10px 28px rgba(0, 0, 0, .55);
+  }
+
+  /* Tons da terapia (claro por padrão; escuro em .dark). */
+  .ua-tons {
+    --t-50: var(--tl-50, var(--ua-slate-50)); --t-300: var(--tl-300, var(--ua-slate-300));
+    --t-500: var(--tl-500, var(--ua-slate-500)); --t-700: var(--tl-700, var(--ua-slate-700));
+  }
+  .dark .ua-tons {
+    --t-50: var(--td-50, var(--ua-slate-50)); --t-300: var(--td-300, var(--ua-slate-300));
+    --t-500: var(--td-500, var(--ua-slate-500)); --t-700: var(--td-700, var(--ua-slate-700));
+  }
+  /* Inativo: a cor da terapia sai de cena (vence o par claro/escuro acima). */
+  .ua-tons.is-inactive, .dark .ua-tons.is-inactive {
+    --t-50: var(--ua-stone-50); --t-300: var(--ua-stone-300); --t-500: var(--ua-stone-500); --t-700: var(--ua-stone-700);
+  }
+
+  .ua-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 16px; }
+  .ua-card {
+    position: relative; display: flex; flex-direction: column; overflow: hidden; height: 100%;
+    background: var(--ua-surface); border: 1px solid var(--ua-border); border-radius: 14px; box-shadow: var(--ua-shadow);
+    transition: box-shadow .15s, border-color .15s;
+  }
+  .ua-card:hover { box-shadow: var(--ua-shadow-hover); border-color: var(--t-300); }
+  .ua-card:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+  .ua-head { background: var(--t-50); padding: 14px 20px 18px; display: flex; flex-direction: column; align-items: center; text-align: center; }
+  .ua-top { align-self: stretch; display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+  .ua-id { font-size: 11.5px; color: var(--ua-ink-muted); font-variant-numeric: tabular-nums; }
+  .ua-id b { color: var(--ua-ink); font-weight: 600; }
+  .ua-status {
+    display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px 2px 7px; border-radius: 999px;
+    font-size: 11.5px; font-weight: 600; background: var(--ua-surface); color: var(--ua-green-700); border: 1px solid var(--ua-border);
+  }
+  .ua-status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--ua-green-500); }
+  .ua-avatar {
+    display: grid; place-items: center; flex-shrink: 0; border-radius: 50%;
+    background: var(--ua-surface); border: 3px solid var(--t-300); color: var(--t-700);
+    font-weight: 700; letter-spacing: -.02em; user-select: none;
+  }
+  .ua-name {
+    margin: 12px 0 4px; min-height: 44px; display: flex; align-items: center; justify-content: center;
+    font-size: 16px; line-height: 22px; font-weight: 700; color: var(--ua-ink);
+  }
+  .ua-role { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; font-size: 12px; font-weight: 600; color: var(--t-700); }
+  .ua-role::before { content: ""; width: 8px; height: 8px; flex-shrink: 0; border-radius: 50%; background: var(--t-500); }
+  .ua-body { padding: 16px 20px 20px; display: flex; flex-direction: column; gap: 12px; flex: 1; }
+  .ua-fields { display: grid; grid-template-columns: 76px 1fr; row-gap: 8px; margin: 0; font-size: 13px; line-height: 20px; }
+  .ua-fields dt { color: var(--ua-ink-muted); font-size: 12px; }
+  .ua-fields dd { margin: 0; min-width: 0; overflow-wrap: anywhere; color: var(--ua-ink); font-weight: 500; font-variant-numeric: tabular-nums; }
+  .ua-fields dd.empty { color: var(--ua-ink-subtle); font-weight: 400; }
+  .ua-avail { display: flex; align-items: center; gap: 7px; padding: 7px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; }
+  .ua-avail::before { content: ""; width: 6px; height: 6px; flex-shrink: 0; border-radius: 50%; background: currentColor; }
+  .ua-avail.none { background: var(--ua-amber-50); color: var(--ua-amber-700); }
+  .ua-avail.ok { background: var(--ua-green-50); color: var(--ua-green-700); }
+  .ua-chips { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 12px; border-top: 1px solid var(--ua-border); }
+  .ua-chip {
+    display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 3px 9px 3px 7px; border-radius: 999px;
+    font-size: 11.5px; line-height: 16px; font-weight: 600; background: var(--t-50); color: var(--t-700); border: 1px solid var(--t-300);
+  }
+  .ua-chip::before { content: ""; width: 7px; height: 7px; flex-shrink: 0; border-radius: 50%; background: var(--t-500); }
+  .ua-chip-mais { background: var(--ua-surface); color: var(--ua-ink-muted); border-color: var(--ua-border); }
+  .ua-chip-mais::before { display: none; }
+
+  .ua-card.is-inactive .ua-status { color: var(--ua-stone-700); }
+  .ua-card.is-inactive .ua-status::before { background: var(--ua-stone-500); }
+  .ua-card.is-inactive .ua-name { color: var(--ua-ink-muted); }
+  .ua-card.is-inactive .ua-avail { background: var(--ua-stone-50); color: var(--ua-stone-700); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ua-card { transition: none; }
+}

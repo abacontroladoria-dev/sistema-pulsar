@@ -4,8 +4,8 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import toast from "react-hot-toast"
 import {
-  AlertCircle, ArrowDownUp, BadgeCheck, IdCard, Briefcase, Check, ChevronLeft, ChevronRight, CloudDownload, Database,
-  History, ListFilter, Loader2, Phone, Search, UserPlus, X,
+  AlertCircle, ArrowDownUp, Check, ChevronLeft, ChevronRight, CloudDownload, Database,
+  History, ListFilter, Loader2, Search, UserPlus, X,
 } from "lucide-react"
 import { HistoricoCadastrosModal } from "@/components/cadastros/historico/HistoricoCadastrosModal"
 import { InlineNotice } from "@/components/cronograma/ui/InlineNotice"
@@ -20,9 +20,10 @@ import { onlyDigits } from "@/lib/remuneracao/formatacao"
 import { importarDaTita } from "@/services/profissionais.service"
 import { idExibicaoProfissional, type ProfissionalLista, type TerapiaDoProfissional } from "@/types/profissional"
 import { campo, foco } from "./pacientes/ui/campos"
-import { AvatarProfissional, ChipTerapia, estiloCor } from "./profissionais/pecas"
+import { AvatarProfissional, ChipTerapia, corDoCatalogo } from "./profissionais/pecas"
+import { estiloTons } from "@/lib/cadastros/tonsTerapia"
+import { dataBR, somarDias } from "@/lib/disponibilidadeProfissional"
 import { NovoCadastroProfissionalModal } from "./profissionais/NovoCadastroProfissionalModal"
-import { SeloGrade } from "./profissionais/disponibilidade/pecasDisponibilidade"
 import type { SituacaoGrade, SituacaoGradeProfissional } from "@/types/disponibilidadeProfissional"
 import { BarraAlfabeto, SeletorModo, type ModoExibicao } from "./shared/ListaCadastro"
 
@@ -61,13 +62,15 @@ type Linha = {
   cor: string
   /** Terapia que pinta o card (a focal, ou a de mais horários). */
   focal: string | null
+  /** "Seg, Qua, Sex · manhã" da versão vigente (só quando há versão vigente). */
+  resumo: string | null
   /** null quando a situação não pôde ser lida (migration pendente). */
   grade: SituacaoGradeProfissional | null
   situacaoGrade: SituacaoGrade | null
 }
 
 export function ProfissionaisCadastro() {
-  const { profissionais, habilitadas, grade, situacaoGrade, situacaoIndisponivel, loading, error, migrationPendente, recarregar } = useProfissionais()
+  const { profissionais, habilitadas, grade, situacaoGrade, situacaoIndisponivel, resumoVigente, loading, error, migrationPendente, recarregar } = useProfissionais()
   const { terapias: catalogo, indice } = useCadastroTerapias()
 
   const [buscaTexto, setBuscaTexto] = useState("")
@@ -127,11 +130,11 @@ export function ProfissionaisCadastro() {
     const g = situacaoGrade.get(prof.id) ?? null
     const f = corFocal(prof, terapias)
     return {
-      prof, terapias, cor: f.cor, focal: f.terapia?.nome ?? null,
+      prof, terapias, cor: f.cor, focal: f.terapia?.nome ?? null, resumo: resumoVigente.get(prof.id) ?? null,
       grade: g,
       situacaoGrade: situacaoIndisponivel ? null : g?.situacao ?? "sem_grade",
     }
-  }), [profissionais, habilitadas, grade, catalogoPorId, indice, situacaoGrade, situacaoIndisponivel])
+  }), [profissionais, habilitadas, grade, catalogoPorId, indice, situacaoGrade, situacaoIndisponivel, resumoVigente])
 
   // Opções do filtro de terapia: só as que alguém tem.
   const opcoesTerapia = useMemo(() => {
@@ -418,7 +421,7 @@ export function ProfissionaisCadastro() {
                       <CabecalhoGrupo nome={g.nome} cor={g.cor} total={totalPorGrupo.get(g.nome ?? "") ?? g.itens.length} />
                     </div>
                   )}
-                  <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+                  <ul className="ua-grid">
                     {g.itens.map(e => <CardProfissional key={e.chave} linha={e.linha} />)}
                   </ul>
                 </section>
@@ -560,121 +563,100 @@ function FiltroSituacao({ value, onChange }: { value: Set<SituacaoFiltro>; onCha
   )
 }
 
+/** Selo discreto: só "Inativo" chama atenção (o card inteiro muda de tom). */
 function Situacao({ ativo }: { ativo: boolean }) {
-  return ativo ? (
-    <span className="inline-flex rounded-full bg-emerald-500/10 px-2 py-0.5 text-sm font-medium text-emerald-600 dark:text-emerald-400">Ativo</span>
-  ) : (
-    <span className="inline-flex rounded-full bg-rose-500/10 px-2 py-0.5 text-sm font-medium text-rose-600 dark:text-rose-400">Inativo</span>
-  )
+  return <span className={`ua-status ${ativo ? "" : "!text-[var(--ua-stone-700)] before:!bg-[var(--ua-stone-500)]"}`}>{ativo ? "Ativo" : "Inativo"}</span>
 }
 
-/** Até 3 chips (focal primeiro) + "+N". */
-function ChipsTerapias({ terapias, max = 3, destacarPrimeira = false }: { terapias: TerapiaDoProfissional[]; max?: number; destacarPrimeira?: boolean }) {
-  if (!terapias.length) return <span className="text-xs text-muted-foreground">Sem terapia</span>
+/** Até `max` chips, cada um com os tons da própria terapia, + "+N". */
+function ChipsTerapias({ terapias, max = 3, inativo = false }: { terapias: TerapiaDoProfissional[]; max?: number; inativo?: boolean }) {
+  if (!terapias.length) return <span className="text-xs text-[var(--ua-ink-subtle)]">Sem terapia</span>
   const resto = terapias.length - max
   return (
-    <div className="flex min-w-0 flex-wrap gap-1">
-      {terapias.slice(0, max).map((t, i) => <ChipTerapia key={t.nome} terapia={t} destaque={destacarPrimeira && i === 0} />)}
+    <div className="flex w-full min-w-0 flex-wrap gap-1.5">
+      {terapias.slice(0, max).map(t => <ChipTerapia key={t.nome} terapia={t} inativo={inativo} />)}
       {resto > 0 && (
-        <span className="inline-flex items-center rounded-full border border-border px-2 py-0.5 text-xs font-medium text-muted-foreground" title={terapias.slice(max).map(t => t.nome).join(", ")}>
-          +{resto}
-        </span>
+        <span className="ua-chip ua-chip-mais" title={terapias.slice(max).map(t => t.nome).join(", ")}>+{resto}</span>
       )}
     </div>
   )
 }
 
-/**
- * Linha "rótulo: valor" do card. Diferente da LinhaDado de Pacientes, o valor
- * QUEBRA linha em vez de ser cortado com reticências — celular e registro têm
- * de aparecer inteiros.
- */
-function LinhaCard({ icone: Icone, rotulo, valor }: { icone: typeof Phone; rotulo: string; valor: string | null }) {
+/** Disponibilidade no card: verde com o resumo quando há grade vigente; âmbar quando é pendência. */
+function LinhaDisponibilidade({ linha }: { linha: Linha }) {
+  const g = linha.grade
+  switch (linha.situacaoGrade) {
+    case null:
+      return null
+    case "vigente":
+      return <div className="ua-avail ok">{linha.resumo ?? `Grade vigente desde ${dataBR(g?.vigente_desde)}`}</div>
+    case "agendada":
+      return <div className="ua-avail none">Sem grade hoje · começa em {dataBR(g?.proxima_de)}</div>
+    case "inativa":
+      return <div className="ua-avail none">Grade inativa desde {g?.encerrada_em ? dataBR(somarDias(g.encerrada_em, 1)) : "—"}</div>
+    default:
+      return <div className="ua-avail none">Sem disponibilidade cadastrada</div>
+  }
+}
+
+function Campo({ rotulo, valor }: { rotulo: string; valor: string | null }) {
   return (
-    <div className="flex items-start gap-2">
-      <dt className="flex w-[5.25rem] shrink-0 items-center gap-1.5 text-muted-foreground">
-        <Icone className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-        {rotulo}
-      </dt>
-      <dd className="min-w-0 break-words font-semibold tabular-nums text-foreground">{valor || "—"}</dd>
-    </div>
+    <>
+      <dt>{rotulo}</dt>
+      <dd className={valor ? "" : "empty"}>{valor || "Não informado"}</dd>
+    </>
   )
 }
 
 const CardProfissional = memo(function CardProfissional({ linha }: { linha: Linha }) {
-  const { prof, terapias, cor } = linha
-  const focal = terapias[0]
+  const { prof, terapias } = linha
+  // A terapia principal (a que pinta o card) e as outras, cada uma com seus tons.
+  const principal = terapias.find(t => t.nome === linha.focal) ?? null
+  const outras = terapias.filter(t => t !== principal)
+  const inativo = !prof.ativo
   return (
     <li>
       <Link
         href={`/cadastros/profissionais/${prof.id}`}
-        style={estiloCor(cor)}
-        className={`group relative flex h-full flex-col overflow-hidden rounded-xl border border-border bg-card p-5 shadow-sm transition-all duration-200 ease-out hover:-translate-y-1.5 hover:border-[var(--t-linha)] hover:shadow-lg motion-reduce:transform-none motion-reduce:transition-none ${foco} ${prof.ativo ? "" : "opacity-75"}`}
+        style={estiloTons(corDoCatalogo(principal))}
+        className={`ua-tons ua-card ${inativo ? "is-inactive" : ""}`}
       >
-        {/* Tarja reta e fina na cor da terapia principal, na borda de cima. A
-            linha interna segura as cores muito claras (Psicopedagogia). */}
-        <span
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[var(--t-cor)] shadow-[inset_0_-1px_0_rgba(15,23,42,0.08)]"
-        />
-        <div className="relative flex items-start justify-between gap-2">
-          <span className="text-sm text-muted-foreground">
-            ID <span className="font-semibold text-foreground">{idExibicaoProfissional(prof)}</span>
-          </span>
-          <div className="flex flex-wrap justify-end gap-1">
+        <header className="ua-head">
+          <div className="ua-top">
+            <span className="ua-id">ID <b>{idExibicaoProfissional(prof)}</b></span>
             <Situacao ativo={prof.ativo} />
           </div>
-        </div>
+          <AvatarProfissional nome={prof.nome} cor={corDoCatalogo(principal)} inativo={inativo} />
+          <h2 className="ua-name"><span className="line-clamp-2" title={prof.nome}>{prof.nome}</span></h2>
+          {principal
+            ? <span className="ua-role"><span className="truncate">{principal.nome}</span></span>
+            : <span className="text-xs text-[var(--ua-ink-subtle)]">Sem terapia</span>}
+        </header>
 
-        <div className="relative mt-3 flex flex-col items-center text-center">
-          <AvatarProfissional nome={prof.nome} cor={cor} />
-          <h2 className="mt-4 line-clamp-2 w-full text-base font-bold leading-snug text-foreground" title={prof.nome}>
-            {prof.nome}
-          </h2>
-          {focal ? (
-            <p className="mt-1 inline-flex max-w-full items-center gap-1.5 text-xs font-semibold text-[var(--t-tinta)] dark:text-[var(--t-tinta-escuro)]">
-              <span className="h-2 w-2 shrink-0 rounded-full bg-[var(--t-cor)] ring-1 ring-black/10" aria-hidden="true" />
-              <span className="truncate">{focal.nome}</span>
-            </p>
-          ) : (
-            <p className="mt-1 text-xs text-muted-foreground">Sem terapia</p>
+        <div className="ua-body">
+          <dl className="ua-fields">
+            <Campo rotulo="Tipo" valor={prof.tipo_registro} />
+            <Campo rotulo="Registro" valor={[prof.codigo_registro, prof.uf_registro].filter(Boolean).join(" · ") || null} />
+            <Campo rotulo="CBO" valor={prof.cbo} />
+            <Campo rotulo="Celular" valor={formatarCelular(prof.celular)} />
+          </dl>
+
+          <LinhaDisponibilidade linha={linha} />
+
+          {outras.length > 0 && (
+            <div className="ua-chips mt-auto">
+              <ChipsTerapias terapias={outras} max={3} inativo={inativo} />
+            </div>
           )}
         </div>
-
-        <hr className="relative my-4 border-border" />
-
-        <dl className="relative space-y-3 pb-4 text-sm">
-          <LinhaCard icone={IdCard} rotulo="Tipo" valor={prof.tipo_registro} />
-          <LinhaCard icone={BadgeCheck} rotulo="Registro" valor={[prof.codigo_registro, prof.uf_registro].filter(Boolean).join(" · ") || null} />
-          <LinhaCard icone={Briefcase} rotulo="CBO" valor={prof.cbo} />
-          <LinhaCard icone={Phone} rotulo="Celular" valor={formatarCelular(prof.celular)} />
-        </dl>
-
-        {linha.situacaoGrade && (
-          <div className="pp relative -mt-1 flex justify-center pb-3">
-            <SeloGrade
-              pequeno
-              situacao={linha.situacaoGrade}
-              vigenteDesde={linha.grade?.vigente_desde}
-              proximaDe={linha.grade?.proxima_de}
-              encerradaEm={linha.grade?.encerrada_em}
-            />
-          </div>
-        )}
-
-        {/* A focal já está sob o nome; aqui só as outras. */}
-        {terapias.length > 1 && (
-          <div className="relative mt-auto border-t border-border pt-3">
-            <ChipsTerapias terapias={terapias.slice(1)} max={2} />
-          </div>
-        )}
       </Link>
     </li>
   )
 })
 
 const LinhaProfissional = memo(function LinhaProfissional({ linha }: { linha: Linha }) {
-  const { prof, terapias, cor } = linha
+  const { prof, terapias } = linha
+  const principal = terapias.find(t => t.nome === linha.focal) ?? null
   return (
     <li className="border-b border-border last:border-b-0">
       <Link
@@ -682,7 +664,7 @@ const LinhaProfissional = memo(function LinhaProfissional({ linha }: { linha: Li
         className={`group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 px-4 py-3 text-sm transition-colors hover:bg-muted/50 motion-reduce:transition-none ${COLUNAS_LISTA} ${foco} focus-visible:ring-inset`}
       >
         <div className="flex min-w-0 items-center gap-3">
-          <AvatarProfissional nome={prof.nome} cor={cor} tamanho="sm" />
+          <AvatarProfissional nome={prof.nome} cor={corDoCatalogo(principal)} tamanho="sm" inativo={!prof.ativo} />
           <div className="min-w-0">
             <span className="block truncate font-medium text-primary group-hover:underline" title={prof.nome}>{prof.nome}</span>
             <p className="mt-0.5 truncate text-xs text-muted-foreground md:hidden">
@@ -693,7 +675,7 @@ const LinhaProfissional = memo(function LinhaProfissional({ linha }: { linha: Li
         <span className="hidden tabular-nums text-foreground md:block">{idExibicaoProfissional(prof)}</span>
         <span className="hidden truncate text-foreground md:block">{registroCompleto(prof) ?? "—"}</span>
         <span className="hidden truncate tabular-nums text-foreground md:block">{formatarCelular(prof.celular) ?? "—"}</span>
-        <span className="hidden min-w-0 md:block"><ChipsTerapias terapias={terapias} max={2} destacarPrimeira /></span>
+        <span className="hidden min-w-0 md:block"><ChipsTerapias terapias={terapias} max={2} inativo={!prof.ativo} /></span>
         <span className="justify-self-end md:justify-self-start"><Situacao ativo={prof.ativo} /></span>
       </Link>
     </li>
@@ -702,21 +684,20 @@ const LinhaProfissional = memo(function LinhaProfissional({ linha }: { linha: Li
 
 function GridEsqueleto() {
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
-      {Array.from({ length: 10 }).map((_, i) => (
-        <div key={i} className="rounded-xl border border-border bg-card p-5 shadow-sm">
-          <div className="flex items-start justify-between">
-            <div className="h-3 w-14 animate-pulse rounded bg-muted" />
-            <div className="h-4 w-12 animate-pulse rounded-full bg-muted" />
-          </div>
-          <div className="mt-3 flex flex-col items-center">
-            <div className="h-24 w-24 animate-pulse rounded-full bg-muted" />
+    <div className="ua-grid">
+      {Array.from({ length: 8 }).map((_, i) => (
+        <div key={i} className="ua-card">
+          <div className="ua-head">
+            <div className="ua-top">
+              <div className="h-3 w-14 animate-pulse rounded bg-muted" />
+              <div className="h-4 w-12 animate-pulse rounded-full bg-muted" />
+            </div>
+            <div className="h-[76px] w-[76px] animate-pulse rounded-full bg-muted" />
             <div className="mt-4 h-3 w-28 animate-pulse rounded bg-muted" />
             <div className="mt-2 h-2.5 w-20 animate-pulse rounded bg-muted" />
           </div>
-          <hr className="my-4 border-border" />
-          <div className="space-y-3">
-            {Array.from({ length: 3 }).map((__, j) => <div key={j} className="h-3 w-32 animate-pulse rounded bg-muted" />)}
+          <div className="ua-body">
+            {Array.from({ length: 4 }).map((__, j) => <div key={j} className="h-3 w-40 animate-pulse rounded bg-muted" />)}
           </div>
         </div>
       ))}

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   conflitosDeLocal, copiarDia, dataBR, diferencasEntreVersoes, faixasDaGrade, faixasParaRpc, foraDaExclusividade,
-  hojeBrasilia, novaFaixa, periodoBR, sessoesDaFaixa, sobraDaFaixa, somarDias, totaisDaSemana, validarRascunho,
+  hojeBrasilia, novaFaixa, periodoBR, resumoSemana, sessoesDaFaixa, sobraDaFaixa, somarDias, totaisDaSemana, validarRascunho,
 } from "./disponibilidadeProfissional"
 import type { LocalDisponivel, RascunhoDisponibilidade } from "@/types/disponibilidadeProfissional"
 
@@ -142,3 +142,18 @@ function addMin(h: string, m: number) {
   const t = hh * 60 + mm + m
   return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`
 }
+
+describe("resumoSemana", () => {
+  const f = (dia: number, ini: string, fim: string) => ({ dia_semana: dia, hora_inicio: `${ini}:00`, hora_fim: `${fim}:00` })
+  it("dias soltos e turno", () => {
+    expect(resumoSemana([1, 3, 5], [f(1, "08:00", "12:00"), f(3, "08:00", "11:20"), f(5, "08:40", "12:00")])).toBe("Seg, Qua, Sex · manhã")
+  })
+  it("sequência de 3+ dias vira intervalo; manhã e tarde", () => {
+    expect(resumoSemana([1, 2, 3, 4, 6], [f(1, "08:00", "17:40"), f(2, "13:00", "17:00"), f(3, "08:00", "12:00"), f(4, "08:00", "12:00"), f(6, "13:00", "15:00")]))
+      .toBe("Seg a Qui, Sáb · manhã e tarde")
+  })
+  it("dia desligado não conta; sem faixa ativa = null", () => {
+    expect(resumoSemana([2], [f(1, "13:00", "17:00"), f(2, "13:00", "17:00")])).toBe("Ter · tarde")
+    expect(resumoSemana([], [f(1, "08:00", "12:00")])).toBeNull()
+  })
+})

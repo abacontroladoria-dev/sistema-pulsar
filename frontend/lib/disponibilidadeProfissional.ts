@@ -408,3 +408,35 @@ export function somarDias(iso: string, dias: number): string {
 
 /** "01/11/2026 → indeterminado" / "01/09/2026 → 31/10/2026". */
 export const periodoBR = (de: string, ate: string | null) => `${dataBR(de)} → ${ate ? dataBR(ate) : "indeterminado"}`
+
+// ── Resumo para o card ("Seg, Qua, Sex · manhã") ─────────────────────────────
+
+/**
+ * Dias com faixa (sequência de 3+ dias seguidos vira "Seg a Qui") e o turno:
+ * manhã (algo antes do meio-dia), tarde (algo depois das 13h) ou os dois.
+ * null quando nenhum dia ativo tem faixa.
+ */
+export function resumoSemana(
+  diasAtivos: number[],
+  faixas: { dia_semana: number; hora_inicio: string; hora_fim: string }[]
+): string | null {
+  const ativos = new Set(diasAtivos)
+  const validas = faixas.filter(f => ativos.has(f.dia_semana))
+  const dias = [...new Set(validas.map(f => f.dia_semana))].sort((a, b) => a - b)
+  if (!dias.length) return null
+
+  const grupos: number[][] = []
+  for (const d of dias) {
+    const ultimo = grupos[grupos.length - 1]
+    if (ultimo && d === ultimo[ultimo.length - 1] + 1) ultimo.push(d)
+    else grupos.push([d])
+  }
+  const textoDias = grupos
+    .flatMap(g => (g.length >= 3 ? [`${curtoDia(g[0])} a ${curtoDia(g[g.length - 1])}`] : g.map(curtoDia)))
+    .join(", ")
+
+  const manha = validas.some(f => paraMin(f.hora_inicio) < 12 * 60)
+  const tarde = validas.some(f => paraMin(f.hora_fim) > 13 * 60)
+  const turno = manha && tarde ? "manhã e tarde" : manha ? "manhã" : "tarde"
+  return `${textoDias} · ${turno}`
+}
