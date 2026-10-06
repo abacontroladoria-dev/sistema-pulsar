@@ -193,6 +193,11 @@ export function ModalDetalheEvolucao({
               <span className="inline-flex items-center gap-1">
                 <User className="h-3 w-3" /> {item.profissional_nome}
               </span>
+              {item.substituicao && (
+                <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">
+                  Substituição · agendado: {item.profissional_agendado_nome ?? '—'}
+                </span>
+              )}
               <span className="inline-flex items-center gap-1">
                 <Calendar className="h-3 w-3" />
                 {new Date(item.data_sessao + 'T12:00:00Z').toLocaleDateString('pt-BR')}

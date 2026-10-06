@@ -103,8 +103,16 @@ export function EvolucoesFeedTab({ evolucoes, onSelecionarEvolucao }: Props) {
                   </td>
 
                   <td className="max-w-50 px-4 py-3">
-                    <div className="truncate font-medium text-foreground">
-                      {item.profissional_nome}
+                    <div className="flex items-center gap-1.5">
+                      <span className="truncate font-medium text-foreground">{item.profissional_nome}</span>
+                      {item.substituicao && (
+                        <span
+                          className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800 dark:bg-amber-500/15 dark:text-amber-300"
+                          title={`Substituiu ${item.profissional_agendado_nome ?? 'o profissional agendado'}`}
+                        >
+                          Substituição
+                        </span>
+                      )}
                     </div>
                     <div className="truncate text-[11px] text-muted-foreground">
                       {item.terapia_nome || 'Terapia não informada'}

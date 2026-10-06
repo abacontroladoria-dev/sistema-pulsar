@@ -87,6 +87,9 @@ export interface EvolucaoPendenteAuditoria {
   data_sessao: string
   profissional_id: number | null
   profissional_nome: string
+  /** Quem executou ≠ quem estava agendado. `profissional_*` já é o executor. */
+  substituicao?: boolean
+  profissional_agendado_nome?: string | null
   paciente_id: number | null
   paciente_nome: string
   terapia_nome: string | null

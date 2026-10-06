@@ -6,6 +6,7 @@ import type {
   StatusCobrancaEvolucao,
   StatusRiscoEvolucao
 } from '@/types/auditoriaEvolucoes'
+import { executorDaSessao, filtroExecutadoPor } from '@/lib/auditoria/executor'
 
 export interface FiltrosAuditoriaEvolucoes {
   dataInicio?: string
@@ -82,6 +83,8 @@ const COLUNAS_GRADE = `
   data,
   profissional_id,
   profissional_nome,
+  tratativa_profissional_id,
+  tratativa_profissional_nome,
   paciente_id,
   paciente_nome,
   terapia_nome,
@@ -148,12 +151,15 @@ export async function buscarEvolucoesComAuditoria(
     // 3. Mesclar resultados
     let resultado: EvolucaoPendenteAuditoria[] = gradeRows.linhas.map(r => {
       const auditoria = auditoriaMap.get(r.id) || null
+      const executor = executorDaSessao(r)
       return {
         grade_id: r.id,
         tita_agendamento_id: r.tita_agendamento_id,
         data_sessao: r.data,
-        profissional_id: r.profissional_id,
-        profissional_nome: r.profissional_nome || 'Profissional não identificado',
+        profissional_id: executor.profissional_id,
+        profissional_nome: executor.profissional_nome || 'Profissional não identificado',
+        substituicao: executor.substituicao,
+        profissional_agendado_nome: executor.profissional_agendado_nome,
         paciente_id: r.paciente_id,
         paciente_nome: r.paciente_nome || 'Paciente não identificado',
         terapia_nome: r.terapia_nome,
@@ -203,6 +209,8 @@ type LinhaGrade = {
   data: string
   profissional_id: number | null
   profissional_nome: string | null
+  tratativa_profissional_id: number | null
+  tratativa_profissional_nome: string | null
   paciente_id: number | null
   paciente_nome: string | null
   terapia_nome: string | null
@@ -237,7 +245,7 @@ async function buscarGradePaginada(
       .range(pagina * TAMANHO_PAGINA, (pagina + 1) * TAMANHO_PAGINA - 1)
 
     if (filtros.dataFim) query = query.lte('data', filtros.dataFim)
-    if (filtros.profissionalId) query = query.eq('profissional_id', filtros.profissionalId)
+    if (filtros.profissionalId) query = query.or(filtroExecutadoPor(filtros.profissionalId))
     if (filtros.unidadeId) query = query.eq('unidade_id', filtros.unidadeId)
     return query as unknown as PromiseLike<{ data: LinhaGrade[] | null; error: { message: string } | null }>
   })
@@ -275,7 +283,8 @@ async function buscarGradePelaAuditoria(
     if (filtros.statusCobranca && filtros.statusCobranca !== 'todos') {
       query = query.eq('status_cobranca', filtros.statusCobranca)
     }
-    if (filtros.profissionalId) query = query.eq('profissional_id', filtros.profissionalId)
+    // Profissional NÃO filtra aqui: auditorias antigas gravaram o agendado, não o
+    // executor. Quem decide é a grade, logo abaixo.
     if (filtros.unidadeId) query = query.eq('unidade_id', filtros.unidadeId)
     return query as unknown as PromiseLike<{ data: { grade_id: string }[] | null; error: { message: string } | null }>
   })
@@ -296,7 +305,7 @@ async function buscarGradePelaAuditoria(
         .select(COLUNAS_GRADE)
         .in('id', chunk)
         .eq('ativo', true)
-      if (filtros.profissionalId) query = query.eq('profissional_id', filtros.profissionalId)
+      if (filtros.profissionalId) query = query.or(filtroExecutadoPor(filtros.profissionalId))
       if (filtros.unidadeId) query = query.eq('unidade_id', filtros.unidadeId)
       return query
     })

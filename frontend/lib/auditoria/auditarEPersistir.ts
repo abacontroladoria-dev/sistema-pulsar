@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { auditarEvolucaoComIA } from './auditorEngine'
 import { carregarCriteriosVigentes, type CriteriosVigentes } from './criterios'
 import { carregarPosicoesNoDia, descreverPosicao } from './posicaoSessao'
+import { executorDaSessao } from './executor'
 
 /**
  * Auditar uma evolução e gravar o veredito — num lugar só.
@@ -18,6 +19,8 @@ export const COLUNAS_GRADE = `
   data,
   profissional_id,
   profissional_nome,
+  tratativa_profissional_id,
+  tratativa_profissional_nome,
   paciente_id,
   paciente_nome,
   terapia_nome,
@@ -32,6 +35,8 @@ export interface GradeParaAuditar {
   data: string
   profissional_id: number | null
   profissional_nome: string | null
+  tratativa_profissional_id: number | null
+  tratativa_profissional_nome: string | null
   paciente_id: number | null
   paciente_nome: string | null
   terapia_nome: string | null
@@ -79,9 +84,10 @@ export async function auditarEPersistir(
   const auditarUm = async (item: GradeParaAuditar) => {
     try {
       const posicao = posicoes.get(item.id)
+      const executor = executorDaSessao(item)
       const analise = await auditarEvolucaoComIA({
         pacienteNome: item.paciente_nome || 'Paciente',
-        profissionalNome: item.profissional_nome || 'Profissional',
+        profissionalNome: executor.profissional_nome || 'Profissional',
         terapiaNome: item.terapia_nome,
         dataSessao: item.data,
         posicaoNoDia: posicao ? descreverPosicao(posicao) : undefined,
@@ -97,8 +103,8 @@ export async function auditarEPersistir(
             grade_id: item.id,
             tita_agendamento_id: item.tita_agendamento_id,
             data_sessao: item.data,
-            profissional_id: item.profissional_id,
-            profissional_nome: item.profissional_nome || 'Profissional',
+            profissional_id: executor.profissional_id,
+            profissional_nome: executor.profissional_nome || 'Profissional',
             paciente_id: item.paciente_id,
             paciente_nome: item.paciente_nome || 'Paciente',
             terapia_nome: item.terapia_nome,
