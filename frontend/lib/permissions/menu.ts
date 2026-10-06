@@ -131,6 +131,7 @@ export const MENU_ITENS: MenuItemDef[] = [
   { codigo: 'indicadores_comparativo_sessoes', label: 'Comparativo de Sessões', grupo: G.indicadores.nome, path: '/cronograma/indicadores?tab=comparativo-sessoes', icon: ArrowRightLeft },
 
   { codigo: 'cadastros_pacientes', label: 'Pacientes', grupo: G.cadastros.nome, path: '/cadastros/pacientes', icon: UserRound },
+  { codigo: 'cadastros_profissionais', label: 'Profissionais', grupo: G.cadastros.nome, path: '/cadastros/profissionais', icon: Stethoscope },
   { codigo: 'cadastros_terapias', label: 'Terapias', grupo: G.cadastros.nome, path: '/cadastros/terapias', icon: Palette },
   { codigo: 'cadastros_convenios', label: 'Convênios', grupo: G.cadastros.nome, path: '/cadastros/convenios', icon: Building2 },
   { codigo: 'cronograma_valores_convenio', label: 'Cadastro de Valores', grupo: G.cadastros.nome, path: '/cadastros/cadastro-valores', icon: Tag },

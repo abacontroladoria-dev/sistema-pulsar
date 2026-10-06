@@ -119,9 +119,13 @@ export const CODIGO_PARA_ROTAS: Record<string, string[]> = {
   // Catálogo de terapias/procedimentos com a cor (hex) usada no Cadastro de
   // Profissionais. Ver 20261006120000_cadastro_terapias.sql.
   cadastros_terapias: ['/cadastros/terapias'],
-  // `cadastros_profissionais`, `cronograma_por_paciente` e
-  // `cronograma_por_profissional` saíram em 29/09/2026: as rotas nunca ganharam
-  // página e o catálogo passou a espelhar o Sidebar. Voltam junto com a tela.
+  // Cadastro de Profissionais (lista + ficha /cadastros/profissionais/[id]).
+  // Saiu em 29/09/2026 sem tela e voltou com ela em 06/10/2026. Dá acesso a
+  // CPF/e-mail/celular/endereço — a RLS das tabelas usa este mesmo código.
+  cadastros_profissionais: ['/cadastros/profissionais'],
+  // `cronograma_por_paciente` e `cronograma_por_profissional` saíram em
+  // 29/09/2026: as rotas nunca ganharam página e o catálogo passou a espelhar o
+  // Sidebar. Voltam junto com a tela.
   // Controle de insumos (porte do AXIUM). Um código só, não os 8 granulares do
   // AXIUM (compras.ver/aprovar/comprar/…): o acesso definido pelo usuário é por
   // setor — faturamento, admin e diretoria. Granularizar depois, se aparecer o
