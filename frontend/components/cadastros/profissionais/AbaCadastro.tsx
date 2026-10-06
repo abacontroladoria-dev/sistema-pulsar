@@ -96,8 +96,6 @@ export function AbaCadastro({
         </div>
       </SecaoPastel>
 
-      {imagens}
-
       <SecaoPastel titulo="cad-endereco">
         <CabecalhoPastel id="cad-endereco" titulo="Endereço" t="teal" Icone={MapPin} tamanho="medio" nivel="h3" apoio="Residência do profissional" />
         <div className="grid gap-4 @md:grid-cols-2">
@@ -125,6 +123,8 @@ export function AbaCadastro({
           placeholder={disabled ? "Sem observações." : "Ex.: prefere atender pela manhã às quintas."}
         />
       </SecaoPastel>
+
+      {imagens}
     </div>
   )
 }
