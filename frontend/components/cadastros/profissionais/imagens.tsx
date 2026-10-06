@@ -139,7 +139,6 @@ export function SecaoImagens({ prof, gravar, confirmar }: { prof: Profissional; 
       <div className="grid gap-4 @2xl:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
         <Bloco
           rotulo="Foto de perfil"
-          ajuda="Aparece no lugar do ícone da terapia, nos cards e na ficha."
           previa={
             <span className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-full bg-[var(--pp-muted)] text-[var(--pp-ink-muted)]">
               {urlFoto ? <img src={urlFoto} alt={`Foto de ${prof.nome}`} className="h-full w-full object-cover" /> : <Camera className="h-8 w-8" aria-hidden />}
@@ -150,7 +149,6 @@ export function SecaoImagens({ prof, gravar, confirmar }: { prof: Profissional; 
         />
         <Bloco
           rotulo="Assinatura / carimbo"
-          ajuda="Foto ou digitalização da assinatura ou do carimbo. PNG com fundo transparente fica mais limpo."
           previa={
             <span className="flex h-24 w-full max-w-[22rem] items-center justify-center overflow-hidden rounded-[14px] bg-white shadow-[inset_0_0_0_1px_var(--pp-border)]">
               {urlAssinatura
@@ -167,20 +165,16 @@ export function SecaoImagens({ prof, gravar, confirmar }: { prof: Profissional; 
 }
 
 function Bloco({
-  rotulo, ajuda, previa, estado, rotuloAdicionar,
+  rotulo, previa, estado, rotuloAdicionar,
 }: {
   rotulo: string
-  ajuda: string
   previa: ReactNode
   estado: ReturnType<typeof useImagemProfissional>
   rotuloAdicionar: string
 }) {
   return (
     <div className="flex flex-col gap-3 rounded-[18px] bg-[var(--pp-muted)] p-4">
-      <div>
-        <p className="text-sm font-extrabold">{rotulo}</p>
-        <p className="text-xs font-semibold text-[var(--pp-ink-muted)]">{ajuda}</p>
-      </div>
+      <p className="text-sm font-extrabold">{rotulo}</p>
       <div className="relative">
         {previa}
         {estado.enviando && (

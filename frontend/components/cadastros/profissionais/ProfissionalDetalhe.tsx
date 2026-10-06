@@ -203,31 +203,14 @@ export function ProfissionalDetalhe({ id, abaInicial }: { id: number; abaInicial
           </div>
 
           <div className="flex flex-wrap gap-2 @2xl:self-start">
-            {editando ? (
-              <>
-                <button type="button" onClick={cancelar} className={`${tom("cinza")} pp-btn pp-btn-suave`} disabled={d.salvando}>
-                  <X className="h-4 w-4" aria-hidden /> Cancelar
-                </button>
-                <button type="button" onClick={salvarEdicao} className={`${tom("verde")} pp-btn`} disabled={d.salvando || !camposSujos.length}>
-                  {d.salvando ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Check className="h-4 w-4" aria-hidden />}
-                  Salvar{camposSujos.length ? ` (${camposSujos.length})` : ""}
-                </button>
-              </>
-            ) : (
-              <>
-                <button type="button" onClick={() => { setAba("cadastro"); setEditando(true) }} className={`${tom("cinza")} pp-btn`}>
-                  <Pencil className="h-4 w-4" aria-hidden /> Editar
-                </button>
-                <button type="button" onClick={alternarAtivo} disabled={alternandoAtivo}
-                  className={`${tom(prof.ativo ? "vermelho" : "verde")} pp-btn pp-btn-suave`}>
-                  {prof.ativo ? <CircleSlash className="h-4 w-4" aria-hidden /> : <RotateCcw className="h-4 w-4" aria-hidden />}
-                  {prof.ativo ? "Inativar" : "Reativar"}
-                </button>
-                <button type="button" onClick={() => setVerHistorico(true)} className="pp-iconbtn h-[42px] w-[42px]" title="Alterações no cadastro" aria-label="Alterações no cadastro">
-                  <History className="h-4 w-4" aria-hidden />
-                </button>
-              </>
-            )}
+            <button type="button" onClick={alternarAtivo} disabled={alternandoAtivo || editando}
+              className={`${tom(prof.ativo ? "vermelho" : "verde")} pp-btn pp-btn-suave`}>
+              {prof.ativo ? <CircleSlash className="h-4 w-4" aria-hidden /> : <RotateCcw className="h-4 w-4" aria-hidden />}
+              {prof.ativo ? "Inativar" : "Reativar"}
+            </button>
+            <button type="button" onClick={() => setVerHistorico(true)} className="pp-iconbtn h-[42px] w-[42px]" title="Alterações no cadastro" aria-label="Alterações no cadastro">
+              <History className="h-4 w-4" aria-hidden />
+            </button>
           </div>
         </div>
 
@@ -284,6 +267,28 @@ export function ProfissionalDetalhe({ id, abaInicial }: { id: number; abaInicial
 
       <div role="tabpanel" id={`prof-painel-${aba}`} aria-labelledby={`prof-aba-${aba}`} className="pt-2">
         {aba === "cadastro" && (
+          <>
+          {/* Editar só existe aqui: é a única aba cujos campos dependem dele. */}
+          <div className="mb-4 flex flex-wrap items-center justify-end gap-2">
+            {editando ? (
+              <>
+                <span className="mr-auto text-[13px] font-semibold text-[var(--pp-ink-muted)]">
+                  {camposSujos.length ? `${camposSujos.length} campo${camposSujos.length === 1 ? "" : "s"} alterado${camposSujos.length === 1 ? "" : "s"} — fica no histórico ao salvar` : "Editando o cadastro"}
+                </span>
+                <button type="button" onClick={cancelar} className={`${tom("cinza")} pp-btn pp-btn-suave`} disabled={d.salvando}>
+                  <X className="h-4 w-4" aria-hidden /> Cancelar
+                </button>
+                <button type="button" onClick={salvarEdicao} className={`${tom("verde")} pp-btn`} disabled={d.salvando || !camposSujos.length}>
+                  {d.salvando ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Check className="h-4 w-4" aria-hidden />}
+                  Salvar{camposSujos.length ? ` (${camposSujos.length})` : ""}
+                </button>
+              </>
+            ) : (
+              <button type="button" onClick={() => setEditando(true)} className={`${tom("cinza")} pp-btn`}>
+                <Pencil className="h-4 w-4" aria-hidden /> Editar
+              </button>
+            )}
+          </div>
           <AbaCadastro
             prof={prof}
             form={d.form}
@@ -291,6 +296,7 @@ export function ProfissionalDetalhe({ id, abaInicial }: { id: number; abaInicial
             editando={editando}
             imagens={<SecaoImagens prof={prof} gravar={d.gravarDireto} confirmar={confirmar} />}
           />
+          </>
         )}
         {aba === "terapias" && (
           <AbaTerapias
