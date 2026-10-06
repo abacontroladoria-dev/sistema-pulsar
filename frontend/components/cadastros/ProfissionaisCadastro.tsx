@@ -244,13 +244,15 @@ export function ProfissionaisCadastro() {
   const { setRightContent } = useHeader()
   useEffect(() => {
     setRightContent(
+      // O header do painel tem altura fixa (80px) e ~840px livres em tela de
+      // 1440: tudo numa linha só, com rótulos longos só em tela bem larga.
       <div className="flex flex-wrap items-center justify-end gap-2">
-        <div className="relative w-full min-w-0 sm:w-72">
+        <div className="relative w-40 min-w-0 min-[1680px]:w-64">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
           <input
             type="text"
             className={`${campo} h-9 pl-9 ${buscaTexto ? "pr-9" : ""} w-full`}
-            placeholder="Buscar nome, CPF, registro ou ID"
+            placeholder="Buscar nome, CPF, registro…"
             value={buscaTexto}
             onChange={e => { setBuscaTexto(e.target.value); setPagina(1) }}
             aria-label="Buscar profissional"
@@ -266,6 +268,29 @@ export function ProfissionaisCadastro() {
             </button>
           )}
         </div>
+        <FiltroSituacao value={situacoes} onChange={v => { setSituacoes(v); setPagina(1) }} />
+        <div className="w-40 shrink-0 min-[1680px]:w-48">
+          <MultiSearchCombobox
+            opcoes={opcoesTerapia}
+            selecionados={filtroTerapias}
+            onToggle={id => {
+              setFiltroTerapias(prev => {
+                const n = new Set(prev)
+                if (n.has(id)) n.delete(id)
+                else n.add(id)
+                return n
+              })
+              setPagina(1)
+            }}
+            onDesmarcarTodos={() => { setFiltroTerapias(new Set()); setPagina(1) }}
+            ariaLabel="Filtrar por terapia"
+            nomePlural="terapias"
+            placeholder="Terapia: todas"
+            className="h-9 text-sm"
+          />
+        </div>
+        <OrdenarPor value={ordem} onChange={trocarOrdem} />
+        <span className="mx-1 h-6 w-px shrink-0 bg-border" aria-hidden="true" />
         <button
           type="button"
           onClick={() => setVerHistorico(true)}
@@ -279,11 +304,12 @@ export function ProfissionaisCadastro() {
           type="button"
           onClick={importar}
           disabled={importando || migrationPendente}
-          title="Traz quem está na grade da TiTa e completa campos vazios. Nunca sobrescreve o que foi editado aqui."
-          className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-md border border-border px-3 text-sm font-semibold text-foreground hover:bg-muted disabled:opacity-50 ${foco}`}
+          title="Importar da TiTa — traz quem está na grade e completa campos vazios. Nunca sobrescreve o que foi editado aqui."
+          aria-label="Importar da TiTa"
+          className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-md border border-border px-2.5 text-sm font-semibold text-foreground hover:bg-muted disabled:opacity-50 min-[1680px]:px-3 ${foco}`}
         >
           {importando ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <CloudDownload className="h-4 w-4" aria-hidden="true" />}
-          Importar da TiTa
+          <span className="hidden min-[1680px]:inline">Importar da TiTa</span>
         </button>
         <button
           type="button"
@@ -291,12 +317,13 @@ export function ProfissionaisCadastro() {
           disabled={migrationPendente}
           className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-md bg-primary px-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 ${foco}`}
         >
-          <UserPlus className="h-4 w-4" aria-hidden="true" /> Novo profissional
+          <UserPlus className="h-4 w-4" aria-hidden="true" />
+          <span>Novo<span className="hidden min-[1680px]:inline">&nbsp;profissional</span></span>
         </button>
       </div>
     )
     return () => setRightContent(null)
-  }, [buscaTexto, importando, importar, migrationPendente, setRightContent])
+  }, [buscaTexto, situacoes, filtroTerapias, opcoesTerapia, ordem, trocarOrdem, importando, importar, migrationPendente, setRightContent])
 
   if (migrationPendente) {
     return (
@@ -339,37 +366,13 @@ export function ProfissionaisCadastro() {
         </div>
       ) : (
         <>
-          {/* Filtros, ordem e exibição — fora do cabeçalho, numa linha só, todos
-              com a mesma altura. */}
-          <div className="mb-4 flex flex-wrap items-center gap-2">
-            <FiltroSituacao value={situacoes} onChange={v => { setSituacoes(v); setPagina(1) }} />
-            <div className="w-full shrink-0 sm:w-60">
-              <MultiSearchCombobox
-                opcoes={opcoesTerapia}
-                selecionados={filtroTerapias}
-                onToggle={id => {
-                  setFiltroTerapias(prev => {
-                    const n = new Set(prev)
-                    if (n.has(id)) n.delete(id)
-                    else n.add(id)
-                    return n
-                  })
-                  setPagina(1)
-                }}
-                onDesmarcarTodos={() => { setFiltroTerapias(new Set()); setPagina(1) }}
-                ariaLabel="Filtrar por terapia"
-                nomePlural="terapias"
-                placeholder="Terapia: todas"
-                className="h-9 text-sm"
-              />
+          {/* A–Z no centro e grade/lista à direita, na mesma linha. */}
+          <div className="flex items-start gap-3">
+            <div className="min-w-0 flex-1">
+              <BarraAlfabeto value={letra} disponiveis={letrasDisponiveis} onChange={v => { setLetra(v); setPagina(1) }} />
             </div>
-            <div className="ml-auto flex items-center gap-2">
-              <OrdenarPor value={ordem} onChange={trocarOrdem} />
-              <SeletorModo value={modo} onChange={trocarModo} />
-            </div>
+            <SeletorModo value={modo} onChange={trocarModo} />
           </div>
-
-          <BarraAlfabeto value={letra} disponiveis={letrasDisponiveis} onChange={v => { setLetra(v); setPagina(1) }} />
 
           {loading ? (
             <GridEsqueleto />
@@ -415,7 +418,7 @@ export function ProfissionaisCadastro() {
                       <CabecalhoGrupo nome={g.nome} cor={g.cor} total={totalPorGrupo.get(g.nome ?? "") ?? g.itens.length} />
                     </div>
                   )}
-                  <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
                     {g.itens.map(e => <CardProfissional key={e.chave} linha={e.linha} />)}
                   </ul>
                 </section>
@@ -494,12 +497,13 @@ function OrdenarPor({ value, onChange }: { value: Ordem; onChange: (v: Ordem) =>
   return (
     <div ref={ref} className="relative shrink-0">
       <button type="button" onClick={() => setAberto(a => !a)} aria-expanded={aberto} aria-haspopup="listbox"
-        className={`inline-flex h-9 w-52 items-center gap-2 rounded-md border border-border bg-card px-3 text-sm font-semibold text-foreground hover:bg-muted ${foco}`}>
+        title="Ordenar" aria-label={`Ordenar: ${ORDENS.find(o => o.valor === value)?.rotulo}`}
+        className={`inline-flex h-9 items-center gap-2 whitespace-nowrap rounded-md border border-border bg-card px-3 text-sm font-semibold text-foreground hover:bg-muted ${foco}`}>
         <ArrowDownUp className="h-4 w-4 shrink-0" aria-hidden />
-        <span className="truncate">Ordenar: {ORDENS.find(o => o.valor === value)?.rotulo}</span>
+        <span><span className="hidden min-[1680px]:inline">Ordenar:&nbsp;</span>{ORDENS.find(o => o.valor === value)?.rotulo}</span>
       </button>
       {aberto && (
-        <div role="listbox" aria-label="Ordenar profissionais" className="absolute left-0 top-[calc(100%+4px)] z-[100] w-52 rounded-md border border-border bg-popover p-1 shadow-lg">
+        <div role="listbox" aria-label="Ordenar profissionais" className="absolute right-0 top-[calc(100%+4px)] z-[100] w-44 rounded-md border border-border bg-popover p-1 shadow-lg">
           {ORDENS.map(o => (
             <button key={o.valor} type="button" role="option" aria-selected={value === o.valor}
               onClick={() => { onChange(o.valor); setAberto(false) }}
@@ -534,11 +538,12 @@ function FiltroSituacao({ value, onChange }: { value: Set<SituacaoFiltro>; onCha
   const resumo = value.size === 0 ? "Nenhuma" : value.size === SITUACOES.length ? "Todos" : SITUACOES.filter(s => value.has(s.valor)).map(s => s.rotulo).join(", ")
 
   return (
-    <div ref={ref} className="relative w-full shrink-0 sm:w-auto">
+    <div ref={ref} className="relative shrink-0">
       <button type="button" onClick={() => setAberto(a => !a)} aria-expanded={aberto}
-        className={`inline-flex h-9 w-full items-center gap-2 rounded-md border border-border bg-card px-3 text-sm font-semibold text-foreground hover:bg-muted sm:w-44 ${foco}`}>
+        title="Situação" aria-label={`Situação: ${resumo}`}
+        className={`inline-flex h-9 items-center gap-2 whitespace-nowrap rounded-md border border-border bg-card px-3 text-sm font-semibold text-foreground hover:bg-muted ${foco}`}>
         <ListFilter className="h-4 w-4 shrink-0" aria-hidden="true" />
-        <span className="truncate">Situação: {resumo}</span>
+        <span><span className="hidden min-[1680px]:inline">Situação:&nbsp;</span>{resumo}</span>
       </button>
       {aberto && (
         <div role="listbox" aria-label="Filtrar por situação" className="absolute left-0 top-[calc(100%+4px)] z-[100] w-44 rounded-md border border-border bg-popover p-1 shadow-lg">
@@ -623,7 +628,7 @@ const CardProfissional = memo(function CardProfissional({ linha }: { linha: Linh
 
         <div className="relative mt-3 flex flex-col items-center text-center">
           <AvatarProfissional nome={prof.nome} cor={cor} />
-          <h2 className="mt-4 w-full truncate text-base font-bold leading-snug text-foreground" title={prof.nome}>
+          <h2 className="mt-4 line-clamp-2 w-full text-base font-bold leading-snug text-foreground" title={prof.nome}>
             {prof.nome}
           </h2>
           {focal ? (
@@ -697,7 +702,7 @@ const LinhaProfissional = memo(function LinhaProfissional({ linha }: { linha: Li
 
 function GridEsqueleto() {
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
       {Array.from({ length: 10 }).map((_, i) => (
         <div key={i} className="rounded-xl border border-border bg-card p-5 shadow-sm">
           <div className="flex items-start justify-between">
