@@ -471,7 +471,7 @@ function CartaoDia(p: {
             />
           ))}
           <button type="button" onClick={p.onAdicionar} className={`${tom("teal")} pp-btn pp-btn-suave !min-h-9 text-[13px]`}>
-            <Plus className="h-4 w-4" aria-hidden /> Adicionar outro horário de trabalho
+            <Plus className="h-4 w-4" aria-hidden /> Adicionar horário
           </button>
         </div>
       )}

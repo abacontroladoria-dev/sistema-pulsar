@@ -265,7 +265,7 @@ export function ProfissionalDetalhe({ id, abaInicial }: { id: number; abaInicial
             tabIndex={aba === a.id ? 0 : -1}
             onClick={() => { setVersaoFoco(null); setAba(a.id) }}
             onKeyDown={teclaNaAba}
-            className={`${tom(a.t)} pp-aba !min-h-[64px] !gap-2.5 !rounded-[20px] !p-3 @xl:!min-h-[88px] @xl:!gap-3 @xl:!rounded-[24px] @xl:!px-4 @xl:!py-4`}
+            className={`${tom(a.t)} pp-aba after:!hidden !min-h-[64px] !gap-2.5 !rounded-[20px] !p-3 @xl:!min-h-[88px] @xl:!gap-3 @xl:!rounded-[24px] @xl:!px-4 @xl:!py-4`}
           >
             <span className="pp-aba-marca" aria-hidden><a.Icone /></span>
             <span className="pp-aba-icone !h-10 !w-10 !rounded-[14px] @xl:!h-11 @xl:!w-11" aria-hidden><a.Icone className="h-5 w-5" /></span>
