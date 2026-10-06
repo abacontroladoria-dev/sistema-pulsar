@@ -8,6 +8,7 @@ import {
 import { HistoricoCadastrosModal } from "@/components/cadastros/historico/HistoricoCadastrosModal"
 import { InlineNotice } from "@/components/cronograma/ui/InlineNotice"
 import { SecaoPastel, avisoFeito, tom, type Tom } from "@/components/ui/pastel/pecas"
+import { useConfirmacao } from "@/components/ui/pastel/confirmacao"
 import { useUnsavedChangesGuard } from "@/contexts/UnsavedChangesContext"
 import { useCadastroTerapias } from "@/hooks/useCadastroTerapias"
 import { refetchProfissionais } from "@/hooks/useProfissionais"
@@ -39,6 +40,7 @@ type DefAba = {
 
 export function ProfissionalDetalhe({ id, abaInicial }: { id: number; abaInicial?: AbaProfissional }) {
   const d = useProfissionalDetalhe(id)
+  const { confirmar, dialogo } = useConfirmacao()
   const disp = useDisponibilidadeProfissional(id)
   const { terapias: catalogo, indice } = useCadastroTerapias()
   const [aba, setAba] = useState<AbaProfissional>(abaInicial ?? "cadastro")
@@ -102,8 +104,15 @@ export function ProfissionalDetalhe({ id, abaInicial }: { id: number; abaInicial
     { id: "historico", titulo: "Histórico", meta: "Versões guardadas", t: "azul", Icone: History, numero: disp.versoes.length },
   ]
 
-  const cancelar = () => {
-    if (camposSujos.length && !window.confirm("Descartar as alterações não salvas?")) return
+  const cancelar = async () => {
+    if (camposSujos.length && !(await confirmar({
+      titulo: "Descartar as alterações?",
+      texto: `${camposSujos.length} campo${camposSujos.length === 1 ? "" : "s"} alterado${camposSujos.length === 1 ? "" : "s"} ainda não ${camposSujos.length === 1 ? "foi salvo" : "foram salvos"}.`,
+      confirmar: "Descartar",
+      cancelar: "Continuar editando",
+      t: "vermelho",
+      Icone: X,
+    }))) return
     d.descartar()
     setEditando(false)
   }
@@ -111,10 +120,22 @@ export function ProfissionalDetalhe({ id, abaInicial }: { id: number; abaInicial
     if (await d.salvar()) setEditando(false)
   }
   const alternarAtivo = async () => {
-    const msg = prof.ativo
-      ? `Inativar ${prof.nome}? O cadastro e o histórico continuam guardados; ele(a) some da lista padrão.`
-      : `Reativar ${prof.nome}?`
-    if (!window.confirm(msg)) return
+    const ok = await confirmar(prof.ativo
+      ? {
+          titulo: `Inativar ${prof.nome}?`,
+          texto: "O cadastro, a disponibilidade e o histórico continuam guardados; o profissional só sai da lista padrão.",
+          confirmar: "Inativar",
+          t: "vermelho",
+          Icone: CircleSlash,
+        }
+      : {
+          titulo: `Reativar ${prof.nome}?`,
+          texto: "O profissional volta para a lista de ativos.",
+          confirmar: "Reativar",
+          t: "verde",
+          Icone: RotateCcw,
+        })
+    if (!ok) return
     setAlternandoAtivo(true)
     if (await d.gravarDireto({ ativo: !prof.ativo })) avisoFeito(prof.ativo ? "Profissional inativado" : "Profissional reativado")
     setAlternandoAtivo(false)
@@ -309,6 +330,8 @@ export function ProfissionalDetalhe({ id, abaInicial }: { id: number; abaInicial
           />
         )}
       </div>
+
+      {dialogo}
 
       {verHistorico && (
         <HistoricoCadastrosModal

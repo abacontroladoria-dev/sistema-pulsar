@@ -8,6 +8,7 @@ import {
 import { CampoSelect, rotulo } from "@/components/cadastros/pacientes/ui/campos"
 import { MultiSearchCombobox } from "@/components/cronograma/ui/MultiSearchCombobox"
 import { CabecalhoPastel, SecaoPastel, avisoFeito, tom } from "@/components/ui/pastel/pecas"
+import { useConfirmacao } from "@/components/ui/pastel/confirmacao"
 import { DatePicker } from "@/components/ui/date-picker"
 import { normTxt } from "@/lib/cronograma/constants"
 import { normalizarUnidadeOcupacao } from "@/lib/cronograma/ocupacaoProf"
@@ -77,6 +78,7 @@ export function EditorDisponibilidade({
   onCancelar: () => void
 }) {
   const hoje = hojeBrasilia()
+  const { confirmar, dialogo } = useConfirmacao()
   const vigente = versoes.find(v => v.situacao === "vigente") ?? null
   // Começar no mesmo dia da vigente seria "versão começando no mesmo dia": o
   // padrão é hoje, ou o dia seguinte ao início da vigente se ela começou hoje.
@@ -169,7 +171,13 @@ export function EditorDisponibilidade({
 
   const preencherDaTita = async () => {
     if (!profissional.tita_profissional_id) return
-    if (r.faixas.length && !window.confirm("Substituir o que está no editor pelos horários da grade TiTa?")) return
+    if (r.faixas.length && !(await confirmar({
+      titulo: "Substituir pelos horários da TiTa?",
+      texto: "As faixas que estão no editor serão trocadas pelas da grade TiTa da semana. Nada é salvo antes de você revisar.",
+      confirmar: "Substituir",
+      t: "aco",
+      Icone: CloudDownload,
+    }))) return
     setLendoTita(true)
     setAvisoTita(null)
     try {
@@ -220,7 +228,14 @@ export function EditorDisponibilidade({
     const estouro = [...conflitos.values()].filter(c => c.excedeu)
     if (estouro.length) {
       const lista = estouro.map(c => `• ${c.local.nome_exibicao}: ${c.outros.join(", ")}`).join("\n")
-      if (!window.confirm(`Estes locais já estão ocupados no mesmo horário:\n${lista}\n\nSalvar mesmo assim?`)) return
+      if (!(await confirmar({
+        titulo: "Locais já ocupados nesse horário",
+        texto: `${lista}\n\nSalvar a versão mesmo assim?`,
+        confirmar: "Salvar mesmo assim",
+        cancelar: "Revisar",
+        t: "aco",
+        Icone: MapPin,
+      }))) return
     }
     setSalvando(true)
     try {
@@ -339,6 +354,8 @@ export function EditorDisponibilidade({
           titaIdDe={id => catalogoPorId.get(id)?.tita_terapia_id ?? null}
         />
       ))}
+
+      {dialogo}
 
       {/* ── Rodapé fixo ──────────────────────────────────────────────── */}
       <div className="sticky bottom-3 z-20">

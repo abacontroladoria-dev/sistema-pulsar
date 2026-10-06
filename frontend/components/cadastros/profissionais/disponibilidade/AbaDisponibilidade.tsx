@@ -2,9 +2,10 @@
 
 import { useMemo, useState } from "react"
 import toast from "react-hot-toast"
-import { CalendarDays, CalendarRange, CircleSlash, Copy, Database, Loader2, Plus, RotateCcw } from "lucide-react"
+import { CalendarDays, CalendarRange, CircleSlash, Copy, Database, Loader2, Plus, RotateCcw, X } from "lucide-react"
 import { InlineNotice } from "@/components/cronograma/ui/InlineNotice"
 import { CabecalhoPastel, SecaoPastel, tom } from "@/components/ui/pastel/pecas"
+import { useConfirmacao } from "@/components/ui/pastel/confirmacao"
 import { useProfissionais } from "@/hooks/useProfissionais"
 import { rascunhoDeVersao, periodoBR, totaisDaSemana } from "@/lib/disponibilidadeProfissional"
 import { listarLocais, listarOcupacoesDeOutros } from "@/services/profissionalDisponibilidade.service"
@@ -42,6 +43,7 @@ export function AbaDisponibilidade({
   onMudou: () => Promise<void> | void
 }) {
   const { profissionais } = useProfissionais()
+  const { confirmar, dialogo } = useConfirmacao()
   const ordenadas = useMemo(() => [...versoes].sort((a, b) => b.vigente_de.localeCompare(a.vigente_de)), [versoes])
   const vigente = ordenadas.find(v => v.situacao === "vigente") ?? null
   const [selecionadaId, setSelecionadaId] = useState<string | null>(versaoInicialId ?? null)
@@ -89,6 +91,7 @@ export function AbaDisponibilidade({
 
   if (edicao) {
     return (
+      <>
       <EditorDisponibilidade
         profissional={prof}
         base={edicao.base}
@@ -100,9 +103,20 @@ export function AbaDisponibilidade({
         locais={locais}
         ocupacoes={ocupacoes}
         nomeProfissional={id => nomesProf.get(id) ?? `Profissional ${id}`}
-        onCancelar={() => { if (window.confirm("Descartar esta nova versão?")) setEdicao(null) }}
+        onCancelar={async () => {
+          if (await confirmar({
+            titulo: "Descartar esta nova versão?",
+            texto: "O que você montou no editor será perdido. As versões já salvas continuam como estão.",
+            confirmar: "Descartar",
+            cancelar: "Continuar editando",
+            t: "vermelho",
+            Icone: X,
+          })) setEdicao(null)
+        }}
         onSalvo={async () => { setEdicao(null); setSelecionadaId(null); await onMudou() }}
       />
+      {dialogo}
+      </>
     )
   }
 
