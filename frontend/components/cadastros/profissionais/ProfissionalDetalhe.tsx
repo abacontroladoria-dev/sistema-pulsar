@@ -1,0 +1,332 @@
+"use client"
+
+import { useEffect, useMemo, useState, type ReactNode } from "react"
+import {
+  AlertCircle, BadgeCheck, CalendarDays, CalendarRange, Check, CircleSlash, Contact, Database, History,
+  Link2, Loader2, Palette, Pencil, RotateCcw, Sparkles, UserRound, X,
+} from "lucide-react"
+import { HistoricoCadastrosModal } from "@/components/cadastros/historico/HistoricoCadastrosModal"
+import { InlineNotice } from "@/components/cronograma/ui/InlineNotice"
+import { NumeroPastel, SecaoPastel, avisoFeito, tom, type Tom } from "@/components/ui/pastel/pecas"
+import { useUnsavedChangesGuard } from "@/contexts/UnsavedChangesContext"
+import { useCadastroTerapias } from "@/hooks/useCadastroTerapias"
+import { CAMPOS_EDITAVEIS, useProfissionalDetalhe } from "@/hooks/useProfissionalDetalhe"
+import { corFocal, formatarCelular, registroCompleto, terapiasDoProfissional } from "@/lib/cadastros/profissionais"
+import { idExibicaoProfissional } from "@/types/profissional"
+import { AbaCadastro } from "./AbaCadastro"
+import { AbaTerapias } from "./AbaTerapias"
+import { AvatarProfissional, estiloCor } from "./pecas"
+
+// Ficha do profissional — linguagem visual pastel da tela Entregas PEP
+// (components/ui/pastel/pecas.tsx, tokens .pp-* em globals.css): hero com o
+// tom da terapia focal, números grandes e abas em cartão.
+
+export type AbaProfissional = "cadastro" | "terapias" | "disponibilidade" | "historico"
+
+type DefAba = {
+  id: AbaProfissional
+  titulo: string
+  meta: string
+  t: Tom
+  Icone: typeof Contact
+  numero: ReactNode
+}
+
+export function ProfissionalDetalhe({ id, abaInicial }: { id: number; abaInicial?: AbaProfissional }) {
+  const d = useProfissionalDetalhe(id)
+  const { terapias: catalogo, indice } = useCadastroTerapias()
+  const [aba, setAba] = useState<AbaProfissional>(abaInicial ?? "cadastro")
+  const [editando, setEditando] = useState(false)
+  const [verHistorico, setVerHistorico] = useState(false)
+  const [alternandoAtivo, setAlternandoAtivo] = useState(false)
+
+  const { registerGuard } = useUnsavedChangesGuard()
+  const { camposSujos, salvar } = d
+  useEffect(() => {
+    registerGuard({ isDirty: camposSujos.length > 0, save: salvar })
+    return () => registerGuard(null)
+  }, [camposSujos.length, salvar, registerGuard])
+
+  const catalogoPorId = useMemo(() => new Map(catalogo.map(t => [t.id, t])), [catalogo])
+  const terapias = useMemo(
+    () => (d.prof ? terapiasDoProfissional(d.prof, d.habilitadas, d.grade, catalogoPorId, indice) : []),
+    [d.prof, d.habilitadas, d.grade, catalogoPorId, indice]
+  )
+  const { cor, terapia: focal } = d.prof ? corFocal(d.prof, terapias) : { cor: "#CBD5E1", terapia: null }
+
+  if (d.loading) {
+    return (
+      <div className="flex min-h-[40vh] items-center justify-center gap-2 text-sm font-semibold text-muted-foreground" role="status">
+        <Loader2 className="h-5 w-5 animate-spin" aria-hidden /> Carregando…
+      </div>
+    )
+  }
+  if (d.migrationPendente) {
+    return (
+      <div className="mx-auto max-w-3xl px-4 py-6">
+        <InlineNotice tone="amber" icon={<Database className="h-4 w-4" />}>
+          O Cadastro de Profissionais ainda não existe neste banco (migration pendente).
+        </InlineNotice>
+      </div>
+    )
+  }
+  if (d.naoEncontrado || !d.prof || !d.form) {
+    return (
+      <div className="mx-auto max-w-3xl px-4 py-6">
+        <div role="alert" className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          {d.erro ?? "Profissional não encontrado — ou você não tem permissão para ver este cadastro."}
+        </div>
+      </div>
+    )
+  }
+
+  const prof = d.prof
+  const camposPreenchidos = CAMPOS_EDITAVEIS.filter(c => c !== "observacoes" && c !== "complemento" && (prof[c] ?? "") !== "").length
+  const camposTotal = CAMPOS_EDITAVEIS.length - 2
+  const horariosTita = d.grade.reduce((s, g) => s + g.horarios, 0)
+  const multiplasTerapias = terapias.filter(t => t.terapiaId !== null).length > 1
+
+  const abas: DefAba[] = [
+    { id: "cadastro", titulo: "Cadastro", meta: "Contato e registro", t: "aco", Icone: Contact,
+      numero: <>{Math.round((camposPreenchidos / camposTotal) * 100)}<span className="text-[22px]">%</span></> },
+    { id: "terapias", titulo: "Terapias", meta: "O que presta", t: "rosa", Icone: Sparkles, numero: d.habilitadas.length },
+    { id: "disponibilidade", titulo: "Disponibilidade", meta: "Dias e salas", t: "teal", Icone: CalendarDays, numero: "—" },
+    { id: "historico", titulo: "Histórico", meta: "Versões", t: "azul", Icone: History, numero: "—" },
+  ]
+
+  const cancelar = () => {
+    if (camposSujos.length && !window.confirm("Descartar as alterações não salvas?")) return
+    d.descartar()
+    setEditando(false)
+  }
+  const salvarEdicao = async () => {
+    if (await d.salvar()) setEditando(false)
+  }
+  const alternarAtivo = async () => {
+    const msg = prof.ativo
+      ? `Inativar ${prof.nome}? O cadastro e o histórico continuam guardados; ele(a) some da lista padrão.`
+      : `Reativar ${prof.nome}?`
+    if (!window.confirm(msg)) return
+    setAlternandoAtivo(true)
+    if (await d.gravarDireto({ ativo: !prof.ativo })) avisoFeito(prof.ativo ? "Profissional inativado" : "Profissional reativado")
+    setAlternandoAtivo(false)
+  }
+
+  const teclaNaAba = (e: React.KeyboardEvent<HTMLButtonElement>) => {
+    const i = abas.findIndex(a => a.id === aba)
+    const destino =
+      e.key === "ArrowRight" ? abas[(i + 1) % abas.length]
+        : e.key === "ArrowLeft" ? abas[(i - 1 + abas.length) % abas.length]
+          : e.key === "Home" ? abas[0]
+            : e.key === "End" ? abas[abas.length - 1] : null
+    if (!destino) return
+    e.preventDefault()
+    setAba(destino.id)
+    document.getElementById(`prof-aba-${destino.id}`)?.focus()
+  }
+
+  return (
+    <div className="pp @container mx-auto w-full max-w-6xl space-y-5 px-4 py-6">
+      {/* ── Hero ─────────────────────────────────────────────────────────── */}
+      <SecaoPastel titulo="prof-nome" className="relative overflow-hidden">
+        <span
+          aria-hidden
+          style={estiloCor(cor)}
+          className="pointer-events-none absolute inset-x-0 top-0 h-36 bg-gradient-to-b from-[var(--t-faixa)] to-transparent"
+        />
+        <div className="relative flex flex-col gap-5 @2xl:flex-row @2xl:items-center">
+          <AvatarProfissional nome={prof.nome} cor={cor} tamanho="xl" />
+          <div className="min-w-0 flex-1">
+            <p className="text-[13px] font-bold text-[var(--pp-ink-muted)]">
+              ID {idExibicaoProfissional(prof)}{focal ? ` · ${focal.nome}` : ""}
+            </p>
+            <h2 id="prof-nome" className="mt-0.5 text-[28px] font-extrabold leading-8 tracking-[-0.02em]">{prof.nome}</h2>
+            <p className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[14px] font-semibold text-[var(--pp-ink-muted)]">
+              <span>{registroCompleto(prof) ?? "Sem registro profissional"}</span>
+              {prof.cbo && <span>CBO {prof.cbo}</span>}
+              {prof.celular && <span>{formatarCelular(prof.celular)}</span>}
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {prof.tita_profissional_id ? (
+                <span className={`${tom("aco")} pp-pilula h-8 pl-1.5 text-[12px]`} title="O cadastro está ligado ao profissional da TiTa com este id">
+                  <span className="pp-pilula-bola size-5"><Link2 className="h-3 w-3" aria-hidden /></span>
+                  Vinculado à TiTa #{prof.tita_profissional_id}
+                </span>
+              ) : (
+                <span className={`${tom("cinza")} pp-pilula h-8 pl-1.5 text-[12px]`}>
+                  <span className="pp-pilula-bola size-5"><UserRound className="h-3 w-3" aria-hidden /></span>
+                  Cadastro manual · ainda não está na TiTa
+                </span>
+              )}
+              {prof.ativo ? (
+                <span className={`${tom("verde")} pp-pilula h-8 pl-1.5 text-[12px]`}>
+                  <span className="pp-pilula-bola size-5"><Check className="h-3 w-3" aria-hidden /></span> Ativo
+                </span>
+              ) : (
+                <span className={`${tom("vermelho")} pp-pilula h-8 pl-1.5 text-[12px]`}>
+                  <span className="pp-pilula-bola size-5"><CircleSlash className="h-3 w-3" aria-hidden /></span> Inativo
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2 @2xl:self-start">
+            {editando ? (
+              <>
+                <button type="button" onClick={cancelar} className={`${tom("cinza")} pp-btn pp-btn-suave`} disabled={d.salvando}>
+                  <X className="h-4 w-4" aria-hidden /> Cancelar
+                </button>
+                <button type="button" onClick={salvarEdicao} className={`${tom("verde")} pp-btn`} disabled={d.salvando || !camposSujos.length}>
+                  {d.salvando ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Check className="h-4 w-4" aria-hidden />}
+                  Salvar{camposSujos.length ? ` (${camposSujos.length})` : ""}
+                </button>
+              </>
+            ) : (
+              <>
+                <button type="button" onClick={() => { setAba("cadastro"); setEditando(true) }} className={`${tom("aco")} pp-btn`}>
+                  <Pencil className="h-4 w-4" aria-hidden /> Editar
+                </button>
+                <button type="button" onClick={alternarAtivo} disabled={alternandoAtivo}
+                  className={`${tom(prof.ativo ? "vermelho" : "verde")} pp-btn pp-btn-suave`}>
+                  {prof.ativo ? <CircleSlash className="h-4 w-4" aria-hidden /> : <RotateCcw className="h-4 w-4" aria-hidden />}
+                  {prof.ativo ? "Inativar" : "Reativar"}
+                </button>
+                <button type="button" onClick={() => setVerHistorico(true)} className="pp-iconbtn h-[42px] w-[42px]" title="Alterações no cadastro" aria-label="Alterações no cadastro">
+                  <History className="h-4 w-4" aria-hidden />
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {multiplasTerapias && (
+          <CorDoCard
+            terapias={terapias}
+            focalId={focal?.terapiaId ?? null}
+            onEscolher={async terapiaId => {
+              const t = terapias.find(x => x.terapiaId === terapiaId)
+              if (await d.gravarDireto({ terapia_focal_id: terapiaId })) avisoFeito(`Card agora em ${t?.nome ?? "outra cor"}`)
+            }}
+          />
+        )}
+
+        <div className="relative mt-5 grid grid-cols-1 gap-3 @md:grid-cols-2 @4xl:grid-cols-4">
+          <NumeroPastel compacto t="rosa" Icone={Sparkles} valor={d.habilitadas.length} rotulo="Terapias habilitadas"
+            apoio={`${terapias.filter(t => t.horariosGrade > 0).length} na grade TiTa`} apagado={d.habilitadas.length === 0} />
+          <NumeroPastel compacto t="aco" Icone={CalendarRange} valor={horariosTita} rotulo="Horários na grade TiTa"
+            apoio="90 dias para trás em diante" apagado={horariosTita === 0} />
+          <NumeroPastel compacto t="teal" Icone={CalendarDays} valor="—" rotulo="Sessões por semana" apoio="Na disponibilidade vigente" apagado />
+          <NumeroPastel compacto t="verde" Icone={BadgeCheck} valor={`${camposPreenchidos}/${camposTotal}`} rotulo="Campos do cadastro"
+            apoio={prof.sincronizado_tita_em ? `TiTa conferida em ${new Date(prof.sincronizado_tita_em).toLocaleDateString("pt-BR")}` : "Sem importação da TiTa"} />
+        </div>
+      </SecaoPastel>
+
+      {/* ── Abas em cartão ───────────────────────────────────────────────── */}
+      <div role="tablist" aria-label="Seções da ficha" className="grid grid-cols-2 gap-3 @xl:gap-4 @5xl:grid-cols-4">
+        {abas.map(a => (
+          <button
+            key={a.id}
+            type="button"
+            role="tab"
+            id={`prof-aba-${a.id}`}
+            aria-selected={aba === a.id}
+            aria-controls={`prof-painel-${a.id}`}
+            tabIndex={aba === a.id ? 0 : -1}
+            onClick={() => setAba(a.id)}
+            onKeyDown={teclaNaAba}
+            className={`${tom(a.t)} pp-aba !min-h-[64px] !gap-2.5 !rounded-[20px] !p-3 @xl:!min-h-[88px] @xl:!gap-3.5 @xl:!rounded-[24px] @xl:!px-5 @xl:!py-4`}
+          >
+            <span className="pp-aba-marca" aria-hidden><a.Icone /></span>
+            <span className="pp-aba-icone !h-10 !w-10 !rounded-[14px] @xl:!h-12 @xl:!w-12" aria-hidden><a.Icone className="h-5 w-5" /></span>
+            <span className="relative min-w-0 flex-1">
+              <span className="block truncate text-[14px] font-extrabold leading-tight @xl:text-[17px]">{a.titulo}</span>
+              <span className="pp-aba-meta !hidden @xl:!flex"><span className="truncate">{a.meta}</span></span>
+            </span>
+            <span className="pp-aba-num !hidden @xl:!block !text-[34px] !leading-[34px]">{a.numero}</span>
+          </button>
+        ))}
+      </div>
+
+      <div role="tabpanel" id={`prof-painel-${aba}`} aria-labelledby={`prof-aba-${aba}`} className="pt-2">
+        {aba === "cadastro" && <AbaCadastro prof={prof} form={d.form} set={d.set} editando={editando} />}
+        {aba === "terapias" && (
+          <AbaTerapias
+            prof={prof}
+            terapias={terapias}
+            habilitadas={d.habilitadas}
+            catalogo={catalogo}
+            onSalvarHabilitadas={ids => d.gravarHabilitadas(ids, new Map(catalogo.map(t => [t.id, t.nome])))}
+            onDefinirFocal={terapiaId => d.gravarDireto({ terapia_focal_id: terapiaId })}
+          />
+        )}
+        {aba === "disponibilidade" && (
+          <SecaoPastel titulo="disp-em-breve">
+            <p id="disp-em-breve" className="text-sm font-semibold text-[var(--pp-ink-muted)]">Disponibilidade — em construção.</p>
+          </SecaoPastel>
+        )}
+        {aba === "historico" && (
+          <SecaoPastel titulo="hist-em-breve">
+            <p id="hist-em-breve" className="text-sm font-semibold text-[var(--pp-ink-muted)]">Histórico — em construção.</p>
+          </SecaoPastel>
+        )}
+      </div>
+
+      {verHistorico && (
+        <HistoricoCadastrosModal
+          titulo={`Alterações — ${prof.nome}`}
+          subtitulo="Cadastro, terapias habilitadas e cor do card."
+          entidades={["profissional"]}
+          registroId={prof.id}
+          onClose={() => setVerHistorico(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+/** "Cor do card": uma bolinha por terapia do catálogo; a marcada é a focal. */
+function CorDoCard({
+  terapias,
+  focalId,
+  onEscolher,
+}: {
+  terapias: { nome: string; cor: string; terapiaId: number | null }[]
+  focalId: number | null
+  onEscolher: (terapiaId: number) => void
+}) {
+  const opcoes = terapias.filter(t => t.terapiaId !== null)
+  return (
+    <div className="relative mt-5 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[18px] bg-[var(--pp-muted)] px-4 py-3">
+      <span className="inline-flex items-center gap-1.5 text-[13px] font-extrabold">
+        <Palette className="h-4 w-4 text-[var(--pp-ink-muted)]" aria-hidden /> Cor do card
+      </span>
+      <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Terapia que dá a cor do card">
+        {opcoes.map(t => {
+          const marcada = t.terapiaId === focalId
+          return (
+            <button
+              key={t.nome}
+              type="button"
+              role="radio"
+              aria-checked={marcada}
+              onClick={() => !marcada && onEscolher(t.terapiaId as number)}
+              style={estiloCor(t.cor)}
+              title={t.nome}
+              className={`inline-flex h-8 items-center gap-1.5 rounded-full pl-1 pr-3 text-[12px] font-bold transition-shadow ${
+                marcada
+                  ? "bg-[var(--pp-surface)] shadow-[inset_0_0_0_2px_var(--t-linha),var(--pp-sombra)]"
+                  : "text-[var(--pp-ink-muted)] hover:bg-[var(--pp-surface)]"
+              }`}
+            >
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--t-cor)] ring-1 ring-black/10">
+                {marcada && <Check className="h-3.5 w-3.5 text-white mix-blend-difference" aria-hidden />}
+              </span>
+              <span className="max-w-[12rem] truncate">{t.nome}</span>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}

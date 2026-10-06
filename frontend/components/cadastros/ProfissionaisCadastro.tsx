@@ -394,12 +394,12 @@ function Situacao({ ativo }: { ativo: boolean }) {
 }
 
 /** Até 3 chips (focal primeiro) + "+N". */
-function ChipsTerapias({ terapias, max = 3 }: { terapias: TerapiaDoProfissional[]; max?: number }) {
+function ChipsTerapias({ terapias, max = 3, destacarPrimeira = false }: { terapias: TerapiaDoProfissional[]; max?: number; destacarPrimeira?: boolean }) {
   if (!terapias.length) return <span className="text-xs text-muted-foreground">Sem terapia</span>
   const resto = terapias.length - max
   return (
     <div className="flex min-w-0 flex-wrap gap-1">
-      {terapias.slice(0, max).map((t, i) => <ChipTerapia key={t.nome} terapia={t} destaque={i === 0} />)}
+      {terapias.slice(0, max).map((t, i) => <ChipTerapia key={t.nome} terapia={t} destaque={destacarPrimeira && i === 0} />)}
       {resto > 0 && (
         <span className="inline-flex items-center rounded-full border border-border px-2 py-0.5 text-xs font-medium text-muted-foreground" title={terapias.slice(max).map(t => t.nome).join(", ")}>
           +{resto}
@@ -487,7 +487,7 @@ const LinhaProfissional = memo(function LinhaProfissional({ linha }: { linha: Li
         <span className="hidden tabular-nums text-foreground md:block">{idExibicaoProfissional(prof)}</span>
         <span className="hidden truncate text-foreground md:block">{registroCompleto(prof) ?? "—"}</span>
         <span className="hidden truncate tabular-nums text-foreground md:block">{formatarCelular(prof.celular) ?? "—"}</span>
-        <span className="hidden min-w-0 md:block"><ChipsTerapias terapias={terapias} max={2} /></span>
+        <span className="hidden min-w-0 md:block"><ChipsTerapias terapias={terapias} max={2} destacarPrimeira /></span>
         <span className="justify-self-end md:justify-self-start"><Situacao ativo={prof.ativo} /></span>
       </Link>
     </li>
