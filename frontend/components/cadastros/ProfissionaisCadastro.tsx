@@ -565,7 +565,7 @@ function FiltroSituacao({ value, onChange }: { value: Set<SituacaoFiltro>; onCha
 
 /** Selo discreto: só "Inativo" chama atenção (o card inteiro muda de tom). */
 function Situacao({ ativo }: { ativo: boolean }) {
-  return <span className={`ua-status ${ativo ? "" : "!text-[var(--ua-stone-700)] before:!bg-[var(--ua-stone-500)]"}`}>{ativo ? "Ativo" : "Inativo"}</span>
+  return <span className={`ua-status ${ativo ? "" : "before:!bg-[var(--ua-stone-500)]"}`}>{ativo ? "Ativo" : "Inativo"}</span>
 }
 
 /** Até `max` chips, cada um com os tons da própria terapia, + "+N". */
