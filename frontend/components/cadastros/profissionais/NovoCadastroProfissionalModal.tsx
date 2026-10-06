@@ -13,7 +13,7 @@ import { normTxt } from "@/lib/cronograma/constants"
 import { formatarCelular } from "@/lib/cadastros/profissionais"
 import { maskCpfCnpj, onlyDigits } from "@/lib/remuneracao/formatacao"
 import { criarProfissional } from "@/services/profissionais.service"
-import type { ProfissionalLista } from "@/types/profissional"
+import { idExibicaoProfissional, type ProfissionalLista } from "@/types/profissional"
 
 // Cadastro manual — quem ainda não existe na TiTa (contratação nova). Pede só o
 // essencial; o resto se completa na ficha, que abre logo depois de salvar.
@@ -107,7 +107,7 @@ export function NovoCadastroProfissionalModal({
           <input id="novo-prof-nome" autoFocus maxLength={200} value={nome} onChange={e => setNome(e.target.value)} className={`${campo} mt-1`} />
           {duplicadoNome && !duplicadoCpf && (
             <p className="mt-1 text-xs font-medium text-amber-600 dark:text-amber-400">
-              Já existe um cadastro com esse nome (ID {duplicadoNome.tita_profissional_id ?? `P${duplicadoNome.id}`}). Confira antes de criar outro.
+              Já existe um cadastro com esse nome (ID {idExibicaoProfissional(duplicadoNome)}). Confira antes de criar outro.
             </p>
           )}
         </div>

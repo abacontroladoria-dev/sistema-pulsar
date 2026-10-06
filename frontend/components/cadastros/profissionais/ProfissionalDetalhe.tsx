@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react"
 import {
   AlertCircle, BadgeCheck, CalendarDays, CalendarRange, Check, CircleSlash, Contact, Database, History,
-  Loader2, Palette, Pencil, RotateCcw, Sparkles, UserRound, X,
+  Loader2, Palette, Pencil, RotateCcw, Sparkles, X,
 } from "lucide-react"
 import { HistoricoCadastrosModal } from "@/components/cadastros/historico/HistoricoCadastrosModal"
 import { InlineNotice } from "@/components/cronograma/ui/InlineNotice"
@@ -171,15 +171,6 @@ export function ProfissionalDetalhe({ id, abaInicial }: { id: number; abaInicial
           <div className="min-w-0 flex-1">
             <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] font-bold text-[var(--pp-ink-muted)]">
               <span>ID {idExibicaoProfissional(prof)}</span>
-              {focal && (
-                <span style={estiloCor(cor)}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-[var(--t-suave)] py-0.5 pl-1 pr-2.5 text-[var(--t-tinta)] dark:text-[var(--t-tinta-escuro)]">
-                  <span className="flex size-4 items-center justify-center rounded-full bg-[var(--t-cor)] ring-1 ring-black/10" aria-hidden>
-                    <Sparkles className="h-2.5 w-2.5 text-white mix-blend-difference" />
-                  </span>
-                  {focal.nome}
-                </span>
-              )}
             </p>
             <h2 id="prof-nome" className="mt-0.5 text-[28px] font-extrabold leading-8 tracking-[-0.02em]">{prof.nome}</h2>
             <p className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[14px] font-semibold text-[var(--pp-ink-muted)]">
@@ -188,13 +179,6 @@ export function ProfissionalDetalhe({ id, abaInicial }: { id: number; abaInicial
               {prof.celular && <span>{formatarCelular(prof.celular)}</span>}
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
-              {/* O id da TiTa já aparece como "ID" acima; só sinaliza quem ainda não está lá. */}
-              {!prof.tita_profissional_id && (
-                <span className={`${tom("cinza")} pp-pilula h-8 pl-1.5 text-[12px]`}>
-                  <span className="pp-pilula-bola size-5"><UserRound className="h-3 w-3" aria-hidden /></span>
-                  Cadastro manual · ainda não está na TiTa
-                </span>
-              )}
               {prof.ativo ? (
                 <span className={`${tom("verde")} pp-pilula h-8 pl-1.5 text-[12px]`}>
                   <span className="pp-pilula-bola size-5"><Check className="h-3 w-3" aria-hidden /></span> Ativo
@@ -228,7 +212,7 @@ export function ProfissionalDetalhe({ id, abaInicial }: { id: number; abaInicial
               </>
             ) : (
               <>
-                <button type="button" onClick={() => { setAba("cadastro"); setEditando(true) }} className={`${tom("aco")} pp-btn`}>
+                <button type="button" onClick={() => { setAba("cadastro"); setEditando(true) }} className={`${tom("cinza")} pp-btn`}>
                   <Pencil className="h-4 w-4" aria-hidden /> Editar
                 </button>
                 <button type="button" onClick={alternarAtivo} disabled={alternandoAtivo}

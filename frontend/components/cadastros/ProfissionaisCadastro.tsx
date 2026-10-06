@@ -271,7 +271,6 @@ export function ProfissionaisCadastro() {
             </button>
           )}
         </div>
-        <FiltroSituacao value={situacoes} onChange={v => { setSituacoes(v); setPagina(1) }} />
         <div className="w-40 shrink-0 min-[1680px]:w-48">
           <MultiSearchCombobox
             opcoes={opcoesTerapia}
@@ -292,6 +291,7 @@ export function ProfissionaisCadastro() {
             className="h-9 text-sm"
           />
         </div>
+        <FiltroSituacao value={situacoes} onChange={v => { setSituacoes(v); setPagina(1) }} />
         <OrdenarPor value={ordem} onChange={trocarOrdem} />
         <span className="mx-1 h-6 w-px shrink-0 bg-border" aria-hidden="true" />
         <button

@@ -87,7 +87,10 @@ export const TIPOS_REGISTRO = [
   "CRP", "CREFITO", "CREFONO", "CRFa", "CRM", "CREF", "CRN", "CRO", "COREN", "CRESS", "ABPp", "Outro",
 ]
 
-/** Identificador exibido: o id da TiTa quando há vínculo (é o que a equipe conhece), senão o do Pulsar. */
+/**
+ * Identificador exibido, sempre só números: o id da TiTa quando há vínculo (é o
+ * que a equipe conhece), senão o do Pulsar.
+ */
 export function idExibicaoProfissional(p: Pick<Profissional, "id" | "tita_profissional_id">): string {
-  return p.tita_profissional_id ? String(p.tita_profissional_id) : `P${p.id}`
+  return String(p.tita_profissional_id ?? p.id)
 }
