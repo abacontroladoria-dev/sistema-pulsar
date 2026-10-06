@@ -2,7 +2,9 @@
 
 import { useEffect, useSyncExternalStore } from "react"
 import { MigrationPendenteError } from "@/services/cadastroTerapias.service"
+import { listarSituacaoGrades } from "@/services/profissionalDisponibilidade.service"
 import { listarHabilitadas, listarProfissionais, listarTerapiasDaGrade } from "@/services/profissionais.service"
+import type { SituacaoGradeProfissional } from "@/types/disponibilidadeProfissional"
 import type { Profissional } from "@/types/profissional"
 
 // Cache de módulo da lista de profissionais (mesmo padrão de usePacientes): a
@@ -17,6 +19,10 @@ type Estado = {
   grade: Map<number, { terapia: string; horarios: number }[]>
   /** A grade é complemento: se falhar, a lista abre do mesmo jeito. */
   gradeIndisponivel: boolean
+  /** profissional.id → situação da disponibilidade hoje. Sem entrada = sem grade. */
+  situacaoGrade: Map<number, SituacaoGradeProfissional>
+  /** A migration da disponibilidade pode ainda não estar aplicada. */
+  situacaoIndisponivel: boolean
   loading: boolean
   error: string | null
   migrationPendente: boolean
@@ -27,6 +33,8 @@ let estado: Estado = {
   habilitadas: new Map(),
   grade: new Map(),
   gradeIndisponivel: false,
+  situacaoGrade: new Map(),
+  situacaoIndisponivel: false,
   loading: true,
   error: null,
   migrationPendente: false,
@@ -52,10 +60,11 @@ export function refetchProfissionais(): Promise<void> {
   publicar({ loading: !carregado, error: null })
   emVoo = (async () => {
     try {
-      const [profissionais, habilitadas, grade] = await Promise.all([
+      const [profissionais, habilitadas, grade, situacao] = await Promise.all([
         listarProfissionais(),
         listarHabilitadas(),
         listarTerapiasDaGrade().catch(() => null),
+        listarSituacaoGrades().catch(() => null),
       ])
       carregado = true
       publicar({
@@ -63,6 +72,8 @@ export function refetchProfissionais(): Promise<void> {
         habilitadas,
         grade: grade ?? new Map(),
         gradeIndisponivel: grade === null,
+        situacaoGrade: situacao ?? new Map(),
+        situacaoIndisponivel: situacao === null,
         loading: false,
         error: null,
         migrationPendente: false,

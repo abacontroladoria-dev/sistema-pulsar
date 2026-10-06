@@ -10,12 +10,16 @@ import { InlineNotice } from "@/components/cronograma/ui/InlineNotice"
 import { NumeroPastel, SecaoPastel, avisoFeito, tom, type Tom } from "@/components/ui/pastel/pecas"
 import { useUnsavedChangesGuard } from "@/contexts/UnsavedChangesContext"
 import { useCadastroTerapias } from "@/hooks/useCadastroTerapias"
+import { refetchProfissionais } from "@/hooks/useProfissionais"
+import { useDisponibilidadeProfissional } from "@/hooks/useDisponibilidadeProfissional"
 import { CAMPOS_EDITAVEIS, useProfissionalDetalhe } from "@/hooks/useProfissionalDetalhe"
 import { corFocal, formatarCelular, registroCompleto, terapiasDoProfissional } from "@/lib/cadastros/profissionais"
 import { idExibicaoProfissional } from "@/types/profissional"
 import { AbaCadastro } from "./AbaCadastro"
 import { AbaTerapias } from "./AbaTerapias"
 import { AvatarProfissional, estiloCor } from "./pecas"
+import { AbaDisponibilidade } from "./disponibilidade/AbaDisponibilidade"
+import { SeloGrade } from "./disponibilidade/pecasDisponibilidade"
 
 // Ficha do profissional — linguagem visual pastel da tela Entregas PEP
 // (components/ui/pastel/pecas.tsx, tokens .pp-* em globals.css): hero com o
@@ -34,6 +38,7 @@ type DefAba = {
 
 export function ProfissionalDetalhe({ id, abaInicial }: { id: number; abaInicial?: AbaProfissional }) {
   const d = useProfissionalDetalhe(id)
+  const disp = useDisponibilidadeProfissional(id)
   const { terapias: catalogo, indice } = useCadastroTerapias()
   const [aba, setAba] = useState<AbaProfissional>(abaInicial ?? "cadastro")
   const [editando, setEditando] = useState(false)
@@ -91,8 +96,8 @@ export function ProfissionalDetalhe({ id, abaInicial }: { id: number; abaInicial
     { id: "cadastro", titulo: "Cadastro", meta: "Contato e registro", t: "aco", Icone: Contact,
       numero: <>{Math.round((camposPreenchidos / camposTotal) * 100)}<span className="text-[22px]">%</span></> },
     { id: "terapias", titulo: "Terapias", meta: "O que presta", t: "rosa", Icone: Sparkles, numero: d.habilitadas.length },
-    { id: "disponibilidade", titulo: "Disponibilidade", meta: "Dias e salas", t: "teal", Icone: CalendarDays, numero: "—" },
-    { id: "historico", titulo: "Histórico", meta: "Versões", t: "azul", Icone: History, numero: "—" },
+    { id: "disponibilidade", titulo: "Disponibilidade", meta: "Sessões por semana", t: "teal", Icone: CalendarDays, numero: disp.sessoesSemana ?? "—" },
+    { id: "historico", titulo: "Histórico", meta: "Versões guardadas", t: "azul", Icone: History, numero: disp.versoes.length },
   ]
 
   const cancelar = () => {
@@ -168,6 +173,14 @@ export function ProfissionalDetalhe({ id, abaInicial }: { id: number; abaInicial
                   <span className="pp-pilula-bola size-5"><CircleSlash className="h-3 w-3" aria-hidden /></span> Inativo
                 </span>
               )}
+              {!disp.loading && !disp.migrationPendente && (
+                <SeloGrade
+                  situacao={disp.vigente ? "vigente" : disp.proxima ? "agendada" : disp.ultimaEncerrada ? "inativa" : "sem_grade"}
+                  vigenteDesde={disp.vigente?.vigente_de}
+                  proximaDe={disp.proxima?.vigente_de}
+                  encerradaEm={disp.ultimaEncerrada?.vigente_ate}
+                />
+              )}
             </div>
           </div>
 
@@ -216,7 +229,8 @@ export function ProfissionalDetalhe({ id, abaInicial }: { id: number; abaInicial
             apoio={`${terapias.filter(t => t.horariosGrade > 0).length} na grade TiTa`} apagado={d.habilitadas.length === 0} />
           <NumeroPastel compacto t="aco" Icone={CalendarRange} valor={horariosTita} rotulo="Horários na grade TiTa"
             apoio="90 dias para trás em diante" apagado={horariosTita === 0} />
-          <NumeroPastel compacto t="teal" Icone={CalendarDays} valor="—" rotulo="Sessões por semana" apoio="Na disponibilidade vigente" apagado />
+          <NumeroPastel compacto t="teal" Icone={CalendarDays} valor={disp.sessoesSemana ?? "—"} rotulo="Sessões por semana"
+            apoio={disp.vigente ? `Versão nº ${disp.vigente.numero} vigente` : "Nenhuma versão valendo hoje"} apagado={!disp.sessoesSemana} />
           <NumeroPastel compacto t="verde" Icone={BadgeCheck} valor={`${camposPreenchidos}/${camposTotal}`} rotulo="Campos do cadastro"
             apoio={prof.sincronizado_tita_em ? `TiTa conferida em ${new Date(prof.sincronizado_tita_em).toLocaleDateString("pt-BR")}` : "Sem importação da TiTa"} />
         </div>
@@ -235,15 +249,15 @@ export function ProfissionalDetalhe({ id, abaInicial }: { id: number; abaInicial
             tabIndex={aba === a.id ? 0 : -1}
             onClick={() => setAba(a.id)}
             onKeyDown={teclaNaAba}
-            className={`${tom(a.t)} pp-aba !min-h-[64px] !gap-2.5 !rounded-[20px] !p-3 @xl:!min-h-[88px] @xl:!gap-3.5 @xl:!rounded-[24px] @xl:!px-5 @xl:!py-4`}
+            className={`${tom(a.t)} pp-aba !min-h-[64px] !gap-2.5 !rounded-[20px] !p-3 @xl:!min-h-[88px] @xl:!gap-3 @xl:!rounded-[24px] @xl:!px-4 @xl:!py-4`}
           >
             <span className="pp-aba-marca" aria-hidden><a.Icone /></span>
-            <span className="pp-aba-icone !h-10 !w-10 !rounded-[14px] @xl:!h-12 @xl:!w-12" aria-hidden><a.Icone className="h-5 w-5" /></span>
+            <span className="pp-aba-icone !h-10 !w-10 !rounded-[14px] @xl:!h-11 @xl:!w-11" aria-hidden><a.Icone className="h-5 w-5" /></span>
             <span className="relative min-w-0 flex-1">
-              <span className="block truncate text-[14px] font-extrabold leading-tight @xl:text-[17px]">{a.titulo}</span>
+              <span className="block truncate text-[14px] font-extrabold leading-tight @xl:text-[16px]">{a.titulo}</span>
               <span className="pp-aba-meta !hidden @xl:!flex"><span className="truncate">{a.meta}</span></span>
             </span>
-            <span className="pp-aba-num !hidden @xl:!block !text-[34px] !leading-[34px]">{a.numero}</span>
+            <span className="pp-aba-num !hidden @xl:!block !text-[28px] !leading-[28px]">{a.numero}</span>
           </button>
         ))}
       </div>
@@ -261,9 +275,16 @@ export function ProfissionalDetalhe({ id, abaInicial }: { id: number; abaInicial
           />
         )}
         {aba === "disponibilidade" && (
-          <SecaoPastel titulo="disp-em-breve">
-            <p id="disp-em-breve" className="text-sm font-semibold text-[var(--pp-ink-muted)]">Disponibilidade — em construção.</p>
-          </SecaoPastel>
+          <AbaDisponibilidade
+            prof={prof}
+            versoes={disp.versoes}
+            habilitadas={d.habilitadas}
+            catalogo={catalogo}
+            carregando={disp.loading}
+            erro={disp.erro}
+            migrationPendente={disp.migrationPendente}
+            onMudou={async () => { await disp.recarregar(); void refetchProfissionais() }}
+          />
         )}
         {aba === "historico" && (
           <SecaoPastel titulo="hist-em-breve">

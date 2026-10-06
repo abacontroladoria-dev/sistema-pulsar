@@ -21,6 +21,8 @@ import { idExibicaoProfissional, type Profissional, type TerapiaDoProfissional }
 import { campo, foco } from "./pacientes/ui/campos"
 import { AvatarProfissional, ChipTerapia, estiloCor } from "./profissionais/pecas"
 import { NovoCadastroProfissionalModal } from "./profissionais/NovoCadastroProfissionalModal"
+import { SeloGrade } from "./profissionais/disponibilidade/pecasDisponibilidade"
+import type { SituacaoGrade, SituacaoGradeProfissional } from "@/types/disponibilidadeProfissional"
 import { BarraAlfabeto, LinhaDado, SeletorModo, type ModoExibicao } from "./shared/ListaCadastro"
 
 // Listagem do cadastro de profissionais — mesmo desenho da de pacientes (cards,
@@ -38,14 +40,24 @@ const SITUACOES: { valor: SituacaoFiltro; rotulo: string }[] = [
 const COLUNAS_LISTA =
   "md:grid-cols-[minmax(0,2.2fr)_minmax(0,0.6fr)_minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1.6fr)_minmax(0,0.6fr)]"
 
+const GRADES: { valor: SituacaoGrade; rotulo: string }[] = [
+  { valor: "vigente", rotulo: "Grade vigente" },
+  { valor: "agendada", rotulo: "Só agendada" },
+  { valor: "inativa", rotulo: "Grade inativa" },
+  { valor: "sem_grade", rotulo: "Sem grade" },
+]
+
 type Linha = {
   prof: Profissional
   terapias: TerapiaDoProfissional[]
   cor: string
+  /** null quando a situação não pôde ser lida (migration pendente). */
+  grade: SituacaoGradeProfissional | null
+  situacaoGrade: SituacaoGrade | null
 }
 
 export function ProfissionaisCadastro() {
-  const { profissionais, habilitadas, grade, loading, error, migrationPendente, recarregar } = useProfissionais()
+  const { profissionais, habilitadas, grade, situacaoGrade, situacaoIndisponivel, loading, error, migrationPendente, recarregar } = useProfissionais()
   const { terapias: catalogo, indice } = useCadastroTerapias()
 
   const [buscaTexto, setBuscaTexto] = useState("")
@@ -56,6 +68,7 @@ export function ProfissionaisCadastro() {
   }, [buscaTexto])
   const [situacoes, setSituacoes] = useState<Set<SituacaoFiltro>>(() => new Set(["ativo"]))
   const [filtroTerapias, setFiltroTerapias] = useState<Set<number>>(new Set())
+  const [filtroGrades, setFiltroGrades] = useState<Set<SituacaoGrade>>(() => new Set(GRADES.map(g => g.valor)))
   const [letra, setLetra] = useState<string | null>(null)
   const [pagina, setPagina] = useState(1)
   const [modalNovo, setModalNovo] = useState(false)
@@ -87,8 +100,13 @@ export function ProfissionaisCadastro() {
       catalogoPorId,
       indice
     )
-    return { prof, terapias, cor: corFocal(prof, terapias).cor }
-  }), [profissionais, habilitadas, grade, catalogoPorId, indice])
+    const g = situacaoGrade.get(prof.id) ?? null
+    return {
+      prof, terapias, cor: corFocal(prof, terapias).cor,
+      grade: g,
+      situacaoGrade: situacaoIndisponivel ? null : g?.situacao ?? "sem_grade",
+    }
+  }), [profissionais, habilitadas, grade, catalogoPorId, indice, situacaoGrade, situacaoIndisponivel])
 
   // Opções do filtro de terapia: só as que alguém tem.
   const opcoesTerapia = useMemo(() => {
@@ -99,6 +117,9 @@ export function ProfissionaisCadastro() {
 
   const filtradasSemLetra = useMemo(() => {
     let lista = linhas.filter(l => situacoes.has(l.prof.ativo ? "ativo" : "inativo"))
+    if (!situacaoIndisponivel && filtroGrades.size < GRADES.length) {
+      lista = lista.filter(l => l.situacaoGrade !== null && filtroGrades.has(l.situacaoGrade))
+    }
     if (filtroTerapias.size) {
       lista = lista.filter(l => l.terapias.some(t => t.terapiaId !== null && filtroTerapias.has(t.terapiaId)))
     }
@@ -112,7 +133,7 @@ export function ProfissionaisCadastro() {
       if (p.cpf?.includes(digitos)) return true
       return idExibicaoProfissional(p).includes(digitos)
     })
-  }, [linhas, situacoes, filtroTerapias, busca])
+  }, [linhas, situacoes, filtroTerapias, filtroGrades, situacaoIndisponivel, busca])
 
   const letrasDisponiveis = useMemo(() => {
     const s = new Set<string>()
@@ -183,6 +204,23 @@ export function ProfissionaisCadastro() {
           )}
         </div>
         <FiltroSituacao value={situacoes} onChange={v => { setSituacoes(v); setPagina(1) }} />
+        {!situacaoIndisponivel && (
+          <div className="w-48 shrink-0">
+            <MultiSearchCombobox
+              opcoes={GRADES.map(g => ({ id: g.valor, nome: g.rotulo }))}
+              selecionados={filtroGrades}
+              onToggle={id => {
+                setFiltroGrades(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
+                setPagina(1)
+              }}
+              onMarcarTodos={() => { setFiltroGrades(new Set(GRADES.map(g => g.valor))); setPagina(1) }}
+              onDesmarcarTodos={() => { setFiltroGrades(new Set()); setPagina(1) }}
+              ariaLabel="Filtrar pela situação da grade"
+              nomePlural="situações"
+              placeholder="Grade: nenhuma"
+            />
+          </div>
+        )}
         <div className="w-56 shrink-0">
           <MultiSearchCombobox
             opcoes={opcoesTerapia}
@@ -231,7 +269,7 @@ export function ProfissionaisCadastro() {
       </div>
     )
     return () => setRightContent(null)
-  }, [buscaTexto, situacoes, filtroTerapias, opcoesTerapia, modo, trocarModo, importando, importar, migrationPendente, setRightContent])
+  }, [buscaTexto, situacoes, filtroTerapias, filtroGrades, situacaoIndisponivel, opcoesTerapia, modo, trocarModo, importando, importar, migrationPendente, setRightContent])
 
   if (migrationPendente) {
     return (
@@ -455,6 +493,18 @@ const CardProfissional = memo(function CardProfissional({ linha }: { linha: Linh
           <LinhaDado icone={Briefcase} rotulo="CBO" valor={prof.cbo} />
           <LinhaDado icone={Phone} rotulo="Celular" valor={formatarCelular(prof.celular)} />
         </dl>
+
+        {linha.situacaoGrade && (
+          <div className="pp relative -mt-1 pb-3">
+            <SeloGrade
+              pequeno
+              situacao={linha.situacaoGrade}
+              vigenteDesde={linha.grade?.vigente_desde}
+              proximaDe={linha.grade?.proxima_de}
+              encerradaEm={linha.grade?.encerrada_em}
+            />
+          </div>
+        )}
 
         {/* A focal já está sob o nome; aqui só as outras. */}
         {terapias.length > 1 && (
