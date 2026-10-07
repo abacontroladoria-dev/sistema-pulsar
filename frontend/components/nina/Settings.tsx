@@ -123,16 +123,16 @@ const Settings: React.FC<{ setShowOnboarding?: (show: boolean) => void }> = ({ s
         onValueChange={tab => { setActiveTab(tab); setSalvoEm(null); }}
       >
         <div className="flex items-center justify-between mb-8">
-          <TabsList>
-            <TabsTrigger value="agent" className="gap-2">
+          <TabsList className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-100 p-1 dark:border-slate-800 dark:bg-slate-900/60">
+            <TabsTrigger value="agent" className="gap-2 data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm data-[state=active]:ring-1 data-[state=active]:ring-slate-200 data-[state=inactive]:text-slate-500 data-[state=inactive]:hover:text-slate-800 dark:data-[state=active]:bg-slate-800 dark:data-[state=active]:text-white dark:data-[state=active]:ring-slate-700 dark:data-[state=inactive]:text-slate-400 dark:data-[state=inactive]:hover:text-slate-200">
               <Bot className="w-4 h-4" />
               Agente
             </TabsTrigger>
-            <TabsTrigger value="apis" className="gap-2">
+            <TabsTrigger value="apis" className="gap-2 data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm data-[state=active]:ring-1 data-[state=active]:ring-slate-200 data-[state=inactive]:text-slate-500 data-[state=inactive]:hover:text-slate-800 dark:data-[state=active]:bg-slate-800 dark:data-[state=active]:text-white dark:data-[state=active]:ring-slate-700 dark:data-[state=inactive]:text-slate-400 dark:data-[state=inactive]:hover:text-slate-200">
               <Plug className="w-4 h-4" />
               APIs
             </TabsTrigger>
-            <TabsTrigger value="docs" className="gap-2">
+            <TabsTrigger value="docs" className="gap-2 data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm data-[state=active]:ring-1 data-[state=active]:ring-slate-200 data-[state=inactive]:text-slate-500 data-[state=inactive]:hover:text-slate-800 dark:data-[state=active]:bg-slate-800 dark:data-[state=active]:text-white dark:data-[state=active]:ring-slate-700 dark:data-[state=inactive]:text-slate-400 dark:data-[state=inactive]:hover:text-slate-200">
               <BookOpen className="w-4 h-4" />
               Documentação
             </TabsTrigger>
