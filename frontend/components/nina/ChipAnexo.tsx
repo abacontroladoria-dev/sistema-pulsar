@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useRef, useState } from 'react'
 import { FileText, Image as Icone, Mic, Video, Paperclip, Download, Loader2, AlertCircle } from 'lucide-react'
 import type { AnexoUI } from './adapters/centralToNina'
 
@@ -99,10 +99,7 @@ export const ChipAnexo: React.FC<{ anexo: AnexoUI; claro: boolean }> = ({ anexo,
       )
     }
     if (anexo.rotulo === 'Áudio') {
-      // `controls` nativo: um player próprio precisaria de waveform, seek e
-      // velocidade para ganhar do nativo, e nada disso muda a decisão de quem
-      // ouve um áudio de paciente.
-      return <audio src={estado.url} controls className="w-full max-w-xs" />
+      return <PlayerAudio url={estado.url} claro={claro} />
     }
     if (anexo.rotulo === 'Vídeo') {
       return <video src={estado.url} controls className="rounded-lg max-h-72 w-auto" />
@@ -155,5 +152,51 @@ export const ChipAnexo: React.FC<{ anexo: AnexoUI; claro: boolean }> = ({ anexo,
         <span className={`text-[10px] shrink-0 ${secundario}`}>abrir</span>
       )}
     </button>
+  )
+}
+
+// ----------------------------------------------------------------------------
+// Áudio: o player nativo, mais duas coisas que ele não tem e que quem atende
+// usa o dia todo — acelerar (1× → 1,5× → 2×) e tocar um áudio por vez. Dar
+// play num pausa o que estiver tocando, como no WhatsApp.
+// ----------------------------------------------------------------------------
+const VELOCIDADES = [1, 1.5, 2] as const
+let tocandoAgora: HTMLAudioElement | null = null
+
+const PlayerAudio: React.FC<{ url: string; claro: boolean }> = ({ url, claro }) => {
+  const ref = useRef<HTMLAudioElement>(null)
+  const [vel, setVel] = useState(0)
+
+  const trocarVelocidade = () => {
+    const proxima = (vel + 1) % VELOCIDADES.length
+    setVel(proxima)
+    if (ref.current) ref.current.playbackRate = VELOCIDADES[proxima]
+  }
+
+  return (
+    <div className="flex items-center gap-1.5 w-full max-w-xs">
+      <audio
+        ref={ref}
+        src={url}
+        controls
+        className="w-full min-w-0"
+        onPlay={e => {
+          if (tocandoAgora && tocandoAgora !== e.currentTarget) tocandoAgora.pause()
+          tocandoAgora = e.currentTarget
+          e.currentTarget.playbackRate = VELOCIDADES[vel]
+        }}
+      />
+      <button
+        type="button"
+        onClick={trocarVelocidade}
+        title="Velocidade de reprodução"
+        aria-label={`Velocidade ${String(VELOCIDADES[vel]).replace('.', ',')}×`}
+        className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold tabular-nums transition-colors ${
+          claro ? 'bg-white/20 text-white hover:bg-white/30' : 'bg-background text-foreground border border-border hover:bg-muted'
+        }`}
+      >
+        {String(VELOCIDADES[vel]).replace('.', ',')}×
+      </button>
+    </div>
   )
 }

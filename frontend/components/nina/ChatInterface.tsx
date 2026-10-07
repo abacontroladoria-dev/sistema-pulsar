@@ -1,36 +1,28 @@
 'use client'
 
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, useLayoutEffect } from 'react'
 import {
-  Search, MessageSquare, Loader2, Info, Bot, User, Pause, Send, Check, CheckCheck, ShieldAlert, AlertCircle, WifiOff, MailX, Paperclip, Smartphone, Trash2
+  Search, MessageSquare, Loader2, Info, Bot, User, Pause, ShieldAlert, WifiOff, MailX, Smartphone,
+  Pin, PinOff, ArrowLeft, CheckCircle2, Archive, RotateCcw, UserRoundCog,
 } from 'lucide-react'
 
-import { ConversationStatus, MessageDirection } from '@/types/nina'
-import { useCentralInbox, type ModoIa } from '@/hooks/nina/useCentralInbox'
+import { ConversationStatus } from '@/types/nina'
+import { useCentralInbox, type ModoIa, type AcaoConversa } from '@/hooks/nina/useCentralInbox'
 import type { NinaMessage } from './adapters/centralToNina'
 import { usePainelDetalhamento } from '@/hooks/nina/usePainelDetalhamento'
 import { Avatar } from './Avatar'
-import { SeletorEmoji } from './SeletorEmoji'
-import { ChipAnexo } from './ChipAnexo'
 import { CanalSeletor } from './CanalSeletor'
+import { FiltrosLista, type FiltroRapido } from './FiltrosLista'
+import { BolhaMensagem } from './BolhaMensagem'
+import { Compositor } from './Compositor'
+import { rotuloDia, mesmoDia } from './textoWhatsApp'
 import { PainelDetalhamento } from './detalhamento/PainelDetalhamento'
 import { ModalAgendarRetorno } from './detalhamento/ModalAgendarRetorno'
 import { ModalDesignarTarefa } from './detalhamento/ModalDesignarTarefa'
 import { ModalApagarMensagem } from './ModalApagarMensagem'
-import { Button } from './Button'
+import { ModalEditarMensagem, ModalTransferir } from './ModaisConversa'
+import { MessageDirection } from '@/types/nina'
 import { toast } from 'sonner'
-
-// O que o seletor de arquivo do sistema mostra. Precisa concordar com
-// TIPOS_ACEITOS da rota /api/central/messages/midia e com `allowed_mime_types`
-// do bucket (20260921160000) — um tipo oferecido aqui e recusado lá viraria uma
-// mensagem 'failed' na conversa depois de o arquivo já ter subido.
-const TIPOS_ACEITOS = [
-  'image/jpeg', 'image/png', 'image/webp',
-  'audio/aac', 'audio/amr', 'audio/mpeg', 'audio/mp4', 'audio/ogg',
-  'video/mp4', 'video/3gpp',
-  'application/pdf', 'text/plain', 'text/csv',
-  '.doc', '.docx', '.xls', '.xlsx',
-].join(',')
 
 const ChatInterface: React.FC = () => {
   const {
@@ -41,6 +33,8 @@ const ChatInterface: React.FC = () => {
     enviarMidia, enviandoMidia,
     canais, canaisSelecionados, alternarCanal, mostrarTodosCanais,
     atualizandoLista, apagarMensagem,
+    editarMensagem, carregarAntigas, carregandoAntigas, temMaisAntigas,
+    acaoConversa, visao, setVisao, fixadas, alternarFixada, meuUserId,
   } = useCentralInbox()
 
   // Nome do número por id, para a badge da lista. Só aparece quando o usuário
@@ -66,40 +60,123 @@ const ChatInterface: React.FC = () => {
   const [designando, setDesignando] = useState(false)
   const [apagando, setApagando] = useState<NinaMessage | null>(null)
 
-  const [inputText, setInputText] = useState('')
-  const [showProfileInfo, setShowProfileInfo] = useState(true)
+  const [respondendo, setRespondendo] = useState<NinaMessage | null>(null)
+  const [editando, setEditando] = useState<NinaMessage | null>(null)
+  const [transferindo, setTransferindo] = useState(false)
+  const [destacada, setDestacada] = useState<string | null>(null)
+  const [filtroRapido, setFiltroRapido] = useState<FiltroRapido>('todas')
+  const [filtroTags, setFiltroTags] = useState<string[]>([])
+  // Fechado de início em tela estreita: no celular o painel cobriria a conversa.
+  const [showProfileInfo, setShowProfileInfo] = useState(
+    () => typeof window === 'undefined' || window.innerWidth >= 1280,
+  )
   const [searchQuery, setSearchQuery] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const textareaRef    = useRef<HTMLTextAreaElement>(null)
-  const arquivoRef     = useRef<HTMLInputElement>(null)
-
-  // Texto e arquivo disputam o mesmo compositor: o texto digitado vira legenda
-  // do anexo, então mandar os dois ao mesmo tempo significaria mandar a legenda
-  // duas vezes. Um estado só para os dois botões evita essa corrida.
-  const ocupado = enviando || enviandoMidia
+  const rolagemRef     = useRef<HTMLDivElement>(null)
+  // Altura antes de carregar as antigas, para devolver o olho ao mesmo ponto.
+  const alturaAntes    = useRef<number | null>(null)
 
   const setSelectedChatId = select
   const selectedChatId    = selectedId
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }
+  // Trocar de conversa descarta a resposta em andamento: citar a mensagem de
+  // outra pessoa seria pior que perder a citação.
+  useEffect(() => { setRespondendo(null) }, [selectedId])
 
-  // Depende do COMPRIMENTO, não do array: o polling substitui o array a cada 5s
-  // e rolar a cada tique roubaria a rolagem de quem está lendo o histórico.
+  // Rola para o fim quando chega mensagem NOVA (a última mudou). Pelo id, e não
+  // pelo comprimento: carregar as antigas também aumenta o comprimento, e
+  // descer ali jogaria fora o histórico que a pessoa acabou de pedir.
+  const ultimaId = activeChat?.messages.at(-1)?.id
   useEffect(() => {
-    scrollToBottom()
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [ultimaId])
+
+  useLayoutEffect(() => {
+    const el = rolagemRef.current
+    if (el && alturaAntes.current !== null) {
+      el.scrollTop = el.scrollHeight - alturaAntes.current
+      alturaAntes.current = null
+    }
   }, [activeChat?.messages.length])
 
-  const filteredConversations = conversations.filter(chat => {
-    if (!searchQuery) return true
-    const query = searchQuery.toLowerCase()
-    return (
-      chat.contactName.toLowerCase().includes(query) ||
-      chat.contactPhone.includes(query) ||
-      chat.lastMessage.toLowerCase().includes(query)
-    )
-  })
+  const pedirAntigas = () => {
+    if (carregandoAntigas || !temMaisAntigas) return
+    alturaAntes.current = rolagemRef.current?.scrollHeight ?? null
+    carregarAntigas().catch(err => {
+      alturaAntes.current = null
+      toast.error((err as Error).message)
+    })
+  }
+
+  // Leva até a mensagem citada e a acende por um instante. Se ela é mais antiga
+  // que o histórico carregado, avisa em vez de rolar para lugar nenhum.
+  const irPara = (id: string) => {
+    const el = document.getElementById(`msg-${id}`)
+    if (!el) {
+      toast.info('A mensagem citada é mais antiga. Use "Carregar anteriores" no topo da conversa.')
+      return
+    }
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    setDestacada(id)
+    setTimeout(() => setDestacada(atual => (atual === id ? null : atual)), 1600)
+  }
+
+  const filteredConversations = conversations
+    .filter(chat => {
+      if (!searchQuery) return true
+      const query = searchQuery.toLowerCase()
+      return (
+        chat.contactName.toLowerCase().includes(query) ||
+        chat.contactPhone.includes(query) ||
+        chat.lastMessage.toLowerCase().includes(query)
+      )
+    })
+    .filter(chat => {
+      switch (filtroRapido) {
+        case 'nao_lidas': return chat.naoLida
+        case 'minhas':    return !!meuUserId && chat.assignedUserId === meuUserId
+        case 'maia':      return chat.status === 'nina'
+        case 'humano':    return chat.status !== 'nina'
+        default:          return true
+      }
+    })
+    .filter(chat => filtroTags.length === 0 || chat.tagsContato.some(t => filtroTags.includes(t)))
+    // Fixadas no topo, na ordem em que foram fixadas; o resto mantém a ordem
+    // do servidor (última mensagem primeiro).
+    .sort((a, b) => {
+      const ia = fixadas.indexOf(a.id), ib = fixadas.indexOf(b.id)
+      if (ia === -1 && ib === -1) return 0
+      if (ia === -1) return 1
+      if (ib === -1) return -1
+      return ia - ib
+    })
+
+  const handleFixar = async (id: string) => {
+    try {
+      await alternarFixada(id)
+    } catch (err) {
+      toast.error((err as Error).message)
+    }
+  }
+
+  const MSG_ACAO: Record<AcaoConversa['action'], string> = {
+    resolve:  'Conversa encerrada.',
+    archive:  'Conversa arquivada.',
+    reopen:   'Conversa reaberta.',
+    transfer: 'Conversa transferida.',
+  }
+  const handleAcaoConversa = async (acao: AcaoConversa) => {
+    try {
+      await acaoConversa(acao)
+      toast.success(MSG_ACAO[acao.action])
+    } catch (err) {
+      toast.error((err as Error).message)
+      throw err
+    }
+  }
+
+  const statusCentral = detalhe?.status ?? null
+  const encerrada = statusCentral === 'resolved' || statusCentral === 'archived'
 
   const renderStatusBadge = (status: ConversationStatus) => {
     const config = {
@@ -285,61 +362,13 @@ const ChatInterface: React.FC = () => {
     }
   }
 
-  const handleSendMessage = async (e?: React.FormEvent) => {
-    e?.preventDefault()
-    if (!inputText.trim() || !activeChat || ocupado) return
-
-    const texto = inputText
+  // O modal fica ABERTO se falhar, com o texto digitado, para tentar de novo.
+  const handleEditarMensagem = async (texto: string) => {
+    if (!editando) return
     try {
-      await enviar(texto)
-      // Limpa só DEPOIS do sucesso. O envio passa pela Meta e pode falhar
-      // (janela de 24h fechada, token expirado); limpar antes faria o operador
-      // reescrever a mensagem inteira.
-      setInputText('')
-    } catch (err) {
-      toast.error((err as Error).message)
-    }
-  }
-
-  // Insere o emoji ONDE O CURSOR ESTÁ, substituindo a seleção se houver, e
-  // devolve o cursor para logo depois dele.
-  //
-  // Anexar no fim seria mais simples e estaria errado em todo caso que importa:
-  // quem escreve "bom dia, já confirmei sua sessão" e volta para pôr um emoji
-  // depois do "dia" espera que ele caia ali. O `requestAnimationFrame` existe
-  // porque o textarea é controlado — o valor novo só chega ao DOM no próximo
-  // render, e mexer em selectionRange antes disso reposiciona o cursor sobre o
-  // texto ANTIGO.
-  const inserirEmoji = (emoji: string) => {
-    const el = textareaRef.current
-    const inicio = el?.selectionStart ?? inputText.length
-    const fim    = el?.selectionEnd   ?? inputText.length
-
-    setInputText(inputText.slice(0, inicio) + emoji + inputText.slice(fim))
-
-    requestAnimationFrame(() => {
-      const campo = textareaRef.current
-      if (!campo) return
-      campo.focus()
-      const pos = inicio + emoji.length
-      campo.setSelectionRange(pos, pos)
-    })
-  }
-
-  // O texto que estiver no compositor vira LEGENDA do anexo — a convenção do
-  // WhatsApp, e a que o operador já espera. Limpa junto com o envio.
-  const handleEscolherArquivo = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const arquivo = e.target.files?.[0]
-    // Zera o input ANTES de qualquer await: sem isso, escolher o mesmo arquivo
-    // duas vezes seguidas não dispara `change` na segunda, e o botão parece
-    // quebrado justamente quando alguém reenvia algo que falhou.
-    e.target.value = ''
-    if (!arquivo || !activeChat) return
-
-    const legenda = inputText
-    try {
-      await enviarMidia(arquivo, legenda)
-      setInputText('')
+      await editarMensagem(editando.id, texto)
+      setEditando(null)
+      toast.success('Mensagem editada.')
     } catch (err) {
       toast.error((err as Error).message)
     }
@@ -402,7 +431,8 @@ const ChatInterface: React.FC = () => {
 
   return (
     <div className="flex h-full bg-background overflow-hidden">
-      <div className="w-80 lg:w-96 border-r border-border flex flex-col bg-card backdrop-blur-md z-20 flex-shrink-0">
+      {/* No celular, lista OU conversa — as duas lado a lado não cabem. */}
+      <div className={`${selectedId ? 'hidden md:flex' : 'flex'} w-full md:w-80 lg:w-96 border-r border-border flex-col bg-card backdrop-blur-md z-20 shrink-0`}>
         <div className="p-4 border-b border-border">
           <h2 className="text-lg font-bold text-foreground mb-4 px-1 flex items-center gap-2">
             Chats Ativos
@@ -428,6 +458,15 @@ const ChatInterface: React.FC = () => {
             aoAlternar={alternarCanal}
             aoMostrarTodos={mostrarTodosCanais}
           />
+          <FiltrosLista
+            rapido={filtroRapido}
+            aoRapido={setFiltroRapido}
+            podeMinhas={!!meuUserId}
+            visao={visao}
+            aoVisao={setVisao}
+            tags={filtroTags}
+            aoTags={setFiltroTags}
+          />
         </div>
 
         {/* Falha de rede NÃO esvazia a lista — os dados de antes continuam na
@@ -452,7 +491,7 @@ const ChatInterface: React.FC = () => {
               <div
                 key={chat.id}
                 onClick={() => setSelectedChatId(chat.id)}
-                className={`flex items-center p-4 cursor-pointer transition-all duration-200 border-b border-border hover:bg-muted ${
+                className={`group/linha relative flex items-center p-4 cursor-pointer transition-all duration-200 border-b border-border hover:bg-muted ${
                   selectedChatId === chat.id
                     ? 'bg-muted border-l-2 border-l-cyan-500'
                     : 'border-l-2 border-l-transparent'
@@ -488,7 +527,12 @@ const ChatInterface: React.FC = () => {
                     }`}>
                       {chat.contactName}
                     </h3>
-                    <span className="text-[10px] text-muted-foreground/70 font-medium">{chat.lastMessageTime}</span>
+                    <span className="flex items-center gap-1 shrink-0 text-[10px] text-muted-foreground/70 font-medium">
+                      {fixadas.includes(chat.id) && (
+                        <Pin className="w-3 h-3 text-cyan-500" aria-label="Fixada" />
+                      )}
+                      {chat.lastMessageTime}
+                    </span>
                   </div>
                   <p className="text-xs text-muted-foreground/70 truncate">{chat.lastMessage}</p>
 
@@ -511,6 +555,17 @@ const ChatInterface: React.FC = () => {
                     )}
                   </div>
                 </div>
+
+                {/* Fixar pela própria linha, no hover (sempre visível no toque). */}
+                <button
+                  type="button"
+                  onClick={e => { e.stopPropagation(); void handleFixar(chat.id) }}
+                  title={fixadas.includes(chat.id) ? 'Desafixar' : 'Fixar no topo'}
+                  aria-label={fixadas.includes(chat.id) ? 'Desafixar conversa' : 'Fixar conversa'}
+                  className="absolute right-2 bottom-2 p-1 rounded-md text-muted-foreground/70 hover:text-cyan-500 hover:bg-background opacity-0 group-hover/linha:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100 transition-opacity"
+                >
+                  {fixadas.includes(chat.id) ? <PinOff className="w-3.5 h-3.5" /> : <Pin className="w-3.5 h-3.5" />}
+                </button>
               </div>
             ))
           )}
@@ -525,17 +580,29 @@ const ChatInterface: React.FC = () => {
       {activeChat ? (
         <div className="flex-1 flex overflow-hidden bg-muted dark:bg-[#0B0E14]">
           <div className="flex-1 flex flex-col min-w-0 relative">
-            <div className="h-16 px-6 flex items-center justify-between bg-card backdrop-blur-md border-b border-border z-10 shrink-0">
-              <div className="flex items-center cursor-pointer hover:bg-muted p-1.5 -ml-1.5 rounded-lg transition-colors pr-3">
-                <div className="relative">
+            <div className="h-16 px-2 sm:px-6 flex items-center justify-between gap-2 bg-card backdrop-blur-md border-b border-border z-10 shrink-0">
+              <div className="flex items-center min-w-0 p-1.5 -ml-1.5 rounded-lg pr-3">
+                <button
+                  type="button"
+                  onClick={() => select(null)}
+                  aria-label="Voltar para a lista"
+                  className="md:hidden mr-1 p-1.5 rounded-lg hover:bg-muted text-muted-foreground"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                </button>
+                <div className="relative shrink-0">
                   <div className="w-9 h-9 rounded-full ring-2 ring-border overflow-hidden">
                     <Avatar url={activeChat.contactAvatar} nome={activeChat.contactName} />
                   </div>
-                  <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 border-2 border-border rounded-full"></span>
                 </div>
-                <div className="ml-3">
-                  <h2 className="text-sm font-bold text-foreground flex items-center gap-2">
-                    {activeChat.contactName}
+                <div className="ml-3 min-w-0">
+                  <h2 className="text-sm font-bold text-foreground flex items-center gap-2 min-w-0">
+                    <span className="truncate">{activeChat.contactName}</span>
+                    {encerrada && (
+                      <span className="shrink-0 px-2 py-0.5 rounded-md text-[10px] font-medium border border-border text-muted-foreground">
+                        {statusCentral === 'archived' ? 'Arquivada' : 'Encerrada'}
+                      </span>
+                    )}
                     {/* A badge sai de `ai_mode` cru e não enxerga a herança
                         (o adapter não conhece o agent_settings). A chave ao
                         lado mostra o modo efetivo e é a fonte a acreditar;
@@ -547,10 +614,10 @@ const ChatInterface: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="flex items-center gap-1 sm:gap-2 shrink-0">
                 {canalHumano ? (
                   <span
-                    className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                    className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                     title="Número de atendimento humano — a Maia não responde por ele"
                   >
                     <Smartphone className="w-3.5 h-3.5" />
@@ -578,6 +645,63 @@ const ChatInterface: React.FC = () => {
                   <MailX className="w-5 h-5" />
                 </button>
 
+                {selectedId && (
+                  <button
+                    type="button"
+                    onClick={() => void handleFixar(selectedId)}
+                    title={fixadas.includes(selectedId) ? 'Desafixar' : 'Fixar no topo'}
+                    aria-label={fixadas.includes(selectedId) ? 'Desafixar conversa' : 'Fixar conversa'}
+                    aria-pressed={fixadas.includes(selectedId)}
+                    className={`p-1.5 rounded-lg hover:bg-muted transition-colors ${
+                      fixadas.includes(selectedId) ? 'text-cyan-500' : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    {fixadas.includes(selectedId) ? <PinOff className="w-5 h-5" /> : <Pin className="w-5 h-5" />}
+                  </button>
+                )}
+
+                {encerrada ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleAcaoConversa({ action: 'reopen' }).catch(() => {})}
+                    title="Reabrir conversa"
+                    aria-label="Reabrir conversa"
+                    className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <RotateCcw className="w-5 h-5" />
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setTransferindo(true)}
+                      title="Transferir para outra pessoa"
+                      aria-label="Transferir conversa"
+                      className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      <UserRoundCog className="w-5 h-5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleAcaoConversa({ action: 'resolve' }).catch(() => {})}
+                      title="Encerrar atendimento"
+                      aria-label="Encerrar atendimento"
+                      className="p-1.5 rounded-lg hover:bg-emerald-500/10 text-muted-foreground hover:text-emerald-600 transition-colors"
+                    >
+                      <CheckCircle2 className="w-5 h-5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleAcaoConversa({ action: 'archive' }).catch(() => {})}
+                      title="Arquivar"
+                      aria-label="Arquivar conversa"
+                      className="hidden sm:block p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      <Archive className="w-5 h-5" />
+                    </button>
+                  </>
+                )}
+
                 {/* O X do painel só escondia, e não havia como trazê-lo de
                     volta sem recarregar a página. Com seis blocos de ficha lá
                     dentro, fechar por engano custava caro demais. */}
@@ -595,157 +719,74 @@ const ChatInterface: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar relative z-0">
+            <div
+              ref={rolagemRef}
+              onScroll={e => { if (e.currentTarget.scrollTop < 80) pedirAntigas() }}
+              className="flex-1 overflow-y-auto px-3 py-4 sm:p-6 custom-scrollbar relative z-0"
+            >
               {activeChat.messages.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-muted-foreground/70">
                   <MessageSquare className="w-16 h-16 mb-4 opacity-30" />
                   <p className="text-sm">Nenhuma mensagem ainda</p>
                 </div>
               ) : (
-                activeChat.messages.map((msg) => {
-                  const isOutgoing = msg.direction === MessageDirection.OUTGOING
-                  return (
-                    <div key={msg.id} className={`group flex ${isOutgoing ? 'justify-end' : 'justify-start'}`}>
-                      <div className={`flex flex-col max-w-[75%] ${isOutgoing ? 'items-end' : 'items-start'}`}>
-                        <div
-                          className={`px-5 py-3 rounded-2xl shadow-md relative text-sm leading-relaxed whitespace-pre-wrap ${
-                            // Rascunho da IA: silhueta diferente, não só cor.
-                            // Precisa ser óbvio que esta mensagem NÃO saiu.
-                            msg.isAiDraft
-                              ? 'bg-violet-500/10 text-violet-700 dark:text-violet-200 border border-dashed border-violet-500/40 rounded-tr-sm'
-                              : isOutgoing
-                                ? 'bg-gradient-to-br from-cyan-600 to-teal-700 text-white rounded-tr-sm'
-                                : 'bg-muted text-foreground rounded-tl-sm border border-border'
-                          }`}
-                        >
-                          {/* Anexo primeiro, legenda depois — é a ordem do
-                              WhatsApp, e é a ordem em que a pessoa pensou. */}
-                          {msg.anexos.length > 0 && (
-                            <div className={`flex flex-col gap-1.5 ${msg.content ? 'mb-2' : ''}`}>
-                              {msg.anexos.map(a => (
-                                <ChipAnexo
-                                  key={a.id}
-                                  anexo={a}
-                                  // Bolha de saída = gradiente escuro com texto
-                                  // branco. O chip precisa saber em qual dos
-                                  // dois fundos está para não sumir.
-                                  claro={isOutgoing && !msg.isAiDraft}
-                                />
-                              ))}
-                            </div>
-                          )}
-                          {msg.content}
-                        </div>
-                        <div className="flex items-center mt-1.5 gap-1.5 text-[10px] px-1">
-                          {msg.isAiDraft && (
-                            <span className="text-violet-400 font-medium">
-                              Sugestão da Maia — não enviada
-                            </span>
-                          )}
-                          <span className="text-muted-foreground/70 opacity-60">{msg.timestamp}</span>
-                          {/* Tique só quando a mensagem realmente saiu.
-                              Rascunho e falha não recebem: antes, o `else` final
-                              desenhava um Check para QUALQUER status, então
-                              'pending' e 'failed' apareciam como enviadas. */}
-                          {isOutgoing && !msg.isAiDraft && (
-                            msg.failed              ? <AlertCircle className="w-3.5 h-3.5 text-rose-500" /> :
-                            msg.emTransito          ? <Loader2 className="w-3 h-3 text-muted-foreground/70 animate-spin" /> :
-                            msg.status === 'read'   ? <CheckCheck  className="w-3.5 h-3.5 text-cyan-500" /> :
-                            msg.status === 'delivered' ? <CheckCheck className="w-3.5 h-3.5 text-muted-foreground/70" /> :
-                            <Check className="w-3.5 h-3.5 text-muted-foreground/70" />
-                          )}
-                          {msg.failed && (
-                            <span className="text-rose-400">Não entregue</span>
-                          )}
-                          {msg.emTransito && (
-                            <span className="text-muted-foreground/70">Não confirmada</span>
-                          )}
-                          {/* Aparece ao passar o mouse na mensagem — uma lixeira
-                              fixa em toda bolha seria ruído na conversa inteira.
-                              Em tela de toque não há "passar o mouse", então lá
-                              fica sempre visível. */}
-                          <button
-                            type="button"
-                            onClick={() => setApagando(msg)}
-                            title={msg.apagaParaTodos ? 'Apagar para todos' : 'Apagar do Pulsar'}
-                            aria-label="Apagar mensagem"
-                            className="p-0.5 rounded text-muted-foreground/70 hover:text-rose-500 hover:bg-rose-500/10 transition-colors opacity-0 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
+                <>
+                  {/* Rolar ao topo já pede; o botão é para quem não rola
+                      (teclado, leitor de tela) e para dizer que há mais. */}
+                  {temMaisAntigas && (
+                    <div className="flex justify-center mb-2">
+                      <button
+                        type="button"
+                        onClick={pedirAntigas}
+                        disabled={carregandoAntigas}
+                        className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs text-muted-foreground bg-card border border-border hover:text-foreground disabled:cursor-wait"
+                      >
+                        {carregandoAntigas && <Loader2 className="w-3 h-3 animate-spin" />}
+                        Carregar anteriores
+                      </button>
                     </div>
-                  )
-                })
+                  )}
+                  {activeChat.messages.map((msg, i) => {
+                    const anterior = activeChat.messages[i - 1]
+                    const novoDia = !anterior || !mesmoDia(anterior.quandoIso, msg.quandoIso)
+                    const primeiraDoGrupo = novoDia || anterior.autorId !== msg.autorId
+                    return (
+                      <React.Fragment key={msg.id}>
+                        {novoDia && (
+                          <div className="flex justify-center my-4" role="separator">
+                            <span className="px-3 py-1 rounded-full bg-card border border-border text-[11px] font-medium text-muted-foreground shadow-sm">
+                              {rotuloDia(msg.quandoIso)}
+                            </span>
+                          </div>
+                        )}
+                        <BolhaMensagem
+                          msg={msg}
+                          primeiraDoGrupo={primeiraDoGrupo}
+                          destacada={destacada === msg.id}
+                          aoResponder={setRespondendo}
+                          aoEditar={setEditando}
+                          aoApagar={setApagando}
+                          aoIrPara={irPara}
+                        />
+                      </React.Fragment>
+                    )
+                  })}
+                </>
               )}
               <div ref={messagesEndRef} />
             </div>
 
-            <div className="p-4 bg-card border-t border-border backdrop-blur-sm z-10">
-              <form onSubmit={handleSendMessage} className="flex items-end gap-2 max-w-4xl mx-auto">
-                {/* Fora do campo, e não dentro dele: o painel abre para cima a
-                    partir daqui, e ancorá-lo no textarea o faria saltar de
-                    posição conforme o campo cresce com o texto. */}
-                <SeletorEmoji aoEscolher={inserirEmoji} desabilitado={ocupado} />
-
-                {/* O input fica escondido e o botão o aciona: o <input type=file>
-                    nativo não é estilizável e destoaria da barra inteira.
-                    O `accept` filtra o seletor do sistema pelos tipos que a Meta
-                    aceita — a rota valida de novo, mas ver só o que serve evita
-                    a frustração de escolher um .zip e levar erro depois. */}
-                <input
-                  ref={arquivoRef}
-                  type="file"
-                  className="hidden"
-                  accept={TIPOS_ACEITOS}
-                  onChange={handleEscolherArquivo}
-                />
-                <button
-                  type="button"
-                  onClick={() => arquivoRef.current?.click()}
-                  disabled={ocupado}
-                  title="Anexar arquivo"
-                  aria-label="Anexar arquivo"
-                  className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  {enviandoMidia
-                    ? <Loader2 className="w-5 h-5 animate-spin" />
-                    : <Paperclip className="w-5 h-5" />}
-                </button>
-
-                <div className="flex-1 bg-background rounded-2xl border border-border focus-within:ring-2 focus-within:ring-cyan-500/30 focus-within:border-cyan-500/50 transition-all shadow-inner">
-                  <textarea
-                    ref={textareaRef}
-                    value={inputText}
-                    onChange={(e) => setInputText(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault()
-                        handleSendMessage()
-                      }
-                    }}
-                    placeholder="Digite sua mensagem..."
-                    className="w-full bg-transparent border-none p-3.5 max-h-32 min-h-[48px] text-sm text-foreground focus:ring-0 resize-none outline-none placeholder:text-muted-foreground/70"
-                    rows={1}
-                  />
-                </div>
-
-                <Button
-                  type="submit"
-                  disabled={!inputText.trim() || ocupado}
-                  className={`rounded-full w-12 h-12 p-0 transition-all ${
-                    inputText.trim() && !ocupado
-                      ? 'shadow-lg shadow-cyan-500/20 hover:scale-105 active:scale-95'
-                      : 'opacity-50 cursor-not-allowed'
-                  }`}
-                >
-                  {enviando
-                    ? <Loader2 className="w-5 h-5 animate-spin" />
-                    : <Send className="w-5 h-5 ml-0.5" />}
-                </Button>
-              </form>
-            </div>
+            <Compositor
+              key={selectedId ?? ''}
+              enviando={enviando}
+              enviandoMidia={enviandoMidia}
+              bloqueado={encerrada ? 'Conversa encerrada. Reabra pelo botão no topo para responder.' : null}
+              respondendo={respondendo}
+              nomeContato={activeChat.contactName}
+              aoCancelarResposta={() => setRespondendo(null)}
+              enviarTexto={enviar}
+              enviarArquivo={enviarMidia}
+            />
           </div>
 
           {showProfileInfo && (
@@ -815,6 +856,28 @@ const ChatInterface: React.FC = () => {
               aoConfirmar={handleApagarMensagem}
             />
           )}
+
+          {editando && (
+            <ModalEditarMensagem
+              textoAtual={editando.content}
+              aoFechar={() => setEditando(null)}
+              aoConfirmar={handleEditarMensagem}
+            />
+          )}
+
+          {transferindo && (
+            <ModalTransferir
+              usuarios={painel.usuarios}
+              atualId={detalhe?.assigned_user_id ?? null}
+              aoFechar={() => setTransferindo(false)}
+              aoConfirmar={async (toUserId, motivo) => {
+                try {
+                  await handleAcaoConversa({ action: 'transfer', toUserId, ...(motivo ? { reason: motivo } : {}) })
+                  setTransferindo(false)
+                } catch { /* toast já saiu; o modal fica aberto */ }
+              }}
+            />
+          )}
         </div>
       ) : selectedId && loadingChat ? (
         // Entre o clique e a chegada do detalhe. Antes este intervalo mostrava o
@@ -827,7 +890,7 @@ const ChatInterface: React.FC = () => {
           </p>
         </div>
       ) : (
-        <div className="flex-1 flex flex-col items-center justify-center bg-muted dark:bg-[#0B0E14] relative overflow-hidden">
+        <div className="hidden md:flex flex-1 flex-col items-center justify-center bg-muted dark:bg-[#0B0E14] relative overflow-hidden">
           <div className="relative z-10 flex flex-col items-center p-8 text-center max-w-md">
             <div className="w-24 h-24 bg-card rounded-full flex items-center justify-center mb-6 shadow-2xl border border-border relative group">
               <div className="absolute inset-0 bg-cyan-500/20 rounded-full blur-xl group-hover:bg-cyan-500/30 transition-all duration-1000"></div>

@@ -66,6 +66,7 @@ export type ConversationEventType =
   | 'message.received'
   | 'message.sent'
   | 'message.deleted'
+  | 'message.edited'
   | 'message.status_updated'
   // Contatos
   | 'contact.created'

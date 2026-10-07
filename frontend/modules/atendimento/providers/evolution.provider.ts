@@ -47,8 +47,35 @@ export class EvolutionProvider implements MessagingProvider {
     const json = await chamarEvolution<{ key?: { id?: unknown } }>('POST', `/message/sendText/${encodeURIComponent(instancia)}`, {
       number: soDigitos(input.to),
       text: input.body ?? '',
+      // Citação: a Evolution procura a mensagem pelo id no próprio banco; o
+      // `message` ao lado é o que ela usa quando a instância não guarda histórico.
+      ...(input.replyToId
+        ? {
+            quoted: {
+              key: { id: input.replyToId, fromMe: input.replyTo?.fromMe ?? false },
+              message: { conversation: input.replyTo?.body ?? '' },
+            },
+          }
+        : {}),
     })
     return resultado(json)
+  }
+
+  // Editar texto já enviado. Mesma resolução de jid do "apagar para todos" — um
+  // jid errado não dá erro e nada muda no celular do contato.
+  async editarTexto(
+    channel: Channel,
+    alvo: { externalId: string; telefone: string; texto: string },
+  ): Promise<void> {
+    const instancia = await this.resolverInstancia(channel)
+    const remoteJid = await jidDaMensagem(instancia, alvo.externalId)
+      ?? await jidDoNumero(instancia, alvo.telefone)
+
+    await chamarEvolution('POST', `/chat/updateMessage/${encodeURIComponent(instancia)}`, {
+      number: soDigitos(alvo.telefone),
+      key: { id: alvo.externalId, remoteJid, fromMe: true },
+      text: alvo.texto,
+    })
   }
 
   async sendMedia(channel: Channel, input: ProviderSendInput): Promise<ProviderSendResult> {

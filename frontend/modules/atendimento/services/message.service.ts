@@ -20,6 +20,7 @@ import {
   ProviderError,
   AnexoNaoEncontradoError,
   AnexoIndisponivelError,
+  EdicaoRecusadaError,
 } from '../types/errors.types'
 import {
   AnexoStorageRepository,
@@ -27,7 +28,7 @@ import {
 } from '../repositories/anexo-storage.repository'
 import { mapProviderStatus } from '../utils/provider-status'
 import { isUniqueViolation } from '../utils/pg-errors'
-import { apagaParaTodos } from '../utils/apagar-mensagem'
+import { apagaParaTodos, podeEditar } from '../utils/apagar-mensagem'
 
 // ============================================================================
 // MessageService
@@ -167,6 +168,17 @@ export class MessageService {
 
     const provider = this.factory.get(channel.provider)
 
+    // A citação vai ao provider pelo id do WhatsApp da mensagem citada. Lida com
+    // o client do usuário (RLS): citar algo de outra conversa não passa. Sem id
+    // externo (falha, rascunho), a resposta sai sem citação em vez de falhar.
+    let citada: Message | null = null
+    if (input.replyToMessageId) {
+      const achada = await this.msg.findById(input.replyToMessageId)
+      if (achada && achada.conversation_id === input.conversationId && !achada.deleted_at) {
+        citada = achada
+      }
+    }
+
     // 3. Registrar a intenção ANTES de existir rede no caminho.
     // Sem external_message_id ainda — ele só existe depois do aceite do provider.
     const pendente = await this.msg.create({
@@ -178,7 +190,7 @@ export class MessageService {
       provider:            channel.provider,
       sent_by_user_id:     input.sentByUserId,
       sent_by_ai:          input.sentByAi         ?? false,
-      reply_to_message_id: input.replyToMessageId ?? undefined,
+      reply_to_message_id: citada?.id ?? undefined,
       status:              'pending',
     })
 
@@ -189,7 +201,10 @@ export class MessageService {
         to:          contact.display_phone,  // validado acima — nunca null
         body:        input.body,
         messageType: input.messageType ?? 'text',
-        replyToId:   undefined,  // reply de outbound não mapeado no provider ainda
+        replyToId:   citada?.external_message_id ?? undefined,
+        replyTo:     citada?.external_message_id
+          ? { fromMe: citada.direction === 'outbound', body: citada.body ?? '' }
+          : undefined,
       })
     } catch (err) {
       // A mensagem fica registrada como falha em vez de desaparecer. O erro
@@ -701,6 +716,60 @@ export class MessageService {
     })
 
     return { apagadaNoWhatsapp }
+  }
+
+  // -------------------------------------------------------------------------
+  // editar
+  // O lápis da bolha. Portão igual ao de softDelete (findById com o client do
+  // usuário). Edita PRIMEIRO no WhatsApp: se ele recusar, o Pulsar não muda —
+  // mostrar um texto que o contato não está lendo é o pior resultado possível.
+  // -------------------------------------------------------------------------
+  async editar(
+    messageId: string,
+    texto:     string,
+    actorId:   string,
+    orgId:     string,
+  ): Promise<Message> {
+    const message = await this.msg.findById(messageId)
+    if (!message || message.organization_id !== orgId || message.deleted_at) {
+      throw new EdicaoRecusadaError('Mensagem não encontrada.')
+    }
+    if (!podeEditar(message)) {
+      throw new EdicaoRecusadaError('Só dá para editar texto enviado por número Evolution nos últimos 15 minutos.')
+    }
+
+    const conversation = await this.conv.findById(message.conversation_id)
+    if (!conversation) throw new ConversationNotFoundError(message.conversation_id)
+    const channel  = await this.resolveChannel(conversation.channel_id)
+    const provider = this.factory.get(channel.provider)
+    if (!provider.editarTexto) {
+      throw new EdicaoRecusadaError('Este número não permite editar mensagens.')
+    }
+    const contact = await this.contact.findById(conversation.contact_id)
+    if (!contact?.display_phone) throw new MissingContactPhoneError(conversation.contact_id)
+
+    try {
+      await provider.editarTexto(channel, {
+        externalId: message.external_message_id!,
+        telefone:   contact.display_phone,
+        texto,
+      })
+    } catch (err) {
+      throw err instanceof ProviderError ? err : new ProviderError(channel.provider, err)
+    }
+
+    await this.msg.editarTexto(messageId, texto)
+    await this.msg.recalcularPrevia(message.conversation_id).catch(() => { /* a próxima mensagem corrige */ })
+
+    void this.audit.insert({
+      organization_id: message.organization_id,
+      conversation_id: message.conversation_id,
+      event_type:      'message.edited',
+      performed_by:    actorId,
+      payload:         { messageId, antes: message.body, depois: texto },
+    })
+
+    return { ...message, body: texto, edited_at: new Date().toISOString() }
   }
 
   // -------------------------------------------------------------------------

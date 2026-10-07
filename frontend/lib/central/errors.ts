@@ -21,6 +21,7 @@ import {
   TaskNotFoundError,
   AnexoNaoEncontradoError,
   AnexoIndisponivelError,
+  EdicaoRecusadaError,
 } from '@/modules/atendimento/types/errors.types'
 import { JanelaAtendimentoFechadaError } from '@/modules/atendimento/providers/meta-waba.provider'
 import {
@@ -78,6 +79,7 @@ export function mapCentralError(err: unknown): NextResponse {
   // 422 e não 404: o anexo EXISTE, o arquivo é que não veio. A mensagem carrega
   // o motivo, que é o que diz se adianta tentar de novo.
   if (err instanceof AnexoIndisponivelError)      return unprocessable(err.code, err.message)
+  if (err instanceof EdicaoRecusadaError)         return unprocessable(err.code, err.message)
   if (err instanceof ConversationAlreadyClosedError) return conflict(err.code, err.message)
   // 409: a vaga existia e foi tomada — retentar com outro horário resolve.
   if (err instanceof SlotAlreadyBookedError)      return conflict(err.code, err.message)

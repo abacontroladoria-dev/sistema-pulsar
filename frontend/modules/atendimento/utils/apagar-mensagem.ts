@@ -29,3 +29,25 @@ export function apagaParaTodos(
   const enviadaEm = new Date(m.sent_at ?? m.created_at).getTime()
   return Number.isFinite(enviadaEm) && agora - enviadaEm < PRAZO_APAGAR_PARA_TODOS_MS
 }
+
+// ----------------------------------------------------------------------------
+// Editar mensagem: mesma ideia — uma regra só para a bolha e para o service.
+//
+//   • saída, Evolution, com id do WhatsApp — a Meta não tem edição;
+//   • texto puro, escrito por gente (a Maia não roda em Evolution, mas a
+//     guarda fica: editar fala de IA seria reescrever o que ela disse);
+//   • dentro de 15 minutos — o prazo do próprio WhatsApp. Fora dele o pedido é
+//     ignorado em silêncio e o Pulsar mostraria um texto que o contato não vê.
+// ----------------------------------------------------------------------------
+
+export const PRAZO_EDITAR_MS = 15 * 60 * 1000
+
+export function podeEditar(
+  m: Pick<Message, 'direction' | 'provider' | 'external_message_id' | 'sent_at' | 'created_at' | 'message_type' | 'sent_by_ai'>,
+  agora: number = Date.now(),
+): boolean {
+  if (m.direction !== 'outbound' || m.provider !== 'evolution' || !m.external_message_id) return false
+  if (m.message_type !== 'text' || m.sent_by_ai) return false
+  const enviadaEm = new Date(m.sent_at ?? m.created_at).getTime()
+  return Number.isFinite(enviadaEm) && agora - enviadaEm < PRAZO_EDITAR_MS
+}

@@ -100,6 +100,13 @@ export class AnexoIndisponivelError extends CentralError {
   }
 }
 
+// Editar mensagem fora da regra de podeEditar (utils/apagar-mensagem.ts).
+export class EdicaoRecusadaError extends CentralError {
+  constructor(motivo: string) {
+    super(motivo, 'EDICAO_RECUSADA', {})
+  }
+}
+
 // Número Evolution é atendimento humano: a trigger trg_evolution_sem_ia recusa
 // qualquer ai_mode diferente de 'off' (20260924180100).
 export class CanalSemIaError extends CentralError {

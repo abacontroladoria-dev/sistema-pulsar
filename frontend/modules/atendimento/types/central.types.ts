@@ -196,6 +196,8 @@ export interface Message {
   status:              MessageStatus
   sent_at:             string | null
   deleted_at:          string | null
+  // Quando o texto foi editado depois de enviado (20261007120000). Null = nunca.
+  edited_at?:          string | null
   created_at:          string
   updated_at:          string
   // Relacionamento expandido opcionalmente por listByConversation
@@ -346,6 +348,9 @@ export interface ProviderSendInput {
   caption?:    string
   fileName?:   string
   replyToId?:  string    // external_message_id da mensagem citada
+  // O que a Evolution precisa para montar a citação quando não guarda histórico
+  // (quem falou e o texto). A Meta ignora: `context.message_id` basta lá.
+  replyTo?:    { fromMe: boolean; body: string }
   // Os bytes, para providers sem upload separado (Evolution manda a mídia
   // junto do envio). O meta_waba ignora: ele já recebeu os bytes em uploadMedia.
   arquivo?:    { bytes: ArrayBuffer; mimeType: string; fileName: string }
@@ -406,6 +411,12 @@ export interface MessagingProvider {
   apagarParaTodos?(
     channel: Channel,
     alvo: { externalId: string; telefone: string },
+  ): Promise<void>
+  // Troca o texto de uma mensagem NOSSA no WhatsApp do contato. Opcional pelo
+  // mesmo motivo: a Meta não tem edição.
+  editarTexto?(
+    channel: Channel,
+    alvo: { externalId: string; telefone: string; texto: string },
   ): Promise<void>
   getStatus(channel: Channel): Promise<ChannelStatus>
   processWebhook(raw: unknown): Promise<NormalizedIncomingMessage>

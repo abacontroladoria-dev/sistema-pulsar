@@ -360,6 +360,19 @@ export class MessageRepository {
     if (error) throw error
   }
 
+  // Troca o texto depois de o WhatsApp ter aceitado a edição. `escrita` pelo
+  // mesmo motivo de softDelete: `authenticated` não tem UPDATE em messages.
+  async editarTexto(id: string, body: string): Promise<void> {
+    const { error } = await (this.escrita as any)
+      .schema('central')
+      .from('messages')
+      .update({ body, edited_at: new Date().toISOString() })
+      .eq('id', id)
+      .is('deleted_at', null)
+
+    if (error) throw error
+  }
+
   // A prévia da lista (conversations.last_message_preview) depois de apagar.
   // Os gatilhos de 20260928120000 só a escrevem no INSERT e na confirmação da
   // IA; apagar a última mensagem deixaria o texto apagado à mostra na lista —

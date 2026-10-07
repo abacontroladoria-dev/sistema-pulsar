@@ -13,6 +13,7 @@ import {
   toUIConversation,
   type NinaConversation,
 } from '@/components/nina/adapters/centralToNina'
+import { getSupabaseClient } from '@/lib/supabase/client'
 
 // ============================================================================
 // Dados vivos da caixa de entrada
@@ -86,6 +87,24 @@ function salvarSelecao(ids: string[]): void {
     // navegador sem storage (aba anônima, bloqueio): a seleção só não persiste
   }
 }
+
+// Ativas = open/assigned/waiting; Encerradas = resolved/archived. Contato que
+// escreve numa conversa encerrada abre conversa NOVA (findActive), então
+// esconder as encerradas da visão padrão não esconde mensagem chegando.
+export type VisaoLista = 'ativas' | 'encerradas'
+const STATUS_DA_VISAO: Record<VisaoLista, string> = {
+  ativas:     'open,assigned,waiting',
+  encerradas: 'resolved,archived',
+}
+
+// O que o cabeçalho da conversa pode pedir. 'assign' fica no painel.
+export type AcaoConversa =
+  | { action: 'resolve' }
+  | { action: 'archive' }
+  | { action: 'reopen' }
+  | { action: 'transfer'; toUserId: string; reason?: string }
+
+const LOTE_ANTIGAS = 30
 
 export type InboxErro =
   // 401/403: a sessão é válida, o que falta é `central_role` em public.usuarios.
@@ -164,7 +183,8 @@ export interface UseCentralInbox {
   loading:       boolean
   loadingChat:   boolean
   erro:          InboxErro
-  enviar:        (texto: string) => Promise<void>
+  // `replyToId` = id local da mensagem citada (botão "Responder" da bolha).
+  enviar:        (texto: string, replyToId?: string) => Promise<void>
   enviando:      boolean
   // Manda um arquivo. A legenda é o texto que estiver no compositor — a mesma
   // convenção do WhatsApp, onde o que você digitou vira legenda do anexo.
@@ -194,6 +214,20 @@ export interface UseCentralInbox {
   // O botão "Apagar" da bolha. Lança em caso de falha — inclusive quando o
   // WhatsApp recusa, caso em que a mensagem continua na conversa.
   apagarMensagem:      (id: string) => Promise<{ apagadaNoWhatsapp: boolean }>
+  // O lápis da bolha. Lança se o WhatsApp recusar — o texto não muda.
+  editarMensagem:      (id: string, texto: string) => Promise<void>
+  // Histórico além das 20 do detalhe, ao rolar até o topo.
+  carregarAntigas:     () => Promise<void>
+  carregandoAntigas:   boolean
+  temMaisAntigas:      boolean
+  // Encerrar / arquivar / reabrir / transferir a conversa aberta.
+  acaoConversa:        (acao: AcaoConversa) => Promise<void>
+  visao:               VisaoLista
+  setVisao:            (v: VisaoLista) => void
+  // Fixadas por quem está logado (não pela equipe).
+  fixadas:             string[]
+  alternarFixada:      (id: string) => Promise<void>
+  meuUserId:           string | null
 }
 
 export function useCentralInbox(): UseCentralInbox {
@@ -208,6 +242,26 @@ export function useCentralInbox(): UseCentralInbox {
   const [modoIa, setModoIa]               = useState<ModoIa | null>(null)
   const [salvandoModo, setSalvandoModo]   = useState(false)
   const [detalhe, setDetalhe]             = useState<DetalheConversa | null>(null)
+  const [visao, setVisao]                 = useState<VisaoLista>('ativas')
+  const [fixadas, setFixadas]             = useState<string[]>([])
+  const [meuUserId, setMeuUserId]         = useState<string | null>(null)
+  const [carregandoAntigas, setCarregandoAntigas] = useState(false)
+  const [temMaisAntigas, setTemMaisAntigas]       = useState(true)
+
+  // Mensagens mais antigas que as 20 do detalhe, já buscadas para a conversa
+  // aberta. Ref, e não estado, porque o polling do detalhe as mescla a cada
+  // tique e `carregarDetalhe` é estável (deps []).
+  const antigas = useRef<Message[]>([])
+
+  useEffect(() => {
+    getSupabaseClient().auth.getUser()
+      .then(({ data }) => setMeuUserId(data.user?.id ?? null))
+      .catch(() => { /* sem "Minhas": o filtro só não aparece */ })
+    fetch('/api/central/conversations/fixadas/', { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : null)
+      .then(j => { if (Array.isArray(j?.data)) setFixadas(j.data) })
+      .catch(() => { /* migration ainda não aplicada ou rede: sem fixadas */ })
+  }, [])
 
   // Link de fora: /connect/inbox?c=<id> abre aquela conversa. É como a triagem
   // (/connect/atendimentos) entrega a conversa ao chat em vez de duplicá-lo.
@@ -268,6 +322,9 @@ export function useCentralInbox(): UseCentralInbox {
   // String estável para o efeito da lista reagir à seleção, e não à identidade
   // do array.
   const filtroCanais = canaisSelecionados.join(',')
+  // Chave da lista: números + visão. A visão entra no mesmo mecanismo de
+  // "lista em mãos vs. lista pedida" que os números já usam.
+  const chaveLista = `${visao}|${filtroCanais}`
 
   // ------------------------------------------------------------------------
   // Lista
@@ -286,9 +343,8 @@ export function useCentralInbox(): UseCentralInbox {
       // polling de quem nem está olhando era carga pura no pool do banco.
       if (!primeiraCarga.current && document.visibilityState === 'hidden') return
       try {
-        const urlLista = filtroCanais
-          ? `/api/central/conversations/?limit=50&channelIds=${filtroCanais}`
-          : '/api/central/conversations/?limit=50'
+        const base = `/api/central/conversations/?limit=50&status=${STATUS_DA_VISAO[visao]}`
+        const urlLista = filtroCanais ? `${base}&channelIds=${filtroCanais}` : base
         const [corpo, contatos] = await Promise.all([
           buscarCorpo(urlLista, controller.signal),
           buscar<Contact[]>(`/api/central/contacts/?limit=${TETO_CONTATOS}`, controller.signal),
@@ -306,7 +362,7 @@ export function useCentralInbox(): UseCentralInbox {
         // cabeçalho. O histórico vem do detalhe, quando o operador abre.
         setConversations(lista.map(c =>
           toUIConversation(c, porId.get(c.contact_id) ?? null, [], modoPadrao)))
-        setFiltroCarregado(filtroCanais)
+        setFiltroCarregado(chaveLista)
         setErro(null)
       } catch (e) {
         if (!vivo || (e as Error).name === 'AbortError') return
@@ -324,7 +380,7 @@ export function useCentralInbox(): UseCentralInbox {
     carregar()
     const t = setInterval(carregar, INTERVALO_MS)
     return () => { vivo = false; controller.abort(); clearInterval(t) }
-  }, [filtroCanais])
+  }, [filtroCanais, visao, chaveLista])
 
   // Trocar de número responde NA HORA. Antes, a lista antiga ficava parada na
   // tela até o servidor devolver a nova — com o seletor aberto por cima, parecia
@@ -335,12 +391,16 @@ export function useCentralInbox(): UseCentralInbox {
   // Voltar para "todos" não tem como ser instantâneo (as conversas dos outros
   // números não estão em mãos), e é para isso que serve `atualizandoLista`.
   const visiveis = useMemo(() => {
-    if (!filtroCanais || filtroCanais === filtroCarregado) return conversations
+    if (chaveLista === filtroCarregado) return conversations
+    const ativos = ['open', 'assigned', 'waiting']
+    const daVisao = conversations.filter(c =>
+      ativos.includes(c.statusCentral) === (visao === 'ativas'))
+    if (!filtroCanais) return daVisao
     const escolhidos = new Set(filtroCanais.split(','))
-    return conversations.filter(c => escolhidos.has(c.canalId))
-  }, [conversations, filtroCanais, filtroCarregado])
+    return daVisao.filter(c => escolhidos.has(c.canalId))
+  }, [conversations, filtroCanais, filtroCarregado, chaveLista, visao])
 
-  const atualizandoLista = !loading && filtroCarregado !== null && filtroCarregado !== filtroCanais
+  const atualizandoLista = !loading && filtroCarregado !== null && filtroCarregado !== chaveLista
 
   // ------------------------------------------------------------------------
   // Conversa aberta
@@ -349,7 +409,14 @@ export function useCentralInbox(): UseCentralInbox {
     const d = await buscar<DetalheConversa>(`/api/central/conversations/${id}/`, signal)
     // recentMessages vem DESC (message.repository.ts usa ascending:false). A
     // tela lê de cima para baixo — a inversão acontece UMA vez, aqui na borda.
-    const cronologicas = [...(d.recentMessages ?? [])].reverse()
+    const recentes = [...(d.recentMessages ?? [])].reverse()
+    // As antigas já buscadas vêm antes; a sobreposição (uma mensagem que estava
+    // nas duas) sai pelo id.
+    const ids = new Set(recentes.map(m => m.id))
+    const cronologicas = [
+      ...antigas.current.filter(m => m.conversation_id === id && !ids.has(m.id)),
+      ...recentes,
+    ]
     return {
       // O detalhe não precisa do padrão da clínica: a rota já devolve o modo
       // EFETIVO desta conversa. Passá-lo como "padrão" dá o mesmo resultado em
@@ -420,6 +487,8 @@ export function useCentralInbox(): UseCentralInbox {
     // abertura marca como lida normalmente. Sem isto, uma conversa marcada como
     // não lida nunca mais seria marcada como lida nesta sessão.
     naoRemarcar.current = null
+    antigas.current = []
+    setTemMaisAntigas(true)
     setSelectedId(id)
     // Limpa o chat anterior: mostrar as mensagens de outra pessoa enquanto o
     // novo carrega já é confusão suficiente para o operador responder errado.
@@ -435,7 +504,7 @@ export function useCentralInbox(): UseCentralInbox {
   // ------------------------------------------------------------------------
   // Envio
 
-  const enviar = useCallback(async (texto: string) => {
+  const enviar = useCallback(async (texto: string, replyToId?: string) => {
     const corpo = texto.trim()
     if (!corpo || !selectedId) return
 
@@ -455,7 +524,11 @@ export function useCentralInbox(): UseCentralInbox {
       const res = await fetch('/api/central/messages/', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ conversationId: selectedId, body: corpo }),
+        body:    JSON.stringify({
+          conversationId: selectedId,
+          body: corpo,
+          ...(replyToId ? { replyToMessageId: replyToId } : {}),
+        }),
       })
 
       if (!res.ok) {
@@ -691,7 +764,75 @@ export function useCentralInbox(): UseCentralInbox {
     return { apagadaNoWhatsapp: json?.data?.apagadaNoWhatsapp === true }
   }, [recarregarDetalhe])
 
+  const editarMensagem = useCallback(async (id: string, texto: string) => {
+    const res = await fetch(`/api/central/messages/${id}/`, {
+      method:  'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ body: texto }),
+    })
+    if (!res.ok) {
+      const json = await res.json().catch(() => null)
+      throw new Error(json?.error?.message ?? `A edição falhou com ${res.status}.`)
+    }
+    await recarregarDetalhe()
+  }, [recarregarDetalhe])
+
+  // Cursor = created_at da mensagem mais antiga EM MÃOS, lida da linha crua
+  // (a bolha guarda sent_at, que pode diferir e pularia mensagem no meio).
+  const carregarAntigas = useCallback(async () => {
+    if (!selectedId || carregandoAntigas || !temMaisAntigas) return
+    const conversa = selectedId
+    const crua = antigas.current[0] ?? detalhe?.recentMessages?.at(-1)
+    if (!crua) { setTemMaisAntigas(false); return }
+
+    setCarregandoAntigas(true)
+    try {
+      const controller = new AbortController()
+      const lote = await buscar<Message[]>(
+        `/api/central/messages/?conversationId=${conversa}&before=${encodeURIComponent(crua.created_at)}&limit=${LOTE_ANTIGAS}`,
+        controller.signal,
+      )
+      if (selecionada.current !== conversa) return
+      // Vem DESC; guardamos ASC.
+      antigas.current = [...[...lote].reverse(), ...antigas.current]
+      if (lote.length < LOTE_ANTIGAS) setTemMaisAntigas(false)
+      await recarregarDetalhe()
+    } finally {
+      setCarregandoAntigas(false)
+    }
+  }, [selectedId, carregandoAntigas, temMaisAntigas, detalhe, recarregarDetalhe])
+
+  const acaoConversa = useCallback(async (acao: AcaoConversa) => {
+    if (!selectedId) return
+    const res = await fetch(`/api/central/conversations/${selectedId}/`, {
+      method:  'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(acao),
+    })
+    if (!res.ok) {
+      const json = await res.json().catch(() => null)
+      throw new Error(json?.error?.message ?? `A ação falhou com ${res.status}.`)
+    }
+    await recarregarDetalhe()
+  }, [selectedId, recarregarDetalhe])
+
+  const alternarFixada = useCallback(async (id: string) => {
+    const fixada = fixadas.includes(id)
+    const res = await fetch('/api/central/conversations/fixadas/', {
+      method:  fixada ? 'DELETE' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ conversationId: id }),
+    })
+    if (!res.ok) {
+      const json = await res.json().catch(() => null)
+      throw new Error(json?.error?.message ?? `Não foi possível ${fixada ? 'desafixar' : 'fixar'} (${res.status}).`)
+    }
+    setFixadas(atual => fixada ? atual.filter(x => x !== id) : [...atual, id])
+  }, [fixadas])
+
   return {
+    editarMensagem, carregarAntigas, carregandoAntigas, temMaisAntigas,
+    acaoConversa, visao, setVisao, fixadas, alternarFixada, meuUserId,
     conversations: visiveis, activeChat, selectedId, select,
     loading, loadingChat, erro, enviar, enviando,
     enviarMidia, enviandoMidia,

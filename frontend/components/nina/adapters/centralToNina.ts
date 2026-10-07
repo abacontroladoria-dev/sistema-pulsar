@@ -5,7 +5,7 @@ import type {
   Contact,
 } from '@/modules/atendimento/types/central.types'
 import { resolverModoEfetivo } from '@/modules/atendimento/agente/modo-efetivo'
-import { apagaParaTodos } from '@/modules/atendimento/utils/apagar-mensagem'
+import { apagaParaTodos, podeEditar } from '@/modules/atendimento/utils/apagar-mensagem'
 import {
   MessageDirection,
   MessageType,
@@ -53,6 +53,16 @@ export interface NinaMessage extends UIMessage {
   // Apagar esta mensagem a tira também do WhatsApp do contato, ou só do Pulsar?
   // Decide o que o aviso de confirmação promete; a regra é a mesma do service.
   apagaParaTodos: boolean
+  // A mensagem citada, quando esta é uma resposta. `previa` sai da mensagem em
+  // mãos; se a citada é mais antiga que o histórico carregado, fica genérica.
+  citacao: { id: string; autor: string; previa: string } | null
+  // O lápis aparece? Mesma regra do service (podeEditar).
+  podeEditar: boolean
+  editada:    boolean
+  // ISO cru, para o separador de dia (Hoje / Ontem / data) e o agrupamento.
+  quandoIso:  string
+  // Quem escreveu, para agrupar bolhas seguidas da mesma pessoa.
+  autorId:    string
 }
 
 // ----------------------------------------------------------------------------
@@ -173,6 +183,10 @@ export type NinaConversation = Omit<UIConversation, 'messages' | 'clientMemory'>
   // O número (canal) por onde a conversa chega — Maia (Meta) ou um número
   // Evolution. É o que o seletor de números filtra e a badge da lista nomeia.
   canalId: string
+  // open|assigned|waiting|resolved|archived — o que decide os botões de
+  // encerrar / arquivar / reabrir no cabeçalho.
+  statusCentral: Conversation['status']
+  tagsContato:   string[]
 }
 
 // ----------------------------------------------------------------------------
@@ -267,7 +281,28 @@ export function toUIMessage(m: Message): NinaMessage {
     emTransito: !isAiDraft && m.status === 'pending' && !m.external_message_id,
     anexos,
     apagaParaTodos: apagaParaTodos(m),
+    citacao:    m.reply_to_message_id
+      ? { id: m.reply_to_message_id, autor: '', previa: 'Mensagem anterior' }
+      : null,
+    podeEditar: podeEditar(m),
+    editada:    !!m.edited_at,
+    quandoIso:  m.sent_at ?? m.created_at,
+    autorId:    m.direction === 'inbound' ? 'contato' : (m.sent_by_ai ? 'ia' : (m.sent_by_user_id ?? 'equipe')),
   }
+}
+
+// Preenche autor e prévia da citação com as mensagens em mãos. Separado de
+// toUIMessage porque precisa do conjunto inteiro, não de uma linha.
+function resolverCitacoes(mensagens: NinaMessage[], nomeContato: string): NinaMessage[] {
+  const porId = new Map(mensagens.map(m => [m.id, m]))
+  return mensagens.map(m => {
+    if (!m.citacao) return m
+    const alvo = porId.get(m.citacao.id)
+    if (!alvo) return m
+    const previa = alvo.content || alvo.anexos.map(a => a.nome ?? a.rotulo).join(', ') || 'Mensagem'
+    const autor  = alvo.direction === MessageDirection.INCOMING ? nomeContato : 'Você'
+    return { ...m, citacao: { id: alvo.id, autor, previa } }
+  })
 }
 
 // ----------------------------------------------------------------------------
@@ -321,14 +356,14 @@ export function toUIConversation(
   // O ai_mode da clínica, para resolver a herança da badge. Ver mapStatus.
   modoPadrao: string,
 ): NinaConversation {
-  const uiMensagens = mensagens.map(toUIMessage)
-  const ultima      = uiMensagens.at(-1)
-
   const nome = contato?.name?.trim()
     || contato?.display_phone
     // 'Unknown' era o default do transform legado. Em português e explícito é
     // melhor: diz que o contato existe mas não tem nome, não que houve erro.
     || 'Contato sem nome'
+
+  const uiMensagens = resolverCitacoes(mensagens.map(toUIMessage), nome)
+  const ultima      = uiMensagens.at(-1)
 
   return {
     id:           c.id,
@@ -365,6 +400,10 @@ export function toUIConversation(
     assignedUserId:  c.assigned_user_id,
     rotuloTipo:      rotuloTipoContato(contato),
     canalId:         c.channel_id,
+    statusCentral:   c.status,
+    // As tags do produto vivem no CONTATO — é por elas que o filtro da lista
+    // recorta. Vazio quando o contato não veio no lote da lista.
+    tagsContato:     contato?.tags ?? [],
     // clientMemory não aparece aqui: está fora do tipo (ver NinaConversation).
     // `contacts.ai_memory` existe no banco, mas com outra forma — adaptá-la é
     // trabalho próprio, não um preenchimento de campo.
