@@ -48,7 +48,13 @@ type ContratoItemEdit = {
   // ""); com 2+, funcao vira o rótulo composto FUNCAO_MULTIPLA_LABEL. Só
   // usada quando modeloFaturamento === "banco_horas" — ver LinhaContrato.
   especialidadesBancoHoras: string[]
+  // Exceções de valor por sessão dentro deste mesmo contrato (só "Por
+  // atendimento"): a terapia listada paga o seu valor, o resto paga
+  // valorPATexto. Ver paDoContrato em lib/remuneracao/calculo.ts.
+  valoresPorTerapia: ValorPorTerapiaEdit[]
 }
+
+type ValorPorTerapiaEdit = { terapia: string; valorPATexto: string }
 
 type LinhaBase = {
   profissionalNome: string
@@ -148,6 +154,12 @@ const valorDoVigente = (c: ContratoItemEdit) =>
 // pagava R$ 0 e o bloco dizia que estava tudo certo. Vale o número, não o texto.
 const semValor = (c: ContratoItemEdit) => !(parseNumeroBR(valorDoVigente(c)) ?? 0)
 
+// Exceção com terapia escolhida e valor vazio/zero: a calculadora pagaria R$ 0
+// por aquela terapia — mesmo risco do "valor zerado" do contrato.
+const excecaoSemValor = (c: ContratoItemEdit) =>
+  c.modeloFaturamento === "atendimento" &&
+  c.valoresPorTerapia.some(v => v.terapia && !(parseNumeroBR(v.valorPATexto) ?? 0))
+
 // A linha em branco que "Adicionar contrato" cria não deve virar registro. Mas
 // "em branco" precisa considerar TODOS os campos do item: enquanto a nota ficou
 // de fora deste teste, contrato que só carregava observação era descartado em
@@ -161,7 +173,8 @@ const itemEmBranco = (it: ContratoItemEdit) =>
   !it.valorPATexto.trim() &&
   !it.valorTotalTexto.trim() &&
   !it.observacoes.trim() &&
-  !it.valorPepMensalTexto.trim()
+  !it.valorPepMensalTexto.trim() &&
+  !it.valoresPorTerapia.some(v => v.terapia || v.valorPATexto.trim())
 
 // Chip de incompletude, em DOIS níveis — porque as duas faltas não custam a
 // mesma coisa e antes eram desenhadas igual:
@@ -374,11 +387,8 @@ function LinhaContrato({
     // do cabeçalho e nenhum dos dois fica desproporcional. Como todos os outros
     // filhos têm largura fixa, a repartição dá igual em todas as linhas e as
     // colunas continuam alinhadas na vertical.
-    <div
-      className={`flex flex-wrap items-center gap-2 rounded-lg px-3 py-1.5 transition-colors ${
-        item.vigente ? "bg-emerald-50" : ""
-      }`}
-    >
+    <div className={`rounded-lg transition-colors ${item.vigente ? "bg-emerald-50" : ""}`}>
+    <div className="flex flex-wrap items-center gap-2 px-3 py-1.5">
       {/* Nº precisa caber inteiro: é identificador, não rótulo — meia string não
           serve para conferir com o contrato em papel. O prefixo "Nº" saiu: com o
           campo preenchido, "Nº PS.ABA-…" repetia o que o próprio valor já diz, e
@@ -549,6 +559,107 @@ function LinhaContrato({
         </button>
       )}
     </div>
+
+      {item.modeloFaturamento === "atendimento" && (
+        <ValoresPorTerapia
+          itens={item.valoresPorTerapia}
+          terapiasAgenda={terapiasAgenda}
+          refContrato={ref}
+          onChange={valoresPorTerapia => onPatch({ valoresPorTerapia })}
+        />
+      )}
+    </div>
+  )
+}
+
+// ─── Valor diferente por terapia ─────────────────────────────────────────────
+// Um contrato, valores separados por terapia: o valor da linha acima vale para
+// tudo, e cada exceção aqui troca o valor por sessão de UMA terapia (ex.: R$ 30
+// geral, Avaliação Neuropsicopedagógica a R$ 45). Alternativa a cadastrar um
+// segundo contrato vigente — que não é o caso real e acenderia o aviso de
+// "2 contratos vigentes". Opções vêm da agenda real do profissional, como o
+// select de função; uma terapia já usada não aparece de novo.
+
+function ValoresPorTerapia({
+  itens,
+  terapiasAgenda,
+  refContrato,
+  onChange,
+}: {
+  itens: ValorPorTerapiaEdit[]
+  terapiasAgenda: string[]
+  refContrato: string
+  onChange: (itens: ValorPorTerapiaEdit[]) => void
+}) {
+  const patch = (idx: number, p: Partial<ValorPorTerapiaEdit>) =>
+    onChange(itens.map((v, i) => (i === idx ? { ...v, ...p } : v)))
+  const usadas = new Set(itens.map(v => v.terapia).filter(Boolean))
+  const sobra = terapiasAgenda.filter(t => !usadas.has(t))
+
+  return (
+    <div className="flex flex-col gap-1.5 px-3 pb-2">
+      {itens.map((v, idx) => {
+        const ref = `valor da terapia ${idx + 1} do ${refContrato}`
+        return (
+          <div key={idx} className="flex flex-wrap items-center gap-2 pl-4">
+            <span className="text-xs font-semibold text-muted-foreground">exceto</span>
+            <select
+              value={v.terapia}
+              onChange={e => patch(idx, { terapia: e.target.value })}
+              aria-label={`Terapia do ${ref}`}
+              className={`${campo} min-w-48 flex-1 ${v.terapia ? "" : "text-muted-foreground"}`}
+            >
+              <option value="" className="bg-card text-muted-foreground">
+                Qual terapia tem outro valor?
+              </option>
+              {v.terapia && !terapiasAgenda.includes(v.terapia) && (
+                <option value={v.terapia} className="bg-card text-foreground">
+                  {v.terapia} (fora da agenda atual)
+                </option>
+              )}
+              {terapiasAgenda
+                .filter(t => t === v.terapia || !usadas.has(t))
+                .map(t => (
+                  <option key={t} value={t} className="bg-card text-foreground">
+                    {t}
+                  </option>
+                ))}
+            </select>
+            <div className="inline-flex w-38 shrink-0 items-center rounded-md border border-border bg-card focus-within:ring-2 focus-within:ring-ring">
+              <span className="select-none pl-2 text-xs text-muted-foreground">R$</span>
+              <input
+                value={v.valorPATexto}
+                onChange={e => patch(idx, { valorPATexto: maskMoedaBR(e.target.value) })}
+                placeholder="0,00"
+                inputMode="numeric"
+                aria-label={`Valor por sessão do ${ref}`}
+                className="min-w-0 flex-1 bg-transparent px-1.5 py-1 text-right text-sm tabular-nums text-foreground placeholder:text-muted-foreground/60 focus:outline-none"
+              />
+              <span className="w-13 shrink-0 select-none pr-2 text-xs text-muted-foreground">/sessão</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => onChange(itens.filter((_, i) => i !== idx))}
+              aria-label={`Remover o ${ref}`}
+              title="Remove esta exceção — a terapia volta a pagar o valor do contrato."
+              className={`${foco} inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground`}
+            >
+              <X size={13} aria-hidden="true" />
+            </button>
+          </div>
+        )
+      })}
+      {(itens.length === 0 || sobra.length > 0) && (
+        <button
+          type="button"
+          onClick={() => onChange([...itens, { terapia: sobra.length === 1 ? sobra[0] : "", valorPATexto: "" }])}
+          className={`${foco} inline-flex w-fit items-center gap-1 rounded-md py-0.5 pl-4 pr-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground`}
+        >
+          <Plus size={12} aria-hidden="true" />
+          Valor diferente para uma terapia
+        </button>
+      )}
+    </div>
   )
 }
 
@@ -644,6 +755,13 @@ const GrupoProfissional = memo(function GrupoProfissional({
             observacoes: it.observacoes.trim(),
             valorPepMensal: it.valorPepMensalTexto.trim() ? parseNumeroBR(it.valorPepMensalTexto) : null,
             especialidadesBancoHoras: it.especialidadesBancoHoras.length ? it.especialidadesBancoHoras : null,
+            // Exceção sem terapia escolhida não diz nada — não vai para o banco.
+            // Banco de horas não paga por sessão, então também não leva exceção.
+            valoresPorTerapia: it.modeloFaturamento === "atendimento"
+              ? it.valoresPorTerapia
+                  .filter(v => v.terapia)
+                  .map(v => ({ terapia: v.terapia, valorPA: parseNumeroBR(v.valorPATexto) ?? 0 }))
+              : [],
           })),
       })
       setSaveError(error)
@@ -671,6 +789,10 @@ const GrupoProfissional = memo(function GrupoProfissional({
         // Contrato salvo antes deste checkbox existir só tem `funcao` (uma
         // string): reabre o checkbox já marcado nela, em vez de nascer vazio.
         especialidadesBancoHoras: it.especialidadesBancoHoras?.length ? it.especialidadesBancoHoras : (it.funcao ? [it.funcao] : []),
+        valoresPorTerapia: (it.valoresPorTerapia ?? []).map(v => ({
+          terapia: v.terapia,
+          valorPATexto: formatMoedaBRTexto(v.valorPA),
+        })),
       })),
     }),
     [linha.cpf, linha.cnpj, linha.razaoSocial, linha.documentoTipo, linha.contratosAtuais],
@@ -695,6 +817,7 @@ const GrupoProfissional = memo(function GrupoProfissional({
           observacoes: "",
           valorPepMensalTexto: "",
           especialidadesBancoHoras: [],
+          valoresPorTerapia: [],
         },
       ],
     })
@@ -809,6 +932,8 @@ const GrupoProfissional = memo(function GrupoProfissional({
             <ChipFalta grave>{vigentes.length} contratos vigentes</ChipFalta>
           ) : semValor(vigentes[0]) ? (
             <ChipFalta grave>valor zerado</ChipFalta>
+          ) : excecaoSemValor(vigentes[0]) ? (
+            <ChipFalta grave>valor por terapia zerado</ChipFalta>
           ) : null}
         </div>
 

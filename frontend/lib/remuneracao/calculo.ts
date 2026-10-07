@@ -127,7 +127,14 @@ export type ContratoAtualItem = {
   valorTotal?: number
   /** PEP (Seção 6/13.3 do PRD) — null/undefined usa remuneracao_config.cc_pe_default. */
   valorPepMensal?: number | null
+  /**
+   * Exceções de PA dentro do MESMO contrato: a terapia listada paga este valor
+   * por sessão em vez de `valorPA` (ex.: R$ 30 geral, mas Avaliação
+   * Neuropsicopedagógica a R$ 45). Só vale para "atendimento". Ver paDoContrato.
+   */
+  valoresPorTerapia?: ValorPorTerapia[] | null
 }
+export type ValorPorTerapia = { terapia: string; valorPA: number }
 export type CadastroContratual = {
   nome?: string
   contratosAtuais?: ContratoAtualItem[]
@@ -152,6 +159,9 @@ export function contratosAtuaisDoCadastro(cadastro: CadastroContratual | null): 
       modeloFaturamento: (c.modeloFaturamento === "banco_horas" ? "banco_horas" : "atendimento") as "atendimento" | "banco_horas",
       valorTotal: c.valorTotal != null ? Number(c.valorTotal) : undefined,
       valorPepMensal: c.valorPepMensal != null ? Number(c.valorPepMensal) : undefined,
+      valoresPorTerapia: (c.valoresPorTerapia || [])
+        .filter(v => v && cleanTxt(v.terapia) && v.valorPA != null)
+        .map(v => ({ terapia: cleanTxt(v.terapia), valorPA: Number(v.valorPA) })),
     }))
     .filter(c => c.funcao || c.valorPA != null || c.valorTotal != null || c.numero || c.valorPepMensal != null)
 }
@@ -276,7 +286,16 @@ function escolherContratoDaLinha(
 ): ContratoAtualItem | undefined {
   return contratos.find(x => x.funcao === funcaoLinha)
     || contratos.find(x => x.funcao && normKey(x.funcao) === normKey(especialidade))
+    || contratos.find(x => !!excecaoDaTerapia(x, especialidade))
     || contratos.find(x => !x.funcao)
+}
+
+// Exceção de PA cadastrada no próprio contrato para esta terapia (ver
+// ContratoAtualItem.valoresPorTerapia). Casa por normKey, como a função.
+export function excecaoDaTerapia(c: ContratoAtualItem, especialidade: string): ValorPorTerapia | undefined {
+  const alvo = normKey(especialidade)
+  if (!alvo) return undefined
+  return (c.valoresPorTerapia || []).find(v => normKey(v.terapia) === alvo)
 }
 
 // PA de um contrato de atendimento já escolhido para a linha. Contrato AC/PS cai
@@ -289,6 +308,10 @@ function paDoContrato(
   especialidade: string,
   { ccPA, taxasPA }: { ccPA: number; taxasPA: Record<string, number> },
 ): number {
+  // A exceção da terapia vem antes do PA geral: é o mesmo contrato dizendo
+  // "R$ 30 por sessão, exceto Avaliação Neuropsicopedagógica a R$ 45".
+  const excecao = excecaoDaTerapia(c, especialidade)
+  if (excecao) return excecao.valorPA
   if (c.valorPA != null) return c.valorPA
   if (c.funcao === FUNCAO_AC || c.funcao === FUNCAO_PS) return taxaPorFuncao(c.funcao, { ccPA, taxasPA })
   return taxasPA[especialidade] ?? 0
@@ -322,7 +345,9 @@ export function resolverPARow(
     return {
       valor, funcao: c.funcao, label: labelFuncaoContrato(c.funcao), contratoAtual: contratoLabel(c),
       cadastroContratoPendente: false,
-      explicacao: `Contrato atual unico ${contratoLabel(c)}: o PA contratado prevalece mesmo em substituicoes.`,
+      explicacao: excecaoDaTerapia(c, r.especialidade)
+        ? `Contrato atual unico ${contratoLabel(c)}: valor proprio para ${r.especialidade} cadastrado no contrato.`
+        : `Contrato atual unico ${contratoLabel(c)}: o PA contratado prevalece mesmo em substituicoes.`,
     }
   }
   if (contratosAtuais.length > 1) {

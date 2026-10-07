@@ -32,6 +32,7 @@ export const ESPECIALIDADES_AGENDA: readonly string[] = [
   "Aplicador Suporte",
   "Apoio Operacional",
   "Avaliação Neuropsicológica",
+  "Avaliação Neuropsicopedagógica",
   "Coordenador de Caso",
   "Equoterapia",
   "Especialista Técnico de Área",

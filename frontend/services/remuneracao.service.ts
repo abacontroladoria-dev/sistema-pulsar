@@ -109,6 +109,8 @@ export async function getContratos() {
           observacoes: it.observacoes ?? '',
           valorPepMensal: it.valor_pep_mensal ?? null,
           especialidadesBancoHoras: it.especialidades_banco_horas ?? null,
+          // undefined antes da migration 20261007150000 — vira null, igual a "sem exceção".
+          valoresPorTerapia: it.valores_por_terapia ?? null,
         })),
     }
   })
@@ -127,6 +129,25 @@ export async function upsertContrato(record: any): Promise<{ ok: boolean; error:
   if (parentError) {
     console.error('Erro ao salvar contrato:', parentError)
     return { ok: false, error: parentError.message }
+  }
+
+  // Coluna de exceções por terapia (migration 20261007150000). Confere ANTES do
+  // delete abaixo: se ela ainda não existe no banco, o insert voltaria PGRST204
+  // depois de já ter apagado os itens, e o profissional ficaria sem contrato.
+  // Só é preciso quando algum item traz exceção — sem exceção a chave nem vai.
+  const temExcecao = (contratos ?? []).some((it: { valoresPorTerapia?: unknown[] | null }) => !!it.valoresPorTerapia?.length)
+  if (temExcecao) {
+    const { error: colunaError } = await supabase
+      .from('remuneracao_contratos_itens')
+      .select('valores_por_terapia')
+      .limit(1)
+    if (colunaError) {
+      console.error('Coluna valores_por_terapia indisponível:', colunaError)
+      return {
+        ok: false,
+        error: 'Valor por terapia ainda não está disponível no banco (falta aplicar a migration 20261007150000). Nada foi alterado.',
+      }
+    }
   }
 
   // Substitui os itens do profissional pelo conjunto atual (mais simples que
@@ -156,6 +177,9 @@ export async function upsertContrato(record: any): Promise<{ ok: boolean; error:
     observacoes: it.observacoes || null,
     valor_pep_mensal: it.valorPepMensal ?? null,
     especialidades_banco_horas: it.especialidadesBancoHoras?.length ? it.especialidadesBancoHoras : null,
+    // Chave só quando há exceção: sem a migration aplicada, mandar a coluna
+    // (mesmo null) derrubaria o insert de TODO contrato, não só deste.
+    ...(it.valoresPorTerapia?.length ? { valores_por_terapia: it.valoresPorTerapia } : {}),
   }))
   if (itens.length) {
     const { error: itensError } = await supabase.from('remuneracao_contratos_itens').insert(itens)

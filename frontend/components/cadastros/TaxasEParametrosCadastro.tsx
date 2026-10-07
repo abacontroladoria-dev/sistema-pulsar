@@ -10,6 +10,7 @@ import { updateParametrosGerais } from "@/services/parametrosGerais.service"
 import { upsertTaxaEspecialidade } from "@/services/taxasEspecialidade.service"
 import { useUnsavedChangesGuard } from "@/contexts/UnsavedChangesContext"
 import { calcularBreakEvenPJ, CENARIOS_PERDA_PCT, ESPECIALIDADES_BREAK_EVEN_PJ } from "@/lib/remuneracao/pontoEquilibrio"
+import { ESPECIALIDADES_AGENDA } from "@/lib/remuneracao/especialidades"
 import { InfoTooltip } from "@/components/cronograma/ui/InfoTooltip"
 
 type ConsumerTag = "Folha" | "Análise Futura" | "PEP Entregas" | "Simulação"
@@ -192,7 +193,14 @@ export function TaxasEParametrosCadastro() {
     presenca, ccPA, ccPE, ccLim, etaBonus, impostoFaturamento, paCapacidadeManha, paCapacidadeTarde,
     taxas, diarias, beCustoMensalPJ, beCapacidadeManha, beCapacidadeTarde,
   } = valor
-  const allEspecialidades = Array.from(new Set([...Object.keys(taxas), ...Object.keys(diarias)])).sort()
+  // Além das que já têm linha na tabela, entram as especialidades da agenda que
+  // ainda não têm: antes a lista saía só do banco, e uma especialidade nova
+  // (ex.: Avaliação Neuropsicopedagógica) não tinha onde receber valor — a
+  // calculadora pagava R$ 0 sem ninguém conseguir corrigir por aqui. A linha só
+  // é gravada quando alguém muda um valor dela (ver handleSalvarTudo).
+  const allEspecialidades = Array.from(
+    new Set([...Object.keys(taxas), ...Object.keys(diarias), ...ESPECIALIDADES_AGENDA]),
+  ).sort((a, b) => a.localeCompare(b, "pt-BR"))
 
   return (
     <div className="max-w-6xl mx-auto p-4 md:p-6 lg:p-8 space-y-6 animate-in fade-in duration-500">
@@ -427,6 +435,9 @@ export function TaxasEParametrosCadastro() {
                   <div key={esp} className="grid grid-cols-12 gap-2 items-center p-2 rounded-lg transition-colors" style={{ background: hex + "0d" }}>
                     <div className="col-span-6 text-sm font-bold truncate pr-2" style={{ color: hex }} title={esp}>
                       {esp}
+                      {!(esp in taxas_pa) && (
+                        <span className="ml-2 text-[11px] font-medium text-slate-400 dark:text-slate-500">sem valor cadastrado</span>
+                      )}
                     </div>
                     <div className="col-span-3">
                       <input
