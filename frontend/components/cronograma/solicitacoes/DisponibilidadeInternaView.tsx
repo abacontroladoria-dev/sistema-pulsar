@@ -522,7 +522,7 @@ export function DisponibilidadeInternaView() {
               <span className="text-[15px] font-extrabold text-foreground">Ocupar profissional já contratado</span>
             </div>
             <div className="mb-3 text-xs text-muted-foreground">
-              Escolha um profissional pra ver, dentro dos horários “Livre” reais da agenda dele, quais pacientes com sessão pendente (autorizado &gt; ofertado) poderiam entrar — direto ou remanejando a sessão conflitante de outro paciente com OUTRO profissional, mantido. Sem escrever nada na TiTa por enquanto — é só visualização.
+              Escolha um profissional pra ver, dentro dos horários “Livre” reais da agenda dele, quais pacientes com sessão pendente (autorizado &gt; ofertado) poderiam entrar — direto ou remanejando a sessão conflitante de outro paciente com OUTRO profissional, mantido. Sem escrever nada no TiTa por enquanto — é só visualização.
             </div>
             <div className="flex flex-wrap items-start gap-3">
               <div className="flex w-full sm:w-56 flex-col gap-1">

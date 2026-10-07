@@ -31,7 +31,7 @@
 // `public.pacientes(id_paciente)`. A FK foi removida (ver
 // 20260904120000_pdi_controle_prazos.sql): `paciente_id` é o
 // `tita_paciente_id`/"ID Favorecido" puro, e `public.pacientes` não é 100%
-// adotado — muitos pacientes reais (ativos na TiTa, com laudo, com agenda)
+// adotado — muitos pacientes reais (ativos no TiTa, com laudo, com agenda)
 // não têm linha lá. Um paciente sem cadastro agora fica com `fotoPath: null`,
 // `ativo: null` (não "false" — inativo é um FATO do cadastro, ausência de
 // cadastro é outra coisa) e `nome` cai para o nome do relatório Órbita (o
@@ -211,7 +211,7 @@ export function juntarPdi(
     if (!linha.terapia_nome || !TERAPIAS_ABA.has(linha.terapia_nome)) continue
     idsUniao.add(linha.paciente_id)
   }
-  // Pseudo-pacientes de bloqueio de horário da TiTa nunca entram na lista —
+  // Pseudo-pacientes de bloqueio de horário do TiTa nunca entram na lista —
   // ver `PACIENTES_PLACEHOLDER` em lib/pdi/agenda.ts.
   for (const id of PACIENTES_PLACEHOLDER) idsUniao.delete(id)
 

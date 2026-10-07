@@ -30,7 +30,7 @@ export interface FavorecidoCadastroCliente {
 export type FonteConvenio = "cadastro" | "agenda"
 
 export interface MapaConvenioCadastro {
-  /** id_favorecido → plano de saúde do cadastro (texto como a TiTa escreve). */
+  /** id_favorecido → plano de saúde do cadastro (texto como o TiTa escreve). */
   porPacienteId: Map<number, string>
   /**
    * IDs que apareceram mais de uma vez com planos diferentes. O parser do CSV

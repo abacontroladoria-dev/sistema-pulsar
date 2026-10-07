@@ -362,7 +362,7 @@ export function juntarComAcompanhamento(
       especialidadesQtd: laudo.especialidadesQtd,
       plano: laudo.plano,
       // Ponto de partida: o Plano do Órbita. `juntarComConvenio`
-      // (lib/laudos/convenio.ts) troca pelo da grade da TiTa quando existe.
+      // (lib/laudos/convenio.ts) troca pelo da grade do TiTa quando existe.
       convenio: laudo.plano || null,
       convenioOrigem: laudo.plano ? "orbita" : null,
       convenioOriginal: null,

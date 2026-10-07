@@ -5,7 +5,7 @@
 // que aqui a chave é (paciente, especialidade), não (profissional, slot).
 //
 // A ponte de ID é obrigatória: a grade identifica paciente por
-// `CsvRow.PacienteId`, que é o `tita_paciente_id` (id externo da TiTa,
+// `CsvRow.PacienteId`, que é o `tita_paciente_id` (id externo do TiTa,
 // espelhado em `csv_grades_profissionais.paciente_id`) — NÃO é
 // `id_paciente_pulsar`, que é o que `cadastros_pacientes_suspensoes_temporarias`
 // usa. Ver o comentário de `tita_paciente_id` em

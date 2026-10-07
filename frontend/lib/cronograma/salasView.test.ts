@@ -168,7 +168,7 @@ describe("situacaoDaAlocacao", () => {
     expect(situacaoDaAlocacao(slot({ alocacoes: [c] }), c)).toBe("sem-sessao")
   })
 
-  it("agenda aberta na TiTa sem paciente NÃO vira 'sessão confirmada'", () => {
+  it("agenda aberta no TiTa sem paciente NÃO vira 'sessão confirmada'", () => {
     // O caso que a distinção existe para cobrir: o profissional tem horário
     // 'Livre' reservado (semCruzamentoCsv = false), mas 0 paciente marcado.
     const c = card({ semCruzamentoCsv: false, sessoesReais: 0, pctOcupacao: 0 })

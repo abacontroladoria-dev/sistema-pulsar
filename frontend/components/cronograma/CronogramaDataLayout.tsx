@@ -63,7 +63,7 @@ function parseXlsx<T>(file: File): Promise<T[]> {
 }
 
 // Grade vazia no período quase nunca é "sem atendimento": é a sincronização
-// diária com a TiTa que não alcançou aquele mês. Dizer até onde a grade vai
+// diária com o TiTa que não alcançou aquele mês. Dizer até onde a grade vai
 // separa uma coisa da outra para quem olha o header.
 async function mensagemGradeVazia(periodo: string): Promise<string> {
   const base = `Grade sem registros para ${periodo}`

@@ -15,7 +15,7 @@ export interface CsvRow {
   CsvGradeId?: string
   /** Chave estável do paciente (csv_grades_profissionais.paciente_id) — nome pode mudar/repetir, o ID não. Usado pra casar exceções de valor por paciente (ver resolverValorSessao). */
   PacienteId?: number | null
-  /** Chave estável do profissional (csv_grades_profissionais.profissional_id) — mesmo motivo do PacienteId, e aqui é obrigatório: a TiTa grava o mesmo id com grafias diferentes no nome ("Nicolly Christine da Silva Alcantara" × "Nicolly Alcantara") e prefixa desligados com "INATIVO-". Usado pra cruzar com grade_profissionais_tita (ver gradeTitaOcupacao.ts). */
+  /** Chave estável do profissional (csv_grades_profissionais.profissional_id) — mesmo motivo do PacienteId, e aqui é obrigatório: o TiTa grava o mesmo id com grafias diferentes no nome ("Nicolly Christine da Silva Alcantara" × "Nicolly Alcantara") e prefixa desligados com "INATIVO-". Usado pra cruzar com grade_profissionais_tita (ver gradeTitaOcupacao.ts). */
   ProfissionalId?: number | null
   [key: string]: string | number | null | undefined
 }

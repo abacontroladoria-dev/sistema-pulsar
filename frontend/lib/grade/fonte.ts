@@ -1,6 +1,6 @@
 // ─── Ponto único de leitura da grade ────────────────────────────────────────
 //
-// Toda leitura da grade sincronizada da TiTa passa por aqui. Antes eram 14
+// Toda leitura da grade sincronizada do TiTa passa por aqui. Antes eram 14
 // consultas em 8 arquivos, cada uma reescrevendo o mesmo laço de paginação e
 // repetindo — ou esquecendo — os mesmos filtros. O que se ganha concentrando:
 //
@@ -25,7 +25,7 @@
 //
 // Leituras que continuam fora daqui, de propósito:
 //   • buscarGradePorId / agendamento-terapia-tita — buscam UMA linha por UUID
-//     para montar o payload da TiTa e precisam de `sala_id`, que a view não
+//     para montar o payload do TiTa e precisam de `sala_id`, que a view não
 //     projeta. Continuam na tabela.
 //   • sync-grade-csv — é o escritor.
 
@@ -248,7 +248,7 @@ export interface SaudeGrade {
  *     funcionando, a sessão continua na grade. Sem isto, as 5 versionadas de
  *     julho manteriam o alarme aceso para sempre.
  *
- *   `ausencia_confirmada_em is null` — a reconciliação diária pergunta à TiTa e
+ *   `ausencia_confirmada_em is null` — a reconciliação diária pergunta ao TiTa e
  *     carimba o que ela confirma não ter mais. Alta de paciente retira dezenas
  *     de sessões de uma vez, legitimamente: em agosto/2026 um único paciente
  *     respondeu por 59 delas. Contá-las travaria o mês para sempre.
@@ -257,7 +257,7 @@ export interface SaudeGrade {
  *     Não há o que pagar nela. Mesmo critério de CoberturaGrade.agendados.
  *
  * O que sobra é a pergunta certa: sessão que já aconteceu, sumiu da grade e
- * ninguém conferiu contra a TiTa. Em regime normal isso é zero em até 24h.
+ * ninguém conferiu contra o TiTa. Em regime normal isso é zero em até 24h.
  *
  * Duas requisições HEAD com `count=exact`: não traz linha nenhuma, só o número.
  */
@@ -309,7 +309,7 @@ export interface FrescorGrade {
 export const HORAS_FRESCOR_GRADE = 48
 
 /**
- * Há quanto tempo a grade de um período futuro não é reconfirmada pela TiTa.
+ * Há quanto tempo a grade de um período futuro não é reconfirmada pelo TiTa.
  *
  * É o espelho de `medirSaudeGrade()`, que por desenho só olha o passado
  * (`data <= hoje`): mede o que sumiu de datas já ocorridas. Nenhuma das duas

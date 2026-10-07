@@ -24,8 +24,8 @@ export interface PreparacaoAgendamento {
 }
 
 /**
- * Busca a grade, resolve id_grade_terapeuta e monta o payload da TiTa para uma
- * sessão — sem fazer nenhuma chamada HTTP à TiTa. Usado como fase de preparação
+ * Busca a grade, resolve id_grade_terapeuta e monta o payload do TiTa para uma
+ * sessão — sem fazer nenhuma chamada HTTP ao TiTa. Usado como fase de preparação
  * antes de checar disponibilidade e criar o agendamento (ver confirmar-agendamento
  * route handler), para que uma sessão com dado ausente/inconsistente seja
  * descartada antes de qualquer efeito colateral externo.
@@ -70,7 +70,7 @@ export async function prepararAgendamento(
     // grade_profissionais_tita > regra fixa por terapia_id (ver
     // terapiaExibicaoIdPorRegraFixa em mappings.ts, usada quando o
     // grade_terapeuta_id nunca teve histórico sincronizado — comum em slots
-    // nunca antes reservados na TiTa).
+    // nunca antes reservados no TiTa).
     const terapiaExibicaoId = terapiaExibicaoOverride
       ?? gradeTerapeuta.terapiaExibicaoId
       ?? (grade.terapia_id != null ? terapiaExibicaoIdPorRegraFixa(grade.terapia_id) : null)
@@ -79,7 +79,7 @@ export async function prepararAgendamento(
       // Diagnóstico de cobertura de dados (achado da homologação: ~9% das grades
       // "Livre" têm terapia_exibicao_id sincronizado). Registrar exatamente os
       // campos que permitem localizar e corrigir a sincronização, sem tentar
-      // inferir um valor — inferir arriscaria enviar sala/terapia errada à TiTa.
+      // inferir um valor — inferir arriscaria enviar sala/terapia errada ao TiTa.
       console.error(
         "[tita:prepararAgendamento] grade_terapeuta_sem_sala_ou_exibicao",
         JSON.stringify({
@@ -184,7 +184,7 @@ export interface ResumoCriacao {
 
 /**
  * Única função que interpreta o resultado de agendamento/create. Achado da
- * homologação: a TiTa cria a série inteira e retorna status por ocorrência
+ * homologação: o TiTa cria a série inteira e retorna status por ocorrência
  * ("Planejado" | "Conflito") em vez de aceitar ou rejeitar tudo — não é
  * transacional. Esta função traduz isso em contagens estáveis para a rota e
  * para as mensagens ao usuário.
@@ -214,7 +214,7 @@ export function interpretarResultadoCriacao(resultado: TitaApiResult<AgendaFavor
 /**
  * Mensagem de negócio para o resultado da implantação — frases orientadas ao que
  * aconteceu com as sessões (Sprint 3), alinhadas ao fluxo de implantação imediata
- * na TiTa (Sprint 4.1). É o texto exibido no toast; sucesso total usa a frase
+ * no TiTa (Sprint 4.1). É o texto exibido no toast; sucesso total usa a frase
  * padrão, sucesso parcial detalha quantas foram implantadas × ocupadas.
  */
 export function mensagemResumoCriacao(resumo: ResumoCriacao): string {

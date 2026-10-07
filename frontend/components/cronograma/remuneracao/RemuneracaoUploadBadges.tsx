@@ -3,7 +3,7 @@
 // Controles da fonte de dados das abas RP e Individual, injetados no header.
 //
 // A grade vem do BANCO por padrão (vw_grade_base, via buscarGradeParaRP) — é o
-// mesmo dado que o CSV exportado da TiTa, capturado todo dia pelo sync. O
+// mesmo dado que o CSV exportado do TiTa, capturado todo dia pelo sync. O
 // upload continua aqui como alternativa manual: cobre períodos anteriores ao
 // início da captura de execução e o dia em que o sync falhar. Quem carregou por
 // último vence.
@@ -281,7 +281,7 @@ export function RemuneracaoUploadBadges({ c, hidePe = false, hideStatusRow = fal
           onClick={() => !ocupado && gradeInputRef.current?.click()}
           disabled={ocupado}
           className="flex items-center gap-1.5 rounded-full border border-dashed border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-all hover:bg-muted/60 disabled:cursor-not-allowed disabled:opacity-50"
-          title="Substituir pela grade de um arquivo CSV exportado da TiTa"
+          title="Substituir pela grade de um arquivo CSV exportado do TiTa"
         >
           {uploadLoading ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />}
           {uploadLoading ? "Lendo..." : "CSV"}

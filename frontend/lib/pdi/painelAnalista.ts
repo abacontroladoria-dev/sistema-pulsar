@@ -10,7 +10,7 @@
 //
 // A planilha tinha uma coluna "Coordenador" digitada à mão, sem ligação com
 // nenhum sistema. Aqui o Coordenador de Caso é 100% derivado da agenda
-// sincronizada da TiTa (`ItemPdi.coordenadores`, ver
+// sincronizada do TiTa (`ItemPdi.coordenadores`, ver
 // lib/pdi/agenda.ts::coordenadoresDetalhados) — cada paciente pode ter 0, 1
 // ou >1 coordenador (irregular, ver `coordenadorIrregular` em filtros.ts).
 //

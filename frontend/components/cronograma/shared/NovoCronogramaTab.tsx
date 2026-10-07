@@ -48,7 +48,7 @@ export function NovoCronogramaTab({ cRows, lRows, dispRows }: Props) {
 
   const livreSlots = useMemo(() => {
     // Vaga "Livre" gêmea de um horário já agendado do mesmo profissional (ver
-    // construirProfissionaisOcupados em helpers.ts) — a TiTa mantém uma linha
+    // construirProfissionaisOcupados em helpers.ts) — o TiTa mantém uma linha
     // por terapia ofertada, então preencher um horário não apaga as outras
     // linhas "Livre" do mesmo profissional nesse dia/hora.
     const profOcupado = construirProfissionaisOcupados(cRows.filter(r => r["Status do Agendamento"] === "Agendado"))

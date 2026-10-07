@@ -21,7 +21,7 @@ export interface SessEntry {
   prof: string
   /**
    * UUID da linha "Livre" de csv_grades_profissionais que originou esta sessão —
-   * é o que permite implantar o cronograma na TiTa (ver AceiteSessao.csvGradeId).
+   * é o que permite implantar o cronograma no TiTa (ver AceiteSessao.csvGradeId).
    * Ausente quando o slot de origem não trouxe o campo (ex.: simulação de
    * Orçamento sobre grade não sincronizada).
    */

@@ -123,7 +123,7 @@ test("8 · Órbita discordando da validade vira aviso, não silêncio", () => {
 })
 
 test("9 · rótulo desconhecido do Órbita não inventa divergência", () => {
-  // Mesma postura do rótulo "Não realizado" da TiTa: rótulo novo não reprova o
+  // Mesma postura do rótulo "Não realizado" do TiTa: rótulo novo não reprova o
   // dado. O cálculo por validade continua valendo e a tela não grita à toa.
   const { laudos } = agruparLaudos([linha({ Situação: "Em análise" })], HOJE)
   assert.strictEqual(laudos[0].situacao, "vigente")

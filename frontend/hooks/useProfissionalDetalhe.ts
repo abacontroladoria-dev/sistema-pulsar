@@ -10,7 +10,7 @@ import {
 import type { Profissional, ProfissionalArquivos, ProfissionalEdit } from "@/types/profissional"
 
 // Estado da ficha do profissional: o registro, o formulário da aba Cadastro
-// (com os campos alterados), as terapias habilitadas e as vistas na grade TiTa.
+// (com os campos alterados), as terapias habilitadas e as vistas na grade do TiTa.
 
 export const CAMPOS_EDITAVEIS: (keyof ProfissionalEdit)[] = [
   "nome", "cpf", "email", "celular",

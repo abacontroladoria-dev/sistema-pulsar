@@ -34,7 +34,7 @@ function rotuloLocal(l: LocalDisponivel): string {
   return `${l.unidade_nome} · ${l.nome_exibicao}${extra}`
 }
 
-/** Casa o sala_nome da TiTa com um local de Ocupação de Salas (unidade + número, ou nome). */
+/** Casa o sala_nome do TiTa com um local de Ocupação de Salas (unidade + número, ou nome). */
 function casarLocal(salaNome: string | null, locais: LocalDisponivel[]): string | null {
   if (!salaNome) return null
   const p = parseSalaAgenda(salaNome)
@@ -187,8 +187,8 @@ export function EditorDisponibilidade({
   const preencherDaTita = async () => {
     if (!profissional.tita_profissional_id) return
     if (r.faixas.length && !(await confirmar({
-      titulo: "Substituir pelos horários da TiTa?",
-      texto: "As faixas que estão no editor serão trocadas pelas da grade TiTa da semana. Nada é salvo antes de você revisar.",
+      titulo: "Substituir pelos horários do TiTa?",
+      texto: "As faixas que estão no editor serão trocadas pelas da grade do TiTa da semana. Nada é salvo antes de você revisar.",
       confirmar: "Substituir",
       t: "aco",
       Icone: CloudDownload,
@@ -196,7 +196,7 @@ export function EditorDisponibilidade({
     setLendoTita(true)
     setAvisoTita(null)
     try {
-      // Semana que vem (seg–sáb): a grade da TiTa vai até o fim do mês seguinte.
+      // Semana que vem (seg–sáb): a grade do TiTa vai até o fim do mês seguinte.
       const dow = new Date(`${hoje}T12:00:00Z`).getUTCDay()
       const segunda = somarDias(hoje, ((8 - dow) % 7) || 7)
       let linhas = await lerSemanaTita(profissional.tita_profissional_id, segunda, somarDias(segunda, 5))
@@ -206,7 +206,7 @@ export function EditorDisponibilidade({
         linhas = await lerSemanaTita(profissional.tita_profissional_id, semana, somarDias(semana, 5))
       }
       if (!linhas.length) {
-        setAvisoTita("A grade TiTa não tem horários deste profissional nesta semana nem na próxima.")
+        setAvisoTita("A grade do TiTa não tem horários deste profissional nesta semana nem na próxima.")
         return
       }
       const porNome = new Map(catalogo.map(t => [normTxt(t.nome), t.id]))
@@ -301,7 +301,7 @@ export function EditorDisponibilidade({
           direita={profissional.tita_profissional_id ? (
             <button type="button" onClick={preencherDaTita} disabled={lendoTita} className={`${tom("aco")} pp-btn pp-btn-suave`}>
               {lendoTita ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <CloudDownload className="h-4 w-4" aria-hidden />}
-              Preencher a partir da grade TiTa
+              Preencher a partir da grade do TiTa
             </button>
           ) : undefined}
         />

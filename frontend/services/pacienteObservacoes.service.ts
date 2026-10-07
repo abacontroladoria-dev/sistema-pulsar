@@ -3,7 +3,7 @@ import { dataHoraBrasilia } from "@/lib/dataHoraBrasilia"
 
 // CRUD + trilha de auditoria da "Observações" por paciente na tela
 // /cronograma/ocupacao-paciente. A tabela de auditoria (aumentar_ocupacao_paciente_auditoria)
-// é compartilhada com o histórico de implantações na TiTa dessa mesma tela —
+// é compartilhada com o histórico de implantações no TiTa dessa mesma tela —
 // ver migration 20260818180000_reestrutura_aumentar_ocupacao_paciente_auditoria.sql.
 // Linhas de observação preenchem só paciente/texto/acao/usuario/email/data/hora
 // e deixam terapia/profissional/dia_sessao/hora_sessao/status nulos.

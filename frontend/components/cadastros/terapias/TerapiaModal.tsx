@@ -178,7 +178,7 @@ export function TerapiaModal({
 
         {terapia?.tita_terapia_id && (
           <p className="text-xs text-muted-foreground">
-            Vinculada à terapia #{terapia.tita_terapia_id} da TiTa — o vínculo continua valendo se o nome mudar.
+            Vinculada à terapia #{terapia.tita_terapia_id} do TiTa — o vínculo continua valendo se o nome mudar.
           </p>
         )}
 

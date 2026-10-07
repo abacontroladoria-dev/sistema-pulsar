@@ -62,7 +62,7 @@ export interface ItemAcompanhamentoLaudo {
   /** `Plano` do relatório do Órbita, como veio. */
   plano: string
   /**
-   * O convênio do paciente: o da GRADE da TiTa (próximo agendamento, ou o
+   * O convênio do paciente: o da GRADE do TiTa (próximo agendamento, ou o
    * último) e, sem o paciente na grade, o `Plano` do Órbita. É o que o filtro
    * "Convênio" lê, o que o cartão mostra quando a senha não se aplica, e o que
    * decide entre "Sem senha" (ASSIM) e outro convênio. `null` = nenhum dos dois.
@@ -140,7 +140,7 @@ export interface MetaAcompanhamentoLaudos {
   senhas: MetaSenhas | null
   /** Por que as senhas não vieram, quando a leitura falhou. A lista vem mesmo assim. */
   senhasErro: string | null
-  /** Laudos cujo convênio veio da grade da TiTa (o resto, do Plano do Órbita). */
+  /** Laudos cujo convênio veio da grade do TiTa (o resto, do Plano do Órbita). */
   convenioPelaGrade: number
   /** Por que o convênio da grade não veio. A lista vem com o Plano do Órbita. */
   convenioErro: string | null

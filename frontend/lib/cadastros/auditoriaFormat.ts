@@ -194,7 +194,7 @@ const LABEL_POR_ENTIDADE: Record<EntidadeAuditada, Record<string, string>> = {
     nome: "Nome",
     tipo: "Tipo",
     cor_hex: "Cor",
-    tita_terapia_id: "Id na TiTa",
+    tita_terapia_id: "Id no TiTa",
     ativo: "Ativa",
   },
   profissional: {
@@ -215,7 +215,7 @@ const LABEL_POR_ENTIDADE: Record<EntidadeAuditada, Record<string, string>> = {
     uf: "UF",
     terapia_focal_id: "Terapia da cor do card",
     terapias_habilitadas: "Terapias habilitadas",
-    tita_profissional_id: "Id na TiTa",
+    tita_profissional_id: "Id no TiTa",
     ativo: "Ativo",
     observacoes: "Observações",
   },

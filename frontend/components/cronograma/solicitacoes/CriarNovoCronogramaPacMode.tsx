@@ -80,7 +80,7 @@ export function CriarNovoCronogramaPacMode({ cRows, lRows, suspensaoSet = SUSPEN
   const [espSelIdx, setEspSelIdx] = useState<Record<string, number>>({})
   const [verApenasSelecionados, setVerApenasSelecionados] = useState(false)
 
-  // Situação cadastral (Ativo/Inativo) vem da TiTa, não do laudo: o laudo diz o
+  // Situação cadastral (Ativo/Inativo) vem do TiTa, não do laudo: o laudo diz o
   // que o paciente PODE receber, não se ele ainda é paciente da clínica. Sem
   // este cruzamento, um cadastro inativado continuaria elegível aqui, porque o
   // laudo dele segue no relatório.
@@ -134,7 +134,7 @@ export function CriarNovoCronogramaPacMode({ cRows, lRows, suspensaoSet = SUSPEN
     return [...comAutorizacao].filter(p => !agendPacs.has(p)).sort()
   }, [lRows, agendPacs, suspensaoSet])
 
-  // id_favorecido do laudo — única forma de resolver o paciente na TiTa quando
+  // id_favorecido do laudo — única forma de resolver o paciente no TiTa quando
   // ele ainda não tem nenhuma linha Agendado (ver resolverIdFavorecido).
   const idFavorecidoPorPac = useMemo(() => {
     const m = new Map<string, number>()
@@ -151,7 +151,7 @@ export function CriarNovoCronogramaPacMode({ cRows, lRows, suspensaoSet = SUSPEN
 
   // Situação de um paciente: casa primeiro por id_favorecido (chave estável) e só
   // recorre ao nome quando o laudo não trouxe id. Paciente que não aparece no
-  // cadastro da TiTa fica como null — indeterminado, e por isso não é bloqueado.
+  // cadastro do TiTa fica como null — indeterminado, e por isso não é bloqueado.
   const situacaoDe = useCallback((pac: string): "Ativo" | "Inativo" | null => {
     if (situacoes.estado !== "ok") return null
     const id = idFavorecidoPorPac.get(pac)
@@ -170,7 +170,7 @@ export function CriarNovoCronogramaPacMode({ cRows, lRows, suspensaoSet = SUSPEN
 
   const livreSlots = useMemo(() => {
     // Vaga "Livre" gêmea de um horário já agendado do mesmo profissional (ver
-    // construirProfissionaisOcupados em helpers.ts) — a TiTa mantém uma linha
+    // construirProfissionaisOcupados em helpers.ts) — o TiTa mantém uma linha
     // por terapia ofertada, então preencher um horário não apaga as outras
     // linhas "Livre" do mesmo profissional nesse dia/hora.
     const profOcupado = construirProfissionaisOcupados(cRows)
@@ -185,7 +185,7 @@ export function CriarNovoCronogramaPacMode({ cRows, lRows, suspensaoSet = SUSPEN
     // Trava de negócio, não só de interface: cadastro inativo não recebe agenda
     // nova, mesmo que o laudo dele siga autorizado no relatório.
     if (inativoSelecionado) {
-      toast.error("❌ Este paciente está inativo na clínica. Reative o cadastro na TiTa antes de montar o cronograma.")
+      toast.error("❌ Este paciente está inativo na clínica. Reative o cadastro no TiTa antes de montar o cronograma.")
       return
     }
     const r = buildSugestoesManual(paciente, unidades, turno, lRows, livreSlots, suspensaoSet)
@@ -404,7 +404,7 @@ export function CriarNovoCronogramaPacMode({ cRows, lRows, suspensaoSet = SUSPEN
       return
     }
     if (idFavorecidoSel == null) {
-      toast.error("❌ O laudo deste paciente não traz o ID Favorecido — não é possível implantar na TiTa.")
+      toast.error("❌ O laudo deste paciente não traz o ID Favorecido — não é possível implantar no TiTa.")
       return
     }
 
@@ -448,7 +448,7 @@ export function CriarNovoCronogramaPacMode({ cRows, lRows, suspensaoSet = SUSPEN
           body?.mensagem ??
           (body?.error === "not_authenticated" ? "Sua sessão expirou. Recarregue a página e entre novamente."
             : body?.error === "sessao_sem_csv_grade_id" ? "Um dos horários ainda não está sincronizado para implantação. Gere uma nova sugestão e tente novamente."
-            : "Não foi possível concluir a integração com a TiTa. Tente novamente.")
+            : "Não foi possível concluir a integração com o TiTa. Tente novamente.")
         toast.error(`❌ ${mensagem}`)
         return
       }
@@ -472,7 +472,7 @@ export function CriarNovoCronogramaPacMode({ cRows, lRows, suspensaoSet = SUSPEN
       setEspSelIdx({})
       toast(`✅ ${body?.mensagem ?? "Implantação realizada com sucesso."}`)
     } catch (err) {
-      console.error("[ocupacao-paciente:novo] falha ao implantar na TiTa", err)
+      console.error("[ocupacao-paciente:novo] falha ao implantar no TiTa", err)
       toast.error("❌ Não foi possível concluir a implantação agora. Verifique a conexão e tente novamente.")
     } finally {
       setConfirmando(false)
@@ -515,12 +515,12 @@ export function CriarNovoCronogramaPacMode({ cRows, lRows, suspensaoSet = SUSPEN
           />
           {inativoSelecionado && (
             <div style={{ ...badgeTriad("erro"), borderRadius: "8px", padding: "6px 8px", fontSize: "10px", fontWeight: 700, lineHeight: 1.35 }}>
-              ⚠ Cadastro inativo na clínica — reative na TiTa para montar o cronograma.
+              ⚠ Cadastro inativo na clínica — reative no TiTa para montar o cronograma.
             </div>
           )}
           {situacoes.estado === "erro" && (
             <div style={{ fontSize: "10px", color: "#d97706", fontWeight: 700, lineHeight: 1.35 }}>
-              ⚠ Não foi possível verificar quem está ativo agora. Confira a situação do cadastro na TiTa antes de implantar.
+              ⚠ Não foi possível verificar quem está ativo agora. Confira a situação do cadastro no TiTa antes de implantar.
             </div>
           )}
           {faltando.length > 0 && (

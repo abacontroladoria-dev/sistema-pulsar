@@ -32,7 +32,7 @@ export type Profissional = {
   foto_path: string | null
   /** Path da foto da assinatura/carimbo (profissionais/{id}/assinatura-*.ext). */
   assinatura_path: string | null
-  /** Último retrato da TiTa — referência para mostrar divergência, não é o cadastro. */
+  /** Último retrato do TiTa — referência para mostrar divergência, não é o cadastro. */
   dados_tita: Partial<Record<CampoTita, string>> | null
   sincronizado_tita_em: string | null
   criado_em: string
@@ -41,7 +41,7 @@ export type Profissional = {
 
 /**
  * O que a LISTA carrega de cada profissional: sem endereço, e-mail,
- * observações nem retrato da TiTa — dado pessoal só sai do banco na ficha, um
+ * observações nem retrato do TiTa — dado pessoal só sai do banco na ficha, um
  * profissional por vez. CPF fica (a busca é por ele, e o "Novo profissional"
  * avisa CPF repetido).
  */
@@ -51,7 +51,7 @@ export type ProfissionalLista = Pick<
   | "tipo_registro" | "uf_registro" | "codigo_registro" | "cbo" | "terapia_focal_id" | "ativo" | "foto_path"
 >
 
-/** Campos que a importação da TiTa conhece (chaves de dados_tita). */
+/** Campos que a importação do TiTa conhece (chaves de dados_tita). */
 export type CampoTita =
   | "nome"
   | "cpf"
@@ -73,7 +73,7 @@ export type ProfissionalEdit = Pick<
 /** Imagens do profissional, gravadas na hora (fora do "Editar"), como a foto do paciente. */
 export type ProfissionalArquivos = Pick<Profissional, "foto_path" | "assinatura_path">
 
-/** Uma terapia do profissional, juntando o que está habilitado e o que a grade TiTa mostra. */
+/** Uma terapia do profissional, juntando o que está habilitado e o que a grade do TiTa mostra. */
 export type TerapiaDoProfissional = {
   nome: string
   cor: string
@@ -82,7 +82,7 @@ export type TerapiaDoProfissional = {
   /** Chave do ícone no catálogo (null = estrelinhas). */
   icone: string | null
   habilitada: boolean
-  /** Horários na grade TiTa (últimos 90 dias em diante). 0 = não aparece na grade. */
+  /** Horários na grade do TiTa (últimos 90 dias em diante). 0 = não aparece na grade. */
   horariosGrade: number
 }
 
@@ -94,13 +94,13 @@ export type ResultadoImportacao = {
   vistos_na_tita: number
 }
 
-/** Siglas mais comuns de conselho; a lista do campo soma os valores que vierem da TiTa. */
+/** Siglas mais comuns de conselho; a lista do campo soma os valores que vierem do TiTa. */
 export const TIPOS_REGISTRO = [
   "CRP", "CREFITO", "CREFONO", "CRFa", "CRM", "CREF", "CRN", "CRO", "COREN", "CRESS", "ABPp", "Outro",
 ]
 
 /**
- * Identificador exibido, sempre só números: o id da TiTa quando há vínculo (é o
+ * Identificador exibido, sempre só números: o id do TiTa quando há vínculo (é o
  * que a equipe conhece), senão o do Pulsar.
  */
 export function idExibicaoProfissional(p: Pick<Profissional, "id" | "tita_profissional_id">): string {

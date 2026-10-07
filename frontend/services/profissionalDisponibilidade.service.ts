@@ -187,8 +187,8 @@ export async function valerHoje(versaoId: string, motivo?: string): Promise<void
 }
 
 /**
- * Horários (Livre + Agendado) do profissional na grade TiTa numa semana — base
- * do "Preencher a partir da grade TiTa". Livre e Agendado contam igual: os dois
+ * Horários (Livre + Agendado) do profissional na grade do TiTa numa semana — base
+ * do "Preencher a partir da grade do TiTa". Livre e Agendado contam igual: os dois
  * são horário em que o profissional está disponível para a clínica.
  */
 export async function lerSemanaTita(titaProfissionalId: number, de: string, ate: string) {

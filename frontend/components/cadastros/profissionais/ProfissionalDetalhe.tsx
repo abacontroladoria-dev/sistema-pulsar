@@ -229,13 +229,13 @@ export function ProfissionalDetalhe({ id, abaInicial }: { id: number; abaInicial
             com as abas coloridas logo abaixo (que são o que se clica). */}
         <dl className="relative mt-5 grid grid-cols-2 gap-px overflow-hidden rounded-[18px] bg-[var(--pp-border)] shadow-[inset_0_0_0_1px_var(--pp-border)] @4xl:grid-cols-4">
           <Resumo Icone={Sparkles} valor={d.habilitadas.length} rotulo="Terapias habilitadas"
-            apoio={`${terapias.filter(t => t.horariosGrade > 0).length} na grade TiTa`} />
-          <Resumo Icone={CalendarRange} valor={horariosTita.toLocaleString("pt-BR")} rotulo="Horários na grade TiTa"
+            apoio={`${terapias.filter(t => t.horariosGrade > 0).length} na grade do TiTa`} />
+          <Resumo Icone={CalendarRange} valor={horariosTita.toLocaleString("pt-BR")} rotulo="Horários na grade do TiTa"
             apoio="90 dias para trás em diante" />
           <Resumo Icone={CalendarDays} valor={disp.sessoesSemana ?? "—"} rotulo="Sessões por semana"
             apoio={disp.vigente ? `Versão nº ${disp.vigente.numero} vigente` : "Nenhuma versão valendo hoje"} />
           <Resumo Icone={BadgeCheck} valor={`${camposPreenchidos}/${camposTotal}`} rotulo="Campos do cadastro"
-            apoio={prof.sincronizado_tita_em ? `TiTa conferida em ${new Date(prof.sincronizado_tita_em).toLocaleDateString("pt-BR")}` : "Sem importação da TiTa"} />
+            apoio={prof.sincronizado_tita_em ? `TiTa conferido em ${new Date(prof.sincronizado_tita_em).toLocaleDateString("pt-BR")}` : "Sem importação do TiTa"} />
         </dl>
       </SecaoPastel>
 

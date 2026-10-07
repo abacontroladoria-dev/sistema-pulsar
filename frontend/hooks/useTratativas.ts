@@ -52,7 +52,7 @@ function falhaDeGrade(e: unknown) {
     resumo: "Falha ao ler a grade",
     erro: e instanceof Error ? e.message : "Não consegui ler a grade do banco.",
     dica: "Nenhum dado foi alterado. Tente carregar de novo; se repetir, avise o time técnico "
-      + "com a mensagem acima e use o CSV exportado da TiTa enquanto isso.",
+      + "com a mensagem acima e use o CSV exportado do TiTa enquanto isso.",
   }
 }
 

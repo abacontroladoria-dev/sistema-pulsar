@@ -1,4 +1,4 @@
-// O vocabulário da TiTa para "o que aconteceu com a sessão", em um só lugar.
+// O vocabulário do TiTa para "o que aconteceu com a sessão", em um só lugar.
 //
 // São as colunas "Status" (status_execucao) e "Justificativa" de
 // csv_grade_profissionais. `Status` é o que decide se a sessão gera diária
@@ -118,7 +118,7 @@ export function classificarStatusExecucao(status: unknown): ResultadoExecucao {
  * cabeçalho do arquivo), e ali o único texto que isto precisa reconhecer é
  * 'Cancelado'. Reconhece também 'Não realizado' por tolerância — não porque
  * essa variação tenha sido confirmada em `Status` (foi descartada), mas porque
- * não custa nada aceitar as duas caso a TiTa um dia prove o contrário.
+ * não custa nada aceitar as duas caso o TiTa um dia prove o contrário.
  *
  * Mantém o nome histórico (`isCancelado`) de propósito: é o vocabulário do
  * resto do código e da própria tela, onde a classificação exibida é
@@ -155,11 +155,11 @@ const REGRAS: Array<[MotivoNaoRealizado, RegExp[]]> = [
  * Recebe os pedaços (justificativa, status) e olha o conjunto. Na prática o
  * motivo mora sempre na `Justificativa` — `Status` é só 'Cancelado' — mas a
  * função não presume isso: aceita o texto em qualquer um dos pedaços, então
- * continua certa mesmo se um dia a TiTa inverter onde põe o quê.
+ * continua certa mesmo se um dia o TiTa inverter onde põe o quê.
  *
  * `null` significa "não é uma sessão não realizada". "outro" significa "não
  * aconteceu (`Status` = Cancelado), mas o motivo em `Justificativa` não bate
- * com nenhum dos 6 conhecidos" — o sinal de que a TiTa mudou o vocabulário de
+ * com nenhum dos 6 conhecidos" — o sinal de que o TiTa mudou o vocabulário de
  * novo. Ver `justificativaDesconhecida`, que transforma esse "outro" num
  * aviso visível em vez de um silêncio.
  */
@@ -192,7 +192,7 @@ export const isFaltaDoPaciente = (...partes: unknown[]): boolean =>
  *
  * Reforço, não a proteção principal: o vocabulário de `Status` está confirmado
  * fechado (`Cancelado`/`Realizado`/`Em Conflito`/`Planejado-Pendente`/vazio) e
- * não é onde a TiTa mudou nada em 24/08/2026 — quem mudou foi `Justificativa`
+ * não é onde o TiTa mudou nada em 24/08/2026 — quem mudou foi `Justificativa`
  * (ver `justificativaDesconhecida`, abaixo, que é a proteção que de fato
  * importa hoje). Isto fica como rede para o dia em que `Status` variar de
  * verdade — o que ainda não tem precedente. Ver avaliarCoberturaGrade em
@@ -257,7 +257,7 @@ export function veredictoRotuloDesconhecido(
     // Diz também o que NÃO resolve. As outras reprovações oferecem o CSV como
     // saída; aqui ele traz exatamente o mesmo rótulo, e mandar tentar por lá
     // seria empurrar a pessoa para o mesmo erro por um caminho mais longo.
-    dica: "A TiTa mudou o vocabulário da coluna \"Status\", que até aqui só usava "
+    dica: "O TiTa mudou o vocabulário da coluna \"Status\", que até aqui só usava "
       + "Cancelado/Realizado/Em Conflito/Planejado-Pendente. Avise o time técnico: o rótulo novo precisa "
       + "ser ensinado em lib/remuneracao/rotulosExecucao.ts. Recarregar não resolve, e o CSV exportado da "
       + "TiTa traz o mesmo rótulo.",
@@ -270,7 +270,7 @@ export function veredictoRotuloDesconhecido(
  * `null` quando a linha não se qualifica (não é `Cancelado`, ou a justificativa
  * está vazia, ou o motivo já é reconhecido).
  *
- * É AQUI que a TiTa de fato mudou o vocabulário em 24/08/2026 — não em
+ * É AQUI que o TiTa de fato mudou o vocabulário em 24/08/2026 — não em
  * `Status` (ver o cabeçalho do arquivo). Diferente de rótulo desconhecido em
  * `Status`, isto não decide pagamento: `cancelado`/`isCancelado` já depende só
  * de `Status`, então uma justificativa ilegível não risca diária, ETA nem PA.

@@ -184,7 +184,7 @@ export function TratativasTab() {
       {!resultado && !carregando && (
         <div className="rounded-xl border border-border bg-card p-10 text-center text-sm text-muted-foreground">
           Sem sessões nesta grade — troque o mês no cabeçalho ou, se ele não tiver dado no banco,
-          carregue o CSV exportado da TiTa.
+          carregue o CSV exportado do TiTa.
         </div>
       )}
 

@@ -71,7 +71,7 @@ export interface AgendamentoTitaPayload {
 /**
  * Uma ocorrência individual dentro da série semanal criada por agendamento/create.
  * status_str confirmado por chamada real (Sprint 2.1): "Planejado" (criada sem
- * conflito) ou "Conflito" (horário já ocupado por outro agendamento) — a TiTa cria
+ * conflito) ou "Conflito" (horário já ocupado por outro agendamento) — o TiTa cria
  * a série inteira e marca cada ocorrência individualmente, em vez de rejeitar tudo.
  */
 export interface ItemAgendamentoTita {

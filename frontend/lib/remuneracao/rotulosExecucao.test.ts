@@ -1,10 +1,10 @@
-// Rótulos de execução da TiTa: as duas gerações de Justificativa têm de dar a
+// Rótulos de execução do TiTa: as duas gerações de Justificativa têm de dar a
 // MESMA resposta, e uma terceira geração desconhecida tem de AVISAR em vez de
 // ser adivinhada.
 //
 // Até 21/08/2026 uma sessão que não aconteceu chegava como Status 'Cancelado'
 // + Justificativa 'Falta do Paciente' / 'Falta do Profissional' / 'Falta de
-// Ambos'. De 24/08/2026 em diante a TiTa passou a usar 'Não realizado —
+// Ambos'. De 24/08/2026 em diante o TiTa passou a usar 'Não realizado —
 // paciente' / '— prestador' / '— clínica' NA MESMA COLUNA — confirmado pelo
 // usuário em 25/08/2026 contra captura de tela da própria TiTa: `Status`
 // PERMANECE 'Cancelado' para sempre, quem muda é só `Justificativa`. (Uma
@@ -102,7 +102,7 @@ test("motivoNaoRealizado traduz as duas gerações para o mesmo motivo", () => {
   assert.equal(motivoNaoRealizado("Falta de Ambos", "Cancelado"), "ambos")
 
   // Novo: motivo no próprio status — e aceito também se vier na justificativa,
-  // porque quem consome não sabe onde a TiTa vai colocá-lo.
+  // porque quem consome não sabe onde o TiTa vai colocá-lo.
   assert.equal(motivoNaoRealizado(null, "Não realizado — paciente"), "paciente")
   assert.equal(motivoNaoRealizado("Não realizado — paciente", null), "paciente")
   assert.equal(motivoNaoRealizado(null, "Não realizado — prestador"), "prestador")
@@ -132,7 +132,7 @@ test("rotulosDeExecucaoDesconhecidos acusa só o que é ilegível", () => {
   const conhecidos = VOCABULARIO.map(([rotulo]) => rotulo)
   assert.deepEqual(rotulosDeExecucaoDesconhecidos([...conhecidos, null, undefined]), [])
 
-  // Texto original preservado (é o que se procura na TiTa) e sem repetição.
+  // Texto original preservado (é o que se procura no TiTa) e sem repetição.
   assert.deepEqual(
     rotulosDeExecucaoDesconhecidos(["Realizado", "Sessão Suspensa", "Sessão Suspensa", "Reagendado"]),
     ["Sessão Suspensa", "Reagendado"],
@@ -150,7 +150,7 @@ test("veredictoRotuloDesconhecido reprova só quando há rótulo ilegível", () 
   assert.equal(veredicto.ok, false)
   assert.equal(veredicto.quantidade, 7)
   // O rótulo real aparece na mensagem: sem ele, quem lê não tem o que procurar
-  // na TiTa nem o que informar ao time técnico.
+  // no TiTa nem o que informar ao time técnico.
   assert.ok(veredicto.erro.includes("Sessão Suspensa"), veredicto.erro)
   // E a mensagem não pode oferecer o CSV como saída — ele traz o mesmo rótulo.
   assert.ok(veredicto.dica.includes("o CSV"), veredicto.dica)

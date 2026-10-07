@@ -6,7 +6,7 @@ export interface AceiteSessao {
   tP: string
   prof: string
   unidade: string
-  /** UUID da linha em csv_grades_profissionais de origem — usado para resolver o agendamento na TiTa. */
+  /** UUID da linha em csv_grades_profissionais de origem — usado para resolver o agendamento no TiTa. */
   csvGradeId: string
   /**
    * terapia_exibicao_id resolvido no cliente para Aplicador ABA (AE)/(HS) — depende
@@ -18,7 +18,7 @@ export interface AceiteSessao {
    */
   terapiaExibicaoOverride?: number
   /**
-   * id_favorecido (paciente na TiTa) vindo do laudo — único caminho de resolução
+   * id_favorecido (paciente no TiTa) vindo do laudo — único caminho de resolução
    * pra paciente sem NENHUMA linha "Agendado" ainda em csv_grades_profissionais
    * (ver resolverIdFavorecido em services/tita/mappings.ts), caso da modalidade
    * "Criar Novo Cronograma". Ignorado quando o paciente já tem linha Agendado

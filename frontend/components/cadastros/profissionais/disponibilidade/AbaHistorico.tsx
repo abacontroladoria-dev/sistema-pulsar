@@ -27,7 +27,7 @@ const EVENTO: Record<EventoDisponibilidade["tipo"], { t: Tom; Icone: typeof Plus
 
 const ORIGEM: Record<VersaoDisponibilidade["origem"], string> = {
   manual: "Montada à mão",
-  preenchido_tita: "Montada a partir da grade TiTa",
+  preenchido_tita: "Montada a partir da grade do TiTa",
   restaurada: "Restaurada de versão anterior",
 }
 

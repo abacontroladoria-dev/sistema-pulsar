@@ -122,7 +122,7 @@ export interface SlotLivre {
 // inteira em TERAPIA_TO_ESP (que nunca bate e derruba o slot pra null — bug
 // real encontrado 2026-08-18, caso Amanda Martins Rodrigues: profissional com
 // disponibilidade real sumia da lista "Ocupar Profissionais Disponíveis").
-// Achado 2026-08-20 (caso Marcia Regina Araujo de Paula, Fonoaudiologia): a TiTa
+// Achado 2026-08-20 (caso Marcia Regina Araujo de Paula, Fonoaudiologia): o TiTa
 // mantém uma linha por terapia ofertada, então quando um horário do profissional é
 // preenchido as OUTRAS linhas dele no mesmo dia/hora podem continuar "Livre" — seja
 // por atraso de sincronização, seja pelo formato do CSV. Sem esta trava, um

@@ -78,7 +78,7 @@ export function BuscarReposicaoManual({
     // Busca terapias com slot disponível na semana (paciente_nome null = vago).
     // Fonte "base": slot 'Livre' não é atendimento e não existe em
     // vw_grade_atendimentos. A view já garante `ativo`, que aqui não é só
-    // deduplicação — quando um slot livre é ocupado na TiTa ele deixa de vir no
+    // deduplicação — quando um slot livre é ocupado no TiTa ele deixa de vir no
     // CSV como 'Livre' e o sync o marca com ativo=false, ou seja, ativo=false num
     // slot 'Livre' significa exatamente "não está mais vago". Sem isso a tela
     // ofereceria horário já tomado.

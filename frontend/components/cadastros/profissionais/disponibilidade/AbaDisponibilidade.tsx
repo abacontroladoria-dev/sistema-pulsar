@@ -170,7 +170,7 @@ export function AbaDisponibilidade({
           <h3 id="disp-vazia" className="text-[20px] font-extrabold">Nenhuma disponibilidade cadastrada</h3>
           <p className="max-w-md text-sm font-semibold text-[var(--pp-ink-muted)]">
             Monte os dias, horários, terapias e locais em que {prof.nome.split(" ")[0]} atende.
-            {prof.tita_profissional_id ? " Dá para começar pelo que a grade TiTa já mostra." : ""}
+            {prof.tita_profissional_id ? " Dá para começar pelo que a grade do TiTa já mostra." : ""}
           </p>
           <button type="button" onClick={novaVersao} disabled={preparando} className={`${tom("teal")} pp-btn mt-1`}>
             {preparando ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Plus className="h-4 w-4" aria-hidden />}
@@ -234,7 +234,7 @@ export function AbaDisponibilidade({
               <h3 id="disp-versao" className="text-[18px] font-extrabold">Versão nº {selecionada.numero}</h3>
               <p className="text-[13px] font-semibold text-[var(--pp-ink-muted)]">
                 {totais.sessoes} sessões/semana · criada por {selecionada.criado_por_nome ?? "—"} em {new Date(selecionada.criado_em).toLocaleDateString("pt-BR")}
-                {selecionada.origem === "preenchido_tita" && " · montada a partir da grade TiTa"}
+                {selecionada.origem === "preenchido_tita" && " · montada a partir da grade do TiTa"}
                 {selecionada.origem === "restaurada" && " · restaurada de versão anterior"}
                 {selecionada.motivo && ` · “${selecionada.motivo}”`}
               </p>

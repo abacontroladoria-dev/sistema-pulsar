@@ -7,7 +7,7 @@ const LOG_TAG = "[tita:situacao-favorecidos]"
 
 // Situação cadastral muda raramente (um paciente entra ou sai da clínica), mas a
 // tela consulta a cada vez que a modalidade é aberta. Cache curto em memória
-// evita repetir a chamada à TiTa a cada alternância de aba, sem correr o risco de
+// evita repetir a chamada ao TiTa a cada alternância de aba, sem correr o risco de
 // servir dado velho por muito tempo. Vive no escopo do módulo: some a cada
 // redeploy/reinício, o que é o comportamento desejado.
 const TTL_MS = 5 * 60 * 1000
@@ -43,9 +43,9 @@ export async function GET(request: NextRequest) {
 
   const resultado = await buscarSituacaoFavorecidos()
   if (!resultado.ok) {
-    console.error(`${LOG_TAG} falha ao consultar a TiTa`, resultado.erro)
+    console.error(`${LOG_TAG} falha ao consultar o TiTa`, resultado.erro)
     // Cache expirado mas com dado anterior é melhor que nada: a alternativa é a
-    // tela perder a distinção ativo/inativo por uma falha transitória da TiTa.
+    // tela perder a distinção ativo/inativo por uma falha transitória do TiTa.
     if (cache) {
       return NextResponse.json({ ok: true, favorecidos: cache.favorecidos, doCache: true, obsoleto: true })
     }

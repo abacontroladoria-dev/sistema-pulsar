@@ -1,8 +1,8 @@
-// ─── Regra C: a grade da TiTa é a autoridade sobre o que é ofertável ──────────
+// ─── Regra C: a grade do TiTa é a autoridade sobre o que é ofertável ──────────
 //
 // Ocupação de Paciente decidia "este horário está livre" olhando SÓ
 // csv_grades_profissionais (via vw_grade_base), que é o export de
-// AGENDAMENTOS. Só que a TiTa tem uma segunda fonte — grade_profissionais_tita,
+// AGENDAMENTOS. Só que o TiTa tem uma segunda fonte — grade_profissionais_tita,
 // o export da GRADE do terapeuta — e as duas discordam de DUAS formas
 // diferentes. Este módulo aplica as duas regras que saem daí.
 //
@@ -40,13 +40,13 @@
 //
 // A C1 sozinha é uma allowlist invertida: só um "positivo" bloqueia, então a
 // AUSÊNCIA de linha na grade nunca barrava nada. E a ausência é justamente
-// como a TiTa representa "o profissional não tem grade aberta nesse horário" —
+// como o TiTa representa "o profissional não tem grade aberta nesse horário" —
 // grade_profissionais_tita (unidade 280, futuro) só tem dois valores de
 // status_agendamento, 'Agendado' (24.359) e 'Livre' (4.974). Não existe
 // 'Bloqueado'/'Indisponível': o horário sem grade simplesmente não vem na API.
 //
 // Medido em 2026-09-10, unidade 280, janela 01/10→07/10 — caso Evelyn Andressa
-// (profissional_id 8638), segunda-feira: a API da TiTa devolve 7 slots para
+// (profissional_id 8638), segunda-feira: a API do TiTa devolve 7 slots para
 // ela (13:00→17:00) e NADA na manhã, porque a segunda dela começa às 13:00. O
 // nosso csv_grades_profissionais tem 13 linhas, com 6 fantasmas na manhã
 // (08:00→11:20, ativo=true, origem='tita_csv'). A tela ofertou as 6 — e como o
@@ -55,7 +55,7 @@
 //
 // Na mesma janela, 79 dos 748 slots 'Livre' (10,6%) não têm linha
 // correspondente na grade, em 7 profissionais (14517: 30 slots; 8589: 26;
-// 8649: 13; 8638: 6; e mais 3). São vagas que a TiTa recusaria na implantação.
+// 8649: 13; 8638: 6; e mais 3). São vagas que o TiTa recusaria na implantação.
 //
 // Autoridade independente: POST /integracao/get_disponibilidade não devolve
 // gtid nenhum para a manhã de segunda dela (não há grade), enquanto o 13:00
@@ -70,7 +70,7 @@
 //
 // E a abstenção da C2 é por PROFISSIONAL, não por dia — ver o comentário no
 // filtro. Abster por dia foi medido e deixava passar 71 slots que a API bruta
-// da TiTa confirma não existirem: seria reabrir o bug com outro nome.
+// do TiTa confirma não existirem: seria reabrir o bug com outro nome.
 //
 // ── Regra C3: profissional desligado nunca é ofertado ──
 //
@@ -79,7 +79,7 @@
 // zero linha na grade em qualquer data. Como a abstenção da C2 mantém quem não
 // aparece na grade, ela sozinha deixaria essas 30 passarem.
 //
-// O desligamento não é ambíguo — a TiTa prefixa o nome com "INATIVO-" (ver
+// O desligamento não é ambíguo — o TiTa prefixa o nome com "INATIVO-" (ver
 // reference_desligamento_inativo_tita) — e nada mais neste módulo barra o
 // prefixo: isProfBloqueadoTemp é uma lista fixa de dois nomes, não um filtro de
 // desligado. Por isso a trava vive aqui.
@@ -112,7 +112,7 @@ const dowDe = (data: string): number => new Date(`${data.slice(0, 10)}T12:00:00`
 const hhmm = (hora: unknown): string => String(hora ?? "").slice(0, 5)
 const dia = (data: unknown): string => String(data ?? "").slice(0, 10)
 
-// A TiTa marca o desligamento prefixando o nome do profissional com "INATIVO-"
+// O TiTa marca o desligamento prefixando o nome do profissional com "INATIVO-"
 // (ver reference_desligamento_inativo_tita). Casa no início da string já sem
 // acento/caixa; o hífen é opcional porque a grafia do prefixo não é garantida.
 const isDesligado = (prof: unknown): boolean =>
@@ -136,7 +136,7 @@ interface Grade {
 }
 
 /**
- * Lê a grade da TiTa na janela [`desde`, `ate`] e monta os três índices de uma vez.
+ * Lê a grade do TiTa na janela [`desde`, `ate`] e monta os três índices de uma vez.
  *
  * Sem filtro de status na consulta (a C2 precisa das linhas 'Livre' também):
  * é a MESMA consulta de antes menos um `.eq`, então não há custo de rede extra.
@@ -246,7 +246,7 @@ async function buscarGrade(desde: string, ate: string, profissionaisIds: number[
 }
 
 /**
- * Remove de `cRows` as linhas 'Livre' que a grade da TiTa não sustenta:
+ * Remove de `cRows` as linhas 'Livre' que a grade do TiTa não sustenta:
  * as que ela dá como comprometidas (C1) e as que não existem nela (C2).
  *
  * REMOVE em vez de virar o status para 'Agendado' de propósito: meia dúzia de
@@ -259,7 +259,7 @@ async function buscarGrade(desde: string, ate: string, profissionaisIds: number[
  * Na C1, como a chave ignora a terapia, some também com as linhas-irmãs do
  * mesmo profissional/dia/hora — que é o comportamento desejado e o mesmo
  * princípio da trava de profOcupado (ver o achado do caso Marcia Regina Araujo
- * de Paula em disponibilidadeInterna.ts): a TiTa mantém uma linha por terapia
+ * de Paula em disponibilidadeInterna.ts): o TiTa mantém uma linha por terapia
  * ofertada, então bloquear só a linha que casou deixaria as outras
  * reaparecerem como disponíveis no mesmo horário.
  *
@@ -319,7 +319,7 @@ export async function filtrarLivresSemGradeAberta(
     //
     // A abstenção é por PROFISSIONAL, não por dia. Medido em 2026-09-10 na
     // janela 01/10→07/10: abster por dia deixava passar 71 slots, e conferindo
-    // contra a API bruta da TiTa nenhum deles era sync parcial — a nossa cópia
+    // contra a API bruta do TiTa nenhum deles era sync parcial — a nossa cópia
     // batia 100% com a API. Eram ausências reais: profissional que tem grade em
     // três dias da semana e é ofertado nos outros. Abster por dia, ali, é só
     // reabrir o bug com outro nome.
@@ -331,7 +331,7 @@ export async function filtrarLivresSemGradeAberta(
     // dado, a C2 se abstém e mantém a linha — esconder a agenda inteira de um
     // profissional por falha de carga é o erro mais caro dos dois.
     //
-    // A exceção é o DESLIGADO, que não é ambíguo: a TiTa prefixa o nome com
+    // A exceção é o DESLIGADO, que não é ambíguo: o TiTa prefixa o nome com
     // "INATIVO-" (ver reference_desligamento_inativo_tita) e ninguém deve
     // receber oferta de quem saiu, com ou sem grade. Caso real medido em
     // 2026-09-10: 14517 INATIVO-Gabriela Pereira Ramos, 30 slots 'Livre'

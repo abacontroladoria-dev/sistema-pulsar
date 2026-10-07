@@ -311,7 +311,7 @@ function estadoDoLaudo(
  *
  * Laudo de OUTRO convênio (a senha da ASSIM não se aplica), a caixa fica cinza e
  * diz SÓ o nome do convênio — pedido do usuário (28/09/2026): sem "—", sem
- * "senha", sem "Outro convênio". O convênio é o da grade da TiTa (ver
+ * "senha", sem "Outro convênio". O convênio é o da grade do TiTa (ver
  * lib/laudos/convenio.ts).
  */
 function CaixaSenha({

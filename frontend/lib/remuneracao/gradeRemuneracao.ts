@@ -94,7 +94,7 @@ export async function buscarGradeParaAnalise(dataInicio: string, dataFim: string
  * em 715. A causa é a mesma data em que `origem` passa de `backup_xls` para
  * `tita_csv` — as linhas semeadas do backup não têm `tita_agendamento_id`, que
  * é a chave por onde a captura de execução casa, então ela nunca alcançou
- * nenhuma delas. Não adianta reprocessar: o dado não existe do lado da TiTa.
+ * nenhuma delas. Não adianta reprocessar: o dado não existe do lado do TiTa.
  *
  * O que acontece sem esta guarda: `possui_tratativa` NULL, `isSim(null)` false,
  * o cálculo lê "não evoluído" e a tela mostra uma grade de aparência
@@ -137,7 +137,7 @@ const RP_FIELDS = [
 /**
  * Um nome por `profissional_id`, escolhido pela grafia mais frequente na agenda.
  *
- * Existe porque o cálculo agrupa profissional por NOME, e a TiTa grava o mesmo
+ * Existe porque o cálculo agrupa profissional por NOME, e o TiTa grava o mesmo
  * `profissional_id` com grafias diferentes nos dois campos. Medido em
  * julho/2026: o id 17586 aparece 133 vezes como "Nicolly Christine da Silva
  * Alcantara" em `profissional_nome` e 88 vezes como "Nicolly Alcantara" em
@@ -211,7 +211,7 @@ export interface CoberturaGrade {
   inativasAgendadas: number
   /**
    * Rótulos de `Status` que vieram na grade e este código não sabe ler
-   * (amostra: até 5 textos distintos, como a TiTa os escreveu).
+   * (amostra: até 5 textos distintos, como o TiTa os escreveu).
    *
    * Reforço, hoje sem caso conhecido: o vocabulário de `Status` está
    * confirmado fechado (ver rotulosExecucao.ts) — a mudança real de
@@ -274,7 +274,7 @@ function simNao(v: unknown): string {
 }
 
 /**
- * Nome do profissional sem o prefixo `INATIVO-` da TiTa.
+ * Nome do profissional sem o prefixo `INATIVO-` do TiTa.
  *
  * Aqui não é cosmético — é integridade da folha. O congelamento preserva o nome
  * como estava quando cada linha foi escrita, então quem é desligado no meio do
@@ -346,7 +346,7 @@ export async function buscarGradeParaRP(de: string, ate: string, hoje = new Date
   const rotulosDesconhecidos = new Set<string>()
   let linhasRotuloDesconhecido = 0
   // Mesma ideia, mas para `Justificativa` de linha `Cancelado` — é ali, e não em
-  // `Status`, que a TiTa de fato mudou o vocabulário em 24/08/2026 (ver
+  // `Status`, que o TiTa de fato mudou o vocabulário em 24/08/2026 (ver
   // rotulosExecucao.ts). Guardado por texto exato, sem o dedup por chave
   // normalizada de `rotulosDesconhecidos` — o volume esperado aqui é baixo
   // (só sessões canceladas) e não compensa a complexidade extra.
@@ -441,7 +441,7 @@ export const buscarGradeParaTratativas = buscarGradeParaRP
  * era despejada no cabeçalho e o sobrepunha — o motivo desta separação.
  *
  * `dica` é o próximo passo, e vem junto com a falha em vez de ser fixa no modal.
- * Precisou ser assim depois que "o sync repõe sozinho o que a TiTa ainda
+ * Precisou ser assim depois que "o sync repõe sozinho o que o TiTa ainda
  * reporta" apareceu embaixo de um erro de leitura, onde não queria dizer nada:
  * cada motivo tem uma saída diferente, e uma orientação genérica é pior que
  * nenhuma.
@@ -475,8 +475,8 @@ export function checarPisoDeExecucao(de: string, contexto: ContextoGrade = "paga
         : `A partir de ${formatDateBR(PISO_EXECUCAO_GRADE)}, o sistema passou a registrar as execuções no banco de `
           + "dados. Por isso, não temos informações suficientes para identificar quem realizou cada tratativa antes dessa data.",
       dica: contexto === "pagamento"
-        ? "Para períodos anteriores, use o CSV exportado da TiTa. Não há o que reconciliar aqui — o dado nunca existiu no banco."
-        : `Para ${mesPorExtenso(de)} e períodos anteriores, os dados devem ser consultados diretamente no CSV exportado da TiTa.`,
+        ? "Para períodos anteriores, use o CSV exportado do TiTa. Não há o que reconciliar aqui — o dado nunca existiu no banco."
+        : `Para ${mesPorExtenso(de)} e períodos anteriores, os dados devem ser consultados diretamente no CSV exportado do TiTa.`,
     }
   }
   return { ok: true, aviso: null }
@@ -533,8 +533,8 @@ function resolverVeredictoDeCobertura(
         + (dePagamento
           ? `${n === 1 ? "ficou" : "ficaram"} fora do cálculo. Fechar o pagamento assim paga a menos.`
           : `${n === 1 ? "ficou" : "ficaram"} fora da contagem — algumas tratativas podem estar invisíveis nesta tela.`),
-      dica: "O sync confere isso contra a TiTa todo dia: repõe o que ela ainda reporta e marca o que "
-        + "ela confirma ter apagado. Recarregue amanhã. Se o número não tiver zerado, avise o time técnico.",
+      dica: "O sync confere isso contra o TiTa todo dia: repõe o que ele ainda reporta e marca o que "
+        + "ele confirma ter apagado. Recarregue amanhã. Se o número não tiver zerado, avise o time técnico.",
     }
   }
 
@@ -573,8 +573,8 @@ function resolverVeredictoDeCobertura(
       + "em trânsito, então a captura falhou.",
     dica: "Avise o time técnico — recarregar não resolve enquanto a captura não rodar. "
       + (dePagamento
-        ? "Para fechar o pagamento agora, use o CSV exportado da TiTa."
-        : "Para auditar esse período agora, use o CSV exportado da TiTa."),
+        ? "Para fechar o pagamento agora, use o CSV exportado do TiTa."
+        : "Para auditar esse período agora, use o CSV exportado do TiTa."),
   }
 }
 

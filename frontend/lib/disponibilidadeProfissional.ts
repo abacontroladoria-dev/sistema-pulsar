@@ -4,7 +4,7 @@ import type {
 
 // Lógica pura da disponibilidade do profissional (sem React, sem Supabase):
 // sessões de cada faixa, validação espelho das RPCs, totais, conflitos de local,
-// cópia de dia, preenchimento a partir da grade TiTa e diferenças entre versões.
+// cópia de dia, preenchimento a partir da grade do TiTa e diferenças entre versões.
 
 export const DIAS_SEMANA = [
   { n: 1, curto: "Seg", nome: "Segunda-feira" },
@@ -292,7 +292,7 @@ export function foraDaExclusividade(local: LocalDisponivel, titaIdsDaFaixa: (num
   return fora ? obrig.map(e => e.terapia_nome) : null
 }
 
-// ── Preencher a partir da grade TiTa ─────────────────────────────────────────
+// ── Preencher a partir da grade do TiTa ─────────────────────────────────────────
 
 export type HorarioGrade = {
   dia: number
@@ -300,12 +300,12 @@ export type HorarioGrade = {
   fim: string
   terapias: number[]
   localId: string | null
-  /** Nome cru do local na TiTa — vai para o aviso quando não casou. */
+  /** Nome cru do local no TiTa — vai para o aviso quando não casou. */
   salaTita: string | null
 }
 
 /**
- * Monta faixas a partir dos horários (Livre + Agendado) de uma semana da TiTa:
+ * Monta faixas a partir dos horários (Livre + Agendado) de uma semana do TiTa:
  * junta horários seguidos com o mesmo conjunto de terapias, o mesmo local e a
  * mesma duração; um buraco de até 2h entre dois blocos iguais vira intervalo.
  */
@@ -315,7 +315,7 @@ export function faixasDaGrade(horarios: HorarioGrade[]): { faixas: FaixaRascunho
   const faixas: FaixaRascunho[] = []
 
   for (const d of DIAS_SEMANA) {
-    // Um horário por início (a TiTa pode repetir o mesmo slot em linhas diferentes).
+    // Um horário por início (o TiTa pode repetir o mesmo slot em linhas diferentes).
     const doDia = [...new Map(horarios.filter(h => h.dia === d.n).map(h => [h.inicio, h])).values()]
       .sort((a, b) => paraMin(a.inicio) - paraMin(b.inicio))
     let atual: { f: FaixaRascunho; grupo: string; ultimoFim: number } | null = null

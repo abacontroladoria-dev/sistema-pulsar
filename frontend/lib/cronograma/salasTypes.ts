@@ -151,7 +151,7 @@ export interface AlocacaoSala {
   dow: number
   turno: "Manhã" | "Tarde"
   profissional_nome: string
-  /** Chave estável do profissional (csv_grades_profissionais.profissional_id) — nome pode mudar na TiTa, o ID não. Null em alocações antigas sem correspondência encontrada no backfill. */
+  /** Chave estável do profissional (csv_grades_profissionais.profissional_id) — nome pode mudar no TiTa, o ID não. Null em alocações antigas sem correspondência encontrada no backfill. */
   profissional_id: number | null
   terapia_nome: string | null
   /** Chave estável da terapia (constants.ts TERAPIA_ID) — nome pode mudar, ID não. Null em alocações antigas sem correspondência encontrada no backfill. */
@@ -195,7 +195,7 @@ export interface AlocacaoCardSlot {
   sessoesCapacidadeTurno: number
   pctOcupacao: number | null
   /**
-   * true se o profissional não tem NENHUM registro na agenda real da TiTa
+   * true se o profissional não tem NENHUM registro na agenda real do TiTa
    * (nem sessão "Agendado", nem horário 'Livre' reservado) nesse dia/turno/
    * unidade — alocação puramente planejada, sem cruzamento nenhum no CSV.
    * Continua false quando o profissional tem 'Livre' mas ainda 0 sessão
@@ -326,7 +326,7 @@ export interface AgendaSalaRow {
   unidade_nome: string | null
   sala_nome: string | null
   profissional_nome: string | null
-  /** Chave estável do profissional na TiTa — usada para cruzar com `AlocacaoSala.profissional_id` (nome pode mudar, ID não). */
+  /** Chave estável do profissional no TiTa — usada para cruzar com `AlocacaoSala.profissional_id` (nome pode mudar, ID não). */
   profissional_id: number | null
   terapia_id: number | null
   terapia_nome: string | null
@@ -350,7 +350,7 @@ export interface ResumoPacientesSalas {
   porConvenio: ResumoPacientesGrupo[]
   porUnidade: ResumoPacientesGrupo[]
   porDia: ResumoPacientesDia[]
-  /** Pacientes cujo convênio veio do cadastro da TiTa × da agenda (sem cadastro, conflito ou TiTa indisponível). */
+  /** Pacientes cujo convênio veio do cadastro do TiTa × da agenda (sem cadastro, conflito ou TiTa indisponível). */
   fonteConvenio: { cadastro: number; agenda: number }
 }
 

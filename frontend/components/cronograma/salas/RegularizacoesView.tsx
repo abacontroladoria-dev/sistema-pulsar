@@ -1,7 +1,7 @@
 "use client"
 
 // RegularizacoesView — audita, por profissional_id (não por nome — nome pode
-// mudar na TiTa), quantos turnos ele tem de fato na agenda real (csv_grades_
+// mudar no TiTa), quantos turnos ele tem de fato na agenda real (csv_grades_
 // profissionais) contra quantos estão cadastrados em cronograma_salas_
 // alocacoes. Só lista quem tem alguma divergência; 100% regularizado não
 // aparece. Não edita nada aqui — o botão "Ver na grade" só filtra a aba Grade

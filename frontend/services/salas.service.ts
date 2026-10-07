@@ -364,7 +364,7 @@ export async function atualizarStatusLabel(codigo: SalaStatus, input: { label: s
   return statusLabel
 }
 
-// ─── ALOCAÇÕES (planejamento de sala — não escreve na TiTa) ──────────────────
+// ─── ALOCAÇÕES (planejamento de sala — não escreve no TiTa) ──────────────────
 
 export async function listarAlocacoes(): Promise<AlocacaoSala[]> {
   const sb = getSupabaseClient()
@@ -486,7 +486,7 @@ export interface ProfissionalOpcao {
  * uma vez ao abrir o modal de alocação, pra a lista já vir disponível antes de
  * digitar (filtro é feito no cliente conforme o usuário digita, sem round-trip
  * ao banco por tecla — ver AlocarSessaoModal). Inclui o `profissional_id` (chave
- * estável, não muda se o nome for editado na TiTa) — usado para gravar a
+ * estável, não muda se o nome for editado no TiTa) — usado para gravar a
  * alocação com o ID, não só o nome, e viabilizar o cruzamento por ID na aba
  * Regularizações.
  */
