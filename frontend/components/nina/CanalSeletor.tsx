@@ -40,7 +40,7 @@ interface Props {
 
 const ESTADO: Record<string, { rotulo: string; ponto: string; texto: string }> = {
   active:       { rotulo: 'Conectado',    ponto: 'bg-emerald-500', texto: 'text-emerald-600 dark:text-emerald-400' },
-  connecting:   { rotulo: 'Conectando',   ponto: 'bg-amber-500',   texto: 'text-amber-600 dark:text-amber-400' },
+  connecting:   { rotulo: 'Conectando',   ponto: 'bg-amber-500',   texto: 'text-amber-700 dark:text-amber-400' },
   disconnected: { rotulo: 'Desconectado', ponto: 'bg-rose-500',    texto: 'text-rose-600 dark:text-rose-400' },
   error:        { rotulo: 'Com erro',     ponto: 'bg-rose-500',    texto: 'text-rose-600 dark:text-rose-400' },
   suspended:    { rotulo: 'Suspenso',     ponto: 'bg-rose-500',    texto: 'text-rose-600 dark:text-rose-400' },
@@ -53,19 +53,45 @@ function estado(status: string) {
 
 // O aviso do gatilho: o pior estado presente, com a contagem. Desconectado pesa
 // mais que "conectando" — um pede ação, o outro só espera.
+//
+// "Desconectado" conta só o status `disconnected`: é o que se resolve
+// escaneando o QR de novo. Erro, suspensão e status desconhecido não se
+// resolvem assim, então viram "com problema" — chamar de desconectado mandaria
+// a atendente ao celular à toa.
 function avisoDeConexao(canais: CanalInbox[]): { texto: string; cor: string } | null {
-  const fora = canais.filter(c => !['active', 'connecting'].includes(c.status)).length
-  if (fora > 0) {
-    return {
-      texto: fora === 1 ? '1 desconectado' : `${fora} desconectados`,
-      cor:   'text-rose-600 dark:text-rose-400',
-    }
+  const rosa = 'text-rose-600 dark:text-rose-400'
+  const desconectados = canais.filter(c => c.status === 'disconnected').length
+  const comProblema   = canais.filter(c => !['active', 'connecting', 'disconnected'].includes(c.status)).length
+  if (desconectados > 0 && comProblema > 0) {
+    return { texto: `${desconectados + comProblema} com problema`, cor: rosa }
+  }
+  if (desconectados > 0) {
+    return { texto: desconectados === 1 ? '1 desconectado' : `${desconectados} desconectados`, cor: rosa }
+  }
+  if (comProblema > 0) {
+    return { texto: `${comProblema} com problema`, cor: rosa }
   }
   const conectando = canais.filter(c => c.status === 'connecting').length
   if (conectando > 0) {
-    return { texto: `${conectando} conectando`, cor: 'text-amber-600 dark:text-amber-400' }
+    return { texto: `${conectando} conectando`, cor: 'text-amber-700 dark:text-amber-400' }
   }
   return null
+}
+
+// role="menu" promete setas: ↑/↓ andam entre os itens, Home/End vão às pontas.
+// O Tab continua funcionando como antes.
+function navegarPorSetas(e: React.KeyboardEvent<HTMLDivElement>) {
+  if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return
+  const itens = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('[role="menuitemcheckbox"]'))
+  if (itens.length === 0) return
+  e.preventDefault()
+  const atual = itens.indexOf(document.activeElement as HTMLElement)
+  const proximo =
+    e.key === 'Home' ? 0
+    : e.key === 'End' ? itens.length - 1
+    : e.key === 'ArrowDown' ? (atual + 1) % itens.length
+    : (atual - 1 + itens.length) % itens.length
+  itens[proximo].focus()
 }
 
 export function CanalSeletor({ canais, selecionados, aoAlternar, aoMostrarTodos }: Props) {
@@ -99,10 +125,10 @@ export function CanalSeletor({ canais, selecionados, aoAlternar, aoMostrarTodos 
         <button
           type="button"
           aria-label={`Números exibidos: ${resumo}${aviso ? `, ${aviso.texto}` : ''}`}
-          className="mt-3 flex w-full items-center gap-2 rounded-xl border border-border bg-background px-3 py-2 text-left text-sm outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-cyan-500/50 data-[state=open]:border-cyan-500/50"
+          className="mt-3 flex min-h-11 w-full items-center gap-2 rounded-xl border border-border bg-background px-3 py-2 text-left text-sm outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-cyan-500/50 data-[state=open]:border-cyan-500/50"
         >
           <IconeResumo className="h-4 w-4 shrink-0 text-muted-foreground/70" aria-hidden="true" />
-          <span className={`min-w-0 flex-1 truncate ${todos ? 'text-foreground' : 'font-medium text-cyan-600 dark:text-cyan-400'}`}>
+          <span className={`min-w-0 flex-1 truncate ${todos ? 'text-foreground' : 'font-medium text-cyan-700 dark:text-cyan-400'}`}>
             {resumo}
           </span>
           {aviso && (
@@ -117,19 +143,19 @@ export function CanalSeletor({ canais, selecionados, aoAlternar, aoMostrarTodos 
           align="start"
           sideOffset={6}
           collisionPadding={16}
-          className="z-100 w-(--radix-popover-trigger-width) min-w-64 overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-lg data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0"
+          className="z-100 w-(--radix-popover-trigger-width) min-w-64 overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-lg data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 motion-reduce:animate-none"
         >
-          <div className="max-h-[min(24rem,60vh)] overflow-y-auto custom-scrollbar p-1">
+          <div role="menu" aria-label="Números exibidos" onKeyDown={navegarPorSetas} className="max-h-[min(24rem,60vh)] overflow-y-auto custom-scrollbar p-1">
             <button
               type="button"
-              role="option"
-              aria-selected={todos}
+              role="menuitemcheckbox"
+              aria-checked={todos}
               onClick={aoMostrarTodos}
-              className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50"
+              className="flex min-h-11 w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50"
             >
               <Layers className="h-4 w-4 shrink-0 text-muted-foreground/70" aria-hidden="true" />
               <span className="flex-1 font-medium">Todos os números</span>
-              <Check className={`h-4 w-4 shrink-0 text-cyan-500 ${todos ? '' : 'invisible'}`} aria-hidden="true" />
+              <Check className={`h-4 w-4 shrink-0 text-cyan-600 dark:text-cyan-400 ${todos ? '' : 'invisible'}`} aria-hidden="true" />
             </button>
 
             {grupos.map(grupo => (
@@ -147,10 +173,10 @@ export function CanalSeletor({ canais, selecionados, aoAlternar, aoMostrarTodos 
                     <button
                       key={canal.id}
                       type="button"
-                      role="option"
-                      aria-selected={marcado}
+                      role="menuitemcheckbox"
+                      aria-checked={marcado}
                       onClick={() => aoAlternar(canal.id)}
-                      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50"
+                      className="flex min-h-11 w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50"
                     >
                       <Icone className="h-4 w-4 shrink-0 text-muted-foreground/70" aria-hidden="true" />
                       <span className={`min-w-0 flex-1 truncate text-sm ${marcado ? 'font-medium text-foreground' : 'text-foreground/90'}`}>
@@ -165,7 +191,7 @@ export function CanalSeletor({ canais, selecionados, aoAlternar, aoMostrarTodos 
                         </span>
                       )}
                       <Check
-                        className={`h-4 w-4 shrink-0 text-cyan-500 ${marcado ? '' : 'invisible'}`}
+                        className={`h-4 w-4 shrink-0 text-cyan-600 dark:text-cyan-400 ${marcado ? '' : 'invisible'}`}
                         aria-hidden="true"
                       />
                     </button>
@@ -180,7 +206,7 @@ export function CanalSeletor({ canais, selecionados, aoAlternar, aoMostrarTodos 
               <button
                 type="button"
                 onClick={aoMostrarTodos}
-                className="flex w-full items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50"
+                className="flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50"
               >
                 <FilterX className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                 Mostrar todos
