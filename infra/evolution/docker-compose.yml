@@ -45,7 +45,9 @@ services:
       DATABASE_SAVE_DATA_INSTANCE: "true"
       DATABASE_SAVE_DATA_NEW_MESSAGE: "true"
       DATABASE_SAVE_MESSAGE_UPDATE: "false"
-      DATABASE_SAVE_DATA_CONTACTS: "false"
+      # Contatos guardados: é a fonte do "Importar contatos" (/chat/findContacts
+      # lê do banco; com "false" a lista volta sempre vazia).
+      DATABASE_SAVE_DATA_CONTACTS: "true"
       DATABASE_SAVE_DATA_CHATS: "false"
       DATABASE_SAVE_DATA_HISTORIC: "false"
       CACHE_REDIS_ENABLED: "true"
