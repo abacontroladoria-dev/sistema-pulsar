@@ -114,13 +114,13 @@ export function EvolutionSettings() {
   const importar = async (n: Numero) => {
     setOcupado(n.channelId)
     try {
-      const r = await api<{ lidos: number; importados: number; atualizados: number }>(
+      const r = await api<{ lidos: number; importados: number; atualizados: number; descartados: number }>(
         `${BASE}/${n.channelId}/contatos/`, { method: 'POST' },
       )
       toast.success(
         `${n.nome}: ${r.importados} ${r.importados === 1 ? 'contato novo' : 'contatos novos'}, `
         + `${r.atualizados} ${r.atualizados === 1 ? 'nome preenchido' : 'nomes preenchidos'} `
-        + `(${r.lidos} na agenda).`,
+        + `(${r.lidos} na agenda, ${r.descartados} sem telefone).`,
       )
     } catch (err) {
       toast.error((err as Error).message)

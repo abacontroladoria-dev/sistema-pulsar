@@ -281,6 +281,7 @@ export interface ResultadoImportacao {
   lidos: number
   importados: number
   atualizados: number
+  descartados: number
 }
 
 const LOTE = 500
@@ -289,18 +290,36 @@ export async function importarContatos(orgId: string, channelId: string): Promis
   const { instancia } = await instanciaDoCanal(orgId, channelId)
   const db = supabaseService.schema('central')
 
-  const brutos = await chamarEvolution<{ remoteJid?: string | null; pushName?: string | null }[]>(
-    'POST', `/chat/findContacts/${encodeURIComponent(instancia)}`, {},
+  type Bruto = {
+    remoteJid?: string | null; pushName?: string | null; name?: string | null
+    verifiedName?: string | null; isGroup?: boolean | null
+    phoneNumber?: string | null; remoteJidAlt?: string | null
+  }
+  // `where: {}` é o que a v2 espera; sem ele algumas versões devolvem vazio.
+  const brutos = await chamarEvolution<Bruto[]>(
+    'POST', `/chat/findContacts/${encodeURIComponent(instancia)}`, { where: {} },
   )
+  const lista = Array.isArray(brutos) ? brutos : []
 
+  // Hoje boa parte da agenda vem como @lid (identificador interno, não é
+  // telefone). Quando a Evolution traz o telefone ao lado (phoneNumber /
+  // remoteJidAlt), usa ele; senão o contato fica de fora — um @lid gravado
+  // como wa_id nunca casaria com a mensagem que chega pelo telefone.
   const daAgenda = new Map<string, string | null>()
-  for (const c of Array.isArray(brutos) ? brutos : []) {
-    const jid = c.remoteJid ?? ''
-    if (!jid.endsWith('@s.whatsapp.net')) continue
-    const tel = digitosDoJid(jid)
-    if (tel.length < 10) continue
-    const nome = c.pushName?.trim() || null
+  let descartados = 0
+  for (const c of lista) {
+    if (c.isGroup) { descartados++; continue }
+    const jid = [c.remoteJid, c.remoteJidAlt, c.phoneNumber]
+      .find(j => j && (j.endsWith('@s.whatsapp.net') || /^\+?\d{10,15}$/.test(j)))
+    const tel = jid ? digitosDoJid(jid) : ''
+    if (tel.length < 10) { descartados++; continue }
+    const nome = (c.pushName || c.name || c.verifiedName)?.trim() || null
     if (!daAgenda.has(tel) || (nome && !daAgenda.get(tel))) daAgenda.set(tel, nome)
+  }
+  if (daAgenda.size === 0) {
+    console.warn('[evolution] findContacts sem telefone utilizável', {
+      instancia, total: lista.length, amostra: lista.slice(0, 3),
+    })
   }
 
   // Todos os wa_id da organização, paginando: o PostgREST corta em 1000 linhas.
@@ -376,5 +395,5 @@ export async function importarContatos(orgId: string, channelId: string): Promis
     }
   }
 
-  return { lidos: daAgenda.size, importados: novos.length, atualizados }
+  return { lidos: lista.length, importados: novos.length, atualizados, descartados }
 }
