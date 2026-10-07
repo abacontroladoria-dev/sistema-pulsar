@@ -1,6 +1,6 @@
 'use client'
 
-import React from 'react'
+import React, { useState } from 'react'
 import { iniciais } from './adapters/centralToNina'
 
 // `avatar_url` é nullable no banco e o caminho /assets/default-avatar.png que o
@@ -10,11 +10,17 @@ import { iniciais } from './adapters/centralToNina'
 // Mora em arquivo próprio porque o painel de detalhamento também o usa;
 // importá-lo do ChatInterface criaria ciclo (o ChatInterface importa o painel).
 export const Avatar: React.FC<{ url: string; nome: string }> = ({ url, nome }) => {
-  if (url) {
+  // URL que falhou (foto apagada do bucket, sessão expirou): volta às iniciais
+  // em vez de mostrar o ícone de imagem quebrada.
+  const [falhou, setFalhou] = useState<string | null>(null)
+  if (url && falhou !== url) {
     return (
+      // eslint-disable-next-line @next/next/no-img-element
       <img
         src={url}
         alt={nome}
+        loading="lazy"
+        onError={() => setFalhou(url)}
         className="w-full h-full rounded-full object-cover border border-border"
       />
     )

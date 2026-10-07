@@ -5,6 +5,7 @@ import { supabaseService } from '@/lib/supabase/service'
 import { processarAgrupamento } from '@/modules/atendimento/workers/agrupamento.worker'
 import { processarEnvios } from '@/modules/atendimento/workers/envio.worker'
 import { processarSentimento } from '@/modules/atendimento/workers/sentimento.worker'
+import { processarAvatares } from '@/modules/atendimento/workers/avatar.worker'
 
 // ============================================================================
 // Tique dos workers — chamado pelo pg_cron a cada ~10 segundos
@@ -74,12 +75,16 @@ export async function POST(req: NextRequest) {
   // informativo. O worker tem orçamento próprio e nunca lança.
   const sentimento = await tentar('sentimento', () => processarSentimento(supabaseService, orgId))
 
+  // Foto de perfil: enfeite, por último de tudo. Orçamento próprio e curto.
+  const avatar = await tentar('avatar', () => processarAvatares(supabaseService, orgId))
+
   return NextResponse.json({
     ok: true,
     duracaoMs: Date.now() - inicio,
     agrupamento,
     envio,
     sentimento,
+    avatar,
   })
 }
 
