@@ -6,6 +6,7 @@ import { supabaseService } from '@/lib/supabase/service'
 import { chamarEvolution } from '../providers/evolution.api'
 import { processarConexao } from './ingestao'
 import { ChannelNotFoundError, ProviderError } from '../types/errors.types'
+import { digitosDoJid, variantesBr } from '../utils/telefone-br'
 
 // ============================================================================
 // Gestão dos números Evolution (admin e diretoria — a rota confere o papel)
@@ -262,4 +263,118 @@ function slug(texto: string): string {
     .normalize('NFD').replace(/[̀-ͯ]/g, '')
     .toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
     .slice(0, 24) || 'numero'
+}
+
+// ============================================================================
+// Importar contatos do WhatsApp do número
+//
+// Traz a agenda do aparelho (/chat/findContacts) para central.contacts, para a
+// atendente achar o contato antes de ele mandar a primeira mensagem. Só JID de
+// pessoa (@s.whatsapp.net): grupo, lista de transmissão e @lid ficam de fora.
+//
+// Contato já existente — por qualquer das variantes do 9º dígito — não é
+// duplicado; só ganha nome se ainda não tinha. Em lote: a agenda tem milhares
+// de linhas e um findByIdentifier por linha estouraria o tempo da requisição.
+// ============================================================================
+
+export interface ResultadoImportacao {
+  lidos: number
+  importados: number
+  atualizados: number
+}
+
+const LOTE = 500
+
+export async function importarContatos(orgId: string, channelId: string): Promise<ResultadoImportacao> {
+  const { instancia } = await instanciaDoCanal(orgId, channelId)
+  const db = supabaseService.schema('central')
+
+  const brutos = await chamarEvolution<{ remoteJid?: string | null; pushName?: string | null }[]>(
+    'POST', `/chat/findContacts/${encodeURIComponent(instancia)}`, {},
+  )
+
+  const daAgenda = new Map<string, string | null>()
+  for (const c of Array.isArray(brutos) ? brutos : []) {
+    const jid = c.remoteJid ?? ''
+    if (!jid.endsWith('@s.whatsapp.net')) continue
+    const tel = digitosDoJid(jid)
+    if (tel.length < 10) continue
+    const nome = c.pushName?.trim() || null
+    if (!daAgenda.has(tel) || (nome && !daAgenda.get(tel))) daAgenda.set(tel, nome)
+  }
+
+  // Todos os wa_id da organização, paginando: o PostgREST corta em 1000 linhas.
+  const existentes = new Map<string, string>()
+  for (let de = 0; ; de += 1000) {
+    const { data, error } = await db
+      .from('contact_identifiers')
+      .select('identifier_value, contact_id')
+      .eq('organization_id', orgId)
+      .eq('identifier_type', 'wa_id')
+      .range(de, de + 999)
+    if (error) throw error
+    for (const r of (data ?? []) as { identifier_value: string; contact_id: string }[]) {
+      existentes.set(r.identifier_value, r.contact_id)
+    }
+    if (!data || data.length < 1000) break
+  }
+
+  const novos: { telefone: string; nome: string | null }[] = []
+  const nomearPorId = new Map<string, string>()
+  for (const [tel, nome] of daAgenda) {
+    const achado = variantesBr(tel).map(v => existentes.get(v)).find(Boolean)
+    if (achado) { if (nome) nomearPorId.set(achado, nome) }
+    else novos.push({ telefone: tel, nome })
+  }
+
+  for (let i = 0; i < novos.length; i += LOTE) {
+    const fatia = novos.slice(i, i + LOTE)
+    const { data, error } = await db
+      .from('contacts')
+      .insert(fatia.map(n => ({
+        organization_id: orgId,
+        name: n.nome,
+        display_phone: n.telefone,
+        contact_type: 'other',
+        status: 'active',
+        source: 'whatsapp_import',
+        is_provisional: true,
+      })))
+      .select('id, display_phone')
+    if (error) throw error
+
+    const { error: errId } = await db
+      .from('contact_identifiers')
+      .upsert(
+        ((data ?? []) as { id: string; display_phone: string }[]).map(c => ({
+          organization_id: orgId,
+          contact_id: c.id,
+          identifier_type: 'wa_id',
+          identifier_value: c.display_phone,
+          is_primary: true,
+        })),
+        { onConflict: 'contact_id,identifier_type,identifier_value', ignoreDuplicates: true },
+      )
+    if (errId) throw errId
+  }
+
+  // Nome só para quem ainda não tem: o nome que a equipe digitou vale mais que
+  // o do perfil do WhatsApp.
+  let atualizados = 0
+  const ids = [...nomearPorId.keys()]
+  for (let i = 0; i < ids.length; i += LOTE) {
+    const { data, error } = await db
+      .from('contacts')
+      .select('id')
+      .in('id', ids.slice(i, i + LOTE))
+      .is('name', null)
+    if (error) throw error
+    for (const { id } of (data ?? []) as { id: string }[]) {
+      const { error: e } = await db.from('contacts').update({ name: nomearPorId.get(id) }).eq('id', id)
+      if (e) throw e
+      atualizados++
+    }
+  }
+
+  return { lidos: daAgenda.size, importados: novos.length, atualizados }
 }
