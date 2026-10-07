@@ -82,6 +82,12 @@ export type ContratoAtualItem = {
    * composto "Contrato único, especialidades múltiplas" quando são 2+.
    */
   especialidadesBancoHoras?: string[] | null
+  /**
+   * Valor por sessão diferente para terapias específicas DENTRO deste contrato
+   * (ex.: R$ 30 geral, Avaliação Neuropsicopedagógica a R$ 45). Null/[] = o
+   * `valorPA` vale para tudo. Lido por paDoContrato em lib/remuneracao/calculo.ts.
+   */
+  valoresPorTerapia?: { terapia: string; valorPA: number }[] | null
 }
 
 export type ContratoAtual = {
