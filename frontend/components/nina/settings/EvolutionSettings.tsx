@@ -114,9 +114,17 @@ export function EvolutionSettings() {
   const importar = async (n: Numero) => {
     setOcupado(n.channelId)
     try {
-      const r = await api<{ lidos: number; importados: number; atualizados: number; descartados: number }>(
+      const r = await api<{ lidos: number; importados: number; atualizados: number; descartados: number; precisaReconectar?: boolean }>(
         `${BASE}/${n.channelId}/contatos/`, { method: 'POST' },
       )
+      if (r.precisaReconectar) {
+        toast.info(
+          `${n.nome}: a agenda ainda não foi sincronizada. Desconecte e conecte de novo pelo QR, `
+          + 'aguarde uns minutos e importe outra vez.',
+          { duration: 10_000 },
+        )
+        return
+      }
       toast.success(
         `${n.nome}: ${r.importados} ${r.importados === 1 ? 'contato novo' : 'contatos novos'}, `
         + `${r.atualizados} ${r.atualizados === 1 ? 'nome preenchido' : 'nomes preenchidos'} `

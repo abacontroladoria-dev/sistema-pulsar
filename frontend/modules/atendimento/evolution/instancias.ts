@@ -282,6 +282,9 @@ export interface ResultadoImportacao {
   importados: number
   atualizados: number
   descartados: number
+  // A agenda veio vazia e a sincronização foi ligada agora: só chega depois
+  // de reconectar o número (QR).
+  precisaReconectar?: boolean
 }
 
 const LOTE = 500
@@ -300,6 +303,15 @@ export async function importarContatos(orgId: string, channelId: string): Promis
     'POST', `/chat/findContacts/${encodeURIComponent(instancia)}`, { where: {} },
   )
   const lista = Array.isArray(brutos) ? brutos : []
+
+  // O WhatsApp só entrega contatos (e os nomes salvos no celular) junto da
+  // sincronização de histórico, que os números nascem sem (criarNumero). Ligar
+  // é seguro: o histórico chega como MESSAGES_SET, que o webhook não assina, e
+  // DATABASE_SAVE_DATA_HISTORIC=false faz a Evolution não guardar as mensagens.
+  if (lista.length === 0) {
+    await ligarSincronizacao(instancia)
+    return { lidos: 0, importados: 0, atualizados: 0, descartados: 0, precisaReconectar: true }
+  }
 
   // Hoje boa parte da agenda vem como @lid (identificador interno, não é
   // telefone). Quando a Evolution traz o telefone ao lado (phoneNumber /
@@ -396,4 +408,20 @@ export async function importarContatos(orgId: string, channelId: string): Promis
   }
 
   return { lidos: lista.length, importados: novos.length, atualizados, descartados }
+}
+
+async function ligarSincronizacao(instancia: string): Promise<void> {
+  const atual = await chamarEvolution<Record<string, unknown> | null>(
+    'GET', `/settings/find/${encodeURIComponent(instancia)}`,
+  ).catch(() => null)
+  if (atual?.syncFullHistory === true) return
+  await chamarEvolution('POST', `/settings/set/${encodeURIComponent(instancia)}`, {
+    rejectCall:      atual?.rejectCall      ?? false,
+    msgCall:         atual?.msgCall         ?? '',
+    groupsIgnore:    atual?.groupsIgnore    ?? true,
+    alwaysOnline:    atual?.alwaysOnline    ?? false,
+    readMessages:    atual?.readMessages    ?? false,
+    readStatus:      atual?.readStatus      ?? false,
+    syncFullHistory: true,
+  })
 }
