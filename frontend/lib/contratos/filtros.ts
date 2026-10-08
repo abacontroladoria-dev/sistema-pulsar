@@ -51,7 +51,7 @@ export const RECORTE_DICA: Record<RecorteContratos, string> = {
 export type SituacaoPacienteContrato = "ativo" | "inativo" | "ficticio"
 
 /** Filtro "Possui agendamentos": tem agendamento na grade do TiTa (unidade 280)? */
-export type FiltroAgendamento = "todos" | "sim" | "nao"
+export type FiltroAgendamento = "sim" | "nao"
 
 export function situacaoDoCadastro(item: ItemStatusContratos): SituacaoPacienteContrato {
   // Fictício primeiro: "Horário Administrativo" costuma estar ativo, e não é
@@ -67,7 +67,8 @@ export type FiltrosContratos = {
   /** Vazio = todos os convênios. */
   convenios: Set<string>
   situacoes: Set<SituacaoPacienteContrato>
-  agendamento: FiltroAgendamento
+  /** Vazio = todos (com e sem agendamento). */
+  agendamento: Set<FiltroAgendamento>
 }
 
 export function filtrosIniciais(): FiltrosContratos {
@@ -77,7 +78,7 @@ export function filtrosIniciais(): FiltrosContratos {
     tipos: new Set(),
     convenios: new Set(),
     situacoes: new Set<SituacaoPacienteContrato>(["ativo"]),
-    agendamento: "todos",
+    agendamento: new Set(),
   }
 }
 
@@ -116,8 +117,7 @@ export function filtrarBase(itens: ItemStatusContratos[], f: FiltrosContratos): 
   const termo = normalizar(f.busca)
   return itens.filter((item) => {
     if (!f.situacoes.has(situacaoDoCadastro(item))) return false
-    if (f.agendamento === "sim" && !item.naGrade) return false
-    if (f.agendamento === "nao" && item.naGrade) return false
+    if (f.agendamento.size > 0 && !f.agendamento.has(item.naGrade ? "sim" : "nao")) return false
     if (f.convenios.size > 0 && !(item.convenio && f.convenios.has(item.convenio))) return false
     if (termo && !normalizar(item.nome).includes(termo) && String(item.pacienteId) !== termo) return false
     return true

@@ -63,8 +63,8 @@ test("o número do card é o tamanho da lista ao clicar nele, em qualquer combin
     { tipos: new Set(["terapias"]) },
     { tipos: new Set(["avaliacao_neuropsicologica"]) },
     { convenios: new Set(["LEVE"]) },
-    { agendamento: "sim" },
-    { agendamento: "nao" },
+    { agendamento: new Set(["sim"]) },
+    { agendamento: new Set(["nao"]) },
     { situacoes: new Set(["ficticio"]) },
     { situacoes: new Set(["ativo", "inativo"]) },
     { busca: "a" },
@@ -103,8 +103,8 @@ test("cadastro e agendamento são filtros separados", () => {
   assert.equal(nomes({}).includes("Horário Administrativo"), false)
   assert.deepEqual(nomes({ situacoes: new Set(["ficticio"]) }), ["Horário Administrativo"])
   assert.deepEqual(nomes({ situacoes: new Set(["inativo"]) }), ["Íris"])
-  assert.deepEqual(nomes({ agendamento: "nao" }), ["Gil"])
-  assert.equal(nomes({ agendamento: "sim" }).includes("Gil"), false)
+  assert.deepEqual(nomes({ agendamento: new Set(["nao"]) }), ["Gil"])
+  assert.equal(nomes({ agendamento: new Set(["sim"]) }).includes("Gil"), false)
 })
 
 test("busca ignora acento e caixa, e aceita o ID do paciente", () => {

@@ -39,7 +39,7 @@ function filtrosAlterados(f: FiltrosContratos): boolean {
     f.recorte !== i.recorte ||
     f.tipos.size > 0 ||
     f.convenios.size > 0 ||
-    f.agendamento !== i.agendamento ||
+    f.agendamento.size > 0 ||
     f.situacoes.size !== i.situacoes.size ||
     [...i.situacoes].some((s) => !f.situacoes.has(s))
   )

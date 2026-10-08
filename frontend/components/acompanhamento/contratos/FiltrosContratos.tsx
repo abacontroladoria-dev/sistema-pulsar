@@ -3,7 +3,6 @@
 import type { ReactNode } from "react"
 import { FilterX } from "lucide-react"
 import { MultiSearchCombobox, type OpcaoMulti } from "@/components/cronograma/ui/MultiSearchCombobox"
-import { opcaoForm } from "@/components/cronograma/grade/estilo"
 import { foco, rotulo } from "@/components/cadastros/pacientes/ui/campos"
 import { ROTULO_TIPO, TIPOS_CONTRATO, type TipoContrato } from "@/lib/contratos/status"
 import type { FiltroAgendamento, FiltrosContratos, SituacaoPacienteContrato } from "@/lib/contratos/filtros"
@@ -28,10 +27,9 @@ const OPCOES_SITUACAO: OpcaoMulti<SituacaoPacienteContrato>[] = [
   { id: "ficticio", nome: "Fictício" },
 ]
 
-const OPCOES_AGENDAMENTO: { valor: FiltroAgendamento; rotulo: string; dica: string }[] = [
-  { valor: "todos", rotulo: "Todos", dica: "Com e sem agendamento" },
-  { valor: "sim", rotulo: "Sim", dica: "Só quem tem agendamento na grade do TiTa" },
-  { valor: "nao", rotulo: "Não", dica: "Só quem não tem agendamento na grade do TiTa" },
+const OPCOES_AGENDAMENTO: OpcaoMulti<FiltroAgendamento>[] = [
+  { id: "sim", nome: "Sim" },
+  { id: "nao", nome: "Não" },
 ]
 
 function alternar<T>(conjunto: Set<T>, valor: T): Set<T> {
@@ -128,20 +126,17 @@ export function PainelFiltrosContratos({
         </Campo>
 
         <Campo rotuloTexto="Possui agendamentos">
-          <div className="grid h-10 grid-cols-3 gap-1.5" role="group" aria-label="Possui agendamentos">
-            {OPCOES_AGENDAMENTO.map((o) => (
-              <button
-                key={o.valor}
-                type="button"
-                aria-pressed={filtros.agendamento === o.valor}
-                onClick={() => set("agendamento", o.valor)}
-                title={o.dica}
-                className={`${opcaoForm(filtros.agendamento === o.valor)} h-10`}
-              >
-                {o.rotulo}
-              </button>
-            ))}
-          </div>
+          <MultiSearchCombobox
+            variant="plano"
+            opcoes={OPCOES_AGENDAMENTO}
+            selecionados={filtros.agendamento}
+            onToggle={(a) => set("agendamento", alternar(filtros.agendamento, a))}
+            onDesmarcarTodos={() => set("agendamento", new Set())}
+            ariaLabel="Possui agendamentos"
+            placeholder="Todos"
+            nomePlural="opções"
+            className={CLASSE_MULTI}
+          />
         </Campo>
       </div>
     </section>
