@@ -88,6 +88,13 @@ export type ItemStatusContratos = {
   fotoPath: string | null
   /** Tem agendamento na grade do TiTa (unidade 280). */
   naGrade: boolean
+  /**
+   * Tem pelo menos uma sessão NÃO-Triagem na grade (unidade 280). Decide se
+   * "Sem contrato" cobra: paciente só com Triagem ainda está em avaliação de
+   * entrada, não em tratamento — não cobra. Sem leitura da grade, assume
+   * `true` (mais seguro cobrar à toa do que deixar passar).
+   */
+  temTerapiaReal: boolean
   /** Convênio pela grade do TiTa; sem grade, o do cadastro. */
   convenio: string | null
   /** O contrato atual de cada tipo — só os tipos que o paciente tem. */
@@ -103,6 +110,8 @@ export type MetaStatusContratos = {
   contratos: number
   /** A leitura da grade falhou: "possui agendamentos" e o convênio da grade ficaram de fora. */
   gradeErro: string | null
+  /** A leitura de quem tem terapia real (não-Triagem) falhou: "Sem contrato" assumiu que todos precisam. */
+  terapiaRealErro: string | null
   /** A migration ainda não foi aplicada no banco. */
   migracaoPendente: boolean
 }

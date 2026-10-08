@@ -6,8 +6,8 @@ import { AlertTriangle, CalendarClock, ExternalLink } from "lucide-react"
 import { getFotoUrlAssinada } from "@/services/pacientesFoto.service"
 import { ICONES, getTomAvatar, indiceIconeAvatar } from "@/lib/cadastros/avatarPastel"
 import { foco } from "@/components/cadastros/pacientes/ui/campos"
-import { ROTULO_TIPO_CURTO, TIPOS_CONTRATO, cobreHoje, dataBR } from "@/lib/contratos/status"
-import { proximoVencimento } from "@/lib/contratos/filtros"
+import { ROTULO_TIPO_CURTO, TIPOS_CONTRATO, dataBR } from "@/lib/contratos/status"
+import { proximoVencimento, semContratoDeTerapias } from "@/lib/contratos/filtros"
 import { SelosContrato } from "@/components/cadastros/pacientes/secoes/contratos/Selos"
 import type { ItemStatusContratos } from "@/types/contratosPaciente"
 
@@ -26,10 +26,9 @@ export const CardContrato = memo(function CardContrato({ item }: { item: ItemSta
   const tom = getTomAvatar(item.pacienteId)
   const porTipo = new Map(item.contratos.map((c) => [c.tipo, c]))
   const proximo = proximoVencimento(item.contratos)
-  const terapias = porTipo.get("terapias")
-  const semTerapias =
-    item.naGrade &&
-    !(terapias && terapias.status !== "recusado" && terapias.status !== "expirado" && cobreHoje(terapias.vigencia))
+  // Mesma regra do card "Sem contrato" (lib/contratos/filtros.ts): paciente só
+  // com Triagem na grade não cobra — ainda é avaliação de entrada.
+  const semTerapias = semContratoDeTerapias(item)
 
   return (
     <li>
@@ -41,7 +40,7 @@ export const CardContrato = memo(function CardContrato({ item }: { item: ItemSta
         aria-label={`Abrir contratos de ${item.nome} (nova guia)`}
       >
         <div className="flex items-start justify-between gap-2 text-[11px]">
-          <span className="font-semibold uppercase tracking-wide text-muted-foreground">PAC {item.pacienteId}</span>
+          <span className="font-semibold uppercase tracking-wide text-muted-foreground">ID {item.pacienteId}</span>
           <span className="flex flex-wrap justify-end gap-1">
             {item.ficticio ? (
               <span className="rounded-full bg-muted px-2 py-0.5 font-semibold text-muted-foreground">Fictício</span>
@@ -91,7 +90,7 @@ export const CardContrato = memo(function CardContrato({ item }: { item: ItemSta
           {semTerapias && (
             <p className="flex items-start gap-1.5 rounded-md bg-rose-500/10 px-2 py-1.5 text-xs text-rose-700 dark:text-rose-400">
               <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-              Tem agendamento e não tem contrato de Terapias valendo.
+              Sem contrato de Terapias valendo.
             </p>
           )}
           <div className="flex items-center justify-between gap-2 border-t border-border pt-3 text-xs">

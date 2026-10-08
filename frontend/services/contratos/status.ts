@@ -23,6 +23,12 @@ import type { ItemStatusContratos, MetaStatusContratos } from "@/types/contratos
 //   3. `grade_convenio_por_paciente()` — quem está na grade do TiTa (unidade
 //      280) e o convênio de lá. Pode FALHAR sem derrubar a tela: aí o "possui agendamentos"
 //      some, o convênio fica o do cadastro e `meta.gradeErro` avisa.
+//   4. `grade_pacientes_com_terapia_real()` — quem, na grade, já teve sessão
+//      NÃO-Triagem (decisão do usuário, 08/10/2026: Triagem é avaliação de
+//      entrada, ainda não é tratamento, e "Sem contrato" não cobra por ela).
+//      Também pode FALHAR sem derrubar: `meta.terapiaRealErro` avisa, e o
+//      cálculo assume que TODOS precisam de contrato (mais seguro que deixar
+//      passar um paciente em tratamento de verdade sem cobrar).
 //
 // `server-only` e service_role: a grade só a service_role lê, e quem tem só
 // `status_contratos` não lê `pacientes` pela RLS. A checagem de acesso é a da
@@ -85,6 +91,7 @@ type ContratoBruto = {
 }
 
 type GradeBruta = { paciente_id: number | string; convenio_nome: string }
+type TerapiaRealBruta = { paciente_id: number | string }
 
 const MIGRACAO_PENDENTE = ["42P01", "PGRST205", "42883", "PGRST202"]
 
@@ -122,7 +129,15 @@ export async function buscarStatusContratos(
     },
   )
 
-  const [pacientes, contratosLidos, gradeLida] = await Promise.all([
+  const terapiaRealPromessa = lerPaginado<TerapiaRealBruta>(
+    (from, to) => sb.rpc("grade_pacientes_com_terapia_real").order("paciente_id", { ascending: true }).range(from, to),
+    "grade_pacientes_com_terapia_real",
+  ).then(
+    (r) => ({ ok: true as const, r }),
+    (e: unknown) => ({ ok: false as const, erro: e instanceof Error ? e.message : String(e) }),
+  )
+
+  const [pacientes, contratosLidos, gradeLida, terapiaRealLida] = await Promise.all([
     lerPaginado<PacienteBruto>(
       (from, to) =>
         sb
@@ -134,9 +149,11 @@ export async function buscarStatusContratos(
     ),
     contratosPromessa,
     gradePromessa,
+    terapiaRealPromessa,
   ])
 
   if (!gradeLida.ok) console.error(`[contratos:status] grade não carregada: ${gradeLida.erro}`)
+  if (!terapiaRealLida.ok) console.error(`[contratos:status] terapia real não carregada: ${terapiaRealLida.erro}`)
 
   // A grade fala em `tita_paciente_id` (ID Favorecido), não em id_paciente.
   const convenioDaGrade = new Map<number, string>()
@@ -144,6 +161,14 @@ export async function buscarStatusContratos(
     for (const g of gradeLida.r) {
       const id = Number(g.paciente_id)
       if (Number.isFinite(id) && g.convenio_nome) convenioDaGrade.set(id, g.convenio_nome)
+    }
+  }
+
+  const comTerapiaReal = new Set<number>()
+  if (terapiaRealLida.ok) {
+    for (const t of terapiaRealLida.r) {
+      const id = Number(t.paciente_id)
+      if (Number.isFinite(id)) comTerapiaReal.add(id)
     }
   }
 
@@ -161,6 +186,9 @@ export async function buscarStatusContratos(
 
     const atual = contratoAtualPorTipo(doPaciente)
     const daGrade = p.tita_paciente_id !== null ? convenioDaGrade.get(Number(p.tita_paciente_id)) : undefined
+    // Leitura falhou: assume que precisa de contrato, em vez de dispensar à toa
+    // (ver comentário da fonte 4, acima).
+    const temTerapiaReal = !terapiaRealLida.ok || (p.tita_paciente_id !== null && comTerapiaReal.has(Number(p.tita_paciente_id)))
 
     itens.push({
       pacienteId: p.id_paciente,
@@ -169,6 +197,7 @@ export async function buscarStatusContratos(
       ficticio: !!p.ficticio,
       fotoPath: p.foto_path,
       naGrade: daGrade !== undefined,
+      temTerapiaReal,
       convenio: daGrade ?? p.convenio_nome ?? null,
       contratos: [...atual.values()].map((c) => ({
         id: c.id,
@@ -190,6 +219,7 @@ export async function buscarStatusContratos(
       pacientes: itens.length,
       contratos: contratosLidos.r.length,
       gradeErro: gradeLida.ok ? null : gradeLida.erro,
+      terapiaRealErro: terapiaRealLida.ok ? null : terapiaRealLida.erro,
       migracaoPendente: contratosLidos.pendente,
     },
   }

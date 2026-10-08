@@ -23,6 +23,15 @@ Desvios do plano, de propósito:
 - Status e vigência são filtrados pelos **cards de indicador** (como em Status Laudos), não por lista suspensa.
 - Rota de upload do PDF (`POST /api/contratos/[id]/arquivo/`) e de download
   (`GET /api/contratos/[id]/download/?qual=original|assinado`) já existem — a fase 1 precisa delas.
+- **"Cadastro"** (Ativo/Inativo/Fictício) e **"Possui agendamentos"** (Sim/Não) são filtros
+  SEPARADOS na Status Contratos (decisão do usuário, 08/10/2026) — não um só "Grade do TiTa".
+- **"Sem contrato" não exige mais ter agendamento** (decisão do usuário, 08/10/2026): o ideal é
+  cobrar o contrato no dia em que começa o TRATAMENTO terapêutico, e não quando há apenas
+  Triagem (avaliação de entrada). Regra final: cobra contrato de Terapias de todo paciente,
+  EXCETO quem tem agendamento só de Triagem (`grade_pacientes_com_terapia_real()`,
+  `20261008170000`). Quem não tem agendamento nenhum também cobra. Ver `dispensadoDeContrato` /
+  `semContratoDeTerapias` em `frontend/lib/contratos/filtros.ts` — é a MESMA regra do cartão e do
+  card de indicador.
 
 ### Ganchos para a fase 3/4 (colega)
 

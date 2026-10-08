@@ -160,6 +160,18 @@ export function StatusContratosShell({ buscaInicial = "" }: { buscaInicial?: str
         </div>
       )}
 
+      {/* Sem saber quem só teve Triagem, "Sem contrato" cobra de todo mundo com
+          agendamento (mais seguro que deixar passar) — mas pode estar cobrando
+          à toa de quem ainda está em avaliação de entrada. */}
+      {meta?.terapiaRealErro && (
+        <div role="alert" className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+          <span>
+            Não foi possível identificar quem só teve Triagem. “Sem contrato” pode estar cobrando contrato de pacientes ainda em avaliação de entrada.
+          </span>
+        </div>
+      )}
+
       <PainelFiltrosContratos
         filtros={filtros}
         onChange={(f) => {

@@ -38,7 +38,7 @@ export const RECORTE_LABEL: Record<RecorteContratos, string> = {
 export const RECORTE_DICA: Record<RecorteContratos, string> = {
   todos: "Todos os pacientes do filtro.",
   sem_contrato:
-    "Paciente que possui agendamentos (grade do TiTa) e não tem contrato de Terapias valendo hoje (recusado e link expirado não contam como contrato).",
+    "Paciente sem contrato de Terapias valendo hoje (recusado e link expirado não contam como contrato). Quem só teve Triagem na grade fica de fora: ainda é avaliação de entrada, não tratamento.",
   rascunho: "Contrato criado no Pulsar e ainda não enviado nem assinado.",
   aguardando: "Enviado para assinatura e ainda sem resposta.",
   assinado_vigente: "Assinado e valendo hoje (inclui os que vencem nos próximos 30 dias).",
@@ -89,16 +89,32 @@ export function contratosConsiderados(item: ItemStatusContratos, tipos: Set<Tipo
 
 const morto = (c: ResumoContrato) => c.status === "recusado" || c.status === "expirado"
 
+const temContratoTerapiasVigente = (item: ItemStatusContratos) =>
+  item.contratos.some((c) => c.tipo === "terapias" && !morto(c) && cobreHoje(c.vigencia))
+
+/**
+ * Paciente dispensado da cobrança de "Sem contrato": tem agendamento, mas
+ * SÓ de Triagem (avaliação de entrada) — ainda não é tratamento terapêutico.
+ * Decisão do usuário (08/10/2026): sem agendamento nenhum AINDA cobra (ver
+ * `sem_contrato`); com terapia real, cobra; só com Triagem, não.
+ */
+export const dispensadoDeContrato = (item: ItemStatusContratos): boolean => item.naGrade && !item.temTerapiaReal
+
+/** O cartão e o card de indicador usam a MESMA regra — ver `dispensadoDeContrato`. */
+export const semContratoDeTerapias = (item: ItemStatusContratos): boolean =>
+  !dispensadoDeContrato(item) && !temContratoTerapiasVigente(item)
+
 export const PREDICADO_RECORTE: Record<
   RecorteContratos,
   (item: ItemStatusContratos, cs: ResumoContrato[]) => boolean
 > = {
   todos: () => true,
-  // Decisão 5 do plano: a pergunta é sempre sobre TERAPIAS, qualquer que seja
-  // o filtro de tipo — é o contrato sem o qual a criança não deveria estar na
-  // grade.
-  sem_contrato: (item) =>
-    item.naGrade && !item.contratos.some((c) => c.tipo === "terapias" && !morto(c) && cobreHoje(c.vigencia)),
+  // Decisão 5 do plano + decisão do usuário 08/10/2026 (ver `semContratoDeTerapias`):
+  // a pergunta é sempre sobre TERAPIAS, qualquer que seja o filtro de tipo — é
+  // o contrato sem o qual a criança não deveria estar em tratamento. Não exige
+  // mais ter agendamento: quem não tem nenhum também cobra (só quem só teve
+  // Triagem fica de fora).
+  sem_contrato: semContratoDeTerapias,
   rascunho: (_i, cs) => cs.some((c) => c.status === "rascunho"),
   aguardando: (_i, cs) => cs.some((c) => c.status === "enviado" || c.status === "aguardando_assinatura"),
   assinado_vigente: (_i, cs) => cs.some((c) => c.status === "assinado" && cobreHoje(c.vigencia)),
