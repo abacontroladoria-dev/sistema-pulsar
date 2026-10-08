@@ -4,6 +4,7 @@ import { segredoConfere } from '@/lib/central/webhook-signature'
 import { supabaseService } from '@/lib/supabase/service'
 import { processarAgrupamento } from '@/modules/atendimento/workers/agrupamento.worker'
 import { processarEnvios } from '@/modules/atendimento/workers/envio.worker'
+import { processarSugestoesEvolution } from '@/modules/atendimento/workers/sugestao-evolution.worker'
 import { processarSentimento } from '@/modules/atendimento/workers/sentimento.worker'
 import { processarAvatares } from '@/modules/atendimento/workers/avatar.worker'
 
@@ -64,6 +65,10 @@ export async function POST(req: NextRequest) {
   const agrupamento = await tentar('agrupamento', () => processarAgrupamento(supabaseService, orgId))
   const envio = await tentar('envio', () => processarEnvios(supabaseService, orgId))
 
+  // Rascunhos da Maia nos números Evolution com a chave ligada. Nada é enviado;
+  // fica depois da entrega para nunca atrasar mensagem de verdade.
+  const sugestao = await tentar('sugestao', () => processarSugestoesEvolution(supabaseService, orgId))
+
   // Por último, e nunca antes: a leitura de sentimento é para quem ATENDE, não
   // para quem espera resposta. Se o tique estourar o tempo, é esta que deve
   // ficar para o próximo — ela recalcula a mesma pergunta sobre o mesmo
@@ -83,6 +88,7 @@ export async function POST(req: NextRequest) {
     duracaoMs: Date.now() - inicio,
     agrupamento,
     envio,
+    sugestao,
     sentimento,
     avatar,
   })

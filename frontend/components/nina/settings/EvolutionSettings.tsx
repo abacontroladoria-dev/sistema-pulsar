@@ -26,6 +26,7 @@ interface Numero {
   status: string
   ultimaSincronizacao: string | null
   membros: number
+  maiaSugere: boolean
 }
 
 interface Usuario { id: string; nome: string; central_role: string }
@@ -86,7 +87,7 @@ export function EvolutionSettings() {
       })
       setNomeNovo('')
       await carregar()
-      setQrDe({ channelId, nome, status: 'connecting', ultimaSincronizacao: null, membros: 1 })
+      setQrDe({ channelId, nome, status: 'connecting', ultimaSincronizacao: null, membros: 1, maiaSugere: false })
     } catch (err) {
       toast.error((err as Error).message)
     } finally {
@@ -103,6 +104,25 @@ export function EvolutionSettings() {
         body: JSON.stringify({ action }),
       })
       toast.success(action === 'restart' ? `${n.nome}: reiniciando.` : `${n.nome}: desconectado.`)
+      await carregar()
+    } catch (err) {
+      toast.error((err as Error).message)
+    } finally {
+      setOcupado(null)
+    }
+  }
+
+  const alternarMaia = async (n: Numero) => {
+    setOcupado(n.channelId)
+    try {
+      await api(`${BASE}/${n.channelId}/`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'maia_sugestao', ligar: !n.maiaSugere }),
+      })
+      toast.success(n.maiaSugere
+        ? `${n.nome}: Maia desligada.`
+        : `${n.nome}: a Maia vai sugerir respostas. Nada é enviado sem a atendente.`)
       await carregar()
     } catch (err) {
       toast.error((err as Error).message)
@@ -163,7 +183,8 @@ export function EvolutionSettings() {
       </div>
       <p className="text-sm text-muted-foreground mb-5">
         A Maia atende pelo número oficial. Os demais números são de atendimento humano e
-        aparecem na caixa de entrada só para quem for membro deles.
+        aparecem na caixa de entrada só para quem for membro deles. Com &quot;Maia sugere&quot;
+        ligado, ela deixa uma sugestão de resposta na conversa — quem envia é sempre a atendente.
       </p>
 
       {/* O número da Maia — só leitura */}
@@ -216,6 +237,27 @@ export function EvolutionSettings() {
                       <QrCode className="w-3.5 h-3.5 mr-1.5" /> Conectar
                     </Button>
                   )}
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={n.maiaSugere}
+                    onClick={() => alternarMaia(n)}
+                    disabled={travado}
+                    title={n.maiaSugere
+                      ? 'A Maia escreve uma sugestão em cada conversa; a atendente revisa e envia. Clique para desligar.'
+                      : 'Ligar: a Maia passa a sugerir respostas (nunca envia sozinha).'}
+                    className={`h-8 px-2.5 rounded-lg border text-xs font-medium flex items-center gap-2 transition-colors disabled:opacity-60 ${
+                      n.maiaSugere
+                        ? 'border-violet-500/40 bg-violet-500/10 text-violet-700 dark:text-violet-300'
+                        : 'border-border text-muted-foreground hover:bg-muted'
+                    }`}
+                  >
+                    <Bot className="w-3.5 h-3.5" />
+                    Maia sugere
+                    <span className={`relative w-7 h-4 rounded-full transition-colors ${n.maiaSugere ? 'bg-violet-500' : 'bg-muted-foreground/30'}`}>
+                      <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${n.maiaSugere ? 'left-3.5' : 'left-0.5'}`} />
+                    </span>
+                  </button>
                   <Button size="sm" variant="outline" onClick={() => setMembrosDe(n)} disabled={travado}>
                     <Users className="w-3.5 h-3.5 mr-1.5" /> Membros
                   </Button>
