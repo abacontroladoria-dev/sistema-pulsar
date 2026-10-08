@@ -21,7 +21,7 @@ import {
   enviarArquivoOriginal,
 } from "@/services/pacienteContratos.service"
 import type { ContratoPaciente } from "@/types/contratosPaciente"
-import { campo, rotulo } from "../../ui/campos"
+import { CampoSelect, campo, rotulo } from "../../ui/campos"
 
 // Painel lateral "Novo contrato" — e o mesmo painel para editar um RASCUNHO
 // (depois de enviado para assinatura, o documento é o que vale e as datas
@@ -30,6 +30,8 @@ import { campo, rotulo } from "../../ui/campos"
 // O PDF é opcional na criação: a equipe pode registrar o contrato agora e
 // anexar depois pelo detalhe. Se o contrato for criado e só o upload falhar, o
 // contrato fica (já tem evento na linha do tempo) e o aviso diz o que faltou.
+
+const OPCOES_TIPO = TIPOS_CONTRATO.map((t) => ({ valor: t, rotulo: ROTULO_TIPO[t] }))
 
 const PRAZOS = [
   { meses: 6, rotulo: "6 meses" },
@@ -115,22 +117,14 @@ export function NovoContratoPainel({
       }
     >
       <div className="space-y-5">
-        <fieldset className="space-y-2">
-          <legend className={rotulo}>Tipo de contrato *</legend>
-          <div className="flex flex-col gap-1.5">
-            {TIPOS_CONTRATO.map((t) => (
-              <button
-                key={t}
-                type="button"
-                aria-pressed={tipo === t}
-                onClick={() => setTipo(t)}
-                className={`${opcaoForm(tipo === t)} min-h-11 justify-start`}
-              >
-                {ROTULO_TIPO[t]}
-              </button>
-            ))}
-          </div>
-        </fieldset>
+        <CampoSelect<TipoContrato>
+          label="Tipo de contrato *"
+          value={tipo}
+          onChange={setTipo}
+          disabled={false}
+          opcoes={OPCOES_TIPO}
+          vazio="Escolha o tipo"
+        />
 
         <div className="grid gap-3 sm:grid-cols-2">
           <div>

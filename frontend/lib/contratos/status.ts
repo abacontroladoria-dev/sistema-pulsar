@@ -38,7 +38,7 @@ export const ROTULO_TIPO: Record<TipoContrato, string> = {
 export const ROTULO_TIPO_CURTO: Record<TipoContrato, string> = {
   avaliacao_neuropsicologica: "Avaliação",
   terapias: "Terapias",
-  tecnico_terapeutico_particular: "Técnico Particular",
+  tecnico_terapeutico_particular: "Técnico Terapêutico",
 }
 
 // ─── Status da assinatura ────────────────────────────────────────────────────

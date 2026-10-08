@@ -2,7 +2,7 @@
 
 import { memo, useEffect, useState } from "react"
 import Link from "next/link"
-import { AlertTriangle, ArrowUpRight, CalendarClock } from "lucide-react"
+import { AlertTriangle, CalendarClock, ExternalLink } from "lucide-react"
 import { getFotoUrlAssinada } from "@/services/pacientesFoto.service"
 import { ICONES, getTomAvatar, indiceIconeAvatar } from "@/lib/cadastros/avatarPastel"
 import { foco } from "@/components/cadastros/pacientes/ui/campos"
@@ -15,8 +15,12 @@ import type { ItemStatusContratos } from "@/types/contratosPaciente"
 // CardLaudo/CardPaciente (mesma foto, do mesmo bucket, pelo mesmo serviço).
 //
 // O cartão inteiro é um LINK para a aba Contratos da ficha
-// (/cadastros/pacientes/{id}?aba=contratos): esta tela é só leitura, e o lugar
-// de agir é lá. Ctrl+clique abre em outra aba, como se espera de um link.
+// (/cadastros/pacientes/{id}?aba=contratos), aberto em NOVA GUIA (pedido do
+// usuário, 08/10/2026): a Status Contratos fica aberta, com filtros e página,
+// enquanto a recepção trata um paciente de cada vez. Esta tela é só leitura.
+//
+// No corpo, uma linha "Tipo:" por contrato que o paciente TEM — não os três
+// tipos fixos com "—" (pedido do usuário, 08/10/2026).
 
 export const CardContrato = memo(function CardContrato({ item }: { item: ItemStatusContratos }) {
   const tom = getTomAvatar(item.pacienteId)
@@ -31,8 +35,10 @@ export const CardContrato = memo(function CardContrato({ item }: { item: ItemSta
     <li>
       <Link
         href={`/cadastros/pacientes/${item.pacienteId}?aba=contratos`}
+        target="_blank"
+        rel="noopener noreferrer"
         className={`group flex h-full w-full flex-col rounded-xl border border-border bg-card p-5 text-left shadow-sm transition-all duration-200 ease-out hover:-translate-y-1.5 hover:border-foreground/15 hover:shadow-lg motion-reduce:transform-none motion-reduce:transition-none ${foco}`}
-        aria-label={`Abrir contratos de ${item.nome}`}
+        aria-label={`Abrir contratos de ${item.nome} (nova guia)`}
       >
         <div className="flex items-start justify-between gap-2 text-[11px]">
           <span className="font-semibold uppercase tracking-wide text-muted-foreground">PAC {item.pacienteId}</span>
@@ -58,23 +64,26 @@ export const CardContrato = memo(function CardContrato({ item }: { item: ItemSta
 
         <hr className="my-4 border-border" />
 
-        <dl className="space-y-2">
-          {TIPOS_CONTRATO.map((t) => {
-            const c = porTipo.get(t)
-            return (
-              <div key={t} className="flex items-center justify-between gap-2">
-                <dt className="truncate text-xs text-muted-foreground">{ROTULO_TIPO_CURTO[t]}</dt>
-                <dd className="shrink-0">
-                  {c ? (
-                    <SelosContrato status={c.status} vigencia={c.vigencia} />
-                  ) : (
-                    <span className="text-xs text-muted-foreground">—</span>
-                  )}
-                </dd>
-              </div>
-            )
-          })}
-        </dl>
+        {item.contratos.length === 0 ? (
+          <p className="text-xs text-muted-foreground">
+            <span className="font-semibold">Tipo:</span> nenhum contrato
+          </p>
+        ) : (
+          <ul className="space-y-2.5">
+            {TIPOS_CONTRATO.filter((t) => porTipo.has(t)).map((t) => {
+              const c = porTipo.get(t)!
+              return (
+                <li key={t} className="space-y-1">
+                  <p className="text-xs text-foreground">
+                    <span className="text-muted-foreground">Tipo:</span>{" "}
+                    <span className="font-semibold">{ROTULO_TIPO_CURTO[t]}</span>
+                  </p>
+                  <SelosContrato status={c.status} vigencia={c.vigencia} />
+                </li>
+              )
+            })}
+          </ul>
+        )}
 
         <div className="mt-auto space-y-2 pt-4">
           {semTerapias && (
@@ -107,7 +116,7 @@ export const CardContrato = memo(function CardContrato({ item }: { item: ItemSta
             </span>
             <span className="inline-flex shrink-0 items-center gap-0.5 font-semibold text-foreground group-hover:underline">
               Abrir cadastro
-              <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+              <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
             </span>
           </div>
         </div>
