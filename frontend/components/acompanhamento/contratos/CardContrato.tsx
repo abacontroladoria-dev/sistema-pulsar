@@ -29,6 +29,11 @@ export const CardContrato = memo(function CardContrato({ item }: { item: ItemSta
   // Mesma regra do card "Sem contrato" (lib/contratos/filtros.ts): paciente só
   // com Triagem na grade não cobra — ainda é avaliação de entrada.
   const semTerapias = semContratoDeTerapias(item)
+  // A tela só lista os tipos que o paciente TEM (ver comentário acima) — sem
+  // isto, "Sem contrato de Terapias" ao lado de um selo "Assinado" de OUTRO
+  // tipo (ex.: Avaliação) parece contradição. Só entra quando há mesmo outro
+  // tipo pra confundir.
+  const temOutroTipoAssinado = semTerapias && item.contratos.some((c) => c.tipo !== "terapias")
 
   return (
     <li>
@@ -90,14 +95,23 @@ export const CardContrato = memo(function CardContrato({ item }: { item: ItemSta
           {semTerapias && (
             <p className="flex items-start gap-1.5 rounded-md bg-rose-500/10 px-2 py-1.5 text-xs text-rose-700 dark:text-rose-400">
               <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-              Sem contrato de Terapias valendo.
+              {temOutroTipoAssinado
+                ? "Sem contrato de TERAPIAS valendo — o assinado acima é de outro tipo."
+                : "Sem contrato de Terapias valendo."}
             </p>
           )}
-          <div className="flex items-center justify-between gap-2 border-t border-border pt-3 text-xs">
-            <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
+          {/* `flex-wrap`: em cartão estreito (4-5 colunas), data + "Abrir
+              cadastro" não cabem numa linha só. Sem isto, o espaço que sobrava
+              para a data virava 0 (flex encolhe até o mínimo quando o
+              conteúdo tem `overflow` não-visível) e a data sumia por trás de
+              reticências — mas "dd/mm/aaaa" é largura fixa, não precisa de
+              `truncate` nunca; o segundo span é quem cede a vez, quebrando
+              para a linha de baixo. */}
+          <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 border-t border-border pt-3 text-xs">
+            <span className="flex items-center gap-1.5 text-muted-foreground">
               <CalendarClock className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
               {proximo ? (
-                <span className="truncate">
+                <span>
                   {proximo.vigencia === "vencido" ? "Venceu" : "Vence"}{" "}
                   <span
                     className={`font-semibold tabular-nums ${
