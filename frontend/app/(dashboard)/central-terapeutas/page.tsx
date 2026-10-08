@@ -21,6 +21,7 @@ import {
   getTerapeuta,
   getUnidade,
   normalizarStatus,
+  sessaoNaUnidadeFechada,
   terapiaDeveAparecer,
 } from '@/components/central-terapeutas/helpers'
 import type {
@@ -30,6 +31,8 @@ import type {
 import { listarCentralTerapeutica } from '@/services/central-terapeutas.service'
 import { sincronizarDados as sincronizar } from '@/services/controle-terapeutico.service'
 import { getSupabaseClient } from '@/lib/supabase/client'
+import { useFeriados } from '@/hooks/useFeriados'
+import { CalendarX } from 'lucide-react'
 
 const supabase = getSupabaseClient()
 
@@ -84,6 +87,9 @@ export default function ControleTerapeuticoPage() {
     terapia: '',
     statusFiltro: [],
   })
+
+  const { feriados } = useFeriados()
+  const feriadoDoDia = feriados[filters.data]
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -292,6 +298,10 @@ export default function ControleTerapeuticoPage() {
 Object.values(grupos).forEach(
   (grupo) => {
 
+    grupo.unidadeFechada = grupo.atendimentos.every((a) =>
+      sessaoNaUnidadeFechada(a, feriadoDoDia)
+    )
+
     grupo.status =
       calcularStatusAtual(
         grupo.atendimentos
@@ -315,11 +325,13 @@ Object.values(grupos).forEach(
     return Object.values(grupos).sort((a, b) =>
 	  a.terapeuta.localeCompare(b.terapeuta, 'pt-BR')
 	)
-  }, [filtrados])
+  }, [filtrados, feriadoDoDia])
 
   const statusContagem = useMemo(() => {
     const contagem = { disponivel: 0, indisponivel: 0, substituido: 0, parcial: 0, pendente: 0 }
     for (const g of gruposPorTerapeuta) {
+      // Unidade fechada não é falta nem pendência de ninguém.
+      if (g.unidadeFechada) continue
       let temDisp = false, temIndisp = false, temSubst = false, temPend = false
       for (const a of g.atendimentos) {
         const s = String(a.status ?? '').toLowerCase()
@@ -397,6 +409,25 @@ return (
       />
 
       <div className="space-y-3">
+
+        {feriadoDoDia && (
+          <div className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-600">
+            <CalendarX className="h-5 w-5 shrink-0 mt-0.5" aria-hidden />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-slate-700">
+                Unidade fechada — {feriadoDoDia.nome}
+                {feriadoDoDia.tipo === 'parcial' && feriadoDoDia.horario_inicio && feriadoDoDia.horario_fim && (
+                  <span className="font-normal">
+                    {' '}({feriadoDoDia.horario_inicio.slice(0, 5)} – {feriadoDoDia.horario_fim.slice(0, 5)})
+                  </span>
+                )}
+              </p>
+              <p className="text-xs">
+                Ninguém faltou: as sessões {feriadoDoDia.tipo === 'parcial' ? 'desse intervalo' : 'deste dia'} não contam como falta nem como pendência.
+              </p>
+            </div>
+          </div>
+        )}
 
         {loading && (
           <div className="bg-white rounded-2xl p-10 text-center text-slate-400">
@@ -484,6 +515,7 @@ return (
 
 	<RelatorioModal
 	  aberto={relatorioAberto}
+	  feriados={feriados}
 	  dataPadrao={filters.data}
 	  onClose={() => setRelatorioAberto(false)}
 	/>

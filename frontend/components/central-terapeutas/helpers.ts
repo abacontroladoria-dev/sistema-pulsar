@@ -1,3 +1,4 @@
+import type { FeriadoInfo } from '@/types/feriados'
 import type { ControleTerapeuticoItem } from './types'
 import type { SlotModalSubstituicao } from '@/services/controle-terapeutico.service'
 
@@ -193,4 +194,16 @@ export function getStatusProfNaHora(
   }
 
   return { status: 'ocupado', paciente: slotNaHora.paciente_nome }
+}
+
+// Mesmo critério das outras telas ("Unidade fechada"): feriado integral fecha
+// o dia todo; ponto facultativo parcial fecha só as sessões que começam dentro
+// do intervalo cadastrado em /cadastros/feriados.
+export function sessaoNaUnidadeFechada(item: ControleTerapeuticoItem, feriado?: FeriadoInfo) {
+  if (!feriado) return false
+  const ini = feriado.horario_inicio?.slice(0, 5)
+  const fim = feriado.horario_fim?.slice(0, 5)
+  if (feriado.tipo !== 'parcial' || !ini || !fim) return true
+  const h = getHorarioInicial(item).slice(0, 5)
+  return h >= ini && h < fim
 }

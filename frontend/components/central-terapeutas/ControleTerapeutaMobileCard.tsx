@@ -3,6 +3,7 @@
 import { memo, useMemo, useState } from 'react'
 
 import {
+  CalendarX,
   ChevronDown,
   ChevronUp,
   Clock,
@@ -36,12 +37,14 @@ function ControleTerapeutaMobileCard({
   const salvando = salvandoStatus
 
   const status = normalizarStatusDisponibilidade(grupo.status)
-  const pendente = status === 'pendente'
-  const disponivel = status === 'disponivel'
+  // Feriado: sem ação de disponibilidade — a unidade não abriu.
+  const fechado = !!grupo.unidadeFechada
+  const pendente = !fechado && status === 'pendente'
+  const disponivel = !fechado && status === 'disponivel'
   const indisponivel = status === 'indisponivel'
   const substituido = status === 'substituido'
   const parcial = status === 'parcial'
-  const indisponivelOuSubstituido = indisponivel || substituido || parcial
+  const indisponivelOuSubstituido = !fechado && (indisponivel || substituido || parcial)
 
   const horariosOrdenados = useMemo(
     () =>
@@ -171,9 +174,16 @@ function ControleTerapeutaMobileCard({
 
           {/* Linha 1: status badge + chevron */}
           <div className="flex items-center gap-2">
-            <span className={`whitespace-nowrap px-2.5 py-0.5 rounded-full text-xs font-semibold ${statusBadgeClass(status)}`}>
-              {statusBadgeLabel(status)}
-            </span>
+            {fechado ? (
+              <span className="whitespace-nowrap px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 inline-flex items-center gap-1">
+                <CalendarX className="h-3 w-3" aria-hidden />
+                Unidade fechada
+              </span>
+            ) : (
+              <span className={`whitespace-nowrap px-2.5 py-0.5 rounded-full text-xs font-semibold ${statusBadgeClass(status)}`}>
+                {statusBadgeLabel(status)}
+              </span>
+            )}
             <button type="button" onClick={() => setAberto(!aberto)} aria-expanded={aberto} aria-label={aberto ? 'Recolher sessões' : 'Expandir sessões'} className="text-slate-400">
               {aberto
                 ? <ChevronUp className="h-4 w-4" />

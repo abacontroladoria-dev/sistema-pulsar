@@ -20,9 +20,19 @@ import {
   getTerapia,
   getUnidade,
   normalizarStatus,
+  sessaoNaUnidadeFechada,
   terapiaDeveAparecer,
 } from '@/components/central-terapeutas/helpers'
 import type { AtendimentoTerapeutico } from '@/services/central-terapeutas.service'
+import type { FeriadoInfo } from '@/types/feriados'
+
+type Feriados = Record<string, FeriadoInfo>
+
+// Mesma regra da tela: sessão em feriado/ponto facultativo não é falta nem
+// pendência de ninguém — sai como "Unidade fechada".
+function fechada(item: AtendimentoTerapeutico, feriados: Feriados) {
+  return sessaoNaUnidadeFechada(item, feriados[getData(item).slice(0, 10)])
+}
 
 const STATUS_LABEL: Record<string, string> = {
   pendente: 'Pendente',
@@ -77,7 +87,7 @@ type LinhaAtendimento = {
   Agendamento_Id: string
 }
 
-function montarLinhas(itens: AtendimentoTerapeutico[]): LinhaAtendimento[] {
+function montarLinhas(itens: AtendimentoTerapeutico[], feriados: Feriados): LinhaAtendimento[] {
   return itens.filter(terapiaDeveAparecer).map((item) => ({
     Data: dataBR(getData(item)),
     Hora_Inicial: getHorarioInicial(item),
@@ -88,7 +98,7 @@ function montarLinhas(itens: AtendimentoTerapeutico[]): LinhaAtendimento[] {
     Terapia: getTerapia(item),
     Paciente: getPaciente(item),
     Convenio: (item as { convenio_nome?: string | null }).convenio_nome || '',
-    Status: rotuloStatus(item.status),
+    Status: fechada(item, feriados) ? 'Unidade fechada' : rotuloStatus(item.status),
     Houve_Substituicao: houveSubstituicao(item) ? 'Sim' : 'Nao',
     Substituto: item.profissional_substituto_nome || '',
     Observacao: item.observacao || '',
@@ -107,11 +117,12 @@ type LinhaResumo = {
   Indisponivel: number
   Substituidos: number
   Pendentes: number
+  Unidade_Fechada: number
   Pacientes_Distintos: number
   Substitutos: string
 }
 
-function montarResumo(linhasBase: AtendimentoTerapeutico[]): LinhaResumo[] {
+function montarResumo(linhasBase: AtendimentoTerapeutico[], feriados: Feriados): LinhaResumo[] {
   const mapa = new Map<
     string,
     {
@@ -123,6 +134,7 @@ function montarResumo(linhasBase: AtendimentoTerapeutico[]): LinhaResumo[] {
       indisponivel: number
       substituidos: number
       pendentes: number
+      fechadas: number
       pacientes: Set<string>
       substitutos: Set<string>
     }
@@ -144,6 +156,7 @@ function montarResumo(linhasBase: AtendimentoTerapeutico[]): LinhaResumo[] {
         indisponivel: 0,
         substituidos: 0,
         pendentes: 0,
+        fechadas: 0,
         pacientes: new Set(),
         substitutos: new Set(),
       }
@@ -156,7 +169,8 @@ function montarResumo(linhasBase: AtendimentoTerapeutico[]): LinhaResumo[] {
     linha.total++
     linha.pacientes.add(getPaciente(item))
 
-    const status = normalizarStatus(item.status)
+    const status = fechada(item, feriados) ? 'unidade_fechada' : normalizarStatus(item.status)
+    if (status === 'unidade_fechada') linha.fechadas++
     if (status === 'disponivel') linha.disponivel++
     if (status === 'indisponivel') linha.indisponivel++
     if (status === 'pendente') linha.pendentes++
@@ -179,6 +193,7 @@ function montarResumo(linhasBase: AtendimentoTerapeutico[]): LinhaResumo[] {
       Indisponivel: l.indisponivel,
       Substituidos: l.substituidos,
       Pendentes: l.pendentes,
+      Unidade_Fechada: l.fechadas,
       Pacientes_Distintos: l.pacientes.size,
       Substitutos: Array.from(l.substitutos).sort().join(' / '),
     }))
@@ -215,10 +230,11 @@ export type ResultadoExport = {
 export function montarRelatorio(
   itens: AtendimentoTerapeutico[],
   dataInicio: string,
-  dataFim: string
+  dataFim: string,
+  feriados: Feriados = {}
 ): ResultadoExport {
-  const atendimentos = montarLinhas(itens)
-  const resumo = montarResumo(itens)
+  const atendimentos = montarLinhas(itens, feriados)
+  const resumo = montarResumo(itens, feriados)
 
   const wb = XLSX.utils.book_new()
 

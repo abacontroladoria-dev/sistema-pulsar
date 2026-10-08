@@ -5,18 +5,21 @@ import { CalendarDays, Download, FileSpreadsheet, Loader2, X } from 'lucide-reac
 import toast from 'react-hot-toast'
 import { listarCentralTerapeuticaPeriodo } from '@/services/central-terapeutas-relatorio.service'
 import { montarRelatorio } from '@/lib/central-terapeutas/exportRelatorio'
+import type { FeriadoInfo } from '@/types/feriados'
 
 type Props = {
   aberto: boolean
   /** Data selecionada na tela — serve de ponto de partida do período. */
   dataPadrao: string
+  /** Cadastro de feriados: sessão em dia fechado sai como "Unidade fechada". */
+  feriados: Record<string, FeriadoInfo>
   onClose: () => void
 }
 
 const inputClass =
   'w-full h-10 pl-11 pr-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-700 outline-none focus:border-[#3A8FB7] transition'
 
-export default function RelatorioModal({ aberto, dataPadrao, onClose }: Props) {
+export default function RelatorioModal({ aberto, dataPadrao, feriados, onClose }: Props) {
   const [dataInicio, setDataInicio] = useState(dataPadrao)
   const [dataFim, setDataFim] = useState(dataPadrao)
   const [gerando, setGerando] = useState(false)
@@ -67,7 +70,8 @@ export default function RelatorioModal({ aberto, dataPadrao, onClose }: Props) {
       const { linhas, arquivo, baixar } = montarRelatorio(
         itens,
         dataInicio,
-        dataFim
+        dataFim,
+        feriados
       )
 
       if (linhas === 0) {

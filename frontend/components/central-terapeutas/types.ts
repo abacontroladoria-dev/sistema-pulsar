@@ -30,4 +30,6 @@ export type GrupoTerapeutaMobile = {
   ultimaAlteracaoPor?: string | null
   ultimaAlteracaoEm?: string | null
   atendimentos: ControleTerapeuticoItem[]
+  /** Todas as sessões caem em feriado/ponto facultativo: ninguém faltou. */
+  unidadeFechada?: boolean
 }
