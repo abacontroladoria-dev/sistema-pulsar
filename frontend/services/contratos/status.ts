@@ -72,6 +72,7 @@ async function lerPaginado<T>(
 type PacienteBruto = {
   id_paciente: number
   tita_paciente_id: number | null
+  origem_cadastro: "tita" | "pulsar"
   nome: string
   ativo: boolean
   ficticio: boolean
@@ -142,7 +143,7 @@ export async function buscarStatusContratos(
       (from, to) =>
         sb
           .from("pacientes")
-          .select("id_paciente, tita_paciente_id, nome, ativo, ficticio, foto_path, convenio_nome")
+          .select("id_paciente, tita_paciente_id, origem_cadastro, nome, ativo, ficticio, foto_path, convenio_nome")
           .order("id_paciente", { ascending: true })
           .range(from, to),
       "pacientes",
@@ -192,6 +193,8 @@ export async function buscarStatusContratos(
 
     itens.push({
       pacienteId: p.id_paciente,
+      origemCadastro: p.origem_cadastro,
+      titaPacienteId: p.tita_paciente_id,
       nome: p.nome,
       ativo: p.ativo,
       ficticio: !!p.ficticio,

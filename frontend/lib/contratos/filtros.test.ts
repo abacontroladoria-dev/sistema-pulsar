@@ -32,6 +32,8 @@ const contrato = (p: Partial<ResumoContrato>): ResumoContrato => ({
 })
 const paciente = (id: number, nome: string, p: Partial<ItemStatusContratos> = {}): ItemStatusContratos => ({
   pacienteId: id,
+  origemCadastro: "pulsar",
+  titaPacienteId: null,
   nome,
   ativo: true,
   ficticio: false,
@@ -100,7 +102,9 @@ test("sem contrato: sem Terapias valendo hoje, com ou sem agendamento; só Triag
 test("recortes por status e vigência", () => {
   const nomes = (r: FiltrosContratos["recorte"], extra: Partial<FiltrosContratos> = {}) =>
     aplicar(ITENS, { ...filtrosIniciais(), recorte: r, ...extra }).map((i) => i.nome)
-  assert.deepEqual(nomes("rascunho"), ["Caio"])
+  // Sem card de "Rascunho" (pedido do usuário, 09/10/2026: "não precisa") —
+  // Caio (único rascunho da lista) continua em ITENS só para a checagem
+  // genérica acima, que não depende do nome dele.
   assert.deepEqual(nomes("aguardando"), ["Davi"])
   assert.deepEqual(nomes("a_vencer"), ["Davi", "Júlia"])
   assert.deepEqual(nomes("assinado_vigente"), ["Ana", "Hugo", "Júlia"])

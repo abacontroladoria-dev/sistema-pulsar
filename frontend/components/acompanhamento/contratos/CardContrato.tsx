@@ -2,14 +2,15 @@
 
 import { memo, useEffect, useState } from "react"
 import Link from "next/link"
-import { AlertTriangle, CalendarClock, ExternalLink } from "lucide-react"
+import { AlertTriangle, CalendarClock, CheckCircle2, ExternalLink } from "lucide-react"
 import { getFotoUrlAssinada } from "@/services/pacientesFoto.service"
 import { ICONES, getTomAvatar, indiceIconeAvatar } from "@/lib/cadastros/avatarPastel"
 import { foco } from "@/components/cadastros/pacientes/ui/campos"
 import { ROTULO_TIPO_CURTO, TIPOS_CONTRATO, dataBR } from "@/lib/contratos/status"
-import { proximoVencimento, semContratoDeTerapias } from "@/lib/contratos/filtros"
+import { dispensadoDeContrato, proximoVencimento, semContratoDeTerapias } from "@/lib/contratos/filtros"
 import { SelosContrato } from "@/components/cadastros/pacientes/secoes/contratos/Selos"
 import type { ItemStatusContratos } from "@/types/contratosPaciente"
+import { idExibicao } from "@/types/paciente"
 
 // Cartão de paciente da Status Contratos. Moldura, hover e avatar do
 // CardLaudo/CardPaciente (mesma foto, do mesmo bucket, pelo mesmo serviço).
@@ -34,6 +35,9 @@ export const CardContrato = memo(function CardContrato({ item }: { item: ItemSta
   // tipo (ex.: Avaliação) parece contradição. Só entra quando há mesmo outro
   // tipo pra confundir.
   const temOutroTipoAssinado = semTerapias && item.contratos.some((c) => c.tipo !== "terapias")
+  // Só com Triagem (sem semTerapias por dispensa, não por ter contrato): o
+  // positivo não pode dizer "em dia" de um contrato que não existe.
+  const emAvaliacao = !semTerapias && dispensadoDeContrato(item)
 
   return (
     <li>
@@ -45,7 +49,13 @@ export const CardContrato = memo(function CardContrato({ item }: { item: ItemSta
         aria-label={`Abrir contratos de ${item.nome} (nova guia)`}
       >
         <div className="flex items-start justify-between gap-2 text-[11px]">
-          <span className="font-semibold uppercase tracking-wide text-muted-foreground">ID {item.pacienteId}</span>
+          {/* Mesmo número de /cadastros/pacientes (idExibicao): o ID do TiTa
+              quando o paciente veio de lá (é o único que a recepção confere do
+              lado de lá), nunca a PK interna do Pulsar. Pedido do usuário,
+              09/10/2026 — continua dizendo só "ID", não "ID TiTa". */}
+          <span className="font-semibold uppercase tracking-wide text-muted-foreground">
+            ID {idExibicao({ origem_cadastro: item.origemCadastro, id_paciente: item.pacienteId, tita_paciente_id: item.titaPacienteId })}
+          </span>
           <span className="flex flex-wrap justify-end gap-1">
             {item.ficticio ? (
               <span className="rounded-full bg-muted px-2 py-0.5 font-semibold text-muted-foreground">Fictício</span>
@@ -92,12 +102,21 @@ export const CardContrato = memo(function CardContrato({ item }: { item: ItemSta
         )}
 
         <div className="mt-auto space-y-2 pt-4">
-          {semTerapias && (
+          {semTerapias ? (
             <p className="flex items-start gap-1.5 rounded-md bg-rose-500/10 px-2 py-1.5 text-xs text-rose-700 dark:text-rose-400">
               <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
               {temOutroTipoAssinado
                 ? "Sem contrato de TERAPIAS valendo — o assinado acima é de outro tipo."
                 : "Sem contrato de Terapias valendo."}
+            </p>
+          ) : (
+            // Sem isto, o lugar do aviso ficava vazio quando está tudo certo —
+            // pedido do usuário (09/10/2026): mostrar também o lado positivo.
+            // "Em avaliação" quando a dispensa é por só ter Triagem (não tem
+            // contrato nenhum ainda — "em dia" seria afirmar algo que não existe).
+            <p className="flex items-start gap-1.5 rounded-md bg-emerald-500/10 px-2 py-1.5 text-xs text-emerald-700 dark:text-emerald-400">
+              <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              {emAvaliacao ? "Ainda em avaliação (Triagem) — contrato não cobrado ainda." : "Contrato de Terapias em dia."}
             </p>
           )}
           {/* `flex-wrap`: em cartão estreito (4-5 colunas), data + "Abrir

@@ -1,4 +1,5 @@
 import type { StatusContrato, TipoContrato, Vigencia } from "@/lib/contratos/status"
+import type { OrigemCadastroPaciente } from "@/types/paciente"
 
 // Contratos do PACIENTE (aba Contratos + Status Contratos). Não confundir com
 // types/contratos* de prestador (remuneracao_contratos).
@@ -81,6 +82,12 @@ export type ResumoContrato = {
 
 export type ItemStatusContratos = {
   pacienteId: number
+  /**
+   * Para `idExibicao()` (types/paciente.ts) mostrar o ID do TiTa, não o interno
+   * do Pulsar, quando o paciente veio de lá — mesma regra de /cadastros/pacientes.
+   */
+  origemCadastro: OrigemCadastroPaciente
+  titaPacienteId: number | null
   nome: string
   ativo: boolean
   /** Horário Administrativo, Notificação Prévia e afins — não é criança de verdade. */

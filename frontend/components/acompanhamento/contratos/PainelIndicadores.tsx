@@ -4,7 +4,6 @@ import {
   CalendarClock,
   CalendarX,
   FileCheck2,
-  FilePen,
   FileQuestion,
   FileX,
   Hourglass,
@@ -26,7 +25,6 @@ type Card = { recorte: RecorteContratos; Icone: LucideIcon; tom: string; ativo: 
 const CARDS: Card[] = [
   { recorte: "todos", Icone: Layers, tom: "text-slate-600 dark:text-slate-300", ativo: "border-slate-400 bg-slate-100 dark:border-slate-600 dark:bg-slate-800/60" },
   { recorte: "sem_contrato", Icone: FileQuestion, tom: "text-rose-600 dark:text-rose-400", ativo: "border-rose-400 bg-rose-50 dark:border-rose-700 dark:bg-rose-950/40" },
-  { recorte: "rascunho", Icone: FilePen, tom: "text-slate-600 dark:text-slate-300", ativo: "border-slate-400 bg-slate-100 dark:border-slate-600 dark:bg-slate-800/60" },
   { recorte: "aguardando", Icone: Hourglass, tom: "text-amber-600 dark:text-amber-400", ativo: "border-amber-400 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/40" },
   { recorte: "assinado_vigente", Icone: FileCheck2, tom: "text-emerald-600 dark:text-emerald-400", ativo: "border-emerald-400 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-950/40" },
   { recorte: "a_vencer", Icone: CalendarClock, tom: "text-amber-600 dark:text-amber-400", ativo: "border-amber-400 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/40" },
@@ -46,7 +44,11 @@ export function PainelIndicadoresContratos({
   carregando: boolean
 }) {
   return (
-    <section aria-label="Indicadores" className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-8">
+    // Mesmas colunas do grid de filtros (FiltrosContratos.tsx) a partir do
+    // `lg` — pedido do usuário (09/10/2026): os dois precisam ter a MESMA
+    // largura de item. Abaixo de `lg`, 2 colunas (os filtros empilham 1 por
+    // linha ali, mas um card de KPI é pequeno demais para isso sozinho).
+    <section aria-label="Indicadores" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       {CARDS.map(({ recorte: r, Icone, tom, ativo }) => {
         const marcado = recorte === r
         return (

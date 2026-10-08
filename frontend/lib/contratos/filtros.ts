@@ -15,7 +15,6 @@ import type { ItemStatusContratos, ResumoContrato } from "@/types/contratosPacie
 export const RECORTES = [
   "todos",
   "sem_contrato",
-  "rascunho",
   "aguardando",
   "assinado_vigente",
   "a_vencer",
@@ -27,7 +26,6 @@ export type RecorteContratos = (typeof RECORTES)[number]
 export const RECORTE_LABEL: Record<RecorteContratos, string> = {
   todos: "Todos",
   sem_contrato: "Sem contrato",
-  rascunho: "Rascunho",
   aguardando: "Aguardando assinatura",
   assinado_vigente: "Assinado vigente",
   a_vencer: "A vencer (30 dias)",
@@ -39,7 +37,6 @@ export const RECORTE_DICA: Record<RecorteContratos, string> = {
   todos: "Todos os pacientes do filtro.",
   sem_contrato:
     "Paciente sem contrato de Terapias valendo hoje (recusado e link expirado não contam como contrato). Quem só teve Triagem na grade fica de fora — ainda é avaliação de entrada, não tratamento —, exceto paciente Particular: a Triagem dele também precisa de contrato.",
-  rascunho: "Contrato criado no Pulsar e ainda não enviado nem assinado.",
   aguardando: "Enviado para assinatura e ainda sem resposta.",
   assinado_vigente: "Assinado e valendo hoje (inclui os que vencem nos próximos 30 dias).",
   a_vencer: "Vence nos próximos 30 dias.",
@@ -130,7 +127,6 @@ export const PREDICADO_RECORTE: Record<
   // mais ter agendamento: quem não tem nenhum também cobra (só quem só teve
   // Triagem fica de fora).
   sem_contrato: semContratoDeTerapias,
-  rascunho: (_i, cs) => cs.some((c) => c.status === "rascunho"),
   aguardando: (_i, cs) => cs.some((c) => c.status === "enviado" || c.status === "aguardando_assinatura"),
   assinado_vigente: (_i, cs) => cs.some((c) => c.status === "assinado" && cobreHoje(c.vigencia)),
   a_vencer: (_i, cs) => cs.some((c) => c.vigencia === "a_vencer" && !morto(c)),
