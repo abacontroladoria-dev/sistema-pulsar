@@ -374,6 +374,23 @@ const ChatInterface: React.FC = () => {
     }
   }
 
+  // Sugestão da Maia: sai pelo envio normal (é a atendente quem envia e assume),
+  // e só depois o rascunho é apagado. Se o envio falhar, a sugestão fica.
+  const [enviandoSugestao, setEnviandoSugestao] = useState<string | null>(null)
+  const handleEnviarSugestao = async (m: NinaMessage) => {
+    if (!m.content || enviandoSugestao) return
+    setEnviandoSugestao(m.id)
+    try {
+      await enviar(m.content)
+      await apagarMensagem(m.id).catch(() => {})
+      toast.success('Sugestão enviada.')
+    } catch (err) {
+      toast.error((err as Error).message)
+    } finally {
+      setEnviandoSugestao(null)
+    }
+  }
+
   // O modal fica ABERTO se falhar: o motivo vai no toast (ex.: o WhatsApp não
   // apagou), e a pessoa decide ali mesmo se tenta de novo ou desiste.
   const handleApagarMensagem = async () => {
@@ -693,9 +710,9 @@ const ChatInterface: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => void handleAcaoConversa({ action: 'archive' }).catch(() => {})}
-                      title="Arquivar"
+                      title="Arquivar conversa"
                       aria-label="Arquivar conversa"
-                      className="hidden sm:block p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                      className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
                     >
                       <Archive className="w-5 h-5" />
                     </button>
@@ -767,6 +784,8 @@ const ChatInterface: React.FC = () => {
                           aoEditar={setEditando}
                           aoApagar={setApagando}
                           aoIrPara={irPara}
+                          aoEnviarSugestao={handleEnviarSugestao}
+                          enviandoSugestao={enviandoSugestao === msg.id}
                         />
                       </React.Fragment>
                     )

@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { Check, CheckCheck, AlertCircle, Loader2, Trash2, Reply, Pencil, Copy } from 'lucide-react'
+import { Check, CheckCheck, AlertCircle, Loader2, Trash2, Reply, Pencil, Copy, Send } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { MessageDirection } from '@/types/nina'
@@ -28,12 +28,16 @@ interface Props {
   aoEditar:        (m: NinaMessage) => void
   aoApagar:        (m: NinaMessage) => void
   aoIrPara:        (id: string) => void
+  // Sugestão da Maia: envia o texto como mensagem da atendente.
+  aoEnviarSugestao?: (m: NinaMessage) => void
+  enviandoSugestao?: boolean
 }
 
 const acao = 'p-0.5 rounded text-muted-foreground/70 transition-colors opacity-0 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100'
 
 export const BolhaMensagem: React.FC<Props> = ({
   msg, primeiraDoGrupo, destacada, aoResponder, aoEditar, aoApagar, aoIrPara,
+  aoEnviarSugestao, enviandoSugestao = false,
 }) => {
   const isOutgoing = msg.direction === MessageDirection.OUTGOING
   const claro = isOutgoing && !msg.isAiDraft
@@ -92,10 +96,33 @@ export const BolhaMensagem: React.FC<Props> = ({
           {msg.isAiDraft && (
             <span className="text-violet-400 font-medium">Sugestão da Maia — não enviada</span>
           )}
+          {msg.isAiDraft && msg.content && aoEnviarSugestao && (
+            <button
+              type="button"
+              onClick={() => aoEnviarSugestao(msg)}
+              disabled={enviandoSugestao}
+              className="ml-1 px-2 py-0.5 rounded-md bg-violet-600 hover:bg-violet-700 text-white font-medium flex items-center gap-1 disabled:opacity-60 disabled:cursor-wait"
+            >
+              {enviandoSugestao ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+              Enviar
+            </button>
+          )}
+          {msg.isAiDraft && (
+            <button
+              type="button"
+              title="Descartar sugestão"
+              aria-label="Descartar sugestão da Maia"
+              onClick={() => aoApagar(msg)}
+              disabled={enviandoSugestao}
+              className="p-0.5 rounded text-violet-400 hover:text-rose-500 transition-colors"
+            >
+              <Trash2 className="w-3 h-3" />
+            </button>
+          )}
           {msg.isAiDraft && msg.content && (
             <button
               type="button"
-              title="Copiar sugestão"
+              title="Copiar sugestão para editar antes de enviar"
               aria-label="Copiar sugestão da Maia"
               onClick={() => navigator.clipboard?.writeText(msg.content!).then(
                 () => toast.success('Sugestão copiada. Cole na resposta e revise antes de enviar.'),
