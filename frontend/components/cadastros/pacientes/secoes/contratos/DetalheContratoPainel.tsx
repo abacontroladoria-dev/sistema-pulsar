@@ -242,13 +242,14 @@ export function DetalheContratoPainel({
                 {c.arquivo_original_path ? "Substituir PDF" : "Anexar PDF"}
               </button>
             )}
-            {c.arquivo_assinado_path ? (
+            {/* Sem "em breve" quando ainda não há PDF assinado: antes do envio
+                para a D4Sign (fase 3) o botão não tem nada a fazer, e ficava
+                ali sem utilidade em todo contrato que ainda não foi assinado. */}
+            {c.arquivo_assinado_path && (
               <button type="button" onClick={() => void baixar("assinado")} disabled={!!ocupado} className={`${btnSecundario} min-h-11 sm:min-h-0`}>
                 {ocupado === "assinado" ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Download className="h-4 w-4" aria-hidden />}
                 Baixar contrato assinado
               </button>
-            ) : (
-              <EmBreve Icone={Download}>Baixar contrato assinado</EmBreve>
             )}
           </div>
           {c.arquivo_original_nome && (
