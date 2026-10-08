@@ -23,7 +23,9 @@ import { aviso, btnPrimario, btnSecundario, opcaoForm } from "./estilo"
 // pulada — feriado, bloqueio, horário lotado…
 
 type Repeticao = "unica" | "semanal" | "quinzenal" | "personalizado"
-type Termino = "continuo" | "data" | "sessoes"
+// Não existe série sem término (decisão do usuário, 08/10/2026): toda
+// repetição acaba, no máximo, em 31/12 do ano em que começa.
+type Termino = "fim_do_ano" | "data" | "sessoes"
 
 export type InicialNovo = {
   profissionalId?: number | null
@@ -52,7 +54,7 @@ export function PainelNovoAgendamento({
   const [exibicaoId, setExibicaoId] = useState<number | null>(null)
   const [repeticao, setRepeticao] = useState<Repeticao>("semanal")
   const [intervalo, setIntervalo] = useState(3)
-  const [termino, setTermino] = useState<Termino>("continuo")
+  const [termino, setTermino] = useState<Termino>("fim_do_ano")
   const [dataFim, setDataFim] = useState("")
   const [totalSessoes, setTotalSessoes] = useState(10)
   const [observacao, setObservacao] = useState("")
@@ -112,10 +114,14 @@ export function PainelNovoAgendamento({
     return () => { vivo = false }
   }, [pacId])
 
+  const fimDoAno = `${data.slice(0, 4)}-12-31`
+  // Data escolhida antes de trocar o início pode ter ficado fora do ano: vale o teto.
+  const fimEscolhido = dataFim && dataFim > fimDoAno ? fimDoAno : dataFim
+
   const payload: PayloadAgendamento | null = useMemo(() => {
     if (!profId || !pacId || !terapiaId || !slot) return null
     const semanal = repeticao !== "unica"
-    if (semanal && termino === "data" && !dataFim) return null
+    if (semanal && termino === "data" && !fimEscolhido) return null
     return {
       paciente_id: pacId,
       profissional_id: profId,
@@ -126,12 +132,12 @@ export function PainelNovoAgendamento({
       hora_fim: slot.fim,
       frequencia: semanal ? "semanal" : "unica",
       intervalo_semanas: repeticao === "quinzenal" ? 2 : repeticao === "personalizado" ? intervalo : 1,
-      data_fim: semanal && termino === "data" ? dataFim : null,
+      data_fim: !semanal ? null : termino === "data" ? fimEscolhido : termino === "fim_do_ano" ? fimDoAno : null,
       total_sessoes: semanal && termino === "sessoes" ? totalSessoes : null,
       permitir_paciente_simultaneo: permitirSimultaneo,
       observacao: observacao.trim() || null,
     }
-  }, [profId, pacId, terapiaId, exibicaoId, slot, data, repeticao, intervalo, termino, dataFim, totalSessoes, permitirSimultaneo, observacao])
+  }, [profId, pacId, terapiaId, exibicaoId, slot, data, repeticao, intervalo, termino, fimEscolhido, fimDoAno, totalSessoes, permitirSimultaneo, observacao])
 
   // Prévia do banco, com uma pausa para não chamar a cada tecla.
   const chavePayload = payload ? JSON.stringify({ ...payload, observacao: null }) : ""
@@ -150,7 +156,12 @@ export function PainelNovoAgendamento({
     return () => { vivo = false; clearTimeout(t) }
   }, [chavePayload])
 
-  const oks = simulacao?.filter(s => s.ok) ?? []
+  const oksTodas = simulacao?.filter(s => s.ok) ?? []
+  // "Após N sessões" não pode atravessar o ano: o banco conta sessões sem teto
+  // de data, então a prévia mostra e o botão trava se a última passar de 31/12.
+  const passaDoAno = termino === "sessoes" && repeticao !== "unica" && oksTodas.some(s => s.data > fimDoAno)
+  const oks = passaDoAno ? [] : oksTodas
+  const cabemNoAno = oksTodas.filter(s => s.data <= fimDoAno).length
   const puladas = simulacao?.filter(s => !s.ok) ?? []
   const temOcupado = puladas.some(s => s.conflito === "paciente_ocupado") || (permitirSimultaneo && simulacao?.some(s => s.conflito === "paciente_ocupado"))
   const janela = pacId ? janelaDoPaciente(dispPac, data) : null
@@ -177,7 +188,7 @@ export function PainelNovoAgendamento({
   const opcoesExib = useMemo(() => catalogo.filter(t => t.ativo || t.id === exibicaoId).map(t => ({ valor: String(t.id), rotulo: t.nome })), [catalogo, exibicaoId])
   const dia = DIAS_NOMES[diaDaSemana(data)].toLowerCase()
   const nesteDia = `${[0, 6].includes(diaDaSemana(data)) ? "neste" : "nesta"} ${dia}`
-  const tomPrevia = TONE_SOFT[erroSim ? "red" : oks.length ? "green" : "amber"]
+  const tomPrevia = TONE_SOFT[erroSim || passaDoAno ? "red" : oks.length ? "green" : "amber"]
 
   return (
     <Drawer
@@ -277,11 +288,16 @@ export function PainelNovoAgendamento({
           <fieldset className="space-y-2">
             <legend className={rotulo}>Término</legend>
             <div className="flex flex-wrap gap-1.5">
-              {([["continuo", "Sem término (contínuo)"], ["data", "Em uma data"], ["sessoes", "Após N sessões"]] as [Termino, string][]).map(([v, r]) => (
+              {([["fim_do_ano", `Até ${dataBR(fimDoAno)}`], ["data", "Em uma data"], ["sessoes", "Após N sessões"]] as [Termino, string][]).map(([v, r]) => (
                 <button key={v} type="button" aria-pressed={termino === v} onClick={() => setTermino(v)} className={`${opcaoForm(termino === v)} min-h-11`}>{r}</button>
               ))}
             </div>
-            {termino === "data" && <DatePicker value={dataFim} onChange={v => setDataFim(v && v < data ? data : v)} />}
+            {termino === "data" && (
+              <>
+                <DatePicker value={fimEscolhido} onChange={v => setDataFim(!v ? v : v < data ? data : v > fimDoAno ? fimDoAno : v)} />
+                <p className="text-xs text-muted-foreground">No máximo {dataBR(fimDoAno)}.</p>
+              </>
+            )}
             {termino === "sessoes" && (
               <label className="flex items-center gap-2 text-sm text-foreground">
                 <input type="number" min={1} max={520} value={totalSessoes} onChange={e => setTotalSessoes(Math.min(520, Math.max(1, Number(e.target.value) || 1)))}
@@ -289,8 +305,8 @@ export function PainelNovoAgendamento({
                 sessões (datas puladas não contam)
               </label>
             )}
-            {termino === "continuo" && (
-              <p className="text-xs text-muted-foreground">As sessões ficam lançadas até 6 meses à frente e a repetição automática estende toda noite.</p>
+            {termino === "fim_do_ano" && (
+              <p className="text-xs text-muted-foreground">A repetição acaba em {dataBR(fimDoAno)}. Para o ano seguinte, agende de novo.</p>
             )}
           </fieldset>
         )}
@@ -308,6 +324,11 @@ export function PainelNovoAgendamento({
               <p className="flex items-center gap-2 text-sm"><Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Conferindo as datas…</p>
             ) : erroSim ? (
               <p className="text-sm">{erroSim}</p>
+            ) : passaDoAno ? (
+              <p className="flex items-start gap-2 text-sm font-semibold">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                {totalSessoes} sessões passam de {dataBR(fimDoAno)}. Até lá cabe{cabemNoAno === 1 ? "" : "m"} {cabemNoAno} — diminua o número ou use “Até {dataBR(fimDoAno)}”.
+              </p>
             ) : simulacao && (
               <>
                 <p className="flex items-start gap-2 text-sm font-semibold">
