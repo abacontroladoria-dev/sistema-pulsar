@@ -1,14 +1,16 @@
 "use client"
 
 import { useState, type ReactNode } from "react"
-import { CalendarX2, Lock, UserRoundX } from "lucide-react"
-import { tom } from "@/components/ui/pastel/pecas"
+import { Lock } from "lucide-react"
+import { foco } from "@/components/cadastros/pacientes/ui/campos"
 import { DIAS_CURTOS, diaDaSemana } from "@/lib/grade/motor"
-import { ColunaHorarios, EixoHoras, PX_POR_MIN, type ItemColuna } from "./pecas"
+import { seletorOpcao, seletorTrilha } from "./estilo"
+import { ColunaHorarios, EixoHoras, PX_POR_MIN, fundoHoras, type ItemColuna } from "./pecas"
 
-// As três visões da Grade. Semana (dias em colunas) e Hoje (profissionais em
-// colunas) usam a mesma grade de colunas no tempo; no celular ela vira abas,
-// uma coluna por vez. Mês é um calendário com os números de cada dia.
+// As três visões da Grade, no design padrão (receitas da Agenda do Connect).
+// Semana (dias em colunas) e Dia (profissionais em colunas) usam a mesma grade
+// de colunas no tempo; no celular ela vira abas, uma coluna por vez. Mês é um
+// calendário com os números de cada dia.
 
 export type ColunaGrade = {
   chave: string
@@ -18,9 +20,9 @@ export type ColunaGrade = {
   aba: string
   itens: ItemColuna[]
   fundo?: { ini: number; fim: number; rotulo: string }[]
-  /** Fim de semana sem nada: coluna estreita e esmaecida. */
+  /** Fim de semana sem nada: coluna estreita, avisada uma vez no cabeçalho. */
   estreita?: boolean
-  /** Faixa no topo (feriado). */
+  /** Linha extra no cabeçalho (feriado). */
   aviso?: ReactNode
   destaque?: boolean
 }
@@ -41,28 +43,29 @@ export function GradeColunas({
     ?? visiveisNoCelular.find(c => c.chave === abaInicial)
     ?? visiveisNoCelular[0]
 
-  const template = colunas.map(c => (c.estreita ? "56px" : `minmax(${larguraMin}px, 1fr)`)).join(" ")
+  const template = `56px ${colunas.map(c => (c.estreita ? "72px" : `minmax(${larguraMin}px, 1fr)`)).join(" ")}`
+  const altura = (janela.ate - janela.de) * PX_POR_MIN
 
   return (
     <div>
       {/* Celular: abas, uma coluna por vez */}
       <div className="md:hidden">
-        <div role="tablist" aria-label={rotuloAbas} className="-mx-1 mb-3 flex gap-1.5 overflow-x-auto px-1 pb-1">
-          {visiveisNoCelular.map(c => (
-            <button key={c.chave} type="button" role="tab" aria-selected={c.chave === selecionada?.chave}
-              onClick={() => setAba(c.chave)}
-              className={`${tom(c.destaque ? "aco" : "cinza")} pp-pilula min-h-11 shrink-0 px-4 ${c.chave === selecionada?.chave ? "!bg-[var(--c)] !text-[var(--c-sobre)]" : ""}`}>
-              {c.aba}
-            </button>
-          ))}
+        <div className="overflow-x-auto border-b border-border p-2">
+          <div role="tablist" aria-label={rotuloAbas} className={`${seletorTrilha} w-max`}>
+            {visiveisNoCelular.map(c => (
+              <button key={c.chave} type="button" role="tab" aria-selected={c.chave === selecionada?.chave}
+                onClick={() => setAba(c.chave)} className={`${seletorOpcao(c.chave === selecionada?.chave)} min-h-11`}>
+                {c.aba}
+              </button>
+            ))}
+          </div>
         </div>
         {selecionada && (
-          <div className="rounded-2xl bg-[var(--pp-surface)] p-2 shadow-[inset_0_0_0_1px_var(--pp-border)]">
-            <div className="mb-2 px-1">{selecionada.cabecalho}</div>
-            {selecionada.aviso}
-            <div className="flex">
+          <div>
+            <div className="border-b border-border px-3 py-2">{selecionada.cabecalho}{selecionada.aviso}</div>
+            <div className="flex py-2 pr-2">
               <EixoHoras de={janela.de} ate={janela.ate} />
-              <div className="min-w-0 flex-1">
+              <div className="min-w-0 flex-1 border-l border-border">
                 <ColunaHorarios itens={selecionada.itens} de={janela.de} ate={janela.ate} fundo={selecionada.fundo} vazio={<Vazio />} />
               </div>
             </div>
@@ -70,32 +73,29 @@ export function GradeColunas({
         )}
       </div>
 
-      {/* Tela larga: todas as colunas */}
-      <div className="hidden overflow-x-auto md:block">
+      {/* Tela larga: todas as colunas. Um só contêiner rola nos dois sentidos,
+          para o cabeçalho grudar no topo (sticky não funciona dentro de um
+          overflow-x separado). */}
+      <div className="hidden max-h-[calc(100vh-17rem)] min-h-80 overflow-auto md:block">
         <div className="min-w-fit">
-          <div className="sticky top-0 z-10 flex bg-[var(--pp-surface)] pb-2">
-            <div className="w-12 shrink-0" />
-            <div className="grid flex-1 gap-2" style={{ gridTemplateColumns: template }}>
-              {colunas.map(c => (
-                <div key={c.chave} className={`min-w-0 ${c.estreita ? "opacity-60" : ""}`}>{c.cabecalho}</div>
-              ))}
-            </div>
+          <div className="sticky top-0 z-10 grid border-b border-border bg-card" style={{ gridTemplateColumns: template }}>
+            <div aria-hidden />
+            {colunas.map(c => (
+              <div key={c.chave} className={`min-w-0 border-l border-border px-1.5 py-2 ${c.destaque ? "bg-muted/30" : ""}`}>
+                {c.cabecalho}
+                {c.aviso}
+              </div>
+            ))}
           </div>
-          <div className="flex">
+          <div className="grid py-2" style={{ gridTemplateColumns: template }}>
             <EixoHoras de={janela.de} ate={janela.ate} />
-            <div className="grid flex-1 gap-2" style={{ gridTemplateColumns: template }}>
-              {colunas.map(c => (
-                <div key={c.chave}
-                  className={`relative min-w-0 rounded-[14px] ${c.destaque ? `${tom("aco")} bg-[var(--c-suave)]` : "bg-[var(--pp-muted)]/40"} ${c.estreita ? "opacity-50" : ""}`}>
-                  {c.aviso && <div className="absolute inset-x-1 top-1 z-[1]">{c.aviso}</div>}
-                  {c.estreita
-                    ? <div style={{ height: (janela.ate - janela.de) * PX_POR_MIN }} className="flex items-center justify-center" aria-hidden>
-                        <span className="rotate-180 text-[11px] font-bold text-[var(--pp-ink-muted)] [writing-mode:vertical-rl]">sem atendimento</span>
-                      </div>
-                    : <ColunaHorarios itens={c.itens} de={janela.de} ate={janela.ate} fundo={c.fundo} />}
-                </div>
-              ))}
-            </div>
+            {colunas.map(c => (
+              <div key={c.chave} className={`relative min-w-0 border-l border-border ${c.destaque ? "bg-muted/30" : ""}`}>
+                {c.estreita
+                  ? <div style={{ height: altura, ...fundoHoras(janela.de) }} className="opacity-40" aria-hidden />
+                  : <ColunaHorarios itens={c.itens} de={janela.de} ate={janela.ate} fundo={c.fundo} />}
+              </div>
+            ))}
           </div>
         </div>
       </div>
@@ -105,22 +105,43 @@ export function GradeColunas({
 
 function Vazio() {
   return (
-    <p className="absolute inset-x-2 top-6 rounded-xl bg-[var(--pp-muted)] px-3 py-4 text-center text-sm font-semibold text-[var(--pp-ink-muted)]">
+    <p className="absolute inset-x-2 top-6 rounded-lg border border-dashed border-border px-3 py-4 text-center text-sm text-muted-foreground">
       Nada neste dia.
     </p>
   )
 }
 
-/** Cabeçalho de um dia: "Seg 12" com hoje em destaque. */
-export function CabecalhoDia({ data, hoje, extra }: { data: string; hoje: string; extra?: ReactNode }) {
+/** Cabeçalho de um dia: "SEG" e o número num círculo (hoje preenchido). */
+export function CabecalhoDia({ data, hoje, extra, vazio = false }: {
+  data: string
+  hoje: string
+  extra?: ReactNode
+  /** Dia sem grade nem sessão: avisa uma vez aqui, não em cada horário. */
+  vazio?: boolean
+}) {
   const ehHoje = data === hoje
   return (
-    <div className={`flex items-baseline justify-between gap-1 rounded-xl px-2 py-1.5 ${ehHoje ? `${tom("aco")} bg-[var(--c)] text-[var(--c-sobre)]` : ""}`}>
-      <span className="text-sm font-extrabold">
-        {DIAS_CURTOS[diaDaSemana(data)]} <span className="tabular-nums">{Number(data.slice(8, 10))}</span>
+    <div className="flex flex-col items-center gap-0.5 text-center">
+      <span className={`text-[11px] font-medium uppercase ${ehHoje ? "text-foreground" : "text-muted-foreground"}`}>
+        {DIAS_CURTOS[diaDaSemana(data)]}
+      </span>
+      <span className={`flex h-9 w-9 items-center justify-center rounded-full text-base tabular-nums ${
+        ehHoje ? "bg-primary font-semibold text-primary-foreground" : "text-foreground"}`}
+        aria-label={ehHoje ? "hoje" : undefined}>
+        {Number(data.slice(8, 10))}
       </span>
       {extra}
+      {vazio && <span className="text-[11px] text-muted-foreground">Sem atendimento</span>}
     </div>
+  )
+}
+
+/** Linha de feriado no cabeçalho da coluna. */
+export function AvisoFeriado({ nome }: { nome: string }) {
+  return (
+    <p className="mt-1 flex items-center justify-center gap-1 truncate text-[11px] font-medium text-muted-foreground" title={`Feriado: ${nome}`}>
+      <Lock className="h-3 w-3 shrink-0" aria-hidden /><span className="truncate">{nome}</span>
+    </p>
   )
 }
 
@@ -140,34 +161,36 @@ export function GradeMes({
 }) {
   return (
     <div>
-      <div className="grid grid-cols-7 gap-1.5 pb-1.5" aria-hidden>
-        {DIAS_CURTOS.map(d => <span key={d} className="px-1 text-xs font-extrabold text-[var(--pp-ink-muted)]">{d}</span>)}
+      <div className="grid grid-cols-7 border-b border-border" aria-hidden>
+        {DIAS_CURTOS.map(d => (
+          <span key={d} className="px-2 py-2 text-center text-[11px] font-medium uppercase text-muted-foreground">{d}</span>
+        ))}
       </div>
-      <div className="grid grid-cols-7 gap-1.5">
+      <div className="grid grid-cols-7">
         {semanas.flat().map(data => {
           const n = numeros.get(data)
           const fora = !data.startsWith(mes)
           const ehHoje = data === hoje
-          const fimDeSemana = [0, 6].includes(diaDaSemana(data))
-          const vazio = !n || (!n.agendados && !n.livres && !n.bloqueados && !n.reposicao)
+          const rotulo = `${data.split("-").reverse().join("/")}: ${n?.agendados ?? 0} agendados, ${n?.livres ?? 0} livres${n?.feriado ? `, feriado ${n.feriado}` : ""}. Abrir a semana`
           return (
-            <button key={data} type="button" onClick={() => onAbrirDia(data)}
-              aria-label={`${data.split("-").reverse().join("/")}: ${n?.agendados ?? 0} agendados, ${n?.livres ?? 0} livres${n?.feriado ? `, feriado ${n.feriado}` : ""}. Abrir a semana`}
-              className={`flex min-h-24 flex-col gap-1 rounded-[14px] p-1.5 text-left transition-shadow hover:shadow-[inset_0_0_0_2px_var(--pp-foco)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pp-foco)] md:min-h-28 md:p-2 ${
-                ehHoje ? `${tom("aco")} bg-[var(--c-suave)] shadow-[inset_0_0_0_2px_var(--c-medio)]`
-                : fora || (fimDeSemana && vazio) ? "bg-[var(--pp-muted)]/50 opacity-60" : "bg-[var(--pp-surface)] shadow-[inset_0_0_0_1px_var(--pp-border)]"}`}>
-              <span className="text-sm font-extrabold tabular-nums">{Number(data.slice(8, 10))}</span>
+            <button key={data} type="button" onClick={() => onAbrirDia(data)} aria-label={rotulo}
+              className={`flex min-h-24 flex-col gap-0.5 border-b border-r border-border p-1.5 text-left transition-colors hover:bg-muted/50 md:min-h-28 ${
+                fora ? "bg-muted/30 text-muted-foreground" : ""} ${foco}`}>
+              <span className={`flex h-7 w-7 items-center justify-center rounded-full text-sm tabular-nums ${
+                ehHoje ? "bg-primary font-semibold text-primary-foreground" : ""}`}>
+                {Number(data.slice(8, 10))}
+              </span>
               {n?.feriado && (
-                <span className="flex items-center gap-1 truncate text-[11px] font-bold text-[var(--pp-ink-muted)]">
+                <span className="flex items-center gap-1 truncate text-[11px] text-muted-foreground">
                   <Lock className="h-3 w-3 shrink-0" aria-hidden /><span className="truncate">{n.feriado}</span>
                 </span>
               )}
-              {n && !vazio && (
-                <span className="mt-auto flex flex-wrap gap-1">
-                  {n.agendados > 0 && <Chip t="aco" Icone={CalendarX2} valor={n.agendados} rotulo="agendados" />}
-                  {n.livres > 0 && <Chip t="teal" valor={n.livres} rotulo="livres" />}
-                  {n.bloqueados > 0 && <Chip t="cinza" Icone={Lock} valor={n.bloqueados} rotulo="bloqueados" />}
-                  {n.reposicao > 0 && <Chip t="vermelho" Icone={UserRoundX} valor={n.reposicao} rotulo="reposição" />}
+              {n && (
+                <span className="mt-auto space-y-0.5">
+                  {n.agendados > 0 && <Linha cor="bg-sky-500" valor={n.agendados} rotulo="agendados" />}
+                  {n.livres > 0 && <Linha cor="border border-dashed border-muted-foreground/60" valor={n.livres} rotulo="livres" />}
+                  {n.bloqueados > 0 && <Linha cor="bg-muted-foreground/40" valor={n.bloqueados} rotulo="bloq." />}
+                  {n.reposicao > 0 && <Linha cor="bg-rose-500" valor={n.reposicao} rotulo="reposição" destaque />}
                 </span>
               )}
             </button>
@@ -178,12 +201,12 @@ export function GradeMes({
   )
 }
 
-function Chip({ t, Icone, valor, rotulo }: { t: Parameters<typeof tom>[0]; Icone?: typeof Lock; valor: number; rotulo: string }) {
+function Linha({ cor, valor, rotulo, destaque = false }: { cor: string; valor: number; rotulo: string; destaque?: boolean }) {
   return (
-    <span className={`${tom(t)} inline-flex items-center gap-0.5 rounded-full bg-[var(--c-suave)] px-1.5 text-[11px] font-extrabold leading-5 text-[var(--c-tinta)]`} title={`${valor} ${rotulo}`}>
-      {Icone ? <Icone className="h-3 w-3" aria-hidden /> : <span aria-hidden>+</span>}
+    <span className={`flex items-center gap-1 text-[11px] leading-4 ${destaque ? "font-semibold text-rose-700 dark:text-rose-400" : "text-muted-foreground"}`}>
+      <span className={`h-2 w-2 shrink-0 rounded-full ${cor}`} aria-hidden />
       <span className="tabular-nums">{valor}</span>
-      <span className="sr-only"> {rotulo}</span>
+      <span className="hidden truncate sm:inline">{rotulo}</span>
     </span>
   )
 }

@@ -1,21 +1,28 @@
 "use client"
 
 import type { ReactNode } from "react"
-import { AlertTriangle, CalendarCheck2, CircleSlash, Gauge, Lock, Plus, UserRoundX, Users } from "lucide-react"
 import { AvatarProfissional } from "@/components/cadastros/profissionais/pecas"
-import { NumeroPastel, tom } from "@/components/ui/pastel/pecas"
-import { estiloTons } from "@/lib/cadastros/tonsTerapia"
 import { dataBR } from "@/lib/disponibilidadeProfissional"
 import type { ProfissionalGrade, ResumoGrade } from "@/types/grade"
+import { cartao } from "./estilo"
 
-// Topo da área principal — mesmo desenho do topo da ficha do profissional:
-// faixa fina na cor da terapia, nome em destaque e os números do período.
+// Resumo do período, numa linha: quem é (à esquerda) e os números (à direita),
+// no padrão do sistema — sem moldura colorida nem cartões grandes de número.
 
-function Moldura({ cor, children }: { cor: string | null; children: ReactNode }) {
+function Numero({ valor, rotulo, destaque }: { valor: ReactNode; rotulo: string; destaque?: "red" }) {
   return (
-    <section style={estiloTons(cor)} className="ua-tons pp @container relative overflow-hidden rounded-2xl border border-[var(--pp-border)] bg-[var(--pp-surface)] p-4 shadow-[var(--pp-sombra)] sm:p-5">
-      <span className="absolute inset-x-0 top-0 h-1.5 bg-[var(--t-500)]" aria-hidden />
-      {children}
+    <div className="min-w-[5.5rem] px-4 first:pl-0 sm:first:pl-4">
+      <p className={`text-xl font-bold leading-6 tabular-nums ${destaque === "red" ? "text-rose-700 dark:text-rose-400" : "text-foreground"}`}>{valor}</p>
+      <p className="text-xs text-muted-foreground">{rotulo}</p>
+    </div>
+  )
+}
+
+function Moldura({ esquerda, numeros }: { esquerda: ReactNode; numeros: ReactNode }) {
+  return (
+    <section className={`${cartao} flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between`}>
+      <div className="flex min-w-0 items-center gap-3">{esquerda}</div>
+      <div className="flex flex-wrap gap-y-2 divide-x divide-border">{numeros}</div>
     </section>
   )
 }
@@ -31,27 +38,26 @@ export function ResumoProfissional({
   periodo: string
 }) {
   return (
-    <Moldura cor={cor}>
-      <div className="flex flex-wrap items-center gap-4">
-        <AvatarProfissional icone={icone} cor={cor} fotoPath={p.foto_path} tamanho="lg" inativo={!p.ativo} />
-        <div className="min-w-0 flex-1">
-          <h2 className="truncate text-[22px] font-extrabold leading-7">{p.nome}</h2>
-          <p className="mt-1 flex flex-wrap gap-2">
-            {p.ativo
-              ? <span className={`${tom("verde")} pp-pilula h-7 pl-1.5 text-xs`}><span className="pp-pilula-bola size-5"><CalendarCheck2 className="h-3 w-3" aria-hidden /></span>Ativo</span>
-              : <span className={`${tom("vermelho")} pp-pilula h-7 pl-1.5 text-xs`}><span className="pp-pilula-bola size-5"><CircleSlash className="h-3 w-3" aria-hidden /></span>Saiu em {dataBR(p.data_saida)}</span>}
+    <Moldura
+      esquerda={<>
+        <AvatarProfissional icone={icone} cor={cor} fotoPath={p.foto_path} tamanho="sm" inativo={!p.ativo} />
+        <div className="min-w-0">
+          <h2 className="truncate text-base font-bold text-foreground">{p.nome}</h2>
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span className={`h-1.5 w-1.5 rounded-full ${p.ativo ? "bg-emerald-500" : "bg-rose-500"}`} aria-hidden />
+            {p.ativo ? "Ativo" : `Saiu em ${dataBR(p.data_saida)}`}
           </p>
         </div>
-      </div>
-      <div className="mt-4 grid gap-3 @lg:grid-cols-2 @3xl:grid-cols-4">
-        <NumeroPastel compacto t="teal" Icone={Plus} valor={resumo.disponiveis} rotulo={`vagas livres ${periodo}`} apagado={!resumo.disponiveis} />
-        <NumeroPastel compacto t="aco" Icone={CalendarCheck2} valor={resumo.agendados} rotulo={`agendados ${periodo}`} apagado={!resumo.agendados} />
-        <NumeroPastel compacto t="cinza" Icone={Lock} valor={resumo.bloqueados} rotulo="horários bloqueados" apagado={!resumo.bloqueados} />
+      </>}
+      numeros={<>
+        <Numero valor={resumo.disponiveis} rotulo={`livres ${periodo}`} />
+        <Numero valor={resumo.agendados} rotulo={`agendados ${periodo}`} />
+        <Numero valor={resumo.bloqueados} rotulo="bloqueados" />
         {resumo.reposicao > 0
-          ? <NumeroPastel compacto t="vermelho" Icone={UserRoundX} valor={resumo.reposicao} rotulo="precisam de reposição" />
-          : <NumeroPastel compacto t="verde" Icone={Gauge} valor={resumo.ocupacao == null ? "—" : `${Math.round(resumo.ocupacao * 100)}%`} rotulo="ocupação da grade" apagado={resumo.ocupacao == null} />}
-      </div>
-    </Moldura>
+          ? <Numero valor={resumo.reposicao} rotulo="reposição" destaque="red" />
+          : <Numero valor={resumo.ocupacao == null ? "—" : `${Math.round(resumo.ocupacao * 100)}%`} rotulo="ocupação" />}
+      </>}
+    />
   )
 }
 
@@ -69,18 +75,22 @@ export function ResumoPaciente({
   semDisponibilidade: boolean
 }) {
   return (
-    <Moldura cor={null}>
-      <h2 className="truncate text-[22px] font-extrabold leading-7">{nome}</h2>
-      <p className="mt-1 text-sm font-semibold text-[var(--pp-ink-muted)]">
-        {convenio ?? "Convênio não informado"}
-        {semDisponibilidade && " · disponibilidade da família não informada"}
-      </p>
-      <div className="mt-4 grid gap-3 @lg:grid-cols-2 @3xl:grid-cols-4">
-        <NumeroPastel compacto t="aco" Icone={CalendarCheck2} valor={sessoes} rotulo={`sessões ${periodo}`} apagado={!sessoes} />
-        <NumeroPastel compacto t="azul" Icone={Users} valor={profissionais} rotulo="profissionais" apagado={!profissionais} />
-        <NumeroPastel compacto t="vermelho" Icone={UserRoundX} valor={reposicao} rotulo="precisam de reposição" apagado={!reposicao} />
-        <NumeroPastel compacto t="amber" Icone={AlertTriangle} valor={foraDaJanela} rotulo="fora da disponibilidade da família" apagado={!foraDaJanela} />
-      </div>
-    </Moldura>
+    <Moldura
+      esquerda={
+        <div className="min-w-0">
+          <h2 className="truncate text-base font-bold text-foreground">{nome}</h2>
+          <p className="text-xs text-muted-foreground">
+            {convenio ?? "Convênio não informado"}
+            {semDisponibilidade && " · disponibilidade da família não informada"}
+          </p>
+        </div>
+      }
+      numeros={<>
+        <Numero valor={sessoes} rotulo={`sessões ${periodo}`} />
+        <Numero valor={profissionais} rotulo="profissionais" />
+        <Numero valor={reposicao} rotulo="reposição" destaque={reposicao > 0 ? "red" : undefined} />
+        <Numero valor={foraDaJanela} rotulo="fora da janela" />
+      </>}
+    />
   )
 }

@@ -3,14 +3,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
-  CalendarPlus, ChevronLeft, ChevronRight, CloudDownload, Database, History, Lock, Stethoscope, UserRound, Users,
+  AlertCircle, CalendarPlus, ChevronLeft, ChevronRight, CloudDownload, Database, History, Loader2, Lock, Stethoscope, Users,
 } from "lucide-react"
 import toast from "react-hot-toast"
-import { foco } from "@/components/cadastros/pacientes/ui/campos"
+import { campo } from "@/components/cadastros/pacientes/ui/campos"
 import { InlineNotice } from "@/components/cronograma/ui/InlineNotice"
 import { Drawer } from "@/components/cronograma/ui/Drawer"
 import { DatePicker } from "@/components/ui/date-picker"
-import { tom } from "@/components/ui/pastel/pecas"
 import { useHeader } from "@/contexts/HeaderContext"
 import { useCadastroTerapias } from "@/hooks/useCadastroTerapias"
 import { useDadosPeriodo, useGradeBase } from "@/hooks/useGrade"
@@ -31,7 +30,8 @@ import { PainelRegistro } from "./PainelRegistro"
 import {
   BlocoHorario, CartaoSessao, Legenda, TOM_ESTADO, grupoDoEstado, janelaDeTempo, minutos, type FiltroEstados, type ItemColuna,
 } from "./pecas"
-import { CabecalhoDia, GradeColunas, GradeMes, type ColunaGrade, type NumerosDia } from "./visoes"
+import { AvisoFeriado, CabecalhoDia, GradeColunas, GradeMes, type ColunaGrade, type NumerosDia } from "./visoes"
+import { btnIcone, btnPrimario, btnSecundario, cartao, seletorOpcao, seletorTrilha } from "./estilo"
 
 // Grade — agenda própria do Pulsar (docs/PLANO_GRADE_CRONOGRAMA.md).
 //
@@ -52,6 +52,7 @@ type Painel =
   | { tipo: "importar" }
   | { tipo: "registro" }
   | { tipo: "lista" }
+  | { tipo: "horario"; h: HorarioGrade; profissionalId: number }
   | null
 
 const ehData = (s: string | null): s is string => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s)
@@ -130,26 +131,24 @@ export function GradeShell() {
   const profSel = visao === "profissional" && id ? profPorId.get(id) ?? null : null
   useEffect(() => {
     const imp = base.importacao
-    // Mesma tipografia e moldura dos botões do header em /cadastros/profissionais
-    // (fonte padrão do Pulsar: text-sm semibold, não o kit pastel).
-    const secundario = `inline-flex h-9 shrink-0 items-center gap-2 rounded-md border border-border px-2.5 text-sm font-semibold text-foreground hover:bg-muted ${foco}`
+    // Mesmos botões do header de /cadastros/profissionais (design padrão).
     setRightContent(
       <div className="flex flex-wrap items-center justify-end gap-2">
         <button type="button" onClick={() => setPainel({ tipo: "registro" })} title="Registro de alterações" aria-label="Registro de alterações"
-          className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border text-foreground hover:bg-muted ${foco}`}>
+          className={btnIcone}>
           <History className="h-4 w-4" aria-hidden />
         </button>
         <button type="button" onClick={() => setPainel({ tipo: "bloqueio-novo", inicial: { profissionalId: profSel?.id ?? null, data } })}
-          className={secundario} title="Bloquear horário de um profissional">
+          className={btnSecundario} title="Bloquear horário de um profissional" aria-label="Bloquear horário">
           <Lock className="h-4 w-4" aria-hidden /><span className="hidden xl:inline">Bloquear</span>
         </button>
-        <button type="button" onClick={() => setPainel({ tipo: "importar" })}
+        <button type="button" onClick={() => setPainel({ tipo: "importar" })} aria-label="Importar do TiTa"
           title={imp?.aplicada_em ? `Última importação: ${new Date(imp.aplicada_em).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" })}${imp.aplicada_por_nome ? ` por ${imp.aplicada_por_nome}` : ""}` : "Nenhuma importação ainda"}
-          className={secundario}>
+          className={btnSecundario}>
           <CloudDownload className="h-4 w-4" aria-hidden /><span className="hidden xl:inline">Importar do TiTa</span>
         </button>
         <button type="button" onClick={() => setPainel({ tipo: "novo", inicial: { profissionalId: profSel?.id ?? null, pacienteId: visao === "paciente" ? id : null, data } })}
-          className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-md bg-primary px-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 ${foco}`}>
+          className={btnPrimario} aria-label="Novo agendamento">
           <CalendarPlus className="h-4 w-4" aria-hidden /><span className="hidden sm:inline">Novo agendamento</span>
         </button>
       </div>
@@ -181,7 +180,8 @@ export function GradeShell() {
           <BlocoHorario h={h} altura={altura} corDe={corDe}
             onSessao={a => abrirSessao(a, h.estado === "fora_da_grade")}
             onLivre={h.data >= hoje ? hh => abrirLivre(hh, profissionalId) : undefined}
-            onFechado={hh => abrirFechado(hh, bloqueios)} />
+            onFechado={hh => abrirFechado(hh, bloqueios)}
+            onVerTodos={hh => setPainel({ tipo: "horario", h: hh, profissionalId })} />
         ),
       })), [ocultos, corDe, abrirSessao, abrirLivre, abrirFechado, hoje])
 
@@ -243,14 +243,17 @@ export function GradeShell() {
         if (!dia || !dia.horarios.length) continue
         todosDias.push(dia)
         const f = focal(p)
+        const primeiro = p.nome.split(" ")[0]
+        // Aba do celular: primeiro nome, ou primeiro + último quando houver xará.
+        const xara = base.profissionais.some(o => o.id !== p.id && o.nome.split(" ")[0] === primeiro)
         colunas.push({
           chave: String(p.id),
-          aba: p.nome.split(" ")[0],
+          aba: xara ? `${primeiro} ${p.nome.split(" ").slice(-1)[0]}` : primeiro,
           cabecalho: (
             <button type="button" onClick={() => ir({ id: p.id, periodo: "semana" })} title={`Abrir a semana de ${p.nome}`}
-              className="flex w-full min-w-0 items-center gap-2 rounded-xl px-1.5 py-1 text-left hover:bg-[var(--pp-muted)]">
-              <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: f.cor ?? "var(--pp-border-strong)" }} aria-hidden />
-              <span className="truncate text-sm font-extrabold">{p.nome}</span>
+              className="flex w-full min-w-0 items-center gap-2 rounded-md px-1.5 py-1 text-left hover:bg-muted">
+              <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: f.cor ?? "var(--border)" }} aria-hidden />
+              <span className="truncate text-sm font-medium text-foreground">{p.nome}</span>
             </button>
           ),
           itens: itensDoDia(dia, p.id, dadosSemana.bloqueios),
@@ -275,11 +278,11 @@ export function GradeShell() {
       const colunas: ColunaGrade[] = dias.map(d => ({
         chave: d.data,
         aba: `${DIAS_CURTOS[diaDaSemana(d.data)]} ${Number(d.data.slice(8, 10))}`,
-        cabecalho: <CabecalhoDia data={d.data} hoje={hoje} extra={d.feriado ? <Lock className="h-3.5 w-3.5" aria-label={`Feriado: ${d.feriado.nome}`} /> : null} />,
+        cabecalho: <CabecalhoDia data={d.data} hoje={hoje} vazio={!d.horarios.length && !d.feriado} />,
         itens: itensDoDia(d, profSel.id, dadosSemana.bloqueios),
         estreita: [0, 6].includes(diaDaSemana(d.data)) && !d.horarios.length,
         destaque: d.data === hoje,
-        aviso: d.feriado && !d.horarios.length ? <AvisoFeriado nome={d.feriado.nome} /> : null,
+        aviso: d.feriado ? <AvisoFeriado nome={d.feriado.nome} /> : null,
       }))
       return { tipo: "colunas" as const, colunas, dias, resumo: resumir(dias) }
     }
@@ -310,7 +313,7 @@ export function GradeShell() {
           chave: a.id, ini: minutos(a.hora_inicio), fim: minutos(a.hora_fim),
           conteudo: (altura: number) => (
             <CartaoSessao a={a} cor={corDe(a.terapia_id)} titulo={a.profissional_nome} linhas={altura >= 70 ? 3 : altura >= 44 ? 2 : 1}
-              alerta={rep ? { t: "vermelho", rotulo: "reposição" } : fora ? { t: "amber", rotulo: "fora da janela" } : null}
+              alerta={rep ? { t: "red", rotulo: "reposição" } : fora ? { t: "amber", rotulo: "fora da janela" } : null}
               onClick={() => abrirSessao(a)} />
           ),
         }))
@@ -318,7 +321,7 @@ export function GradeShell() {
       return {
         chave: d,
         aba: `${DIAS_CURTOS[diaDaSemana(d)]} ${Number(d.slice(8, 10))}`,
-        cabecalho: <CabecalhoDia data={d} hoje={hoje} extra={fer ? <Lock className="h-3.5 w-3.5" aria-label={`Feriado: ${fer.nome}`} /> : null} />,
+        cabecalho: <CabecalhoDia data={d} hoje={hoje} vazio={!s.length && !fer} />,
         itens,
         fundo: janela ? [{ ini: minutos(janela.inicio), fim: minutos(janela.fim), rotulo: `Família disponível ${janela.inicio}–${janela.fim}` }] : undefined,
         estreita: periodo === "semana" && [0, 6].includes(diaDaSemana(d)) && !s.length,
@@ -336,13 +339,18 @@ export function GradeShell() {
     return janelaDeTempo(intervalos)
   }, [conteudo])
 
-  // Contagens da legenda (no que está na tela).
+  // Contagens da legenda (no que está na tela), na mesma unidade do resumo:
+  // vagas livres (grupo de 3 vazio = 3) e sessões; bloqueado conta horários.
   const contagens = useMemo(() => {
     const c: Partial<Record<keyof typeof TOM_ESTADO, number>> = { disponivel: 0, agendado: 0, bloqueado: 0, fora_da_grade: 0, inativo: 0 }
     if ("dias" in conteudo && conteudo.dias?.length) {
       for (const d of conteudo.dias) for (const h of d.horarios) {
         const g = grupoDoEstado(h.estado)
-        c[g] = (c[g] ?? 0) + (g === "disponivel" || g === "bloqueado" ? 1 : h.ocupados.length)
+        if (g === "bloqueado") c.bloqueado = (c.bloqueado ?? 0) + 1
+        else c[g] = (c[g] ?? 0) + h.ocupados.length
+        if (h.estado === "disponivel" || h.estado === "parcial") {
+          c.disponivel = (c.disponivel ?? 0) + Math.max(0, h.capacidade - h.ocupados.length)
+        }
       }
     } else if ("sessoes" in conteudo && conteudo.sessoes) {
       for (const a of conteudo.sessoes) {
@@ -378,52 +386,56 @@ export function GradeShell() {
   const carregando = base.carregando || dadosSemana.carregando || (periodo === "mes" && dadosMes.carregando)
   const resumoPeriodo = periodo === "dia" ? "no dia" : periodo === "semana" ? "na semana" : "no mês"
 
+  // Profissional escolhido sem nenhuma faixa de disponibilidade no período: a
+  // grade só mostraria "fora da grade" sem explicar por quê.
+  const semDisponibilidade = conteudo.tipo === "colunas" && visao === "profissional" && periodo !== "dia" && !!profSel
+    && conteudo.dias.length > 0
+    && conteudo.dias.every(d => !d.horarios.some(h => h.estado !== "fora_da_grade" && h.estado !== "inativo"))
+    && !(profSel.data_saida && profSel.data_saida <= semana[0])
+
   return (
-    <div className="pp mx-auto w-full max-w-[1600px] px-4 py-5">
+    <div className="mx-auto w-full max-w-[1600px] px-4 py-6">
       {erro && (
-        <div role="alert" className="mb-4">
-          <InlineNotice tone="red" icon={<Database className="h-4 w-4" />}>{erro}</InlineNotice>
+        <div role="alert" className="mb-4 flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          <span>{erro}</span>
         </div>
       )}
 
-      <div className="flex gap-5">
+      <div className="flex gap-4">
         {/* Lista à esquerda (tela larga) */}
-        <aside className="sticky top-4 hidden h-[calc(100vh-8rem)] w-80 shrink-0 lg:block" aria-label={visao === "profissional" ? "Profissionais" : "Pacientes"}>
+        <aside className="sticky top-0 hidden h-[calc(100vh-9rem)] w-72 shrink-0 lg:block" aria-label={visao === "profissional" ? "Profissionais" : "Pacientes"}>
           {lista}
         </aside>
 
-        <main className="min-w-0 flex-1 space-y-4">
-          {/* Barra: visão, período, navegação */}
+        <main className="min-w-0 flex-1 space-y-3">
+          {/* Barra: visão, período, navegação — mesmo vocabulário do header */}
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex rounded-full bg-[var(--pp-muted)] p-1" role="tablist" aria-label="Visão">
-              {([["profissional", "Por Profissional", Stethoscope], ["paciente", "Por Paciente", UserRound]] as const).map(([v, r, I]) => (
+            <div className={seletorTrilha} role="tablist" aria-label="Visão">
+              {([["profissional", "Por profissional"], ["paciente", "Por paciente"]] as const).map(([v, r]) => (
                 <button key={v} type="button" role="tab" aria-selected={visao === v} onClick={() => ir({ visao: v, id: null })}
-                  className={`flex min-h-11 items-center gap-2 rounded-full px-4 text-sm font-extrabold transition-colors ${visao === v ? `${tom("aco")} bg-[var(--c)] text-[var(--c-sobre)]` : "text-[var(--pp-ink-muted)] hover:text-[var(--pp-ink)]"}`}>
-                  <I className="h-4 w-4" aria-hidden />{r}
-                </button>
+                  className={seletorOpcao(visao === v)}>{r}</button>
               ))}
             </div>
-            <div className="flex rounded-full bg-[var(--pp-muted)] p-1" role="tablist" aria-label="Período">
+            <div className={seletorTrilha} role="tablist" aria-label="Período">
               {PERIODOS.map(p => (
                 <button key={p.valor} type="button" role="tab" aria-selected={periodo === p.valor} onClick={() => ir({ periodo: p.valor })}
-                  className={`min-h-11 rounded-full px-4 text-sm font-extrabold transition-colors ${periodo === p.valor ? `${tom("aco")} bg-[var(--c)] text-[var(--c-sobre)]` : "text-[var(--pp-ink-muted)] hover:text-[var(--pp-ink)]"}`}>
-                  {p.rotulo}
-                </button>
+                  className={seletorOpcao(periodo === p.valor)}>{p.rotulo}</button>
               ))}
             </div>
-            <div className="flex items-center gap-1">
-              <button type="button" onClick={() => navegar(-1)} className="pp-iconbtn h-11 w-11" aria-label="Anterior"><ChevronLeft className="h-5 w-5" aria-hidden /></button>
-              <button type="button" onClick={() => ir({ data: hoje })} className={`${tom("aco")} pp-btn pp-btn-suave min-h-11 px-4`}>Hoje</button>
-              <button type="button" onClick={() => navegar(1)} className="pp-iconbtn h-11 w-11" aria-label="Próximo"><ChevronRight className="h-5 w-5" aria-hidden /></button>
-            </div>
-            <div className="w-40"><DatePicker value={data} onChange={v => v && ir({ data: v })} classeGatilho="h-11" /></div>
-            <p className="min-w-0 text-[16px] font-extrabold" aria-live="polite">{rotuloPeriodo}</p>
-            {carregando && <span className="text-xs font-semibold text-[var(--pp-ink-muted)]">Carregando…</span>}
+            <span className="mx-1 hidden h-6 w-px bg-border sm:block" aria-hidden />
+            <button type="button" onClick={() => ir({ data: hoje })} className={btnSecundario}>Hoje</button>
+            <button type="button" onClick={() => navegar(-1)} className={btnIcone} aria-label="Período anterior"><ChevronLeft className="h-4 w-4" aria-hidden /></button>
+            <button type="button" onClick={() => navegar(1)} className={btnIcone} aria-label="Próximo período"><ChevronRight className="h-4 w-4" aria-hidden /></button>
+            <div className="w-36"><DatePicker value={data} onChange={v => v && ir({ data: v })} classeGatilho="h-9" /></div>
+            <p className="flex min-w-0 items-center gap-2 text-base font-semibold text-foreground" aria-live="polite">
+              <span className="truncate">{rotuloPeriodo}</span>
+              {carregando && <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" aria-label="Carregando" />}
+            </p>
           </div>
 
           {/* Escolher (celular) */}
-          <button type="button" onClick={() => setPainel({ tipo: "lista" })}
-            className={`${tom("aco")} pp-btn pp-btn-suave min-h-11 w-full justify-between lg:hidden`}>
+          <button type="button" onClick={() => setPainel({ tipo: "lista" })} className={`${btnSecundario} w-full justify-between lg:hidden`}>
             <span className="flex min-w-0 items-center gap-2">
               {visao === "profissional" ? <Stethoscope className="h-4 w-4" aria-hidden /> : <Users className="h-4 w-4" aria-hidden />}
               <span className="truncate">{profSel?.nome ?? pacSel?.nome ?? (visao === "profissional" ? "Escolher profissional" : "Escolher paciente")}</span>
@@ -447,47 +459,76 @@ export function GradeShell() {
           {conteudo.tipo !== "escolher" && conteudo.tipo !== "mes" && <Legenda contagens={contagens} ocultos={ocultos}
             onAlternar={k => setOcultos(prev => { const n = new Set(prev); if (n.has(k)) n.delete(k); else n.add(k); return n })} />}
 
-          <section className="rounded-2xl border border-[var(--pp-border)] bg-[var(--pp-surface)] p-3 shadow-[var(--pp-sombra)] sm:p-4" aria-label="Grade">
-            {conteudo.tipo === "escolher" ? (
-              <div className="flex flex-col items-center gap-2 px-4 py-14 text-center">
-                {visao === "profissional" ? <Stethoscope className="h-9 w-9 text-[var(--pp-ink-muted)]" aria-hidden /> : <Users className="h-9 w-9 text-[var(--pp-ink-muted)]" aria-hidden />}
-                <p className="text-base font-extrabold">{visao === "profissional" ? "Escolha um profissional na lista" : "Escolha um paciente na lista"}</p>
-                <p className="max-w-md text-sm font-semibold text-[var(--pp-ink-muted)]">
-                  {visao === "profissional"
-                    ? "A grade de cada profissional vem da Disponibilidade do cadastro. Em “Dia”, todos aparecem lado a lado."
-                    : "Mostra as sessões do paciente com todos os profissionais e a disponibilidade que a família informou."}
-                </p>
-              </div>
-            ) : conteudo.tipo === "mes" ? (
-              <GradeMes semanas={semanasMes} mes={data.slice(0, 7)} hoje={hoje} numeros={conteudo.numeros}
-                onAbrirDia={d => ir({ data: d, periodo: "semana" })} />
-            ) : (
-              <>
-                {visao === "profissional" && periodo === "dia" && (
-                  <input type="text" value={filtroDia} onChange={e => setFiltroDia(e.target.value)} placeholder="Filtrar profissionais do dia"
-                    aria-label="Filtrar profissionais do dia" className="mb-3 h-11 w-full max-w-xs rounded-xl border border-[var(--pp-border)] bg-[var(--pp-surface)] px-3 text-sm" />
-                )}
-                {conteudo.colunas.length ? (
-                  <GradeColunas colunas={conteudo.colunas} janela={janela} abaInicial={hoje}
-                    larguraMin={visao === "profissional" && periodo === "dia" ? 150 : 128}
-                    rotuloAbas={periodo === "dia" && visao === "profissional" ? "Profissionais do dia" : "Dias da semana"} />
-                ) : (
-                  <p className="px-4 py-14 text-center text-sm font-semibold text-[var(--pp-ink-muted)]">
-                    {visao === "profissional" && periodo === "dia"
-                      ? `Ninguém com grade ou sessão em ${dataBR(data)}.`
-                      : "Nada neste período."}
-                  </p>
-                )}
-              </>
-            )}
-          </section>
+          {semDisponibilidade && (
+            <InlineNotice tone="amber" icon={<CalendarPlus className="h-4 w-4" />}>
+              {profSel?.nome} não tem Disponibilidade cadastrada nesta semana, então a Grade não sabe quais horários estão livres.
+              Cadastre em Cadastros → Profissionais → Disponibilidade.
+            </InlineNotice>
+          )}
+
+          {conteudo.tipo === "escolher" ? (
+            <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border bg-card px-6 py-14 text-center">
+              {visao === "profissional" ? <Stethoscope className="h-9 w-9 text-muted-foreground" aria-hidden /> : <Users className="h-9 w-9 text-muted-foreground" aria-hidden />}
+              <h2 className="text-base font-bold text-foreground">{visao === "profissional" ? "Escolha um profissional na lista" : "Escolha um paciente na lista"}</h2>
+              <p className="max-w-md text-sm text-muted-foreground">
+                {visao === "profissional"
+                  ? "A grade de cada profissional vem da Disponibilidade do cadastro. Em “Dia”, todos aparecem lado a lado."
+                  : "Mostra as sessões do paciente com todos os profissionais e a disponibilidade que a família informou."}
+              </p>
+            </div>
+          ) : (
+            <section className={`${cartao} overflow-hidden`} aria-label="Grade">
+              {conteudo.tipo === "mes" ? (
+                <GradeMes semanas={semanasMes} mes={data.slice(0, 7)} hoje={hoje} numeros={conteudo.numeros}
+                  onAbrirDia={d => ir({ data: d, periodo: "semana" })} />
+              ) : (
+                <>
+                  {visao === "profissional" && periodo === "dia" && (
+                    <div className="border-b border-border p-2">
+                      <input type="text" value={filtroDia} onChange={e => setFiltroDia(e.target.value)} placeholder="Filtrar profissionais do dia"
+                        aria-label="Filtrar profissionais do dia" className={`${campo} h-9 max-w-xs`} />
+                    </div>
+                  )}
+                  {conteudo.colunas.length ? (
+                    <GradeColunas colunas={conteudo.colunas} janela={janela} abaInicial={hoje}
+                      larguraMin={visao === "profissional" && periodo === "dia" ? 150 : 128}
+                      rotuloAbas={periodo === "dia" && visao === "profissional" ? "Profissionais do dia" : "Dias da semana"} />
+                  ) : (
+                    <p className="px-4 py-16 text-center text-sm text-muted-foreground">
+                      {visao === "profissional" && periodo === "dia"
+                        ? `Ninguém com grade ou sessão em ${dataBR(data)}.`
+                        : "Nada neste período."}
+                    </p>
+                  )}
+                </>
+              )}
+            </section>
+          )}
         </main>
       </div>
 
       {/* Painéis */}
       {painel?.tipo === "lista" && (
         <Drawer title={visao === "profissional" ? "Profissionais" : "Pacientes"} width={400} onClose={() => setPainel(null)}>
-          <div className="pp h-[calc(100vh-9rem)]">{lista}</div>
+          <div className="h-[calc(100vh-9rem)]">{lista}</div>
+        </Drawer>
+      )}
+      {painel?.tipo === "horario" && (
+        <Drawer title={`${rotuloDia(painel.h.data)} · ${painel.h.inicio}–${painel.h.fim}`}
+          subtitle={`${painel.h.ocupados.length} de ${painel.h.capacidade} vaga${painel.h.capacidade === 1 ? "" : "s"} ocupada${painel.h.ocupados.length === 1 ? "" : "s"}`}
+          width={420} onClose={() => setPainel(null)}>
+          <ul className="space-y-2">
+            {painel.h.ocupados.map(a => (
+              <li key={a.id} className="h-14">
+                <CartaoSessao a={a} cor={corDe(a.terapia_id)} titulo={a.paciente_nome} linhas={2} onClick={() => abrirSessao(a)} />
+              </li>
+            ))}
+          </ul>
+          {painel.h.ocupados.length < painel.h.capacidade && painel.h.data >= hoje && !painel.h.fechado && (
+            <button type="button" onClick={() => abrirLivre(painel.h, painel.profissionalId)} className={`${btnSecundario} mt-3 w-full`}>
+              <CalendarPlus className="h-4 w-4" aria-hidden />Agendar mais um neste horário
+            </button>
+          )}
         </Drawer>
       )}
       {painel?.tipo === "sessao" && (
@@ -513,13 +554,5 @@ export function GradeShell() {
           paciente={pacSel ? { id: pacSel.id_paciente, nome: pacSel.nome } : null} />
       )}
     </div>
-  )
-}
-
-function AvisoFeriado({ nome }: { nome: string }) {
-  return (
-    <p className={`${tom("cinza")} flex items-center gap-1 rounded-lg bg-[var(--c-suave)] px-2 py-1 text-[11px] font-extrabold text-[var(--c-tinta)]`}>
-      <Lock className="h-3 w-3 shrink-0" aria-hidden /><span className="truncate">{nome}</span>
-    </p>
   )
 }

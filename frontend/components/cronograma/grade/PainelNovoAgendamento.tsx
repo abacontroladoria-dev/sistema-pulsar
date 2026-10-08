@@ -5,8 +5,8 @@ import { AlertTriangle, CalendarPlus, CheckCircle2, Info, Loader2, Repeat } from
 import toast from "react-hot-toast"
 import { CampoSelect, campo, rotulo } from "@/components/cadastros/pacientes/ui/campos"
 import { Drawer } from "@/components/cronograma/ui/Drawer"
+import { TONE_SOFT } from "@/components/cronograma/ui/tones"
 import { DatePicker } from "@/components/ui/date-picker"
-import { avisoFeito, tom } from "@/components/ui/pastel/pecas"
 import { dataBR, hojeBrasilia } from "@/lib/disponibilidadeProfissional"
 import { exibicaoSugerida } from "@/lib/grade/exibicao"
 import { DIAS_NOMES, ROTULO_CONFLITO, diaDaSemana, foraDaJanelaDoPaciente, janelaDoPaciente, montarDia, rotuloVagas } from "@/lib/grade/motor"
@@ -15,6 +15,7 @@ import {
 } from "@/services/grade.service"
 import type { DisponibilidadePacienteGrade, HorarioGrade, PayloadAgendamento, ProfissionalGrade, SimulacaoData } from "@/types/grade"
 import type { CadastroTerapia } from "@/types/terapia"
+import { aviso, btnPrimario, btnSecundario, opcaoForm } from "./estilo"
 
 // "Novo agendamento" (painel lateral). Grava SÓ no Pulsar. Os horários
 // oferecidos são os livres da disponibilidade do profissional naquele dia; a
@@ -160,7 +161,7 @@ export function PainelNovoAgendamento({
     setSalvando(true)
     try {
       const r = await criar(payload)
-      avisoFeito(r.criadas === 1 ? "Sessão agendada" : `${r.criadas} sessões agendadas`)
+      toast.success(r.criadas === 1 ? "Sessão agendada" : `${r.criadas} sessões agendadas`)
       if (r.puladas.length) toast(`${r.puladas.length} data(s) pulada(s) — ver o Registro de alterações.`, { icon: "ℹ️", duration: 6000 })
       onCriado()
       onFechar()
@@ -176,6 +177,7 @@ export function PainelNovoAgendamento({
   const opcoesExib = useMemo(() => catalogo.filter(t => t.ativo || t.id === exibicaoId).map(t => ({ valor: String(t.id), rotulo: t.nome })), [catalogo, exibicaoId])
   const dia = DIAS_NOMES[diaDaSemana(data)].toLowerCase()
   const nesteDia = `${[0, 6].includes(diaDaSemana(data)) ? "neste" : "nesta"} ${dia}`
+  const tomPrevia = TONE_SOFT[erroSim ? "red" : oks.length ? "green" : "amber"]
 
   return (
     <Drawer
@@ -185,15 +187,15 @@ export function PainelNovoAgendamento({
       onClose={onFechar}
       footer={
         <>
-          <button type="button" onClick={onFechar} className={`${tom("cinza")} pp-btn pp-btn-suave min-h-11`}>Cancelar</button>
-          <button type="button" onClick={salvar} disabled={!payload || !oks.length || salvando || simulando} className={`${tom("verde")} pp-btn min-h-11`}>
+          <button type="button" onClick={onFechar} className={btnSecundario}>Cancelar</button>
+          <button type="button" onClick={salvar} disabled={!payload || !oks.length || salvando || simulando} className={btnPrimario}>
             {salvando ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <CalendarPlus className="h-4 w-4" aria-hidden />}
             {oks.length > 1 ? `Agendar ${oks.length} sessões` : "Agendar"}
           </button>
         </>
       }
     >
-      <div className="pp space-y-4">
+      <div className="space-y-4">
         <CampoSelect label="Profissional" value={profId ? String(profId) : null} onChange={v => setProfId(v ? Number(v) : null)} disabled={false} opcoes={opcoesProf} vazio="Escolha o profissional" />
         <CampoSelect label="Paciente" value={pacId ? String(pacId) : null} onChange={v => setPacId(v ? Number(v) : null)} disabled={!pacientes} opcoes={opcoesPac} vazio={pacientes ? "Escolha o paciente" : "Carregando pacientes…"} />
 
@@ -205,11 +207,11 @@ export function PainelNovoAgendamento({
         <div>
           <span className={rotulo}>Horário livre</span>
           {!profId ? (
-            <p className="mt-1 text-sm font-semibold text-[var(--pp-ink-muted)]">Escolha o profissional para ver os horários.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Escolha o profissional para ver os horários.</p>
           ) : horarios === null ? (
-            <p className="mt-1 flex items-center gap-2 text-sm text-[var(--pp-ink-muted)]"><Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Lendo a disponibilidade…</p>
+            <p className="mt-1 flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Lendo a disponibilidade…</p>
           ) : !horarios.length ? (
-            <p className={`${tom("amber")} mt-1 rounded-xl bg-[var(--c-suave)] px-3 py-2 text-sm font-semibold text-[var(--c-tinta)]`}>
+            <p className={`${aviso("amber")} mt-1`}>
               Nenhum horário livre {nesteDia}. A grade vem da Disponibilidade do cadastro do profissional.
             </p>
           ) : (
@@ -218,9 +220,9 @@ export function PainelNovoAgendamento({
                 const k = `${h.inicio}|${h.fim}`
                 return (
                   <button key={k} type="button" role="radio" aria-checked={horario === k} onClick={() => setHorario(k)}
-                    className={`${tom("teal")} pp-pilula min-h-11 pl-3 tabular-nums ${horario === k ? "!bg-[var(--c)] !text-[var(--c-sobre)]" : ""}`}
+                    className={`${opcaoForm(horario === k)} min-h-11 tabular-nums`}
                     title={rotuloVagas(h)}>
-                    {h.inicio}–{h.fim}{h.capacidade > 1 && <span className="text-xs">· {rotuloVagas(h)}</span>}
+                    {h.inicio}–{h.fim}{h.capacidade > 1 && <span className="text-xs text-muted-foreground">· {rotuloVagas(h)}</span>}
                   </button>
                 )
               })}
@@ -234,14 +236,14 @@ export function PainelNovoAgendamento({
               opcoes={terapiasDoSlot.map(t => ({ valor: String(t.id), rotulo: t.nome }))} vazio="Escolha a terapia" />
             <CampoSelect label="Terapia de exibição" value={exibicaoId ? String(exibicaoId) : null} onChange={v => setExibicaoId(v ? Number(v) : null)} disabled={!terapiaId}
               opcoes={opcoesExib} vazio="Igual à terapia" />
-            <p className="text-xs font-semibold text-[var(--pp-ink-muted)] sm:col-span-2">
+            <p className="text-xs text-muted-foreground sm:col-span-2">
               Sala: {slot.local ? [slot.local.nome, slot.local.unidade].filter(Boolean).join(" · ") : "—"} (vem da disponibilidade)
             </p>
           </div>
         )}
 
         {foraJanela && (
-          <p className={`${tom("amber")} flex items-start gap-2 rounded-xl bg-[var(--c-suave)] px-3 py-2 text-sm font-semibold text-[var(--c-tinta)]`}>
+          <p className={aviso("amber")}>
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
             {janela ? `Fora da disponibilidade da família ${nesteDia} (${janela.inicio}–${janela.fim}).` : `A família não informou disponibilidade ${nesteDia}.`}
           </p>
@@ -256,16 +258,16 @@ export function PainelNovoAgendamento({
               ["quinzenal", "A cada 2 semanas"],
               ["personalizado", "Personalizado"],
             ] as [Repeticao, string][]).map(([v, r]) => (
-              <button key={v} type="button" aria-pressed={repeticao === v} onClick={() => setRepeticao(v)} className={`${tom("aco")} pp-pilula min-h-11 pl-3`}>
+              <button key={v} type="button" aria-pressed={repeticao === v} onClick={() => setRepeticao(v)} className={`${opcaoForm(repeticao === v)} min-h-11`}>
                 {v === "semanal" && <Repeat className="h-3.5 w-3.5" aria-hidden />}{r}
               </button>
             ))}
           </div>
           {repeticao === "personalizado" && (
-            <label className="flex items-center gap-2 text-sm font-semibold">
+            <label className="flex items-center gap-2 text-sm text-foreground">
               A cada
               <input type="number" min={1} max={8} value={intervalo} onChange={e => setIntervalo(Math.min(8, Math.max(1, Number(e.target.value) || 1)))}
-                className={`${campo} h-11 w-20 text-center`} aria-label="Intervalo em semanas" />
+                className={`${campo} h-9 w-20 text-center`} aria-label="Intervalo em semanas" />
               semanas
             </label>
           )}
@@ -276,19 +278,19 @@ export function PainelNovoAgendamento({
             <legend className={rotulo}>Término</legend>
             <div className="flex flex-wrap gap-1.5">
               {([["continuo", "Sem término (contínuo)"], ["data", "Em uma data"], ["sessoes", "Após N sessões"]] as [Termino, string][]).map(([v, r]) => (
-                <button key={v} type="button" aria-pressed={termino === v} onClick={() => setTermino(v)} className={`${tom("aco")} pp-pilula min-h-11 pl-3`}>{r}</button>
+                <button key={v} type="button" aria-pressed={termino === v} onClick={() => setTermino(v)} className={`${opcaoForm(termino === v)} min-h-11`}>{r}</button>
               ))}
             </div>
             {termino === "data" && <DatePicker value={dataFim} onChange={v => setDataFim(v && v < data ? data : v)} />}
             {termino === "sessoes" && (
-              <label className="flex items-center gap-2 text-sm font-semibold">
+              <label className="flex items-center gap-2 text-sm text-foreground">
                 <input type="number" min={1} max={520} value={totalSessoes} onChange={e => setTotalSessoes(Math.min(520, Math.max(1, Number(e.target.value) || 1)))}
-                  className={`${campo} h-11 w-24 text-center`} aria-label="Número de sessões" />
+                  className={`${campo} h-9 w-24 text-center`} aria-label="Número de sessões" />
                 sessões (datas puladas não contam)
               </label>
             )}
             {termino === "continuo" && (
-              <p className="text-xs font-semibold text-[var(--pp-ink-muted)]">As sessões ficam lançadas até 6 meses à frente e a repetição automática estende toda noite.</p>
+              <p className="text-xs text-muted-foreground">As sessões ficam lançadas até 6 meses à frente e a repetição automática estende toda noite.</p>
             )}
           </fieldset>
         )}
@@ -301,14 +303,14 @@ export function PainelNovoAgendamento({
 
         {/* Prévia */}
         {payload && (
-          <section aria-live="polite" className={`${tom(erroSim ? "vermelho" : oks.length ? "verde" : "amber")} space-y-2 rounded-[18px] bg-[var(--c-suave)] p-4 shadow-[inset_0_0_0_1px_var(--c-linha)]`}>
+          <section aria-live="polite" className={`space-y-2 rounded-lg p-3 ${tomPrevia.bg} ${tomPrevia.text}`}>
             {simulando ? (
-              <p className="flex items-center gap-2 text-sm font-semibold"><Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Conferindo as datas…</p>
+              <p className="flex items-center gap-2 text-sm"><Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Conferindo as datas…</p>
             ) : erroSim ? (
-              <p className="text-sm font-semibold text-[var(--c-tinta)]">{erroSim}</p>
+              <p className="text-sm">{erroSim}</p>
             ) : simulacao && (
               <>
-                <p className="flex items-start gap-2 text-sm font-extrabold text-[var(--c-tinta)]">
+                <p className="flex items-start gap-2 text-sm font-semibold">
                   {oks.length ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden /> : <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />}
                   {oks.length
                     ? oks.length === 1 ? `Será criada 1 sessão em ${dataBR(oks[0].data)}.` : `Serão criadas ${oks.length} sessões, de ${dataBR(oks[0].data)} a ${dataBR(oks[oks.length - 1].data)}.`
@@ -317,16 +319,16 @@ export function PainelNovoAgendamento({
                 {puladas.length > 0 && (
                   <ul className="flex flex-wrap gap-1.5" aria-label="Datas puladas">
                     {puladas.slice(0, 12).map(s => (
-                      <li key={s.data} className={`${tom("amber")} rounded-full bg-[var(--pp-surface)] px-2 text-xs font-bold leading-6 text-[var(--c-tinta)]`}>
+                      <li key={s.data} className="rounded-full border border-amber-300 bg-card px-2 text-xs font-medium leading-6 text-amber-700 dark:border-amber-800 dark:text-amber-400">
                         {dataBR(s.data).slice(0, 5)} · {s.conflito ? ROTULO_CONFLITO[s.conflito] : ""}
                       </li>
                     ))}
-                    {puladas.length > 12 && <li className="text-xs font-bold">+{puladas.length - 12}</li>}
+                    {puladas.length > 12 && <li className="text-xs font-semibold">+{puladas.length - 12}</li>}
                   </ul>
                 )}
                 {temOcupado && (
-                  <label className="flex items-start gap-2 text-sm font-semibold">
-                    <input type="checkbox" checked={permitirSimultaneo} onChange={e => setPermitirSimultaneo(e.target.checked)} className="mt-0.5 h-5 w-5 accent-[var(--pp-foco)]" />
+                  <label className="flex items-start gap-2 text-sm text-foreground">
+                    <input type="checkbox" checked={permitirSimultaneo} onChange={e => setPermitirSimultaneo(e.target.checked)} className="mt-0.5 h-5 w-5 accent-primary" />
                     Permitir sessão ao mesmo tempo de outra do paciente (ex.: supervisão junto)
                   </label>
                 )}
@@ -336,7 +338,7 @@ export function PainelNovoAgendamento({
         )}
 
         {!payload && (
-          <p className="flex items-start gap-2 text-xs font-semibold text-[var(--pp-ink-muted)]">
+          <p className="flex items-start gap-2 text-xs text-muted-foreground">
             <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
             Preencha profissional, paciente, horário e terapia para ver as datas.
           </p>

@@ -28,10 +28,21 @@
 --    reativar limpa data_saida.
 --
 -- Depende de 20261008100000. Idempotente.
+--
+-- COMO APLICAR (SQL Editor): rode UM BLOCO POR VEZ (selecione do cabeçalho
+-- "BLOCO n" até antes do próximo e clique em Run). Rodar o arquivo inteiro numa
+-- transação só trava várias tabelas até o fim e deu "deadlock detected" em
+-- produção (08/10/2026), porque o app e as rotinas agendadas usam as mesmas
+-- tabelas ao mesmo tempo. Cada bloco trava pouco e por pouco tempo, e o
+-- lock_timeout faz o bloco DESISTIR em 5 s em vez de ficar na fila — se
+-- aparecer "lock timeout", é só rodar o mesmo bloco de novo.
+-- Todos os blocos são idempotentes: repetir um bloco não faz mal.
 
 -- ═════════════════════════════════════════════════════════════════════════════
--- A) Capacidade na faixa
+-- BLOCO 1 — coluna "capacidade" na faixa
 -- ═════════════════════════════════════════════════════════════════════════════
+set lock_timeout = '5s';
+
 alter table public.profissionais_disponibilidade_faixas
   add column if not exists capacidade smallint not null default 1;
 
@@ -43,14 +54,24 @@ alter table public.profissionais_disponibilidade_faixas
 comment on column public.profissionais_disponibilidade_faixas.capacidade is
   'Pacientes por horário nesta faixa (1 = individual; 2, 3… = grupo). Usada pela Grade para "disponível / parcial / lotado".';
 
+-- ═════════════════════════════════════════════════════════════════════════════
+-- BLOCO 2 — novo tipo de evento da disponibilidade
+-- ═════════════════════════════════════════════════════════════════════════════
+set lock_timeout = '5s';
+
 alter table public.profissionais_disponibilidade_eventos
   drop constraint if exists prof_disp_eventos_tipo_check;
 alter table public.profissionais_disponibilidade_eventos
   add constraint prof_disp_eventos_tipo_check
   check (tipo in ('criar', 'encerrar', 'alterar_vigencia', 'restaurar', 'substituir', 'antecipar', 'carga_capacidade'));
 
+-- ═════════════════════════════════════════════════════════════════════════════
+-- BLOCO 3 — carga: copia os "pacientes por horário" dos Indicadores para as faixas
+-- ═════════════════════════════════════════════════════════════════════════════
 -- Carga: só faixas ainda com o padrão (1), de versões que valem hoje ou no
 -- futuro e não foram substituídas. Reaplicar não muda nada (já não estão em 1).
+set lock_timeout = '5s';
+
 do $$
 declare
   r       record;
@@ -119,8 +140,13 @@ begin
   end loop;
 end $$;
 
+-- ═════════════════════════════════════════════════════════════════════════════
+-- BLOCO 4 — gravação de faixas passa a aceitar "capacidade"
+-- ═════════════════════════════════════════════════════════════════════════════
 -- Gravação de faixas: passa a aceitar `capacidade` (1–10, padrão 1). Corpo
 -- igual a 20261006140000 + a coluna nova.
+set lock_timeout = '5s';
+
 create or replace function public.sp_prof_disp_gravar_faixas(
   p_versao_id       uuid,
   p_profissional_id bigint,
@@ -235,8 +261,10 @@ end $$;
 revoke all on function public.sp_prof_disp_gravar_faixas(uuid, bigint, jsonb) from public, anon, authenticated;
 
 -- ═════════════════════════════════════════════════════════════════════════════
--- B) Data de saída do profissional
+-- BLOCO 5 — data de saída do profissional
 -- ═════════════════════════════════════════════════════════════════════════════
+set lock_timeout = '5s';
+
 alter table public.profissionais
   add column if not exists data_saida date;
 
@@ -275,8 +303,10 @@ alter table public.profissionais enable trigger trg_profissionais_antes_gravar;
 revoke all on function public.sp_profissionais_saida() from public, anon, authenticated;
 
 -- ═════════════════════════════════════════════════════════════════════════════
--- C) RPC profissional_inativar
+-- BLOCO 6 — RPCs de inativação do profissional
 -- ═════════════════════════════════════════════════════════════════════════════
+set lock_timeout = '5s';
+
 -- p_agendamentos:
 --   'manter'  (padrão) — as sessões a partir da saída continuam na agenda,
 --             marcadas na Grade como "profissional inativo — precisa de reposição";

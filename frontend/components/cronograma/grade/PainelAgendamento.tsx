@@ -6,14 +6,15 @@ import {
 } from "lucide-react"
 import toast from "react-hot-toast"
 import { Drawer } from "@/components/cronograma/ui/Drawer"
-import { avisoFeito, tom } from "@/components/ui/pastel/pecas"
 import { useConfirmacao } from "@/components/ui/pastel/confirmacao"
 import { campo } from "@/components/cadastros/pacientes/ui/campos"
+import type { Tone } from "@/components/cronograma/ui/tones"
 import { estiloTons } from "@/lib/cadastros/tonsTerapia"
 import { dataBR, horaCurta, hojeBrasilia } from "@/lib/disponibilidadeProfissional"
 import { descreverSerie, rotuloDia } from "@/lib/grade/motor"
 import { buscarSerie, contarDestaEmDiante, excluir, listarEventosDaSessao } from "@/services/grade.service"
 import type { AgendamentoGrade, EventoGrade, SerieGrade } from "@/types/grade"
+import { aviso, btnPerigo, btnPerigoCheio, btnSecundario, rotuloCampo } from "./estilo"
 import { ListaEventos } from "./PainelRegistro"
 
 // Detalhe de uma sessão (painel lateral): dados, série, histórico e as duas
@@ -77,7 +78,7 @@ export function PainelAgendamento({
     setSalvando(true)
     try {
       const r = await excluir(a.id, escopo, motivo.trim())
-      avisoFeito(r.excluidas === 1 ? "Sessão excluída" : `${r.excluidas} sessões excluídas`)
+      toast.success(r.excluidas === 1 ? "Sessão excluída" : `${r.excluidas} sessões excluídas`)
       onMudou()
       onFechar()
     } catch (e) {
@@ -99,20 +100,20 @@ export function PainelAgendamento({
       footer={!passado && (
         escopo ? (
           <>
-            <button type="button" onClick={() => { setEscopo(null); setMotivo("") }} className={`${tom("cinza")} pp-btn pp-btn-suave min-h-11`}>Voltar</button>
+            <button type="button" onClick={() => { setEscopo(null); setMotivo("") }} className={btnSecundario}>Voltar</button>
             <button type="button" onClick={confirmarExclusao} disabled={salvando || motivo.trim().length < 3 || (escopo === "desta_em_diante" && !previa)}
-              className={`${tom("vermelho")} pp-btn min-h-11`}>
+              className={btnPerigoCheio}>
               {salvando ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Trash2 className="h-4 w-4" aria-hidden />}
               Excluir{escopo === "desta_em_diante" && previa ? ` ${previa.quantidade}` : ""}
             </button>
           </>
         ) : (
           <>
-            <button type="button" onClick={() => setEscopo("somente_esta")} className={`${tom("vermelho")} pp-btn pp-btn-suave min-h-11`}>
+            <button type="button" onClick={() => setEscopo("somente_esta")} className={btnPerigo}>
               <Trash2 className="h-4 w-4" aria-hidden /> Só esta
             </button>
             {temSerie && (
-              <button type="button" onClick={() => setEscopo("desta_em_diante")} className={`${tom("vermelho")} pp-btn pp-btn-suave min-h-11`}>
+              <button type="button" onClick={() => setEscopo("desta_em_diante")} className={btnPerigo}>
                 <Trash2 className="h-4 w-4" aria-hidden /> Desta em diante
               </button>
             )}
@@ -120,13 +121,13 @@ export function PainelAgendamento({
         )
       )}
     >
-      <div className="pp space-y-4">
+      <div className="space-y-4">
         {/* Cartão na cor da terapia */}
-        <div style={estiloTons(cor)} className="ua-tons rounded-[18px] bg-[var(--t-50)] p-4 shadow-[inset_0_0_0_1px_var(--t-300)]">
-          <p className="flex items-center gap-2 text-base font-extrabold text-[var(--t-700)]">
+        <div style={estiloTons(cor)} className="ua-tons rounded-lg bg-[var(--t-50)] p-3 ring-1 ring-inset ring-[var(--t-300)]">
+          <p className="flex items-center gap-2 text-base font-bold text-[var(--t-700)]">
             <span className="h-2.5 w-2.5 rounded-full bg-[var(--t-500)]" aria-hidden />{terapia}
           </p>
-          {exibicaoDiferente && <p className="mt-0.5 text-xs font-semibold text-[var(--t-700)]">Terapia clínica: {a.terapia_nome}</p>}
+          {exibicaoDiferente && <p className="mt-0.5 text-xs text-[var(--t-700)]">Terapia clínica: {a.terapia_nome}</p>}
           <dl className="mt-3 space-y-1.5 text-sm">
             <Linha Icone={UserRound} rotulo="Profissional" valor={a.profissional_nome} />
             <Linha Icone={MapPin} rotulo="Sala" valor={[a.sala_nome, a.unidade_nome].filter(Boolean).join(" · ") || "—"} />
@@ -139,28 +140,28 @@ export function PainelAgendamento({
 
         {(reposicao || foraDaGrade || foraDaJanela) && (
           <ul className="space-y-2">
-            {reposicao && <Aviso t="vermelho" Icone={UserRoundX} texto="Profissional inativo — esta sessão precisa de reposição (outro profissional ou substituição)." />}
+            {reposicao && <Aviso t="red" Icone={UserRoundX} texto="Profissional inativo — esta sessão precisa de reposição (outro profissional ou substituição)." />}
             {foraDaGrade && <Aviso t="amber" Icone={AlertTriangle} texto="Fora da disponibilidade cadastrada do profissional neste horário." />}
             {foraDaJanela && <Aviso t="amber" Icone={AlertTriangle} texto="Fora da disponibilidade que a família informou." />}
           </ul>
         )}
 
         {passado && (
-          <p className="rounded-xl bg-[var(--pp-muted)] px-3 py-2 text-sm font-semibold text-[var(--pp-ink-muted)]">
+          <p className="rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">
             Sessão de data passada: não pode ser excluída.
           </p>
         )}
 
         {escopo && (
-          <div className={`${tom("vermelho")} space-y-2 rounded-[18px] bg-[var(--c-suave)] p-4 shadow-[inset_0_0_0_1px_var(--c-linha)]`}>
-            <p className="text-sm font-extrabold text-[var(--c-tinta)]">
+          <div className="space-y-2 rounded-lg border border-rose-300 p-3 dark:border-rose-800">
+            <p className="text-sm font-semibold text-rose-700 dark:text-rose-400">
               {escopo === "somente_esta"
                 ? `Excluir só a sessão de ${dataBR(a.data)}`
                 : previa
                   ? `Excluir ${previa.quantidade} sessão${previa.quantidade === 1 ? "" : "ões"}: de ${dataBR(a.data)} até ${dataBR(previa.ultima)}`
                   : "Contando as sessões…"}
             </p>
-            <label className="block text-xs font-bold text-[var(--pp-ink-muted)]" htmlFor="motivo-exclusao">Motivo (obrigatório)</label>
+            <label className={rotuloCampo} htmlFor="motivo-exclusao">Motivo (obrigatório)</label>
             <textarea id="motivo-exclusao" value={motivo} onChange={e => setMotivo(e.target.value)} maxLength={500} rows={3}
               placeholder="Ex.: família pediu para encerrar; remarcada para quinta"
               className={`${campo} w-full resize-y py-2`} autoFocus />
@@ -168,11 +169,11 @@ export function PainelAgendamento({
         )}
 
         <section aria-labelledby="hist-sessao">
-          <h3 id="hist-sessao" className="mb-2 flex items-center gap-2 text-sm font-extrabold"><History className="h-4 w-4" aria-hidden /> Histórico</h3>
+          <h3 id="hist-sessao" className="mb-2 flex items-center gap-2 text-sm font-semibold text-foreground"><History className="h-4 w-4 text-muted-foreground" aria-hidden /> Histórico</h3>
           {eventos === null
-            ? <p className="text-sm text-[var(--pp-ink-muted)]">Carregando…</p>
+            ? <p className="text-sm text-muted-foreground">Carregando…</p>
             : <ListaEventos eventos={eventos} vazio="Sem registro de alteração." />}
-          <p className="mt-2 text-xs font-semibold text-[var(--pp-ink-muted)]">
+          <p className="mt-2 text-xs text-muted-foreground">
             {a.criado_por_nome ? `Lançada por ${a.criado_por_nome}` : "Lançada"} em {dataBR(a.criado_em.slice(0, 10))}.
           </p>
         </section>
@@ -187,14 +188,14 @@ function Linha({ Icone, rotulo, valor }: { Icone: typeof UserRound; rotulo: stri
     <div className="flex items-start gap-2">
       <Icone className="mt-0.5 h-4 w-4 shrink-0 text-[var(--t-700)] opacity-70" aria-hidden />
       <dt className="sr-only">{rotulo}</dt>
-      <dd className="min-w-0 font-semibold">{valor}</dd>
+      <dd className="min-w-0 text-foreground">{valor}</dd>
     </div>
   )
 }
 
-function Aviso({ t, Icone, texto }: { t: Parameters<typeof tom>[0]; Icone: typeof AlertTriangle; texto: string }) {
+function Aviso({ t, Icone, texto }: { t: Tone; Icone: typeof AlertTriangle; texto: string }) {
   return (
-    <li className={`${tom(t)} flex items-start gap-2 rounded-xl bg-[var(--c-suave)] px-3 py-2 text-sm font-semibold text-[var(--c-tinta)]`}>
+    <li className={aviso(t)}>
       <Icone className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />{texto}
     </li>
   )

@@ -4,47 +4,48 @@ import { useEffect, useState } from "react"
 import { CalendarPlus, CloudDownload, Lock, LockOpen, Repeat, Trash2, UserRoundX, type LucideIcon } from "lucide-react"
 import { Drawer } from "@/components/cronograma/ui/Drawer"
 import { DateRangePicker } from "@/components/ui/date-range-picker"
-import { tom, type Tom } from "@/components/ui/pastel/pecas"
 import { hojeBrasilia, somarDias } from "@/lib/disponibilidadeProfissional"
 import { listarEventos } from "@/services/grade.service"
 import type { AcaoEventoGrade, EventoGrade } from "@/types/grade"
+import { opcaoForm } from "./estilo"
 
 // Registro de alterações da Grade: tudo o que foi criado, excluído, bloqueado e
 // importado — por quem, quando e por quê. É a "lixeira auditável": nada some,
 // a exclusão fica aqui com o nome de quem fez.
 
-const ACAO: Record<AcaoEventoGrade, { t: Tom; Icone: LucideIcon; rotulo: string }> = {
-  criado: { t: "verde", Icone: CalendarPlus, rotulo: "Criado" },
-  excluido: { t: "vermelho", Icone: Trash2, rotulo: "Excluído" },
-  serie_encerrada: { t: "vermelho", Icone: Repeat, rotulo: "Série encerrada" },
-  estendido: { t: "cinza", Icone: Repeat, rotulo: "Repetição automática" },
-  importado: { t: "violeta", Icone: CloudDownload, rotulo: "Importado do TiTa" },
-  bloqueio_criado: { t: "cinza", Icone: Lock, rotulo: "Bloqueio" },
-  bloqueio_excluido: { t: "aco", Icone: LockOpen, rotulo: "Bloqueio removido" },
-  inativacao_profissional: { t: "amber", Icone: UserRoundX, rotulo: "Profissional inativado" },
+/** Cor só no ícone (texto), sobre o quadrado cinza — a ação também vem escrita no rodapé. */
+const ACAO: Record<AcaoEventoGrade, { cor: string; Icone: LucideIcon; rotulo: string }> = {
+  criado: { cor: "text-emerald-700 dark:text-emerald-400", Icone: CalendarPlus, rotulo: "Criado" },
+  excluido: { cor: "text-rose-700 dark:text-rose-400", Icone: Trash2, rotulo: "Excluído" },
+  serie_encerrada: { cor: "text-rose-700 dark:text-rose-400", Icone: Repeat, rotulo: "Série encerrada" },
+  estendido: { cor: "text-muted-foreground", Icone: Repeat, rotulo: "Repetição automática" },
+  importado: { cor: "text-violet-700 dark:text-violet-400", Icone: CloudDownload, rotulo: "Importado do TiTa" },
+  bloqueio_criado: { cor: "text-muted-foreground", Icone: Lock, rotulo: "Bloqueio" },
+  bloqueio_excluido: { cor: "text-muted-foreground", Icone: LockOpen, rotulo: "Bloqueio removido" },
+  inativacao_profissional: { cor: "text-amber-700 dark:text-amber-400", Icone: UserRoundX, rotulo: "Profissional inativado" },
 }
 
-const FILTROS: { chave: string; rotulo: string; acoes: AcaoEventoGrade[]; t: Tom }[] = [
-  { chave: "criado", rotulo: "Criações", acoes: ["criado"], t: "verde" },
-  { chave: "excluido", rotulo: "Exclusões", acoes: ["excluido", "serie_encerrada", "inativacao_profissional"], t: "vermelho" },
-  { chave: "bloqueio", rotulo: "Bloqueios", acoes: ["bloqueio_criado", "bloqueio_excluido"], t: "cinza" },
-  { chave: "importado", rotulo: "Importações", acoes: ["importado"], t: "violeta" },
+const FILTROS: { chave: string; rotulo: string; acoes: AcaoEventoGrade[] }[] = [
+  { chave: "criado", rotulo: "Criações", acoes: ["criado"] },
+  { chave: "excluido", rotulo: "Exclusões", acoes: ["excluido", "serie_encerrada", "inativacao_profissional"] },
+  { chave: "bloqueio", rotulo: "Bloqueios", acoes: ["bloqueio_criado", "bloqueio_excluido"] },
+  { chave: "importado", rotulo: "Importações", acoes: ["importado"] },
 ]
 
 export function ListaEventos({ eventos, vazio }: { eventos: EventoGrade[]; vazio: string }) {
-  if (!eventos.length) return <p className="rounded-xl bg-[var(--pp-muted)] px-3 py-4 text-center text-sm font-semibold text-[var(--pp-ink-muted)]">{vazio}</p>
+  if (!eventos.length) return <p className="rounded-lg border border-dashed border-border px-3 py-4 text-center text-sm text-muted-foreground">{vazio}</p>
   return (
-    <ol className="space-y-2">
+    <ol className="divide-y divide-border rounded-lg border border-border">
       {eventos.map(e => {
         const cfg = ACAO[e.acao] ?? ACAO.criado
         return (
-          <li key={e.id} className="flex gap-3 rounded-[14px] bg-[var(--pp-surface)] p-3 shadow-[inset_0_0_0_1px_var(--pp-border)]">
-            <span className={`${tom(cfg.t)} flex size-8 shrink-0 items-center justify-center rounded-[10px] bg-[var(--c)] text-[var(--c-sobre)]`} aria-hidden>
+          <li key={e.id} className="flex gap-3 p-3">
+            <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted ${cfg.cor}`} aria-hidden>
               <cfg.Icone className="h-4 w-4" />
             </span>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold leading-snug">{e.resumo}</p>
-              <p className="mt-1 text-[11px] font-medium text-[var(--pp-ink-muted)]">
+              <p className="text-sm leading-snug text-foreground">{e.resumo}</p>
+              <p className="mt-1 text-xs text-muted-foreground">
                 {cfg.rotulo} · {e.feito_por_nome ?? "—"} · {e.feito_em_brasilia ?? e.feito_em.slice(0, 16).replace("T", " ")}
               </p>
             </div>
@@ -91,25 +92,25 @@ export function PainelRegistro({
 
   return (
     <Drawer title="Registro de alterações" subtitle="Quem criou, excluiu, bloqueou ou importou — e por quê." width={520} onClose={onFechar}>
-      <div className="pp space-y-4">
+      <div className="space-y-4">
         <DateRangePicker inicio={periodo.inicio} fim={periodo.fim} onChange={setPeriodo} />
         <div className="flex flex-wrap gap-2">
           {FILTROS.map(f => (
             <button key={f.chave} type="button" aria-pressed={filtro === f.chave} onClick={() => setFiltro(v => (v === f.chave ? null : f.chave))}
-              className={`${tom(f.t)} pp-pilula min-h-11 pl-3`}>{f.rotulo}</button>
+              className={opcaoForm(filtro === f.chave)}>{f.rotulo}</button>
           ))}
           {pessoa && (
-            <button type="button" aria-pressed={soPessoa} onClick={() => setSoPessoa(v => !v)} className={`${tom("aco")} pp-pilula min-h-11 pl-3`}>
+            <button type="button" aria-pressed={soPessoa} onClick={() => setSoPessoa(v => !v)} className={opcaoForm(soPessoa)}>
               Só {pessoa.nome.split(" ")[0]}
             </button>
           )}
         </div>
-        {erro && <p role="alert" className="text-sm font-semibold text-rose-700 dark:text-rose-400">{erro}</p>}
+        {erro && <p role="alert" className="text-sm text-destructive">{erro}</p>}
         {eventos === null
-          ? <p className="text-sm text-[var(--pp-ink-muted)]">Carregando…</p>
+          ? <p className="text-sm text-muted-foreground">Carregando…</p>
           : <ListaEventos eventos={eventos} vazio="Nada registrado neste período." />}
         {eventos && eventos.length >= 300 && (
-          <p className="text-xs font-semibold text-[var(--pp-ink-muted)]">Mostrando os 300 mais recentes — encurte o período para ver os outros.</p>
+          <p className="text-xs text-muted-foreground">Mostrando os 300 mais recentes — encurte o período para ver os outros.</p>
         )}
       </div>
     </Drawer>
