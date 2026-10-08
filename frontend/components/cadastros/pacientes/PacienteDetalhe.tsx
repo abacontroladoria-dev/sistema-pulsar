@@ -21,11 +21,12 @@ import { AbaLaudo } from "./secoes/AbaLaudo"
 import { AbaAltasIndividualidades } from "./secoes/AbaAltasIndividualidades"
 import { AbaEscola } from "./secoes/AbaEscola"
 import { AbaDisponibilidade } from "./secoes/AbaDisponibilidade"
+import { AbaContratos } from "./secoes/AbaContratos"
 import { foco } from "./ui/campos"
 import { getAltasClinicasDoPaciente, altaClinicaVigente } from "@/services/pacienteAltaClinica.service"
 import type { PacienteAltaClinica } from "@/types/laudos"
 
-type Aba = "cadastro" | "ficha" | "laudo" | "altas" | "escola" | "disponibilidade"
+type Aba = "cadastro" | "ficha" | "laudo" | "altas" | "escola" | "disponibilidade" | "contratos"
 type SecaoCadastro = "dados" | "endereco" | "filiacao" | "plano"
 type SecaoFicha = "basica" | "doencas"
 
@@ -192,6 +193,7 @@ export function PacienteDetalhe({
             { value: "altas", label: "Altas e Individualidades" },
             { value: "escola", label: "Escola" },
             { value: "disponibilidade", label: "Disponibilidade" },
+            { value: "contratos", label: "Contratos" },
           ]}
         />
       </div>
@@ -256,6 +258,10 @@ export function PacienteDetalhe({
           // Também fora do editar/salvar do cadastro: cada gravação é uma versão
           // nova num histórico imutável, com botão e confirmação próprios.
           <AbaDisponibilidade pacienteId={idPaciente} pacienteNome={paciente.nome} pacienteCpf={paciente.cpf} />
+        ) : aba === "contratos" ? (
+          // Também fora do editar/salvar: cada ação grava na hora por RPC e
+          // vira evento na linha do tempo do contrato.
+          <AbaContratos pacienteId={idPaciente} />
         ) : (
           <AbaAltasIndividualidades
             pacienteId={idPaciente}
