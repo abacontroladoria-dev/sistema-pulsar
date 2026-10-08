@@ -19,8 +19,10 @@ export type FiltroResumo = { k: EstadoFiltro; valor: number; rotulo: string }
 export type NumeroResumo = { valor: ReactNode; rotulo: string; destaque?: boolean }
 
 export function PainelResumo({
-  esquerda, filtros, numeros = [], ocultos, onAlternar,
+  esquerda, filtros, numeros = [], ocultos, onAlternar, acao,
 }: {
+  /** Botão discreto no fim da linha (ex.: expandir a grade em tela cheia). */
+  acao?: ReactNode
   esquerda: ReactNode
   filtros: FiltroResumo[]
   numeros?: NumeroResumo[]
@@ -70,6 +72,7 @@ export function PainelResumo({
             ))}
           </div>
         )}
+        {acao && <div className="flex items-center gap-0.5 border-l border-border pl-2">{acao}</div>}
       </div>
     </section>
   )

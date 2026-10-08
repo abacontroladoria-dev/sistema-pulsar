@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
-  AlertCircle, CalendarDays, CalendarPlus, ChevronLeft, ChevronRight, CloudDownload, Database, History, Loader2, Lock, Search, Stethoscope, Users,
+  AlertCircle, CalendarDays, CalendarPlus, ChevronLeft, ChevronRight, CloudDownload, Database, Eye, EyeOff, History, Loader2, Lock, Maximize2, Search, X, Stethoscope, Users,
 } from "lucide-react"
 import toast from "react-hot-toast"
 import { campo, foco } from "@/components/cadastros/pacientes/ui/campos"
@@ -28,7 +28,7 @@ import { PainelImportarTita } from "./PainelImportarTita"
 import { PainelNovoAgendamento, type InicialNovo } from "./PainelNovoAgendamento"
 import { PainelRegistro } from "./PainelRegistro"
 import {
-  BlocoHorario, CartaoSessao, INICIOS_PADRAO, TOM_ESTADO, grupoDoEstado, linhasQueCabem, minutos, montarEscala, type FiltroEstados, type ItemColuna, type VisualTerapia,
+  BlocoHorario, CartaoSessao, INICIOS_PADRAO, PX_POR_MIN, TOM_ESTADO, grupoDoEstado, minutos, montarEscala, type FiltroEstados, type ItemColuna, type VisualTerapia,
 } from "./pecas"
 import { AvisoFeriado, CabecalhoDia, GradeColunas, GradeMes, type ColunaGrade, type NumerosDia } from "./visoes"
 import { btnIcone, btnPrimario, btnSecundario, cartao, seletorOpcao, seletorTrilha } from "./estilo"
@@ -86,6 +86,21 @@ export function GradeShell() {
   const [ocultos, setOcultos] = useState<FiltroEstados>(new Set())
   const [filtroDia, setFiltroDia] = useState("")
   const [buscaAberta, setBuscaAberta] = useState(false)
+  // Tela cheia: cobre inclusive a sidebar (z 55 > 50; os painéis usam 60).
+  const [telaCheia, setTelaCheia] = useState(false)
+  // Olho (tela cheia, visão do paciente): aberto = principal + exibição; fechado
+  // (padrão) = só exibição.
+  const [olhoAberto, setOlhoAberto] = useState(false)
+  // Altura que sobra para a régua em tela cheia: 7 horários (a tarde inteira,
+  // 13:00–17:40, o maior bloco) cabem numa tela; manhã e tarde se veem rolando.
+  // Nunca menor que a reduzida.
+  const [alturaLivre, setAlturaLivre] = useState<number | null>(null)
+  useEffect(() => {
+    if (!telaCheia || painel) return
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setTelaCheia(false) }
+    window.addEventListener("keydown", esc)
+    return () => window.removeEventListener("keydown", esc)
+  }, [telaCheia, painel])
 
   // ── Dados ───────────────────────────────────────────────────────────────────
   const base = useGradeBase(visao === "paciente" || painel?.tipo === "novo")
@@ -316,7 +331,7 @@ export function GradeShell() {
         .map(({ a, rep, fora }) => ({
           chave: a.id, ini: minutos(a.hora_inicio), fim: minutos(a.hora_fim),
           conteudo: (altura: number) => (
-            <CartaoSessao a={a} visual={visualDe(a.terapia_id)} titulo={a.profissional_nome} linhas={linhasQueCabem(altura)}
+            <CartaoSessao a={a} visual={visualDe(a.terapia_id)} titulo={a.profissional_nome} altura={altura} tituloPorUltimo
               alerta={rep ? { t: "red", rotulo: "reposição" } : fora ? { t: "amber", rotulo: "fora da janela" } : null}
               onClick={() => abrirSessao(a)} />
           ),
@@ -351,8 +366,12 @@ export function GradeShell() {
     ]
     const foraDoPadrao = visao === "profissional" && periodo !== "dia"
       && daGrade.some(h => h.estado !== "fora_da_grade" && h.estado !== "inativo" && !INICIOS_PADRAO.has(h.inicio))
-    return montarEscala(intervalos, !foraDoPadrao)
-  }, [conteudo, visao, periodo])
+    // Olho aberto na visão do paciente: piso de 1,7 px/min (horário de 65 px) para
+    // principal, exibição e profissional caberem em linhas separadas.
+    const piso = visao === "paciente" && olhoAberto ? 1.7 : PX_POR_MIN
+    const pxPorMin = telaCheia && alturaLivre ? Math.min(4, Math.max(piso, alturaLivre / (7 * 40))) : PX_POR_MIN
+    return montarEscala(intervalos, !foraDoPadrao, pxPorMin)
+  }, [conteudo, visao, periodo, telaCheia, alturaLivre, olhoAberto])
 
   // Contagens da legenda (no que está na tela), na mesma unidade do resumo:
   // vagas livres (grupo de 3 vazio = 3) e sessões; bloqueado conta horários.
@@ -406,6 +425,30 @@ export function GradeShell() {
   const filtroSe = (k: EstadoFiltro, valor: number, rotulo: string, sempre = true): FiltroResumo[] =>
     sempre || valor > 0 || ocultos.has(k) ? [{ k, valor, rotulo }] : []
   const filtraveis = conteudo.tipo === "colunas"
+  // Tela cheia na semana: sem o domingo (a sobra vai para a régua maior). Domingo
+  // com alguma sessão continua, para nada sumir da tela.
+  const colunasNaTela = conteudo.tipo !== "colunas" ? []
+    : telaCheia && periodo === "semana"
+      ? conteudo.colunas.filter(c => !(diaDaSemana(c.chave) === 0 && !c.itens.length))
+      : conteudo.colunas
+  const botaoTela = (
+    <button type="button" onClick={() => { if (!telaCheia) setOlhoAberto(false); setTelaCheia(!telaCheia) }}
+      aria-label={telaCheia ? "Sair da tela cheia" : "Expandir a grade em tela cheia"}
+      title={telaCheia ? "Voltar ao sistema (Esc)" : "Expandir em tela cheia"}
+      className={`inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground ${foco}`}>
+      {telaCheia ? <X className="h-4 w-4" aria-hidden /> : <Maximize2 className="h-4 w-4" aria-hidden />}
+    </button>
+  )
+  const comOlho = telaCheia && visao === "paciente"
+  const botaoOlho = comOlho && (
+    <button type="button" onClick={() => setOlhoAberto(v => !v)} aria-pressed={!olhoAberto}
+      aria-label={olhoAberto ? "Mostrar só a terapia de exibição" : "Mostrar terapia principal e de exibição"}
+      title={olhoAberto ? "Vendo terapia principal + exibição. Clique para ver só a de exibição" : "Vendo só a terapia de exibição. Clique para ver também a principal"}
+      className={`inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground ${foco}`}>
+      {olhoAberto ? <Eye className="h-4 w-4" aria-hidden /> : <EyeOff className="h-4 w-4" aria-hidden />}
+    </button>
+  )
+  const acoesResumo = <>{botaoOlho}{botaoTela}</>
   let painelResumo: React.ReactNode = null
   if (visao === "profissional" && conteudo.tipo !== "escolher" && "resumo" in conteudo && conteudo.resumo) {
     const r = conteudo.resumo
@@ -414,7 +457,7 @@ export function GradeShell() {
       : contagens
     const numeros: NumeroResumo[] = [{ valor: r.ocupacao == null ? "—" : `${Math.round(r.ocupacao * 100)}%`, rotulo: "Ocupação" }]
     painelResumo = (
-      <PainelResumo ocultos={ocultos} onAlternar={filtraveis ? alternar : undefined} numeros={numeros}
+      <PainelResumo ocultos={ocultos} onAlternar={filtraveis ? alternar : undefined} numeros={numeros} acao={acoesResumo}
         esquerda={profSel
           ? <QuemProfissional p={profSel} {...focal(profSel)} />
           : <div><h2 className="text-base font-bold text-foreground">Todos os profissionais</h2>
@@ -430,7 +473,7 @@ export function GradeShell() {
   } else if (pacSel && "sessoes" in conteudo && conteudo.sessoes) {
     const foraJanela = conteudo.sessoes.filter(a => foraDaJanelaDoPaciente(dispPac, a)).length
     painelResumo = (
-      <PainelResumo ocultos={ocultos} onAlternar={filtraveis ? alternar : undefined}
+      <PainelResumo ocultos={ocultos} onAlternar={filtraveis ? alternar : undefined} acao={acoesResumo}
         esquerda={<QuemPaciente nome={pacSel.nome} convenio={pacSel.convenio_nome} semDisponibilidade={!dispPac} />}
         filtros={[
           ...filtroSe("agendado", contagens.agendado ?? 0, "Sessões"),
@@ -451,7 +494,7 @@ export function GradeShell() {
     && !(profSel.data_saida && profSel.data_saida <= semana[0])
 
   return (
-    <div className="mx-auto w-full max-w-[1600px] px-4 py-6">
+    <div className={telaCheia ? "fixed inset-0 z-[55] flex flex-col overflow-auto bg-background px-4 py-3" : "mx-auto w-full max-w-[1600px] px-4 py-6"}>
       {erro && (
         <div role="alert" className="mb-4 flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
@@ -459,8 +502,8 @@ export function GradeShell() {
         </div>
       )}
 
-      <div>
-        <main className="min-w-0 space-y-3">
+      <div className={telaCheia ? "flex min-h-0 flex-1 flex-col" : undefined}>
+        <main className={telaCheia ? "flex min-h-0 min-w-0 flex-1 flex-col gap-3" : "min-w-0 space-y-3"}>
           {/* Barra: quem, visão, período, navegação — mesmo vocabulário do header */}
           <div className="flex flex-wrap items-center gap-2">
             <SeletorDaLista aberto={buscaAberta} onAberto={setBuscaAberta}
@@ -494,6 +537,7 @@ export function GradeShell() {
                 </>} />
               {carregando && <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" aria-label="Carregando" />}
             </div>
+            {telaCheia && !painelResumo && <div className="ml-auto flex items-center">{acoesResumo}</div>}
           </div>
 
           {painelResumo}
@@ -519,7 +563,7 @@ export function GradeShell() {
               </button>
             </div>
           ) : (
-            <section className={`${cartao} overflow-hidden`} aria-label="Grade">
+            <section className={`${cartao} overflow-hidden ${telaCheia ? "flex min-h-0 flex-1 flex-col" : ""}`} aria-label="Grade">
               {conteudo.tipo === "mes" ? (
                 <GradeMes semanas={semanasMes} mes={data.slice(0, 7)} hoje={hoje} numeros={conteudo.numeros}
                   onAbrirDia={d => ir({ data: d, periodo: "semana" })} />
@@ -532,9 +576,13 @@ export function GradeShell() {
                     </div>
                   )}
                   {conteudo.colunas.length ? (
-                    <GradeColunas colunas={conteudo.colunas} escala={escala} abaInicial={hoje}
-                      larguraMin={visao === "profissional" && periodo === "dia" ? 150 : 128}
-                      rotuloAbas={periodo === "dia" && visao === "profissional" ? "Profissionais do dia" : "Dias da semana"} />
+                    <div className={telaCheia ? "min-h-0 flex-1" : undefined}>
+                      <GradeColunas colunas={colunasNaTela} escala={escala} abaInicial={hoje}
+                        onAlturaLivre={telaCheia ? setAlturaLivre : undefined}
+                      soExibicao={comOlho && !olhoAberto}
+                        larguraMin={visao === "profissional" && periodo === "dia" ? 150 : 128}
+                        rotuloAbas={periodo === "dia" && visao === "profissional" ? "Profissionais do dia" : "Dias da semana"} />
+                    </div>
                   ) : (
                     <p className="px-4 py-16 text-center text-sm text-muted-foreground">
                       {visao === "profissional" && periodo === "dia"

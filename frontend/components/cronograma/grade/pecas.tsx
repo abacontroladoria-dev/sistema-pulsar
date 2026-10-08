@@ -1,6 +1,6 @@
 "use client"
 
-import type { ReactNode } from "react"
+import { createContext, useContext, type ReactNode } from "react"
 import { Lock, Plus } from "lucide-react"
 import { foco } from "@/components/cadastros/pacientes/ui/campos"
 import type { Tone } from "@/components/cronograma/ui/tones"
@@ -18,6 +18,26 @@ import { LISTRAS_BLOQUEIO, selo } from "./estilo"
 //   livre = borda tracejada · agendado = cor da terapia · bloqueado = cinza
 //   listrado com cadeado · fora da grade = âmbar · reposição = rosa.
 // Sem faixa colorida lateral nos cartões (DESIGN.md: "no side-stripe borders").
+
+/**
+ * Tela cheia: letras, ícones e régua maiores. GradeColunas fornece; cartões,
+ * régua e cabeçalhos dos dias leem.
+ */
+const GradeGrande = createContext(false)
+export const GradeGrandeProvider = GradeGrande.Provider
+export const useGradeGrande = () => useContext(GradeGrande)
+
+/** Olho fechado (tela cheia, visão do paciente): o cartão mostra só a terapia de exibição. */
+const SoExibicao = createContext(false)
+export const SoExibicaoProvider = SoExibicao.Provider
+
+/** Tamanhos de texto/ícone da grade: [normal, tela cheia]. */
+const TXT = {
+  titulo: ["text-xs leading-4", "text-[15px] leading-5"],
+  linha: ["text-[11px] leading-4", "text-[13px] leading-[18px]"],
+  icone: ["h-3 w-3", "h-4 w-4"],
+} as const
+const tam = (k: keyof typeof TXT, grande: boolean) => TXT[k][grande ? 1 : 0]
 
 /** Altura de um minuto na grade (40 min = 60 px). */
 export const PX_POR_MIN = 1.5
@@ -48,17 +68,27 @@ export type VisualTerapia = { cor: string | null; icone: string | null }
  * 3 (+ terapia de exibição, só quando difere da terapia principal).
  */
 export function CartaoSessao({
-  a, visual, titulo, linhas = 2, alerta, onClick,
+  a, visual, titulo, linhas: linhasFixas, altura, alerta, tituloPorUltimo = false, onClick,
 }: {
   a: AgendamentoGrade
   visual: VisualTerapia
   titulo: string
+  /** Visão do paciente: terapia em cima, profissional embaixo. */
+  tituloPorUltimo?: boolean
   linhas?: 1 | 2 | 3
+  /** Sem `linhas`: calcula quantas cabem nesta altura (px). */
+  altura?: number
   /** Selo pequeno (fora da grade, reposição…). */
   alerta?: { t: Tone; rotulo: string } | null
   onClick: () => void
 }) {
-  const exibicao = a.terapia_exibicao_nome && a.terapia_exibicao_nome !== a.terapia_nome ? a.terapia_exibicao_nome : null
+  const grande = useGradeGrande()
+  const soExibicao = useContext(SoExibicao)
+  const linhas = linhasFixas ?? (altura != null ? linhasQueCabem(altura, grande) : 2)
+  const difere = a.terapia_exibicao_nome && a.terapia_exibicao_nome !== a.terapia_nome ? a.terapia_exibicao_nome : null
+  // Só exibição: a terapia de exibição toma o lugar da principal, sem linha extra.
+  const terapia = soExibicao ? (a.terapia_exibicao_nome || a.terapia_nome) : a.terapia_nome
+  const exibicao = soExibicao ? null : difere
   const hora = `${horaCurta(a.hora_inicio)}–${horaCurta(a.hora_fim)}`
   const contorno = alerta?.t === "amber" ? "ring-amber-400 dark:ring-amber-500"
     : alerta?.t === "red" ? "ring-rose-400 dark:ring-rose-500"
@@ -69,25 +99,40 @@ export function CartaoSessao({
       onClick={e => { e.stopPropagation(); onClick() }}
       style={estiloTons(visual.cor)}
       title={`${hora} · ${a.paciente_nome} × ${a.profissional_nome} · ${a.terapia_nome}${exibicao ? ` (exibição: ${exibicao})` : ""}${a.sala_nome ? ` · ${a.sala_nome}` : ""}`}
-      className={`ua-tons block h-full w-full min-w-0 overflow-hidden rounded-md bg-[var(--t-50)] px-2 py-0.5 text-left text-[var(--t-700)] ring-1 ring-inset transition-shadow ${contorno} ${foco}`}
+      className={`ua-tons block h-full w-full min-w-0 overflow-hidden rounded-md bg-[var(--t-50)] text-left ${grande ? "px-2.5" : "px-2"} py-0.5 text-[var(--t-700)] ring-1 ring-inset transition-shadow ${contorno} ${foco}`}
     >
-      <span className="flex min-w-0 items-center gap-1">
-        <span className="truncate text-xs font-semibold leading-4">{titulo}</span>
-        {alerta && <span className={`${selo(alerta.t)} ml-auto shrink-0`}>{alerta.rotulo}</span>}
-      </span>
-      {linhas >= 2 && (
-        <span className="flex min-w-0 items-center gap-1 text-[11px] leading-4 opacity-80">
-          <IconeTerapia chave={visual.icone} className="h-3 w-3 shrink-0" strokeWidth={2} />
-          <span className="truncate">{a.terapia_nome}</span>
-        </span>
+      {!tituloPorUltimo || linhas < 2 ? (
+        <>
+          <span className="flex min-w-0 items-center gap-1">
+            <span className={`truncate font-semibold ${tam("titulo", grande)}`}>{titulo}</span>
+            {alerta && <span className={`${selo(alerta.t)} ml-auto shrink-0`}>{alerta.rotulo}</span>}
+          </span>
+          {linhas >= 2 && (
+            <span className={`flex min-w-0 items-center gap-1 opacity-80 ${tam("linha", grande)}`}>
+              <IconeTerapia chave={visual.icone} className={`${tam("icone", grande)} shrink-0`} strokeWidth={2} />
+              <span className="truncate">{terapia}</span>
+            </span>
+          )}
+          {linhas >= 3 && exibicao && <span className={`block truncate opacity-70 ${tam("linha", grande)}`}>({exibicao})</span>}
+        </>
+      ) : (
+        <>
+          <span className="flex min-w-0 items-center gap-1">
+            <IconeTerapia chave={visual.icone} className={`${tam("icone", grande)} shrink-0`} strokeWidth={2} />
+            <span className={`truncate font-semibold ${tam("titulo", grande)}`}>{terapia}</span>
+            {alerta && <span className={`${selo(alerta.t)} ml-auto shrink-0`}>{alerta.rotulo}</span>}
+          </span>
+          {linhas >= 3 && exibicao && <span className={`block truncate opacity-70 ${tam("linha", grande)}`}>({exibicao})</span>}
+          <span className={`block truncate opacity-80 ${tam("linha", grande)}`}>{titulo}</span>
+        </>
       )}
-      {linhas >= 3 && exibicao && <span className="block truncate text-[11px] leading-4 opacity-70">({exibicao})</span>}
     </button>
   )
 }
 
-/** Linhas do cartão que cabem na altura (16 px cada + respiro): 40 min = 3 linhas. */
-export const linhasQueCabem = (altura: number): 1 | 2 | 3 => (altura >= 52 ? 3 : altura >= 36 ? 2 : 1)
+/** Linhas do cartão que cabem na altura (16 px cada + respiro; 20+18+18 em tela cheia): 40 min = 3 linhas. */
+export const linhasQueCabem = (altura: number, grande = false): 1 | 2 | 3 =>
+  grande ? (altura >= 62 ? 3 : altura >= 44 ? 2 : 1) : (altura >= 52 ? 3 : altura >= 36 ? 2 : 1)
 
 // ── Bloco de um horário ───────────────────────────────────────────────────────
 
@@ -106,8 +151,11 @@ export function BlocoHorario({
   /** "+N": lista todos os pacientes do horário (grupo que não coube). */
   onVerTodos?: (h: HorarioGrade) => void
 }) {
+  const grande = useGradeGrande()
   const livres = Math.max(0, h.capacidade - h.ocupados.length)
   const hora = `${h.inicio}–${h.fim}`
+  const txt = grande ? "text-[13px]" : "text-[11px]"
+  const ico = tam("icone", grande)
 
   if (h.estado === "disponivel") {
     return (
@@ -119,10 +167,10 @@ export function BlocoHorario({
         title={`${hora} · ${rotuloVagas(h)}${h.terapias.length ? ` · ${h.terapias.map(t => t.nome).join(", ")}` : ""}`}
         className={`flex h-full w-full flex-col items-start justify-center rounded-md border border-dashed border-border px-2 text-left text-muted-foreground transition-colors hover:border-solid hover:bg-muted/60 hover:text-foreground disabled:cursor-default disabled:opacity-60 disabled:hover:border-dashed disabled:hover:bg-transparent ${foco}`}
       >
-        <span className="flex items-center gap-1 text-[11px] font-medium">
-          <Plus className="h-3 w-3 shrink-0" aria-hidden />{h.capacidade > 1 ? `${livres} livres` : "Livre"}
+        <span className={`flex items-center gap-1 font-medium ${txt}`}>
+          <Plus className={`${ico} shrink-0`} aria-hidden />{h.capacidade > 1 ? `${livres} livres` : "Livre"}
         </span>
-        {altura >= 44 && <span className="text-[11px] tabular-nums opacity-70">{hora}</span>}
+        {altura >= (grande ? 56 : 44) && <span className={`tabular-nums opacity-70 ${txt}`}>{hora}</span>}
       </button>
     )
   }
@@ -134,8 +182,8 @@ export function BlocoHorario({
       <div style={LISTRAS_BLOQUEIO} className="flex h-full w-full flex-col gap-0.5 overflow-hidden rounded-md border border-border bg-muted/50 p-0.5">
         <button type="button" onClick={() => onFechado?.(h)}
           title={`${hora} · ${h.fechado?.origem === "feriado" ? "Feriado" : "Bloqueado"}: ${h.fechado?.motivo ?? ""}`}
-          className={`flex min-w-0 items-center gap-1 rounded px-1.5 py-0.5 text-left text-[11px] font-medium text-muted-foreground hover:bg-muted ${foco}`}>
-          <Lock className="h-3 w-3 shrink-0" aria-hidden />
+          className={`flex min-w-0 items-center gap-1 rounded px-1.5 py-0.5 text-left font-medium text-muted-foreground hover:bg-muted ${txt} ${foco}`}>
+          <Lock className={`${ico} shrink-0`} aria-hidden />
           <span className="truncate">{h.fechado?.motivo ?? "Bloqueado"}</span>
         </button>
         {h.ocupados.map(a => (
@@ -151,11 +199,13 @@ export function BlocoHorario({
   const alerta = h.estado === "fora_da_grade" ? { t: "amber" as Tone, rotulo: "fora da grade" }
     : h.estado === "inativo" ? { t: "red" as Tone, rotulo: "reposição" } : null
   const emGrupo = h.capacidade > 1 && (h.estado === "parcial" || h.estado === "lotado")
-  // Cabe uma sessão por ~22 px; o rodapé do grupo (x/N, +N, +livre) ocupa uma linha.
-  const cabem = Math.max(1, Math.floor((altura - (emGrupo || h.ocupados.length > 1 ? 18 : 0)) / 22))
+  // Cabe uma sessão por ~22 px (~30 em tela cheia); o rodapé do grupo (x/N, +N, +livre) ocupa uma linha.
+  const alturaRodape = grande ? 24 : 18
+  const cabem = Math.max(1, Math.floor((altura - (emGrupo || h.ocupados.length > 1 ? alturaRodape : 0)) / (grande ? 30 : 22)))
   const visiveis = h.ocupados.slice(0, cabem)
   const escondidos = h.ocupados.length - visiveis.length
-  const linhas = linhasQueCabem(h.ocupados.length > 1 ? 0 : altura)
+  const rodape = emGrupo || escondidos > 0 ? alturaRodape : 0
+  const linhas = linhasQueCabem((altura - rodape) / Math.max(1, visiveis.length) - 2, grande)
 
   return (
     <div className="flex h-full w-full flex-col gap-0.5 overflow-hidden">
@@ -167,19 +217,19 @@ export function BlocoHorario({
       ))}
       {(emGrupo || escondidos > 0) && (
         <div className="flex shrink-0 items-center gap-1 px-0.5">
-          {emGrupo && <span className="text-[11px] font-semibold tabular-nums text-muted-foreground">{h.ocupados.length}/{h.capacidade}</span>}
+          {emGrupo && <span className={`font-semibold tabular-nums text-muted-foreground ${txt}`}>{h.ocupados.length}/{h.capacidade}</span>}
           {escondidos > 0 && onVerTodos && (
             <button type="button" onClick={() => onVerTodos(h)}
-              className={`rounded px-1 text-[11px] font-semibold text-foreground underline-offset-2 hover:underline ${foco}`}
+              className={`rounded px-1 font-semibold text-foreground underline-offset-2 hover:underline ${txt} ${foco}`}
               aria-label={`Ver os ${h.ocupados.length} pacientes de ${hora}`}>
               +{escondidos}
             </button>
           )}
           {h.estado === "parcial" && onLivre && (
             <button type="button" onClick={() => onLivre(h)}
-              className={`ml-auto inline-flex items-center gap-0.5 rounded border border-dashed border-border px-1 text-[11px] font-medium text-muted-foreground hover:border-solid hover:bg-muted/60 hover:text-foreground ${foco}`}
+              className={`ml-auto inline-flex items-center gap-0.5 rounded border border-dashed border-border px-1 font-medium ${txt} text-muted-foreground hover:border-solid hover:bg-muted/60 hover:text-foreground ${foco}`}
               aria-label={`${hora}: ${rotuloVagas(h)}. Agendar mais um`}>
-              <Plus className="h-3 w-3" aria-hidden />{livres}
+              <Plus className={ico} aria-hidden />{livres}
             </button>
           )}
         </div>
@@ -220,27 +270,34 @@ export type Escala = {
 /**
  * Monta a escala a partir dos horários que vão aparecer. `comPadrao` soma os
  * horários da regra de negócio (dia todo à vista); sem ele, a régua usa só os
- * horários informados (profissional com grade fora do padrão).
+ * horários informados (profissional com grade fora do padrão). `pxPorMin`
+ * troca a altura do minuto (tela cheia: horários mais altos).
  */
-export function montarEscala(intervalos: { ini: number; fim: number }[], comPadrao: boolean): Escala {
+export function montarEscala(intervalos: { ini: number; fim: number }[], comPadrao: boolean, pxPorMin = PX_POR_MIN): Escala {
   const todos = [...(comPadrao || !intervalos.length ? INTERVALOS_PADRAO : []), ...intervalos.filter(i => i.fim > i.ini)]
     .sort((a, b) => a.ini - b.ini || a.fim - b.fim)
+  const juntos: { ini: number; fim: number }[] = []
+  for (const i of todos) {
+    const ult = juntos[juntos.length - 1]
+    if (ult && i.ini <= ult.fim) ult.fim = Math.max(ult.fim, i.fim)
+    else juntos.push({ ...i })
+  }
+  const pxMin = pxPorMin
   const blocos: { ini: number; fim: number; y: number }[] = []
   let y = 0
-  for (const i of todos) {
+  for (const b of juntos) {
     const ult = blocos[blocos.length - 1]
-    if (ult && i.ini <= ult.fim) { ult.fim = Math.max(ult.fim, i.fim); continue }
-    if (ult) y = ult.y + (ult.fim - ult.ini) * PX_POR_MIN + PAUSA_PX
-    blocos.push({ ini: i.ini, fim: i.fim, y })
+    if (ult) y = ult.y + (ult.fim - ult.ini) * pxMin + PAUSA_PX
+    blocos.push({ ...b, y })
   }
   const ultimo = blocos[blocos.length - 1]
-  const altura = ultimo ? ultimo.y + (ultimo.fim - ultimo.ini) * PX_POR_MIN : 0
+  const altura = ultimo ? ultimo.y + (ultimo.fim - ultimo.ini) * pxMin : 0
   const posicao = (m: number) => {
     let r = 0
     for (const b of blocos) {
       if (m < b.ini) return r
-      if (m <= b.fim) return b.y + (m - b.ini) * PX_POR_MIN
-      r = b.y + (b.fim - b.ini) * PX_POR_MIN
+      if (m <= b.fim) return b.y + (m - b.ini) * pxMin
+      r = b.y + (b.fim - b.ini) * pxMin
     }
     return r
   }
@@ -332,18 +389,19 @@ export function ColunaHorarios({
 
 /** Régua à esquerda: início de cada horário (08:00, 08:40, 09:20…) e o fim de cada bloco. */
 export function EixoHoras({ escala }: { escala: Escala }) {
+  const grande = useGradeGrande()
   // Rótulos muito próximos (horário fora do padrão colado num do padrão) se sobrepõem: pula o segundo.
   const rotulos = escala.marcas.reduce<Escala["marcas"]>((acc, mk) => {
     const ultimo = acc[acc.length - 1]
-    return !ultimo || mk.y - ultimo.y >= 13 ? [...acc, mk] : acc
+    return !ultimo || mk.y - ultimo.y >= (grande ? 22 : 13) ? [...acc, mk] : acc
   }, [])
   return (
-    <div className="relative w-14 shrink-0" style={{ height: escala.altura }} aria-hidden>
+    <div className={`relative shrink-0 ${grande ? "w-20" : "w-14"}`} style={{ height: escala.altura }} aria-hidden>
       {escala.pausas.map(p => (
         <div key={`p${p.y}`} className="absolute inset-x-0 bg-muted/60" style={{ top: p.y, height: p.h }} />
       ))}
       {rotulos.map(mk => (
-        <span key={mk.m} className="absolute right-2 -translate-y-1/2 text-[11px] leading-3 tabular-nums text-muted-foreground" style={{ top: mk.y }}>
+        <span key={mk.m} className={`absolute right-2 -translate-y-1/2 tabular-nums ${grande ? "text-lg font-semibold leading-5 text-foreground/80" : "text-[11px] leading-3 text-muted-foreground"}`} style={{ top: mk.y }}>
           {deMin(mk.m)}
         </span>
       ))}
