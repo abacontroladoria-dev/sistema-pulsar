@@ -32,6 +32,7 @@ const paciente = (id: number, nome: string, p: Partial<ItemStatusContratos> = {}
   pacienteId: id,
   nome,
   ativo: true,
+  ficticio: false,
   fotoPath: null,
   naGrade: true,
   convenio: "ASSIM",
@@ -53,6 +54,7 @@ const ITENS: ItemStatusContratos[] = [
   }),
   paciente(9, "Íris", { ativo: false, contratos: [] }),
   paciente(10, "Júlia", { convenio: "LEVE", contratos: [contrato({ vigencia: "a_vencer" })] }),
+  paciente(11, "Horário Administrativo", { ficticio: true, contratos: [] }),
 ]
 
 test("o número do card é o tamanho da lista ao clicar nele, em qualquer combinação", () => {
@@ -61,7 +63,9 @@ test("o número do card é o tamanho da lista ao clicar nele, em qualquer combin
     { tipos: new Set(["terapias"]) },
     { tipos: new Set(["avaliacao_neuropsicologica"]) },
     { convenios: new Set(["LEVE"]) },
-    { soNaGrade: true },
+    { agendamento: "sim" },
+    { agendamento: "nao" },
+    { situacoes: new Set(["ficticio"]) },
     { situacoes: new Set(["ativo", "inativo"]) },
     { busca: "a" },
   ]
@@ -74,7 +78,7 @@ test("o número do card é o tamanho da lista ao clicar nele, em qualquer combin
   }
 })
 
-test("sem contrato: na grade e sem Terapias valendo hoje; expirado não conta como contrato", () => {
+test("sem contrato: com agendamento e sem Terapias valendo hoje; expirado não conta como contrato", () => {
   const nomes = aplicar(ITENS, { ...filtrosIniciais(), recorte: "sem_contrato" }).map((i) => i.nome)
   // Bruno (nada), Eva (Terapias vencido), Fábio (link expirado). Gil fora da grade; Íris inativa.
   assert.deepEqual(nomes, ["Bruno", "Eva", "Fábio"])
@@ -91,6 +95,16 @@ test("recortes por status e vigência", () => {
   // Com tipo Terapias, a Avaliação vencida do Hugo deixa de contar.
   assert.deepEqual(nomes("vencido", { tipos: new Set(["terapias"]) }), ["Eva"])
   assert.deepEqual(nomes("recusado_expirado"), ["Fábio"])
+})
+
+test("cadastro e agendamento são filtros separados", () => {
+  const nomes = (extra: Partial<FiltrosContratos>) => aplicar(ITENS, { ...filtrosIniciais(), ...extra }).map((i) => i.nome)
+  // Fictício fica fora do padrão (só Ativo), mesmo estando ativo e com agendamento.
+  assert.equal(nomes({}).includes("Horário Administrativo"), false)
+  assert.deepEqual(nomes({ situacoes: new Set(["ficticio"]) }), ["Horário Administrativo"])
+  assert.deepEqual(nomes({ situacoes: new Set(["inativo"]) }), ["Íris"])
+  assert.deepEqual(nomes({ agendamento: "nao" }), ["Gil"])
+  assert.equal(nomes({ agendamento: "sim" }).includes("Gil"), false)
 })
 
 test("busca ignora acento e caixa, e aceita o ID do paciente", () => {

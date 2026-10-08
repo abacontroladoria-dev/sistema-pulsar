@@ -16,11 +16,12 @@ import type { ItemStatusContratos, MetaStatusContratos } from "@/types/contratos
 // services/laudos/acompanhamento.ts.
 //
 // Três fontes:
-//   1. `pacientes` — quem aparece: todo paciente real (ficticio = false), ativo
-//      ou com algum contrato. Inativo sem contrato não tem o que acompanhar.
+//   1. `pacientes` — quem aparece: todo paciente ativo ou com algum contrato
+//      (inativo sem contrato não tem o que acompanhar). Os FICTÍCIOS vêm junto,
+//      marcados: o filtro "Cadastro" da tela os esconde por padrão.
 //   2. `pacientes_contratos` — os contratos (ativo = true).
 //   3. `grade_convenio_por_paciente()` — quem está na grade do TiTa (unidade
-//      280) e o convênio de lá. Pode FALHAR sem derrubar a tela: aí o "na grade"
+//      280) e o convênio de lá. Pode FALHAR sem derrubar a tela: aí o "possui agendamentos"
 //      some, o convênio fica o do cadastro e `meta.gradeErro` avisa.
 //
 // `server-only` e service_role: a grade só a service_role lê, e quem tem só
@@ -67,6 +68,7 @@ type PacienteBruto = {
   tita_paciente_id: number | null
   nome: string
   ativo: boolean
+  ficticio: boolean
   foto_path: string | null
   convenio_nome: string | null
 }
@@ -125,8 +127,7 @@ export async function buscarStatusContratos(
       (from, to) =>
         sb
           .from("pacientes")
-          .select("id_paciente, tita_paciente_id, nome, ativo, foto_path, convenio_nome")
-          .eq("ficticio", false)
+          .select("id_paciente, tita_paciente_id, nome, ativo, ficticio, foto_path, convenio_nome")
           .order("id_paciente", { ascending: true })
           .range(from, to),
       "pacientes",
@@ -165,6 +166,7 @@ export async function buscarStatusContratos(
       pacienteId: p.id_paciente,
       nome: p.nome,
       ativo: p.ativo,
+      ficticio: !!p.ficticio,
       fotoPath: p.foto_path,
       naGrade: daGrade !== undefined,
       convenio: daGrade ?? p.convenio_nome ?? null,

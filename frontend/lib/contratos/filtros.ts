@@ -38,7 +38,7 @@ export const RECORTE_LABEL: Record<RecorteContratos, string> = {
 export const RECORTE_DICA: Record<RecorteContratos, string> = {
   todos: "Todos os pacientes do filtro.",
   sem_contrato:
-    "Paciente com agendamento na grade do TiTa e sem contrato de Terapias valendo hoje (recusado e link expirado não contam como contrato).",
+    "Paciente que possui agendamentos (grade do TiTa) e não tem contrato de Terapias valendo hoje (recusado e link expirado não contam como contrato).",
   rascunho: "Contrato criado no Pulsar e ainda não enviado nem assinado.",
   aguardando: "Enviado para assinatura e ainda sem resposta.",
   assinado_vigente: "Assinado e valendo hoje (inclui os que vencem nos próximos 30 dias).",
@@ -47,7 +47,17 @@ export const RECORTE_DICA: Record<RecorteContratos, string> = {
   recusado_expirado: "O responsável recusou, ou o link de assinatura venceu sem assinatura.",
 }
 
-export type SituacaoPacienteContrato = "ativo" | "inativo"
+/** Filtro "Cadastro": a situação do cadastro do paciente. */
+export type SituacaoPacienteContrato = "ativo" | "inativo" | "ficticio"
+
+/** Filtro "Possui agendamentos": tem agendamento na grade do TiTa (unidade 280)? */
+export type FiltroAgendamento = "todos" | "sim" | "nao"
+
+export function situacaoDoCadastro(item: ItemStatusContratos): SituacaoPacienteContrato {
+  // Fictício primeiro: "Horário Administrativo" costuma estar ativo, e não é
+  // isso que a recepção quer ver ao escolher "Ativo".
+  return item.ficticio ? "ficticio" : item.ativo ? "ativo" : "inativo"
+}
 
 export type FiltrosContratos = {
   busca: string
@@ -57,8 +67,7 @@ export type FiltrosContratos = {
   /** Vazio = todos os convênios. */
   convenios: Set<string>
   situacoes: Set<SituacaoPacienteContrato>
-  /** Só pacientes com agendamento na grade do TiTa. */
-  soNaGrade: boolean
+  agendamento: FiltroAgendamento
 }
 
 export function filtrosIniciais(): FiltrosContratos {
@@ -68,7 +77,7 @@ export function filtrosIniciais(): FiltrosContratos {
     tipos: new Set(),
     convenios: new Set(),
     situacoes: new Set<SituacaoPacienteContrato>(["ativo"]),
-    soNaGrade: false,
+    agendamento: "todos",
   }
 }
 
@@ -106,8 +115,9 @@ export function normalizar(s: string): string {
 export function filtrarBase(itens: ItemStatusContratos[], f: FiltrosContratos): ItemStatusContratos[] {
   const termo = normalizar(f.busca)
   return itens.filter((item) => {
-    if (!f.situacoes.has(item.ativo ? "ativo" : "inativo")) return false
-    if (f.soNaGrade && !item.naGrade) return false
+    if (!f.situacoes.has(situacaoDoCadastro(item))) return false
+    if (f.agendamento === "sim" && !item.naGrade) return false
+    if (f.agendamento === "nao" && item.naGrade) return false
     if (f.convenios.size > 0 && !(item.convenio && f.convenios.has(item.convenio))) return false
     if (termo && !normalizar(item.nome).includes(termo) && String(item.pacienteId) !== termo) return false
     return true

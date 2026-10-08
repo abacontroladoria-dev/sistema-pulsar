@@ -39,7 +39,7 @@ function filtrosAlterados(f: FiltrosContratos): boolean {
     f.recorte !== i.recorte ||
     f.tipos.size > 0 ||
     f.convenios.size > 0 ||
-    f.soNaGrade !== i.soNaGrade ||
+    f.agendamento !== i.agendamento ||
     f.situacoes.size !== i.situacoes.size ||
     [...i.situacoes].some((s) => !f.situacoes.has(s))
   )
@@ -150,12 +150,12 @@ export function StatusContratosShell({ buscaInicial = "" }: { buscaInicial?: str
       )}
 
       {/* A grade falhou, os contratos não: "Sem contrato" depende de quem está
-          na grade e ficaria zerado sem explicação. */}
+          possui agendamento e ficaria zerado sem explicação. */}
       {meta?.gradeErro && (
         <div role="alert" className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
           <span>
-            Não foi possível ler a grade do TiTa. “Sem contrato” e “Na grade” ficaram zerados, e o convênio mostrado é o do cadastro.
+            Não foi possível ler a grade do TiTa. “Sem contrato” e “Possui agendamentos” ficaram sem dado, e o convênio mostrado é o do cadastro.
           </span>
         </div>
       )}

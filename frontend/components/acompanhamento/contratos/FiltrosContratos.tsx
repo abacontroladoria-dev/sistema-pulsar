@@ -6,7 +6,7 @@ import { MultiSearchCombobox, type OpcaoMulti } from "@/components/cronograma/ui
 import { opcaoForm } from "@/components/cronograma/grade/estilo"
 import { foco, rotulo } from "@/components/cadastros/pacientes/ui/campos"
 import { ROTULO_TIPO, TIPOS_CONTRATO, type TipoContrato } from "@/lib/contratos/status"
-import type { FiltrosContratos, SituacaoPacienteContrato } from "@/lib/contratos/filtros"
+import type { FiltroAgendamento, FiltrosContratos, SituacaoPacienteContrato } from "@/lib/contratos/filtros"
 
 // Painel de filtros da Status Contratos, entre o cabeçalho e os indicadores —
 // mesmo molde de components/acompanhamento/laudos/FiltrosLaudos.tsx.
@@ -15,12 +15,23 @@ import type { FiltrosContratos, SituacaoPacienteContrato } from "@/lib/contratos
 // dessas duas dimensões (o número que motiva o filtro é o próprio botão).
 // Unidade também não: a grade que alimenta a tela é toda da unidade 280.
 //
+// "Cadastro" (ativo/inativo/fictício) e "Possui agendamentos" (sim/não) são
+// filtros SEPARADOS de propósito (pedido do usuário, 08/10/2026): um paciente
+// ativo pode não ter agendamento, e um fictício pode ter.
+//
 // Listas com várias seleções usam `MultiSearchCombobox` (padrão do AGENTS.md).
 
 const OPCOES_TIPO: OpcaoMulti<TipoContrato>[] = TIPOS_CONTRATO.map((t) => ({ id: t, nome: ROTULO_TIPO[t] }))
 const OPCOES_SITUACAO: OpcaoMulti<SituacaoPacienteContrato>[] = [
   { id: "ativo", nome: "Ativo" },
   { id: "inativo", nome: "Inativo" },
+  { id: "ficticio", nome: "Fictício" },
+]
+
+const OPCOES_AGENDAMENTO: { valor: FiltroAgendamento; rotulo: string; dica: string }[] = [
+  { valor: "todos", rotulo: "Todos", dica: "Com e sem agendamento" },
+  { valor: "sim", rotulo: "Sim", dica: "Só quem tem agendamento na grade do TiTa" },
+  { valor: "nao", rotulo: "Não", dica: "Só quem não tem agendamento na grade do TiTa" },
 ]
 
 function alternar<T>(conjunto: Set<T>, valor: T): Set<T> {
@@ -102,39 +113,34 @@ export function PainelFiltrosContratos({
           />
         </Campo>
 
-        <Campo rotuloTexto="Paciente">
+        <Campo rotuloTexto="Cadastro">
           <MultiSearchCombobox
             variant="plano"
             opcoes={OPCOES_SITUACAO}
             selecionados={filtros.situacoes}
             onToggle={(s) => set("situacoes", alternar(filtros.situacoes, s))}
             onDesmarcarTodos={() => set("situacoes", new Set())}
-            ariaLabel="Situação do paciente"
+            ariaLabel="Situação do cadastro"
             placeholder="Nenhuma selecionada"
             nomePlural="situações"
             className={CLASSE_MULTI}
           />
         </Campo>
 
-        <Campo rotuloTexto="Grade do TiTa">
-          <div className="grid h-10 grid-cols-2 gap-1.5">
-            <button
-              type="button"
-              aria-pressed={!filtros.soNaGrade}
-              onClick={() => set("soNaGrade", false)}
-              className={`${opcaoForm(!filtros.soNaGrade)} h-10`}
-            >
-              Todos
-            </button>
-            <button
-              type="button"
-              aria-pressed={filtros.soNaGrade}
-              onClick={() => set("soNaGrade", true)}
-              className={`${opcaoForm(filtros.soNaGrade)} h-10`}
-              title="Só pacientes com agendamento na grade do TiTa"
-            >
-              Na grade
-            </button>
+        <Campo rotuloTexto="Possui agendamentos">
+          <div className="grid h-10 grid-cols-3 gap-1.5" role="group" aria-label="Possui agendamentos">
+            {OPCOES_AGENDAMENTO.map((o) => (
+              <button
+                key={o.valor}
+                type="button"
+                aria-pressed={filtros.agendamento === o.valor}
+                onClick={() => set("agendamento", o.valor)}
+                title={o.dica}
+                className={`${opcaoForm(filtros.agendamento === o.valor)} h-10`}
+              >
+                {o.rotulo}
+              </button>
+            ))}
           </div>
         </Campo>
       </div>

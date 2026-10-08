@@ -83,6 +83,8 @@ export type ItemStatusContratos = {
   pacienteId: number
   nome: string
   ativo: boolean
+  /** Horário Administrativo, Notificação Prévia e afins — não é criança de verdade. */
+  ficticio: boolean
   fotoPath: string | null
   /** Tem agendamento na grade do TiTa (unidade 280). */
   naGrade: boolean
@@ -99,7 +101,7 @@ export type MetaStatusContratos = {
   hoje: string
   pacientes: number
   contratos: number
-  /** A leitura da grade falhou: "na grade" e o convênio da grade ficaram de fora. */
+  /** A leitura da grade falhou: "possui agendamentos" e o convênio da grade ficaram de fora. */
   gradeErro: string | null
   /** A migration ainda não foi aplicada no banco. */
   migracaoPendente: boolean
