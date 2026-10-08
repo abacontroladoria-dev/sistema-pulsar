@@ -49,7 +49,7 @@ function novaLinha(usadas: Set<string>): LinhaTerapia | null {
   return { id: `l${seqLinha}`, especialidade: livre, quantidade: 1 }
 }
 
-// Simulação de orçamento: pura visualização, nada é gravado na TiTa nem
+// Simulação de orçamento: pura visualização, nada é gravado no TiTa nem
 // persistido em lugar nenhum (nem localStorage) — para paciente que ainda não
 // tem cadastro na clínica, então não há laudo real nem histórico de agendamento
 // pra consultar. O usuário digita terapias/quantidades à mão; a busca de horário
@@ -276,7 +276,7 @@ export function OrcamentoPacMode({ cRows }: Props) {
   const avisos = useMemo(() => {
     if (!result) return []
     return [
-      "⚠ Simulação apenas — nada é gravado na TiTa nem salvo. Para agendar, cadastre o paciente e use \"Criar Novo Cronograma\".",
+      "⚠ Simulação apenas — nada é gravado no TiTa nem salvo. Para agendar, cadastre o paciente e use \"Criar Novo Cronograma\".",
       ...result.alertas.map(a => a.msg),
     ]
   }, [result])

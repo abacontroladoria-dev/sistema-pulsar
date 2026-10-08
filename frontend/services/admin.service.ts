@@ -85,6 +85,18 @@ export async function updateMachineStatus(machineId: string, ativa: boolean) {
   return response.ok
 }
 
+export async function deleteMachine(machineId: string): Promise<{ ok: boolean; error?: string }> {
+  const response = await fetch('/api/admin/machine/delete', {
+    method: 'POST',
+    headers: await getFunctionHeaders(),
+    body: JSON.stringify({ machineId }),
+  })
+
+  const json = await response.json()
+  if (!response.ok) return { ok: false, error: json.error }
+  return { ok: true }
+}
+
 export async function deleteUser(userId: string): Promise<{ ok: boolean; error?: string }> {
   const response = await fetch('/api/admin/user/delete', {
     method: 'POST',

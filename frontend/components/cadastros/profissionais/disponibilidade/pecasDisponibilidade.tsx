@@ -1,6 +1,6 @@
 "use client"
 
-import { CalendarClock, CircleSlash, CheckCircle2, MapPin, Replace } from "lucide-react"
+import { CalendarClock, CircleSlash, CheckCircle2, MapPin, Replace, Users } from "lucide-react"
 import { tom, type Tom } from "@/components/ui/pastel/pecas"
 import { COR_NEUTRA } from "@/lib/cadastros/terapias"
 import { DIAS_SEMANA, dataBR, paraMin, periodoBR, sessoesDaFaixa, somarDias, totaisDaSemana } from "@/lib/disponibilidadeProfissional"
@@ -116,6 +116,13 @@ export function SemanaLeitura({
                     <span className="font-extrabold tabular-nums">{f.inicio}–{f.fim}</span>
                     {f.intervaloAtivo && <span className="text-xs font-semibold text-[var(--pp-ink-muted)]">intervalo {f.intervaloInicio}–{f.intervaloFim}</span>}
                     <span className="text-xs font-semibold text-[var(--pp-ink-muted)]">· {sessoesDaFaixa(f).length}×{f.duracao} min</span>
+                    {f.capacidade > 1 && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-[var(--pp-muted)] px-2 py-0.5 text-[11px] font-extrabold"
+                        title={`${f.capacidade} pacientes por horário`}>
+                        <Users className="h-3 w-3" aria-hidden />×{f.capacidade}
+                        <span className="sr-only"> pacientes por horário</span>
+                      </span>
+                    )}
                     <span className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--pp-ink-muted)]">
                       <MapPin className="h-3 w-3" aria-hidden />{f.localNome ?? "—"}
                     </span>

@@ -31,10 +31,10 @@ export type SessaoReal = {
   idFavorecido: string
   criacaoTratativa: string
   /**
-   * Quantas evoluções a TiTa tem para ESTE agendamento, e de quantas pessoas
+   * Quantas evoluções o TiTa tem para ESTE agendamento, e de quantas pessoas
    * diferentes. 1/1 é o normal.
    *
-   * O relatório da TiTa emite uma linha por tratativa, não por agendamento —
+   * O relatório do TiTa emite uma linha por tratativa, não por agendamento —
    * evoluir duas vezes vira duas linhas com o mesmo `ID Agendamento`. Sem contar
    * isso, o upload pagava a sessão duas vezes (medido em julho/2026: 5 casos,
    * R$ 95). Contar não basta: quem evoluiu duas vezes muda o que se deve fazer.
@@ -231,7 +231,7 @@ export function classificarSessaoReal(
  * Agrupa as linhas por `ID Agendamento` para descobrir evolução repetida.
  *
  * Duas fontes, um resultado. No upload a repetição É a repetição de linhas: o
- * relatório da TiTa emite uma por tratativa. No banco a linha já vem colapsada
+ * relatório do TiTa emite uma por tratativa. No banco a linha já vem colapsada
  * (uma por `tita_agendamento_id`), e a contagem chega pronta nas colunas
  * "Tratativas" / "Tratativas Distintas", que o sync preenche — sem elas o banco
  * não teria como saber que houve duas, porque guardou só a última.

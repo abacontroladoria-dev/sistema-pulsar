@@ -8,6 +8,7 @@ import {
   Building2,
   Calendar,
   CalendarClock,
+  CalendarDays,
   CalendarRange,
   ClipboardCheck,
   ClipboardList,
@@ -116,6 +117,7 @@ export const MENU_ITENS: MenuItemDef[] = [
 
   { codigo: 'insumos', label: 'Solicitações', grupo: G.suprimentos.nome, path: '/insumos', icon: Package },
 
+  { codigo: 'cronograma_grade', label: 'Grade', grupo: G.cronograma.nome, path: '/cronograma/grade', icon: CalendarDays },
   { codigo: 'cronograma_saida_profissional', label: 'Saída Profissional', grupo: G.cronograma.nome, path: '/cronograma/saida-profissional', icon: LogOut },
   { codigo: 'cronograma_ocupacao_paciente', label: 'Ocupação Paciente', grupo: G.cronograma.nome, path: '/cronograma/ocupacao-paciente', icon: UserCheck },
   { codigo: 'reposicao_faltas', label: 'Reposição de Faltas', grupo: G.cronograma.nome, path: '/cronograma/reposicao', icon: RotateCcw },

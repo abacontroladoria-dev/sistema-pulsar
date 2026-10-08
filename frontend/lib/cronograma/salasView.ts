@@ -145,7 +145,7 @@ export const SITUACAO_LABEL: Record<SituacaoCelula, string> = {
  * casar vence.
  *
  * `agenda-aberta` existe porque a grade de hoje já distingue esse caso: o
- * profissional tem horário 'Livre' reservado na TiTa (então `semCruzamentoCsv`
+ * profissional tem horário 'Livre' reservado no TiTa (então `semCruzamentoCsv`
  * é false — não é alocação fantasiosa), mas ainda 0 paciente marcado, e a razão
  * "X/Y" aparece em cinza, não em verde (SalasGridView.tsx:302-308). Colapsá-lo
  * em `confirmada` diria "sessão confirmada" sobre um turno sem nenhum paciente.

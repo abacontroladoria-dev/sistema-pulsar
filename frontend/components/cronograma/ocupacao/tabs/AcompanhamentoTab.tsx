@@ -279,7 +279,7 @@ export function AcompanhamentoTab({ res, onWA, onWAUndo, onWAStatus, onRec, onIn
       })))
   ), [pacBundles])
 
-  // Bundles cuja série foi excluída na TiTa e detectada pela reconciliação
+  // Bundles cuja série foi excluída no TiTa e detectada pela reconciliação
   // (ver OcupPacMode.tsx). Não são mais "Implantado" — surfaced à parte, só leitura,
   // com opção de dispensar o aviso (remove o bundle da fonte de verdade).
   const pacRemovidoDerived = useMemo((): ConfItem[] => (
@@ -370,7 +370,7 @@ export function AcompanhamentoTab({ res, onWA, onWAUndo, onWAStatus, onRec, onIn
   //   Aguardando   13 bundles   — 3 jun /  9 jul /   1 ago  (praticamente parada)
   //   Inviáveis     0 bundles no banco (os itens exibidos vinham do localStorage)
   // Registro de divergência: "Confirmados" tinha 26 implantações em agosto e é o
-  // registro visível do que foi escrito na TiTa; recomendei mantê-la e o usuário
+  // registro visível do que foi escrito no TiTa; recomendei mantê-la e o usuário
   // optou por ocultar assim mesmo. Reverter = devolver "confirmados" a esta lista.
   const SUBS_VISIVEIS: Sub[] = ["recusados"]
   const SUBS = TODAS_SUBS.filter(s => SUBS_VISIVEIS.includes(s.key))
@@ -863,9 +863,9 @@ function ConfirmadosTab({ conf, removidos, onRemove }: { conf: ConfItem[]; remov
   return (
     <>
     {removidos.length > 0 && (
-      <ListCard icon={Ban} title="Removidos na TiTa" count={removidos.length} titleColor="#b45309">
+      <ListCard icon={Ban} title="Removidos no TiTa" count={removidos.length} titleColor="#b45309">
         <div style={{ padding: "8px 12px 4px", fontSize: "var(--text-xs)", color: "var(--muted-foreground)" }}>
-          Estas sessões estavam implantadas, mas a série foi excluída diretamente na TiTa. Os horários já foram liberados — dispense o aviso quando quiser.
+          Estas sessões estavam implantadas, mas a série foi excluída diretamente no TiTa. Os horários já foram liberados — dispense o aviso quando quiser.
         </div>
         {removidos.map((c, i) => (
           <div key={c.id || i} className={rowClass} style={rowStyle}>
@@ -878,7 +878,7 @@ function ConfirmadosTab({ conf, removidos, onRemove }: { conf: ConfItem[]; remov
             </div>
             <div style={{ flexShrink: 0, width: "190px", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "6px" }}>
               <span style={{ fontSize: "var(--text-xs)", fontWeight: "var(--weight-semibold)", color: "#b45309", background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: "var(--radius-sm)", padding: "2px 8px", whiteSpace: "nowrap" }}>
-                Removido na TiTa
+                Removido no TiTa
               </span>
               <button onClick={() => onRemove(c)} style={{
                 fontSize: "var(--text-xs)", fontWeight: "var(--weight-semibold)", whiteSpace: "nowrap",

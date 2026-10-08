@@ -9,9 +9,9 @@ import type { Profissional, TerapiaDoProfissional } from "@/types/profissional"
 import { estiloCor } from "./pecas"
 
 // Aba Terapias: o que o profissional pode prestar (a disponibilidade só oferece
-// estas) e o que a grade TiTa mostra que ele presta. A lista é da equipe — a
+// estas) e o que a grade do TiTa mostra que ele presta. A lista é da equipe — a
 // importação só a semeia uma vez —, então terapia nova na grade aparece aqui
-// como "só na TiTa", com o botão para habilitar.
+// como "só no TiTa", com o botão para habilitar.
 
 export function AbaTerapias({
   prof,
@@ -72,7 +72,7 @@ export function AbaTerapias({
           apoio="Só estas podem ser escolhidas na disponibilidade"
           ajuda={[
             { t: "rosa", Icone: Sparkles, texto: "Habilitada = o profissional tem a formação e pode prestar." },
-            { t: "amber", Icone: CalendarClock, texto: "“Só na TiTa” = aparece na grade, mas ainda não foi habilitada aqui." },
+            { t: "amber", Icone: CalendarClock, texto: "“Só no TiTa” = aparece na grade, mas ainda não foi habilitada aqui." },
             { t: "aco", Icone: Palette, texto: "A estrela escolhe qual cor pinta o card do profissional." },
           ]}
           direita={
@@ -119,7 +119,7 @@ export function AbaTerapias({
                       ) : t.terapiaId === null ? (
                         <span className={`${tom("vermelho")} inline-flex items-center gap-1 text-[var(--c-tinta)]`}><CircleAlert className="h-3 w-3" aria-hidden /> Fora do catálogo</span>
                       ) : (
-                        <span className={`${tom("amber")} inline-flex items-center gap-1 text-[var(--c-tinta)]`}><CalendarClock className="h-3 w-3" aria-hidden /> Só na TiTa</span>
+                        <span className={`${tom("amber")} inline-flex items-center gap-1 text-[var(--c-tinta)]`}><CalendarClock className="h-3 w-3" aria-hidden /> Só no TiTa</span>
                       )}
                       {t.horariosGrade > 0 && <span>· {t.horariosGrade} horário{t.horariosGrade === 1 ? "" : "s"} na grade</span>}
                     </p>
@@ -168,7 +168,7 @@ export function AbaTerapias({
 
         {(soNaTita.length > 0 || semCatalogo.length > 0) && (
           <p className="mt-4 text-xs font-semibold text-[var(--pp-ink-muted)]">
-            {soNaTita.length > 0 && `${soNaTita.length} terapia${soNaTita.length === 1 ? "" : "s"} aparece${soNaTita.length === 1 ? "" : "m"} na grade TiTa sem estar habilitada${soNaTita.length === 1 ? "" : "s"}. `}
+            {soNaTita.length > 0 && `${soNaTita.length} terapia${soNaTita.length === 1 ? "" : "s"} aparece${soNaTita.length === 1 ? "" : "m"} na grade do TiTa sem estar habilitada${soNaTita.length === 1 ? "" : "s"}. `}
             {semCatalogo.length > 0 && `${semCatalogo.map(t => t.nome).join(", ")} não existe no Cadastro de Terapias — cadastre para poder habilitar.`}
           </p>
         )}

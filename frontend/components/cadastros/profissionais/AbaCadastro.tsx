@@ -11,7 +11,7 @@ import { maskCpfCnpj } from "@/lib/remuneracao/formatacao"
 import { TIPOS_REGISTRO, type CampoTita, type Profissional } from "@/types/profissional"
 
 // Aba Cadastro da ficha do profissional. Somente leitura até "Editar" (no
-// cabeçalho da ficha). Campo que veio da TiTa e hoje difere dela mostra o valor
+// cabeçalho da ficha). Campo que veio do TiTa e hoje difere dele mostra o valor
 // de lá, com "usar este" — a importação nunca sobrescreve o que a equipe editou.
 
 const so = (v: string) => v.replace(/\D/g, "")
@@ -42,14 +42,14 @@ export function AbaCadastro({
     return [...todos].map(t => ({ valor: t, rotulo: t }))
   }, [form.tipo_registro, tita.tipo_registro])
 
-  /** "Na TiTa: X · usar este" quando o valor de lá é outro. */
+  /** "No TiTa: X · usar este" quando o valor de lá é outro. */
   const divergencia = (campoTita: CampoTita, atual: string | null, formatar: (v: string) => string = v => v) => {
     const deLa = tita[campoTita]
     if (!deLa || (atual ?? "").trim() === deLa) return null
     return (
       <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-xs font-semibold text-[var(--pp-ink-muted)]">
         <RefreshCw className="h-3 w-3" aria-hidden />
-        Na TiTa: <span className="text-[var(--pp-ink)]">{formatar(deLa)}</span>
+        No TiTa: <span className="text-[var(--pp-ink)]">{formatar(deLa)}</span>
         {editando && (
           <button
             type="button"

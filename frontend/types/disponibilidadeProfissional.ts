@@ -13,6 +13,8 @@ export type FaixaGravada = {
   hora_inicio: string // "HH:MM:SS"
   hora_fim: string
   duracao_min: number
+  /** Pacientes por horário (20261008100100). Ausente enquanto a migration não sai = 1. */
+  capacidade?: number
   intervalo_ativo: boolean
   intervalo_inicio: string | null
   intervalo_fim: string | null
@@ -45,9 +47,12 @@ export type VersaoDisponibilidade = {
 export type EventoDisponibilidade = {
   id: number
   versao_id: string | null
-  tipo: "criar" | "encerrar" | "alterar_vigencia" | "restaurar" | "substituir" | "antecipar"
+  tipo: "criar" | "encerrar" | "alterar_vigencia" | "restaurar" | "substituir" | "antecipar" | "carga_capacidade"
   antes: { vigente_de?: string; vigente_ate?: string | null } | null
-  depois: { vigente_de?: string; vigente_ate?: string | null; faixas?: number; substituida_por?: string } | null
+  depois: {
+    vigente_de?: string; vigente_ate?: string | null; faixas?: number | { dia_semana: number; capacidade: number }[]
+    substituida_por?: string
+  } | null
   motivo: string | null
   usuario_nome: string | null
   criado_em: string
@@ -94,6 +99,8 @@ export type FaixaRascunho = {
   inicio: string
   fim: string
   duracao: number
+  /** Pacientes por horário (1 = individual). */
+  capacidade: number
   intervaloAtivo: boolean
   intervaloInicio: string
   intervaloFim: string

@@ -30,7 +30,7 @@ interface RequestBody {
   modalidade?: "aumentar" | "novo"
 }
 
-// Nunca inclui conteúdo bruto da TiTa (stack trace, caminhos internos) — apenas
+// Nunca inclui conteúdo bruto do TiTa (stack trace, caminhos internos) — apenas
 // código de erro estável, mensagem amigável e o identificador da sessão. O corpo
 // bruto de qualquer erro só é logado no servidor (ver client.ts/confirmar.ts).
 interface ResultadoSessao {
@@ -64,14 +64,14 @@ async function getCurrentUser(request: NextRequest) {
   return user
 }
 
-// Implanta na TiTa as sessões aceitas no fluxo de Ocupação de Paciente.
+// Implanta no TiTa as sessões aceitas no fluxo de Ocupação de Paciente.
 //
 // Estratégia "tudo ou nada": as três fases rodam em sequência para o BUNDLE
 // inteiro (nenhuma fase começa até a anterior confirmar todas as sessões).
 // Isso evita criar 1 de 5 sessões e travar as outras 4 num estado incerto na
 // maioria dos casos — mas não é atômico: se agendamento/create falhar para a
 // sessão N depois de já ter sucesso nas sessões 1..N-1, essas já foram
-// efetivamente criadas na TiTa e não há rollback automático aqui.
+// efetivamente criadas no TiTa e não há rollback automático aqui.
 export async function POST(request: NextRequest) {
   const inicioTotal = Date.now()
 
@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
 
   console.log(`${LOG_TAG} início pac=${body.pac} sessoes=${body.sessoes.length}`)
 
-  // Fase 1: busca a grade e monta o payload de cada sessão (sem chamar a TiTa ainda).
+  // Fase 1: busca a grade e monta o payload de cada sessão (sem chamar o TiTa ainda).
   const inicioPreparacao = Date.now()
   const preparos = await Promise.all(
     body.sessoes.map(async sessao => ({
@@ -118,7 +118,7 @@ export async function POST(request: NextRequest) {
       mensagem: p.preparo.ok ? undefined : mensagemAmigavel(p.preparo.erro),
     }))
     // Códigos internos (ex.: "grade_nao_encontrada") são seguros de logar — nunca
-    // carregam resposta bruta da TiTa (essa só passa por prepararAgendamento/
+    // carregam resposta bruta do TiTa (essa só passa por prepararAgendamento/
     // resolverGradeTerapeuta, que já logam o detalhe técnico separadamente).
     console.error(`${LOG_TAG} cancelado na fase de preparação`, JSON.stringify(resultados))
     await registrarAuditoriaImplantacao({
@@ -186,7 +186,7 @@ export async function POST(request: NextRequest) {
     })
   }
 
-  // Fase 3: cria o agendamento na TiTa para cada sessão.
+  // Fase 3: cria o agendamento no TiTa para cada sessão.
   // Achado da homologação: agendamento/create NÃO é transacional — cria a série
   // semanal inteira e marca cada ocorrência como "Planejado" ou "Conflito" em vez
   // de aceitar/rejeitar tudo (ver interpretarResultadoCriacao). Por isso "ok" aqui
@@ -199,9 +199,9 @@ export async function POST(request: NextRequest) {
   // Sequencial, não Promise.all: achado real em produção (2026-08-07) — duas
   // chamadas concorrentes deste mesmo bundle, cada uma inserindo em lote em
   // agenda_fav_items (uma linha por ocorrência semanal), causaram deadlock no
-  // MySQL da TiTa ("SQLSTATE[40001]: Deadlock found when trying to get lock") e
+  // MySQL do TiTa ("SQLSTATE[40001]: Deadlock found when trying to get lock") e
   // uma das duas sessões foi rejeitada com 500 mesmo com dados corretos dos dois
-  // lados. criarAgendamento já reexecuta sozinho se a TiTa sinalizar deadlock (ver
+  // lados. criarAgendamento já reexecuta sozinho se o TiTa sinalizar deadlock (ver
   // client.ts), mas evitar a concorrência entre sessões do mesmo bundle reduz a
   // chance de o deadlock ocorrer.
   const inicioCriacao = Date.now()
@@ -211,7 +211,7 @@ export async function POST(request: NextRequest) {
     const resultado = await criarAgendamento(p.preparo.payload!)
     const resumo = interpretarResultadoCriacao(resultado)
     // Diagnóstico completo da operação, sem token: permite reconstruir o que
-    // aconteceu com cada sessão sem precisar reler os logs brutos da TiTa.
+    // aconteceu com cada sessão sem precisar reler os logs brutos do TiTa.
     console.log(
       `${LOG_TAG} criacao`,
       JSON.stringify({
@@ -257,7 +257,7 @@ export async function POST(request: NextRequest) {
   )
   if (!ok) console.error(`${LOG_TAG} falha na chamada de criação — auditar`, JSON.stringify(resultados.map(r => ({ csvGradeId: r.csvGradeId, codigoErro: r.codigoErro }))))
 
-  // Toda sessão, aceita ou não, com o resultado real da TiTa — inclusive quando
+  // Toda sessão, aceita ou não, com o resultado real do TiTa — inclusive quando
   // `ok` é falso e a tela não grava bundle nenhum, mas séries anteriores do mesmo
   // pacote já foram criadas lá.
   await registrarAuditoriaImplantacao({
@@ -281,7 +281,7 @@ export async function POST(request: NextRequest) {
   // lista PACIENTES, e é esse card que manda o setor de cronograma fazer os
   // trâmites junto ao convênio. Em 09/2026 alguém esqueceu e a sessão glosou.
   //
-  // Só entram as sessões que a TiTa ACEITOU (success/partial_success). Uma
+  // Só entram as sessões que o TiTa ACEITOU (success/partial_success). Uma
   // sessão que falhou não é terapia nova — gerar card para ela faria o
   // cronograma trabalhar sobre algo que não existe.
   //
@@ -328,7 +328,7 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({
     ok,
     etapa: "criacao",
-    // Auditoria: quem de fato gravou na TiTa, capturado do usuário autenticado no
+    // Auditoria: quem de fato gravou no TiTa, capturado do usuário autenticado no
     // servidor (fonte confiável). O cliente carimba isso no bundle de forma imutável
     // (ver confirmarImplantacao) — separado de atualizado_por, que é sobrescrito a
     // cada sincronização e não serve para autoria.

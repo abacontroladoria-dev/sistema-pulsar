@@ -1,7 +1,7 @@
 // ─── REGULARIZAÇÕES: AGENDA REAL × CADASTRO ESTRUTURAL, POR PROFISSIONAL_ID ──
 //
 // Cruzamento por profissional_id (não por nome): o nome do profissional pode
-// ser editado na TiTa, mas o ID nunca muda — comparar por nome geraria falso
+// ser editado no TiTa, mas o ID nunca muda — comparar por nome geraria falso
 // negativo/positivo sempre que o texto divergisse (acento, abreviação, nome
 // atualizado). Compara, por profissional, os turnos (dia da semana × Manhã/
 // Tarde) em que ele tem sessão real agendada em QUALQUER sala (agenda real,

@@ -84,7 +84,7 @@ export function GradeIncompletaModal({
             className="flex items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/60"
           >
             <Upload size={12} aria-hidden />
-            Usar CSV da TiTa
+            Usar CSV do TiTa
           </button>
           <button
             type="button"

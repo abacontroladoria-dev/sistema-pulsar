@@ -1,9 +1,9 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useId, useMemo, useState } from "react"
 import toast from "react-hot-toast"
 import {
-  AlertTriangle, CalendarRange, Check, ChevronDown, CloudDownload, Info, Loader2, MapPin, Plus, Replace, Trash2, Users, X,
+  AlertTriangle, CalendarRange, Check, ChevronDown, CloudDownload, Info, Loader2, MapPin, Minus, Plus, Replace, Trash2, Users, X,
 } from "lucide-react"
 import { CampoSelect, rotulo } from "@/components/cadastros/pacientes/ui/campos"
 import { MultiSearchCombobox } from "@/components/cronograma/ui/MultiSearchCombobox"
@@ -15,7 +15,7 @@ import { normalizarUnidadeOcupacao } from "@/lib/cronograma/ocupacaoProf"
 import { normNumeroSala, parseSalaAgenda } from "@/lib/cronograma/salas"
 import { separarTerapias } from "@/lib/cadastros/terapias"
 import {
-  DIAS_SEMANA, DURACOES, conflitosDeLocal, copiarDia, dataBR, faixasDaGrade, faixasParaRpc, foraDaExclusividade,
+  CAPACIDADE_MAX, CAPACIDADE_MIN, DIAS_SEMANA, DURACOES, conflitosDeLocal, copiarDia, dataBR, faixasDaGrade, faixasParaRpc, foraDaExclusividade,
   hojeBrasilia, mesmoConteudo, novaFaixa, opcoesHorario, paraMin, periodoBR, sessoesDaFaixa, somarDias, totaisDaSemana, validarRascunho,
   type HorarioGrade,
 } from "@/lib/disponibilidadeProfissional"
@@ -34,7 +34,7 @@ function rotuloLocal(l: LocalDisponivel): string {
   return `${l.unidade_nome} · ${l.nome_exibicao}${extra}`
 }
 
-/** Casa o sala_nome da TiTa com um local de Ocupação de Salas (unidade + número, ou nome). */
+/** Casa o sala_nome do TiTa com um local de Ocupação de Salas (unidade + número, ou nome). */
 function casarLocal(salaNome: string | null, locais: LocalDisponivel[]): string | null {
   if (!salaNome) return null
   const p = parseSalaAgenda(salaNome)
@@ -187,8 +187,8 @@ export function EditorDisponibilidade({
   const preencherDaTita = async () => {
     if (!profissional.tita_profissional_id) return
     if (r.faixas.length && !(await confirmar({
-      titulo: "Substituir pelos horários da TiTa?",
-      texto: "As faixas que estão no editor serão trocadas pelas da grade TiTa da semana. Nada é salvo antes de você revisar.",
+      titulo: "Substituir pelos horários do TiTa?",
+      texto: "As faixas que estão no editor serão trocadas pelas da grade do TiTa da semana. Nada é salvo antes de você revisar.",
       confirmar: "Substituir",
       t: "aco",
       Icone: CloudDownload,
@@ -196,7 +196,7 @@ export function EditorDisponibilidade({
     setLendoTita(true)
     setAvisoTita(null)
     try {
-      // Semana que vem (seg–sáb): a grade da TiTa vai até o fim do mês seguinte.
+      // Semana que vem (seg–sáb): a grade do TiTa vai até o fim do mês seguinte.
       const dow = new Date(`${hoje}T12:00:00Z`).getUTCDay()
       const segunda = somarDias(hoje, ((8 - dow) % 7) || 7)
       let linhas = await lerSemanaTita(profissional.tita_profissional_id, segunda, somarDias(segunda, 5))
@@ -206,7 +206,7 @@ export function EditorDisponibilidade({
         linhas = await lerSemanaTita(profissional.tita_profissional_id, semana, somarDias(semana, 5))
       }
       if (!linhas.length) {
-        setAvisoTita("A grade TiTa não tem horários deste profissional nesta semana nem na próxima.")
+        setAvisoTita("A grade do TiTa não tem horários deste profissional nesta semana nem na próxima.")
         return
       }
       const porNome = new Map(catalogo.map(t => [normTxt(t.nome), t.id]))
@@ -301,7 +301,7 @@ export function EditorDisponibilidade({
           direita={profissional.tita_profissional_id ? (
             <button type="button" onClick={preencherDaTita} disabled={lendoTita} className={`${tom("aco")} pp-btn pp-btn-suave`}>
               {lendoTita ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <CloudDownload className="h-4 w-4" aria-hidden />}
-              Preencher a partir da grade TiTa
+              Preencher a partir da grade do TiTa
             </button>
           ) : undefined}
         />
@@ -537,6 +537,30 @@ function CartaoDia(p: {
   )
 }
 
+// ── Pacientes por horário (capacidade da faixa) ──────────────────────────────
+
+function PacientesPorHorario({ valor, onMudar }: { valor: number; onMudar: (v: number) => void }) {
+  const idRotulo = useId()
+  const mudar = (v: number) => onMudar(Math.min(CAPACIDADE_MAX, Math.max(CAPACIDADE_MIN, v)))
+  return (
+    <div>
+      <span className={rotulo} id={idRotulo}>Pacientes por horário</span>
+      <div className="mt-1 flex items-center gap-1.5" role="group" aria-labelledby={idRotulo}>
+        <button type="button" onClick={() => mudar(valor - 1)} disabled={valor <= CAPACIDADE_MIN}
+          className="pp-iconbtn h-9 w-9" aria-label="Um paciente a menos por horário">
+          <Minus className="h-4 w-4" aria-hidden />
+        </button>
+        <output aria-live="polite" className="min-w-8 text-center text-base font-extrabold tabular-nums">{valor}</output>
+        <button type="button" onClick={() => mudar(valor + 1)} disabled={valor >= CAPACIDADE_MAX}
+          className="pp-iconbtn h-9 w-9" aria-label="Um paciente a mais por horário">
+          <Plus className="h-4 w-4" aria-hidden />
+        </button>
+        <span className="text-xs font-semibold text-[var(--pp-ink-muted)]">{valor === 1 ? "individual" : "em grupo"}</span>
+      </div>
+    </div>
+  )
+}
+
 // ── Cartão de uma faixa ───────────────────────────────────────────────────────
 
 function CartaoFaixa({
@@ -575,6 +599,7 @@ function CartaoFaixa({
           <span className="shrink-0 whitespace-nowrap font-extrabold tabular-nums">{f.inicio}–{f.fim}</span>
           <span className="truncate text-xs font-semibold text-[var(--pp-ink-muted)]">
             · {f.duracao} min · {sessoes.length} {sessoes.length === 1 ? "sessão" : "sessões"}
+            {f.capacidade > 1 && ` · ${f.capacidade} pacientes por horário`}
             {local ? ` · ${local.nome_exibicao}` : f.localNome ? ` · ${f.localNome}` : " · sem local"}
             {!aberta && f.terapias.length > 0 && ` · ${f.terapias.map(nomeTerapia).join(", ")}`}
           </span>
@@ -604,6 +629,7 @@ function CartaoFaixa({
                 <div className="w-32"><CampoSelect label="Às" value={f.intervaloFim} onChange={v => v && onMudar({ intervaloFim: v })} disabled={false} opcoes={HORAS} vazio="—" /></div>
               </>
             )}
+            <PacientesPorHorario valor={f.capacidade} onMudar={capacidade => onMudar({ capacidade })} />
           </div>
 
           <div className="grid gap-3 @2xl:grid-cols-2">

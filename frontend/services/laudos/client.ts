@@ -55,7 +55,7 @@ async function buscarLaudosPaciente(pacienteId: number): Promise<PacienteLaudosA
 /**
  * IDs de pacientes com pelo menos uma linha "Agendado" no período — mesma fonte
  * usada por resolverIdFavorecido (services/tita/mappings.ts) para mapear
- * nome → paciente_id na TiTa. Substitui o upload manual do Excel de laudos como
+ * nome → paciente_id no TiTa. Substitui o upload manual do Excel de laudos como
  * origem da lista de pacientes a consultar.
  *
  * Roda com service role, então o cliente é passado explicitamente.

@@ -17,7 +17,7 @@ export function normalizarHex(valor: string): string | null {
 }
 
 /**
- * A TiTa grava num horário livre todas as terapias que o profissional pode
+ * O TiTa grava num horário livre todas as terapias que o profissional pode
  * prestar nele, juntas: "Aplicador ABA (AE), Arteterapia, Psicopedagogia".
  * Nenhum nome de terapia do catálogo tem vírgula, então separar por ela é seguro.
  */

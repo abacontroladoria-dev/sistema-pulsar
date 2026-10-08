@@ -59,7 +59,7 @@ interface GapInfo { esp: string; aut: number; of: number; dif: number }
 interface AceitePacBundle {
   id: string; pac: string; ts: number; origem: "ocp-paciente"
   sessoes: AceiteSessao[]
-  // "removido_tita": série excluída direto na TiTa e detectada pela reconciliação.
+  // "removido_tita": série excluída direto no TiTa e detectada pela reconciliação.
   // Mantém em sincronia com o tipo canônico em types/acompanhamento.ts.
   status: "pendente" | "confirmado" | "recusado" | "inviavel" | "removido_tita"
   inviavelSlots: string[]
@@ -200,7 +200,7 @@ function tExib(tP: string): string | undefined {
 }
 
 // Sessões já existentes (Agendado): usa a terapia_exibicao_nome real, já
-// sincronizada da TiTa para aquela sessão — mostrada só quando difere da
+// sincronizada do TiTa para aquela sessão — mostrada só quando difere da
 // terapia de ação (ex.: "Aplicador ABA (AE)" exibindo "Arteterapia (Psicologia
 // ABA)"); quando são iguais (a maioria das terapias) não repete a informação.
 function tExibReal(tP: string, terapiaExibicaoNome: string | number | null | undefined): string | undefined {
@@ -219,7 +219,7 @@ function findSupervTarget(dia: string, hora: string, prof: string, cRows: CsvRow
   const myHMin = pm(hora) ?? 0
   // Mesma regra do profOcupado em buildSugestoes: horário "Agendado" do profissional
   // nunca pode ser alvo, mesmo existindo uma linha "Livre" gêmea dele no mesmo dia/hora
-  // (a TiTa mantém uma linha por terapia ofertada). Vale para qualquer paciente —
+  // (o TiTa mantém uma linha por terapia ofertada). Vale para qualquer paciente —
   // real ou fictício de bloqueio —, porque o critério é o status, não o nome.
   const horasOcupadas = new Set<string>()
   for (const r of cRows) {
@@ -323,7 +323,7 @@ function buildSugestoes(
     if (!dayHours[d]) dayHours[d] = new Set()
     dayHours[d].add(canonical)
   }
-  // Ocupação REAL do profissional (independe do paciente da vez). A TiTa mantém uma
+  // Ocupação REAL do profissional (independe do paciente da vez). O TiTa mantém uma
   // linha por terapia ofertada, então quando um horário do profissional é preenchido
   // as OUTRAS linhas dele no mesmo dia/hora continuam com Status "Livre". Sem esta
   // trava, o horário volta a ser ofertado mesmo já estando ocupado — bastava a vaga
@@ -348,7 +348,7 @@ function buildSugestoes(
   // CRON-008: slots já reservados (implantação imediata) por OUTROS pacientes — vagas
   // ainda "Livre" no CSV mas comprometidas, não podem ser sugeridas para ninguém mais.
   // Chave normalizada (normTxt no profissional), igual à de profOcupado: o nome do
-  // bundle vem do que foi gravado no aceite e o da grade vem do CSV da TiTa, e uma
+  // bundle vem do que foi gravado no aceite e o da grade vem do CSV do TiTa, e uma
   // diferença de acento/caixa/espaço faria a trava falhar em silêncio.
   const chaveSlot = (prof: string, dia: string, hora: string) => `${normTxt(prof)}|||${dia}|||${hora}`
   const slotsReservadosOutros = new Set<string>()
@@ -670,7 +670,7 @@ function buildSugestoes(
         }
         // Não exige mais compRows não-vazio: uma vaga isolada (sem parceira livre
         // adjacente pra formar dupla) ainda é "encaixável" — o usuário decide se
-        // aceita; só a escrita real na TiTa fica travada acima do autorizado
+        // aceita; só a escrita real no TiTa fica travada acima do autorizado
         // (hasExcesso/excessoEsps no render). Sem isso, uma sessão avulsa útil
         // (ex.: déficit grande, sem vaga livre adjacente de outra especialidade)
         // era descartada por inteiro em vez de oferecida sozinha.
@@ -1051,7 +1051,7 @@ const TodasSugestoesModal = forwardRef<TodasSugestoesModalHandle, TodasSugestoes
     }
   }
 
-  // CRON-008/Sprint 4: reservas já implantadas na TiTa (definitivas, não mais um
+  // CRON-008/Sprint 4: reservas já implantadas no TiTa (definitivas, não mais um
   // estado provisório) — não são mais sugestões (buildSugestoes já as bloqueia via
   // dayHours), entram direto na grade como "Reservado": não clicáveis, sem opção
   // de trocar terapia ou remover.
@@ -1275,7 +1275,7 @@ const TodasSugestoesModal = forwardRef<TodasSugestoesModalHandle, TodasSugestoes
   )
 
   // AVISO (nunca bloqueia): 3+ profissionais diferentes atendendo a mesma terapia.
-  // Diferente do hasExcesso/CH Autorizada, que trava a escrita na TiTa, aqui só
+  // Diferente do hasExcesso/CH Autorizada, que trava a escrita no TiTa, aqui só
   // pintamos de vermelho e explicamos — o usuário decide se aceita mesmo assim.
   // Conta o quadro final do paciente: sessões já existentes/implantadas + as
   // propostas efetivamente selecionadas nesta rodada.
@@ -1417,7 +1417,7 @@ const TodasSugestoesModal = forwardRef<TodasSugestoesModalHandle, TodasSugestoes
                                     }
                                     style={{
                                       background: bg,
-                                      // Sprint 4: borda sólida também para "reservado" — a implantação na TiTa é
+                                      // Sprint 4: borda sólida também para "reservado" — a implantação no TiTa é
                                       // definitiva, não há mais um estado "pendente" a distinguir visualmente.
                                       border: `1px solid ${isDisc ? "#f97316" : bd}`,
                                       borderRadius: "8px", padding: "5px 7px",
@@ -2024,7 +2024,7 @@ interface Props {
 }
 
 // "Notificação Prévia" é o paciente-teste oficial usado na homologação da
-// integração com a TiTa — habilitado como paciente normal só nesta página, para
+// integração com o TiTa — habilitado como paciente normal só nesta página, para
 // permitir testar o fluxo real de implantação (Sprint 4) sem afetar as demais
 // páginas do Cronograma, que continuam tratando-o como registro administrativo.
 const PACS_ADMIN_OCUP_PAC = new Set(PACS_ADMIN)
@@ -2064,7 +2064,7 @@ export function OcupPacMode({
   const listboxRef = useRef<HTMLDivElement>(null)
   // CRON-008: sessões aguardando confirmação no modal premium de implantação
   const [pendingConfirm, setPendingConfirm] = useState<{ sessoes: AceiteSessao[]; beforeCount: number; avisoMultiProf: AvisoMultiProf[] } | null>(null)
-  // Confirmação agora chama a API da TiTa (fetch assíncrono) — usado para desabilitar
+  // Confirmação agora chama a API do TiTa (fetch assíncrono) — usado para desabilitar
   // o modal e impedir cancelar/duplo-clique enquanto a chamada está em andamento.
   const [confirmando, setConfirmando] = useState(false)
 
@@ -2105,8 +2105,8 @@ export function OcupPacMode({
     return [...porCombo.values()]
   }, [aceites, pac])
 
-  // Reconciliação com a TiTa. A API só grava, não exclui — então uma série pode ser
-  // removida diretamente na TiTa sem que o Pulsar saiba. Como o estado "Implantado"
+  // Reconciliação com o TiTa. A API só grava, não exclui — então uma série pode ser
+  // removida diretamente no TiTa sem que o Pulsar saiba. Como o estado "Implantado"
   // vive só nos bundles (pacBundles), sem sync de volta ele ficaria preso para
   // sempre, mostrando "✅ Implantado" e bloqueando o slot para todos. Ao abrir um
   // paciente, um bundle "confirmado" cujas sessões não aparecem mais na grade oficial
@@ -2121,7 +2121,7 @@ export function OcupPacMode({
   useEffect(() => {
     if (!pac || cRows.length === 0) return
     // Só reconcilia se a grade cobre este paciente — sem nenhuma linha dele não dá
-    // para distinguir "removido na TiTa" de "grade ainda não carregou este paciente".
+    // para distinguir "removido no TiTa" de "grade ainda não carregou este paciente".
     if (!cRows.some(r => r["Nome Favorecido"] === pac)) return
 
     const agora = Date.now()
@@ -2145,7 +2145,7 @@ export function OcupPacMode({
     })
     if (mudou) {
       persistAceites(proximos)
-      toast("♻️ Sessões implantadas foram removidas na TiTa — os horários foram liberados.")
+      toast("♻️ Sessões implantadas foram removidas no TiTa — os horários foram liberados.")
     }
   }, [pac, cRows, aceites, persistAceites])
 
@@ -2171,7 +2171,7 @@ export function OcupPacMode({
   }
 
   function cancelarImplantacao() {
-    if (confirmando) return // chamada à TiTa em andamento — não permite fechar no meio
+    if (confirmando) return // chamada ao TiTa em andamento — não permite fechar no meio
     setPendingConfirm(null)
   }
 
@@ -2182,10 +2182,10 @@ export function OcupPacMode({
   // (slotsReservadosOutros/aqui e confirmedItems em OcupacaoShell) e a aba
   // Confirmados (via pacConfDerived em AcompanhamentoTab) leem todos direto daqui.
   //
-  // A implantação local (persistAceites) só acontece se a TiTa confirmar TODAS as
+  // A implantação local (persistAceites) só acontece se o TiTa confirmar TODAS as
   // sessões do bundle (tudo ou nada) — ver app/api/tita/confirmar-agendamento.
   // Isso evita que a Reserva Pendente exista localmente sem o agendamento real ter
-  // sido criado na TiTa. Se a chamada falhar, o modal permanece aberto com a
+  // sido criado no TiTa. Se a chamada falhar, o modal permanece aberto com a
   // seleção intacta para o usuário tentar de novo.
   async function confirmarImplantacao() {
     if (!pendingConfirm || confirmando) return
@@ -2193,7 +2193,7 @@ export function OcupPacMode({
 
     // Guarda: uma sessão sem csvGradeId faria a rota rejeitar com 400
     // (sessao_sem_csv_grade_id) — resposta sem `mensagem`, que caía no fallback
-    // genérico "Não foi possível concluir a integração com a TiTa". Barra aqui, antes
+    // genérico "Não foi possível concluir a integração com o TiTa". Barra aqui, antes
     // de qualquer chamada, com uma mensagem que diz o que realmente aconteceu.
     const semGradeId = sessoes.filter(s => !s.csvGradeId)
     if (semGradeId.length) {
@@ -2234,7 +2234,7 @@ export function OcupPacMode({
           body?.mensagem ??
           (body?.error === "not_authenticated" ? "Sua sessão expirou. Recarregue a página e entre novamente."
             : body?.error === "sessao_sem_csv_grade_id" ? "Um dos horários ainda não está sincronizado para implantação. Gere uma nova sugestão e tente novamente."
-            : "Não foi possível concluir a integração com a TiTa. Tente novamente.")
+            : "Não foi possível concluir a integração com o TiTa. Tente novamente.")
         const contagem = falhas.length || sessoes.length
         toast.error(`❌ ${mensagem} (${contagem}/${sessoes.length} sessões afetadas)`)
         return
@@ -2255,7 +2255,7 @@ export function OcupPacMode({
 
       modalRef.current?.clearAll()
       setPendingConfirm(null)
-      // Sprint 4/4.1: a implantação na TiTa já aconteceu (é o que "ok" confirma) —
+      // Sprint 4/4.1: a implantação no TiTa já aconteceu (é o que "ok" confirma) —
       // não existe mais estado "aguardando sincronização" depois disso. A grade e o
       // painel lateral já reagem sozinhos (reservasConfirmadas/sugestoes/pacAllEsp
       // derivam de `aceites`), então ocupação e indicadores aparecem imediatamente,
@@ -2265,7 +2265,7 @@ export function OcupPacMode({
       toast(`✅ ${body?.mensagem ?? "Implantação realizada com sucesso."}`)
     } catch (err) {
       // Detalhe técnico só no console — o usuário vê uma mensagem amigável.
-      console.error("[ocupacao-paciente] falha ao implantar na TiTa", err)
+      console.error("[ocupacao-paciente] falha ao implantar no TiTa", err)
       toast.error("❌ Não foi possível concluir a implantação agora. Verifique a conexão e tente novamente.")
     } finally {
       setConfirmando(false)
@@ -2721,7 +2721,7 @@ export function OcupPacMode({
       seenOf.add(dk)
       qtdOf[esp] = (qtdOf[esp] || 0) + pesoOcupacaoAba(r.Terapia)
     }
-    // Sprint 4: implantação na TiTa é imediata e definitiva — reservas confirmadas
+    // Sprint 4: implantação no TiTa é imediata e definitiva — reservas confirmadas
     // contam junto com o que já veio de `agend`, num único total (sem "+N" separado
     // à espera de sincronização). `seenOf` evita dupla contagem quando a mesma sessão
     // também aparecer em `agend` após o próximo sync do CSV.

@@ -262,7 +262,7 @@ function CartaoTerapia({
             {terapia.tita_terapia_id && (
               <>
                 <span aria-hidden="true">·</span>
-                <span title="Id da terapia na TiTa" className="whitespace-nowrap">TiTa #{terapia.tita_terapia_id}</span>
+                <span title="Id da terapia no TiTa" className="whitespace-nowrap">TiTa #{terapia.tita_terapia_id}</span>
               </>
             )}
           </span>

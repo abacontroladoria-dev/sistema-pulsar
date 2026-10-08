@@ -1,8 +1,8 @@
 "use client"
 
-// Faixa âmbar das telas que usam o convênio do cadastro da TiTa (Dashboard de
+// Faixa âmbar das telas que usam o convênio do cadastro do TiTa (Dashboard de
 // Pacientes e Previsão de Receitas) — um componente só para as duas dizerem
-// exatamente a mesma coisa quando a TiTa falha. Ver lib/cronograma/convenioCadastro.ts.
+// exatamente a mesma coisa quando o TiTa falha. Ver lib/cronograma/convenioCadastro.ts.
 
 import { AlertTriangle } from "lucide-react"
 import type { ConvenioCadastroState } from "@/hooks/useConvenioCadastroPacientes"
@@ -15,7 +15,7 @@ export function AvisoConvenioCadastro({ cadastro }: { cadastro: ConvenioCadastro
       <AlertTriangle size={14} className="mt-0.5 shrink-0" />
       <span>
         {cadastroDisponivel
-          ? "A TiTa não respondeu agora: o convênio vem do último cadastro consultado, que pode estar desatualizado."
+          ? "O TiTa não respondeu agora: o convênio vem do último cadastro consultado, que pode estar desatualizado."
           : `Convênio do cadastro TiTa indisponível${cadastro.erro ? ` (${cadastro.erro})` : ""} — exibindo o convênio da agenda.`}
       </span>
     </div>

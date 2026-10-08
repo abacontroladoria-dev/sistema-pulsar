@@ -280,7 +280,7 @@ export const TERAPIAS_ABA: ReadonlySet<string> = new Set([
 
 /**
  * IDs de `paciente_id` da grade que NÃO são pessoas: pseudo-pacientes usados
- * pela TiTa para bloquear horário na agenda. Achados na auditoria de
+ * pelo TiTa para bloquear horário na agenda. Achados na auditoria de
  * 11/09/2026 — são os dois únicos na janela (456 e 239 linhas em 45 dias):
  *
  *   19196 — "Horário Bloqueado"

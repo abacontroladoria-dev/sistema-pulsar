@@ -64,11 +64,11 @@ export async function buscarGradePorId(
     .from(TABELA_GRADE)
     .select("*")
     .eq("id", csvGradeId)
-    // Aqui o filtro é uma trava, não só deduplicação: se a TiTa alterou ou removeu
+    // Aqui o filtro é uma trava, não só deduplicação: se o TiTa alterou ou removeu
     // este slot depois que a tela foi montada, o sync o deixou com ativo=false
     // (migration 20260805160000). Devolver null faz o chamador responder
     // "grade_not_found", que é o certo — agendar sobre um slot que não existe mais
-    // criaria um atendimento fantasma na TiTa.
+    // criaria um atendimento fantasma no TiTa.
     .eq("ativo", true)
     .maybeSingle()
 
@@ -76,7 +76,7 @@ export async function buscarGradePorId(
   return (data as GradeProfissionalRow | null) ?? null
 }
 
-/** Dados da grade do terapeuta na TiTa necessários para montar o payload de agendamento. */
+/** Dados da grade do terapeuta no TiTa necessários para montar o payload de agendamento. */
 export interface GradeTerapeutaInfo {
   gradeTerapeutaId: number
   idSala: number | null
@@ -84,7 +84,7 @@ export interface GradeTerapeutaInfo {
 }
 
 /**
- * Resolve a grade do terapeuta na TiTa a partir de grade_profissionais_tita.
+ * Resolve a grade do terapeuta no TiTa a partir de grade_profissionais_tita.
  *
  * Chave validada com dados reais de produção (ver relatório de auditoria):
  * profissional_id + data + hora_inicial nunca produziu mais de uma correspondência
@@ -139,7 +139,7 @@ export async function resolverGradeTerapeuta(
   const idSala = (row?.id_sala as number | null | undefined) ?? null
   let terapiaExibicaoId = (row?.terapia_exibicao_id as number | null | undefined) ?? null
 
-  // Fallback de terapia_exibicao_id (achado real: a TiTa não publica esse campo
+  // Fallback de terapia_exibicao_id (achado real: o TiTa não publica esse campo
   // para horários vagos — em agosto/2026, 3073 de 3194 slots "Livre" vinham com
   // terapia_exibicao_id NULL, embora id_sala estivesse 100% presente). Não é
   // inferência: grade_terapeuta_id identifica o mesmo slot-template recorrente do
@@ -149,7 +149,7 @@ export async function resolverGradeTerapeuta(
   // grade_terapeuta_id, e só quando há exatamente um valor distinto (guard de
   // unicidade). Se o template for ambíguo (>1 valor) ou nunca tiver exibição
   // sincronizada, permanece NULL e o chamador bloqueia — nunca chuta um valor,
-  // porque enviar sala/terapia errada criaria um agendamento errado na TiTa.
+  // porque enviar sala/terapia errada criaria um agendamento errado no TiTa.
   if (terapiaExibicaoId == null) {
     const { data: exibRows, error: exibError } = await supabase
       .from("grade_profissionais_tita")
@@ -184,7 +184,7 @@ export async function resolverGradeTerapeuta(
 }
 
 /**
- * Resolve id_favorecido (paciente na TiTa) a partir do nome do paciente no Pulsar.
+ * Resolve id_favorecido (paciente no TiTa) a partir do nome do paciente no Pulsar.
  *
  * csvGradeId sempre aponta para uma linha "Livre" de csv_grades_profissionais (ver
  * invariante em OcupPacMode.tsx), e toda linha Livre tem paciente_id NULL — é um

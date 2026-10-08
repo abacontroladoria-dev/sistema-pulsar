@@ -8,5 +8,6 @@ export const ROLE_LABELS: Record<string, string> = {
   rp: 'RP — Remuneração e Pagamentos',
   cronograma: 'Cronograma',
   marketing: 'Marketing',
+  comercial: 'Comercial',
   disponibilidade_terapeuta: 'Terapeuta (Disponibilidade)',
 }

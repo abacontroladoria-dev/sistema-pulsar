@@ -7,7 +7,7 @@ import type { PrevisaoReceitasResumoMes } from "@/services/previsaoReceitasHisto
 
 /**
  * Primeiro mês considerado pelo índice. Jan-Jun/2026 usa csv_grades_profissionais
- * (origem='backup_xls', seed do backup XLS da TiTa) + faltas_historico_csv
+ * (origem='backup_xls', seed do backup XLS do TiTa) + faltas_historico_csv
  * (backfill de dedução a partir do relatório "relatorio_faltas_detalhado" do
  * Órbita, já que o backup não traz tita_agendamento_id pra casar com
  * fila_autorizacoes). Antes de Jan/2026 não há dado sincronizado suficiente

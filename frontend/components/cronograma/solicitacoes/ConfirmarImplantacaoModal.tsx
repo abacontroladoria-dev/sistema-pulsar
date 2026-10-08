@@ -19,7 +19,7 @@ interface Props {
   sessoes: AceiteSessao[]
   /** Avisos de 3+ profissionais por terapia — NÃO bloqueiam a implantação, só alertam em vermelho. */
   avisoMultiProf?: AvisoMultiProf[]
-  /** true enquanto a chamada à API da TiTa está em andamento — desabilita as ações do modal. */
+  /** true enquanto a chamada à API do TiTa está em andamento — desabilita as ações do modal. */
   confirming?: boolean
   onConfirm: () => void
   onCancel: () => void
@@ -134,7 +134,7 @@ export function ConfirmarImplantacaoModal({ pac, sessoesAtuais, sessoes, avisoMu
           <div style={{ display: "flex", gap: "8px", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "10px", padding: "10px 12px" }}>
             <span style={{ fontSize: "15px", lineHeight: 1 }}>✅</span>
             <span style={{ fontSize: "11.5px", color: "#15803d", lineHeight: 1.4 }}>
-              As sessões serão implantadas <strong>imediatamente</strong> na TiTa. Após a confirmação, a ocupação será atualizada automaticamente.
+              As sessões serão implantadas <strong>imediatamente</strong> no TiTa. Após a confirmação, a ocupação será atualizada automaticamente.
             </span>
           </div>
         </div>
@@ -154,7 +154,7 @@ export function ConfirmarImplantacaoModal({ pac, sessoesAtuais, sessoes, avisoMu
             disabled={confirming}
             style={{ flex: 2, padding: "10px 16px", borderRadius: "10px", background: temAviso ? "#dc2626" : "#16a34a", color: "white", border: "none", cursor: confirming ? "not-allowed" : "pointer", opacity: confirming ? 0.75 : 1, fontFamily: "inherit", fontWeight: 800, fontSize: "13px", boxShadow: temAviso ? "0 2px 10px rgba(220,38,38,.3)" : "0 2px 10px rgba(22,163,74,.3)" }}
           >
-            {confirming ? "⏳ Implantando sessões na TiTa…" : temAviso ? "⚠ Confirmar mesmo assim" : "🔒 Confirmar implantação"}
+            {confirming ? "⏳ Implantando sessões no TiTa…" : temAviso ? "⚠ Confirmar mesmo assim" : "🔒 Confirmar implantação"}
           </button>
         </div>
       </div>

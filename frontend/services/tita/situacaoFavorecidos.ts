@@ -19,7 +19,7 @@ const TITA_BASE_URL = process.env.TITA_API_URL || "https://apiv2.apptita.com.br/
 export type SituacaoFavorecido = "Ativo" | "Inativo"
 
 export interface FavorecidoSituacao {
-  /** id_favorecido na TiTa — chave de cruzamento com "ID Favorecido" do laudo. */
+  /** id_favorecido no TiTa — chave de cruzamento com "ID Favorecido" do laudo. */
   id: number | null
   nome: string
   situacao: SituacaoFavorecido
@@ -60,7 +60,7 @@ function normalizarCabecalho(h: string): string {
 
 /**
  * Encontra o índice da primeira coluna cujo nome normalizado bate com um dos
- * candidatos. A documentação da TiTa descreve os campos em prosa, não com o
+ * candidatos. A documentação do TiTa descreve os campos em prosa, não com o
  * nome exato da coluna do CSV, e o endpoint já mudou de schema duas vezes
  * (changelogs 2.10.0 e 2.11.0) — casar por lista de candidatos evita quebrar a
  * cada acréscimo de coluna.
@@ -125,7 +125,7 @@ export async function buscarSituacaoFavorecidos(): Promise<ResultadoSituacao> {
 
   const headers = parseCSVLine(linhas[0]).map(normalizarCabecalho)
   // Cabeçalho real logado uma vez por chamada: é o que permite conferir o schema
-  // sem ter o token à mão e ajustar os candidatos abaixo se a TiTa renomear algo.
+  // sem ter o token à mão e ajustar os candidatos abaixo se o TiTa renomear algo.
   console.log("[tita:situacaoFavorecidos] cabeçalho do CSV", JSON.stringify(headers))
 
   const idxId = acharColuna(headers, ["id favorecido", "id do favorecido", "favorecido id", "id"])
@@ -152,7 +152,7 @@ export async function buscarSituacaoFavorecidos(): Promise<ResultadoSituacao> {
 
     const idBruto = idxId >= 0 ? Number((v[idxId] ?? "").replace(/\D/g, "")) : NaN
     // Só "Inativo" explícito inativa: qualquer outro valor (inclusive vazio ou
-    // um status novo que a TiTa venha a criar) é tratado como ativo, para não
+    // um status novo que o TiTa venha a criar) é tratado como ativo, para não
     // bloquear paciente válido por causa de dado inesperado.
     const situacao: SituacaoFavorecido =
       (v[idxSit] ?? "").trim().toLowerCase().startsWith("inativ") ? "Inativo" : "Ativo"

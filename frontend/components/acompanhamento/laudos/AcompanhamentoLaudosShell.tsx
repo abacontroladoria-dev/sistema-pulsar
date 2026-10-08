@@ -292,7 +292,7 @@ export function AcompanhamentoLaudosShell({ buscaInicial = "" }: Props) {
         >
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
           <span>
-            Não foi possível ler o convênio da grade da TiTa ({meta.convenioErro}). O convênio
+            Não foi possível ler o convênio da grade do TiTa ({meta.convenioErro}). O convênio
             mostrado é o Plano do relatório do Órbita.
           </span>
         </div>
@@ -396,7 +396,7 @@ export function AcompanhamentoLaudosShell({ buscaInicial = "" }: Props) {
           {meta.comSituacaoDivergente > 0 &&
             ` · ${meta.comSituacaoDivergente} com situação divergente do Órbita`}
           {!meta.convenioErro &&
-            ` · convênio pela grade da TiTa em ${meta.convenioPelaGrade} de ${meta.laudos} (o resto pelo Plano do Órbita)`}
+            ` · convênio pela grade do TiTa em ${meta.convenioPelaGrade} de ${meta.laudos} (o resto pelo Plano do Órbita)`}
           <br />
           {meta.senhas ? (
             <>

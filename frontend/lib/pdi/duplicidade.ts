@@ -4,7 +4,7 @@
 //
 // Na migração de dado da planilha "Controle_Prazos_PDI pronto 2.0" (ver
 // APLICAR_pdi_controle_prazos_2026-09-04.sql), "Luiz Felipe Mariano" casou
-// como AMBÍGUO: dois "ID Favorecido" distintos na TiTa — 12517 e 20945 —
+// como AMBÍGUO: dois "ID Favorecido" distintos no TiTa — 12517 e 20945 —
 // ambos com o nome completo "Luiz Felipe Mariano Vasconcelos". Ou seja, a
 // TiTa tem DOIS cadastros de paciente com o mesmo nome, e não há como saber
 // automaticamente qual dos dois é o "certo" para ligar ao dado manual da
@@ -28,7 +28,7 @@
 // NOME do paciente, normalizado (mesmo `normTxt` de lib/cronograma/constants.ts,
 // que ignora acento/caixa/espaço duplicado) e com entidades HTML decodificadas
 // (`decodeEntidadesHtml`, mesmo tratamento que o caso "D'Ávila" já usa em
-// outro lugar do módulo cronograma — nomes vindos da TiTa às vezes chegam
+// outro lugar do módulo cronograma — nomes vindos do TiTa às vezes chegam
 // escapados, ex. "D&#039;avila").
 //
 // Regra: se o MESMO nome normalizado aparecer no relatório associado a MAIS

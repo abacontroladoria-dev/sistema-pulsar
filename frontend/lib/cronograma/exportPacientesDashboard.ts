@@ -35,7 +35,7 @@ export interface ExportarPacientesOpts {
   linhas: AgendaSalaRow[]
   dashboard: DashboardPacientesGeral
   periodo: { inicio: string; fim: string }
-  /** Convênio pelo cadastro da TiTa — o mesmo mapa que a tela usou. null = TiTa indisponível (tudo pela agenda). */
+  /** Convênio pelo cadastro do TiTa — o mesmo mapa que a tela usou. null = TiTa indisponível (tudo pela agenda). */
   mapaConvenio: MapaConvenioCadastro | null
 }
 

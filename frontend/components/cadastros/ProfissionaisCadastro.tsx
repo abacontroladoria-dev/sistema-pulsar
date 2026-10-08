@@ -232,10 +232,10 @@ export function ProfissionaisCadastro() {
       const partes = [
         r.novos ? `${r.novos} novo${r.novos === 1 ? "" : "s"}` : null,
         r.vinculados_por_cpf ? `${r.vinculados_por_cpf} vinculado${r.vinculados_por_cpf === 1 ? "" : "s"} pelo CPF` : null,
-        r.atualizados ? `${r.atualizados} com dados da TiTa atualizados` : null,
+        r.atualizados ? `${r.atualizados} com dados do TiTa atualizados` : null,
         r.terapias_vinculadas ? `${r.terapias_vinculadas} terapias habilitadas` : null,
       ].filter(Boolean)
-      toast.success(partes.length ? `TiTa: ${partes.join(" · ")}.` : `TiTa conferida: ${r.vistos_na_tita} profissionais, nada novo.`, { duration: 6000 })
+      toast.success(partes.length ? `TiTa: ${partes.join(" · ")}.` : `TiTa conferido: ${r.vistos_na_tita} profissionais, nada novo.`, { duration: 6000 })
       await recarregar()
     } catch (e) {
       toast.error(String((e as Error)?.message ?? e))
@@ -308,12 +308,12 @@ export function ProfissionaisCadastro() {
           type="button"
           onClick={importar}
           disabled={importando || migrationPendente}
-          title="Importar da TiTa — traz quem está na grade e completa campos vazios. Nunca sobrescreve o que foi editado aqui."
-          aria-label="Importar da TiTa"
+          title="Importar do TiTa — traz quem está na grade e completa campos vazios. Nunca sobrescreve o que foi editado aqui."
+          aria-label="Importar do TiTa"
           className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-md border border-border px-2.5 text-sm font-semibold text-foreground hover:bg-muted disabled:opacity-50 min-[1680px]:px-3 ${foco}`}
         >
           {importando ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <CloudDownload className="h-4 w-4" aria-hidden="true" />}
-          <span className="hidden min-[1680px]:inline">Importar da TiTa</span>
+          <span className="hidden min-[1680px]:inline">Importar do TiTa</span>
         </button>
         <button
           type="button"
@@ -356,8 +356,8 @@ export function ProfissionaisCadastro() {
           <CloudDownload className="h-9 w-9 text-muted-foreground" aria-hidden="true" />
           <h2 className="text-lg font-bold text-foreground">Nenhum profissional cadastrado ainda</h2>
           <p className="text-sm text-muted-foreground">
-            Comece trazendo quem já está na grade da TiTa — nome, CPF, celular, CBO e registro vêm junto.
-            Quem ainda não está na TiTa entra por &quot;Novo profissional&quot;.
+            Comece trazendo quem já está na grade do TiTa — nome, CPF, celular, CBO e registro vêm junto.
+            Quem ainda não está no TiTa entra por &quot;Novo profissional&quot;.
           </p>
           <button
             type="button"
@@ -365,7 +365,7 @@ export function ProfissionaisCadastro() {
             disabled={importando}
             className={`mt-2 inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 ${foco}`}
           >
-            {importando ? <Loader2 className="h-4 w-4 animate-spin" /> : <CloudDownload className="h-4 w-4" />} Importar da TiTa
+            {importando ? <Loader2 className="h-4 w-4 animate-spin" /> : <CloudDownload className="h-4 w-4" />} Importar do TiTa
           </button>
         </div>
       ) : (

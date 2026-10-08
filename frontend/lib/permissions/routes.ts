@@ -125,7 +125,11 @@ export const CODIGO_PARA_ROTAS: Record<string, string[]> = {
   cadastros_profissionais: ['/cadastros/profissionais'],
   // `cronograma_por_paciente` e `cronograma_por_profissional` saíram em
   // 29/09/2026: as rotas nunca ganharam página e o catálogo passou a espelhar o
-  // Sidebar. Voltam junto com a tela.
+  // Sidebar. Voltaram como UMA tela só (switch Por Profissional | Por Paciente):
+  // a Grade, agenda própria do Pulsar (docs/PLANO_GRADE_CRONOGRAMA.md). A RLS
+  // das tabelas grade_* e as RPCs grade_* usam este mesmo código, para ver e
+  // para agendar/excluir/bloquear/importar.
+  cronograma_grade: ['/cronograma/grade'],
   // Controle de insumos (porte do AXIUM). Um código só, não os 8 granulares do
   // AXIUM (compras.ver/aprovar/comprar/…): o acesso definido pelo usuário é por
   // setor — faturamento, admin e diretoria. Granularizar depois, se aparecer o

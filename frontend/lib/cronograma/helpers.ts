@@ -210,10 +210,10 @@ export function filtrarCapacidadeLivreReservada(cRows: CsvRow[]): CsvRow[] {
 //
 // HONESTIDADE SOBRE O ALCANCE (medido em 2026-08-20, 24.599 linhas ativas na
 // janela operacional): esta trava é uma REDE DE SEGURANÇA, não a correção de um
-// problema observado. A hipótese original era que a TiTa manteria uma linha por
+// problema observado. A hipótese original era que o TiTa manteria uma linha por
 // terapia ofertada, deixando uma vaga "Livre" gêmea sobreviver quando o horário
 // fosse preenchido. A medição REFUTOU isso: existem ZERO slots com Livre+Agendado
-// no mesmo profissional/data/hora. A TiTa emite uma linha por profissional/slot,
+// no mesmo profissional/data/hora. O TiTa emite uma linha por profissional/slot,
 // e o sync a substitui. Os 279 slots com mais de uma linha são todos
 // Agendado+Agendado — sessões em grupo legítimas (Aplicador ABA (EF),
 // Musicoterapia, Terapia Alimentar).
@@ -223,7 +223,7 @@ export function filtrarCapacidadeLivreReservada(cRows: CsvRow[]): CsvRow[] {
 // anterior, com o horário ainda Livre. A defesa contra isso é o sync confiável e
 // com falha visível (fn_sync_grade_csv_em_lotes, retry + alerta), não esta função.
 //
-// Mantida mesmo assim por ser barata e invariante: se um dia a TiTa mudar de
+// Mantida mesmo assim por ser barata e invariante: se um dia o TiTa mudar de
 // formato, o sistema já não oferta horário ocupado. Não a trate como prova de
 // que o problema está resolvido.
 //

@@ -596,7 +596,7 @@ const RENOME_AMBIENTE_NATURAL = `${AMBIENTE_NATURAL} (Total)`
 const UNIDADES_COM_OPCAO_AMBIENTE_NATURAL = new Set(["Fazendinha", "Padre Miguel", "Realengo"])
 
 // Primeira competência cujo retrato histórico (Edge Function
-// snapshot-previsao-receitas) grava o convênio do CADASTRO da TiTa. Meses
+// snapshot-previsao-receitas) grava o convênio do CADASTRO do TiTa. Meses
 // anteriores ficaram congelados com o convênio da agenda e nunca são
 // reprocessados (decisão do usuário, 2026-10-05) — a tela só avisa.
 const COMPETENCIA_INICIO_CONVENIO_CADASTRO = "2026-10"
@@ -636,7 +636,7 @@ export function PrevisaoReceitasShell() {
   const { resumos: resumosHistorico } = useResumoHistoricoReceitasComEfetivado()
 
   const { linhas: linhasAgenda, loading: loadingSalas, error: errorSalas } = useOcupacaoSalas(semanaRef.inicio, semanaRef.fim)
-  // Convênio pelo CADASTRO da TiTa (mesmo módulo e mesmo hook da aba Pacientes),
+  // Convênio pelo CADASTRO do TiTa (mesmo módulo e mesmo hook da aba Pacientes),
   // trocado nas linhas ANTES de qualquer cálculo: agrupamento, preço
   // (resolverValorSessao), dedução por falta, pacotes, "Por paciente" e o export
   // "tudo" passam a ver o mesmo convênio. Sem cadastro (TiTa falhou), as linhas
@@ -886,7 +886,7 @@ export function PrevisaoReceitasShell() {
         )}
         {usarHistorico && competenciaSelecionada < COMPETENCIA_INICIO_CONVENIO_CADASTRO && (
           <span className="text-[11px] text-muted-foreground">
-            Neste mês o convênio é o da agenda (registrado antes da mudança para o cadastro da TiTa).
+            Neste mês o convênio é o da agenda (registrado antes da mudança para o cadastro do TiTa).
           </span>
         )}
         {mesEhPassado && !usarHistorico && (

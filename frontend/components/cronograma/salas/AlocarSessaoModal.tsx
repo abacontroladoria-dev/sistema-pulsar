@@ -4,7 +4,7 @@
 // move uma alocação existente. Reproduz o fluxo do calculadora-remuneracao:
 // "Alocar sessão livre", detecção de profissional já alocado em outro lugar
 // (com aviso de troca de unidade) e exclusão de alocação. Só planejamento de
-// sala — não cria nem altera nenhum agendamento real na TiTa.
+// sala — não cria nem altera nenhum agendamento real no TiTa.
 //
 // Profissional/terapia são validados contra nomes reais (mesmas fontes de
 // sugestão já usadas na Agenda) — não aceita texto livre/digitado errado.
@@ -459,7 +459,7 @@ export function AlocarSessaoModal({
         </label>
 
         <div className="rounded-lg bg-muted/50 px-3 py-2 text-[11px] text-muted-foreground">
-          Isso é só planejamento de ocupação de sala — não cria nem altera nenhum agendamento real na TiTa.
+          Isso é só planejamento de ocupação de sala — não cria nem altera nenhum agendamento real no TiTa.
         </div>
       </div>
       {error && <div className="mt-3 text-xs font-semibold text-rose-600 dark:text-rose-400">{error}</div>}

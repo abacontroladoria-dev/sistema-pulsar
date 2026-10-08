@@ -89,7 +89,7 @@ function salaCasaComAgenda(sala: Sala, salaNomeAgenda: string | null): boolean {
   // Movimento (Campo Grande)") — a sala não tem como ser diferenciada de
   // outras da mesma unidade pelo nome, então a própria unidade já a
   // identifica; não exige bater o número cadastrado (que nesses casos é só
-  // organizacional, sem correspondência na TiTa).
+  // organizacional, sem correspondência no TiTa).
   if (parsed.numeroSala === "") return true
   return normNumeroSala(sala.numero_sala) === parsed.numeroSala
 }
@@ -105,7 +105,7 @@ export function linhasDaSala(sala: Sala, linhas: AgendaSalaRow[]): AgendaSalaRow
  * dos cards (`sessoesReais`/`semCruzamentoCsv`), nunca pros `blocos` (grade
  * real de ocupação física, que precisa da sala exata).
  *
- * A TiTa não é confiável pra registrar EM QUAL sala física a sessão
+ * O TiTa não é confiável pra registrar EM QUAL sala física a sessão
  * aconteceu (o profissional pode estar cadastrado numa sala pra fins de
  * ocupação/planejamento e a sessão real cair registrada em outro número
  * dentro da mesma unidade — comum pra Coordenador de Caso, cuja sessão é
@@ -165,13 +165,13 @@ export function calcularSlotsDaSala(
   // sessões reais "Agendado" agrupadas por profissional + dow + turno — usado só
   // pelos `cards` (proporção "X/Y com paciente" da alocação cadastrada). Duas
   // chaves por linha: por profissional_id (estável — sobrevive a nome editado
-  // na TiTa depois do cadastro da alocação) e por nome normalizado (fallback
+  // no TiTa depois do cadastro da alocação) e por nome normalizado (fallback
   // pra quando a alocação não tem profissional_id resolvido). Cruzar só por
   // nome quebra silenciosamente sempre que o texto cadastrado diverge do nome
-  // atual na TiTa (ex.: alocação renomeada pra bater com uma planilha, mas a
+  // atual no TiTa (ex.: alocação renomeada pra bater com uma planilha, mas a
   // agenda real ainda usa a grafia antiga) — ver profissional_id em salasTypes.ts.
   //
-  // Usa `linhasUnidade` (bate só pela unidade, não pela sala exata) — a TiTa
+  // Usa `linhasUnidade` (bate só pela unidade, não pela sala exata) — o TiTa
   // não é confiável pra registrar em qual sala física a sessão aconteceu (ex.:
   // Coordenador de Caso é sempre lançado numa sala genérica de "Coordenação",
   // nunca na sala onde a pessoa está fisicamente alocada). O que precisa bater
@@ -179,7 +179,7 @@ export function calcularSlotsDaSala(
   const sessoesPorProfissionalId = new Map<string, number>()
   const sessoesPorProfissional = new Map<string, number>()
   // Mesmo agrupamento (profissional + dow + turno, sem exigir sala exata), mas
-  // pra 'Livre' — a TiTa reserva um horário de agenda ABERTO pro profissional
+  // pra 'Livre' — o TiTa reserva um horário de agenda ABERTO pro profissional
   // (sem paciente marcado ainda), não é sessão real, então não conta pro "X/Y
   // com paciente". Existe só pra alimentar `temAgendaTita` abaixo: sem isto,
   // profissional recém-cadastrado que só tem horário 'Livre' (nenhum
@@ -220,7 +220,7 @@ export function calcularSlotsDaSala(
   // profissional específico tiver sessão real "Agendado" naquele horário exato.
   //
   // Cruza por `linhasUnidade` (não `linhasSala`), mesmo critério já usado acima
-  // pra `sessoesPorProfissional`/`sessoesPorProfissionalId`: a TiTa não é
+  // pra `sessoesPorProfissional`/`sessoesPorProfissionalId`: o TiTa não é
   // confiável pra registrar em qual sala física a sessão aconteceu (ex.:
   // Coordenador de Caso é sempre lançado numa sala genérica de "Coordenação",
   // nunca na sala onde a pessoa está fisicamente alocada). Exigir a sala exata
@@ -270,7 +270,7 @@ export function calcularSlotsDaSala(
           ?? sessoesPorProfissional.get(`${dow}|${turno}|${normTxt(a.profissional_nome)}`)
           ?? 0
         const sessoesLimitadas = Math.min(sessoesReais, capacidadeBloco)
-        // "Tem agenda na TiTa" é mais amplo que "tem sessão real": inclui
+        // "Tem agenda no TiTa" é mais amplo que "tem sessão real": inclui
         // horário 'Livre' reservado pro profissional, mesmo sem paciente
         // marcado ainda — ver comentário de livrePorProfissionalId acima.
         const temAgendaTita = sessoesReais > 0

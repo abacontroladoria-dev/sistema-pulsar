@@ -1,6 +1,6 @@
 // Convênio do paciente na tela Status Laudos e Senhas.
 //
-// Módulo PURO. A fonte é a GRADE da TiTa (função grade_convenio_por_paciente,
+// Módulo PURO. A fonte é a GRADE do TiTa (função grade_convenio_por_paciente,
 // migration 20260930140000) — o convênio do próximo agendamento, ou do último
 // quando não há futuro. Pedido do usuário (28/09/2026): "o convênio você vai
 // puxar do mesmo local que resulta de 'Grade · N horários'".
@@ -152,7 +152,7 @@ export function juntarComConvenio<
  * quantos laudos cada um tem, do mais frequente para o menos. "Sem convênio"
  * por último, e só se existir.
  *
- * Tirado dos itens, e não de uma lista fixa: convênio novo na TiTa aparece no
+ * Tirado dos itens, e não de uma lista fixa: convênio novo no TiTa aparece no
  * filtro sem mudar código, e um convênio sem laudo não vira opção morta.
  */
 export function opcoesDeConvenio(

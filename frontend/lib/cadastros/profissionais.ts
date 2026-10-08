@@ -6,7 +6,7 @@ import type { Profissional, TerapiaDoProfissional } from "@/types/profissional"
 // Lógica pura do Cadastro de Profissionais (sem React, sem Supabase).
 
 /**
- * Junta as terapias habilitadas (catálogo) com as que a grade TiTa mostra para o
+ * Junta as terapias habilitadas (catálogo) com as que a grade do TiTa mostra para o
  * profissional. Ordem: a focal primeiro, depois as de mais horários na grade,
  * depois alfabética.
  */

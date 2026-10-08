@@ -3,9 +3,9 @@
 // PacientesDashboardShell — dois dashboards de pacientes ativos (CH, convênio,
 // unidade), adaptados de calcularDashboardPacientes. Sessões, CH, dia e unidade
 // vêm de csv_grades_profissionais via useOcupacaoSalas(); o CONVÊNIO de cada
-// paciente vem do cadastro da TiTa (useConvenioCadastroPacientes, ver
+// paciente vem do cadastro do TiTa (useConvenioCadastroPacientes, ver
 // lib/cronograma/convenioCadastro.ts), caindo no da agenda quando o paciente
-// não está no cadastro ou a TiTa não responde. A separação é POR SESSÃO:
+// não está no cadastro ou o TiTa não responde. A separação é POR SESSÃO:
 //   - "Tratamento Multidisciplinar" (antes "Por convênio"): toda sessão que NÃO
 //     é Avaliação Neuropsicológica nem Psiquiatra/Neurologista.
 //   - "Processo Diagnóstico": só sessões de Avaliação Neuropsicológica e

@@ -7,7 +7,7 @@ import type { GradeProfissionalRow } from "./types"
 import type { ResumoCriacao } from "./confirmar"
 import { resolverNome } from "./inclusaoTerapia"
 
-// Log de toda tentativa de implantação na TiTa feita por /cronograma/ocupacao-paciente,
+// Log de toda tentativa de implantação no TiTa feita por /cronograma/ocupacao-paciente,
 // em aumentar_ocupacao_paciente_auditoria (tipo=implantacao, origem=servidor).
 // Ao contrário de acomp_pac_bundles, que é o estado da tela e perde linhas, este
 // log só recebe inserts — ver migration 20260924190000.
@@ -32,7 +32,7 @@ export interface LinhaAuditoriaImplantacao {
   resumo?: ResumoCriacao
 }
 
-/** `httpOk` falso vence o resumo: a chamada em si falhou, o que a TiTa criou antes é desconhecido. */
+/** `httpOk` falso vence o resumo: a chamada em si falhou, o que o TiTa criou antes é desconhecido. */
 export function acaoDaCriacao(httpOk: boolean, resumo: ResumoCriacao): AcaoImplantacao {
   if (!httpOk) return "falha_api"
   switch (resumo.status) {

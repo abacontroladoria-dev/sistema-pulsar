@@ -653,7 +653,8 @@ export default function Sidebar() {
           )}
 
           {/* Cronograma */}
-          {(canAccess("/cronograma/saida-profissional") || canAccess("/cronograma/ocupacao-paciente") ||
+          {(canAccess("/cronograma/grade") ||
+            canAccess("/cronograma/saida-profissional") || canAccess("/cronograma/ocupacao-paciente") ||
             canAccess("/cronograma/ocupacao?tab=oportunidades-recusadas") || canAccess("/cronograma/ocupacao?tab=gaps") ||
             canAccess("/cronograma/ocupacao?tab=inconsistencias") ||
             canAccess("/cronograma/reposicao")) && (
@@ -661,11 +662,13 @@ export default function Sidebar() {
               title={GRUPO.cronograma.nome}
               icon={GRUPO.cronograma.icon}
               defaultOpen={[
+                "/cronograma/grade",
                 "/cronograma/saida-profissional",
                 "/cronograma/ocupacao-paciente",
                 "/cronograma/reposicao",
               ].includes(pathname) || pathname === "/cronograma/ocupacao"}
             >
+              {canAccess("/cronograma/grade") && <Item codigo="cronograma_grade" />}
               {canAccess("/cronograma/saida-profissional") && <Item codigo="cronograma_saida_profissional" />}
               {canAccess("/cronograma/ocupacao-paciente") && <Item codigo="cronograma_ocupacao_paciente" />}
               {canAccess("/cronograma/reposicao") && <Item codigo="reposicao_faltas" />}

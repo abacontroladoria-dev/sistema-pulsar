@@ -74,12 +74,12 @@ const TAG_POR_STATUS: Partial<Record<StatusMes, { texto: string; classe: string 
   },
 }
 
-/** Jan-Jun/2026: faltas vêm do backfill do relatório do Órbita, não da sincronização diária da TiTa (ver faltas_historico_csv). */
+/** Jan-Jun/2026: faltas vêm do backfill do relatório do Órbita, não da sincronização diária do TiTa (ver faltas_historico_csv). */
 function usaFonteHistoricaOrbita(ano: number, mes: number): boolean {
   return ano === 2026 && mes >= 1 && mes <= 6
 }
 
-const NOTA_FONTE_ORBITA = "Potencial perdido por falta calculado a partir do relatório \"relatorio_faltas_detalhado\" do Órbita, importado manualmente — este mês não passou pela sincronização diária da TiTa."
+const NOTA_FONTE_ORBITA = "Potencial perdido por falta calculado a partir do relatório \"relatorio_faltas_detalhado\" do Órbita, importado manualmente — este mês não passou pela sincronização diária do TiTa."
 
 /** Colunas numéricas da tabela, nesta ordem — mesma equação de sempre: Projetado = Pago + Potencial perdido + Indefinido, seguido de Sessões. */
 const COLUNAS_METRICA: MetricaReceitaKey[] = ["receitaSemDeducao", "efetivadoReal", "deducaoFalta", "indefinido", "sessoesMes"]
@@ -199,7 +199,7 @@ export function HistoricoReceitasShell() {
   return (
     <div className="flex flex-col gap-2">
       <p className="text-[11px] text-muted-foreground">
-        Índice mensal — pra ver o detalhamento por convênio/paciente/sessão de um mês específico, use o seletor de mês na aba "Previsão de Receitas". Jan-Jun/2026 usam a dedução por falta do relatório do Órbita, não a sincronização diária da TiTa — clique no ícone de informação ao lado do mês pra ver.
+        Índice mensal — pra ver o detalhamento por convênio/paciente/sessão de um mês específico, use o seletor de mês na aba "Previsão de Receitas". Jan-Jun/2026 usam a dedução por falta do relatório do Órbita, não a sincronização diária do TiTa — clique no ícone de informação ao lado do mês pra ver.
       </p>
       <div className="overflow-x-auto rounded-lg border border-border">
         <table className="w-full text-xs">

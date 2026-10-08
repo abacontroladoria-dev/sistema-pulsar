@@ -222,7 +222,7 @@ export default function ReservarVagaModal({ dataInicial, onFechar, onCriado }: P
                 ) : terapias.length === 0 ? (
                   <div className="text-sm text-amber-700 dark:text-amber-200 bg-amber-500/5 border border-amber-500/20 rounded-lg p-3">
                     Nenhuma vaga livre na grade a partir de {isoParaBR(dataInicial)}.
-                    A grade da TiTa costuma estar populada apenas algumas semanas à frente.
+                    A grade do TiTa costuma estar populada apenas algumas semanas à frente.
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">

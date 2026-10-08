@@ -1,4 +1,4 @@
-// Convênio do paciente pela grade da TiTa, com o Plano do Órbita de reserva.
+// Convênio do paciente pela grade do TiTa, com o Plano do Órbita de reserva.
 //
 //   npx vitest run lib/laudos/convenio.test.ts
 

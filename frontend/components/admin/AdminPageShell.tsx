@@ -6,8 +6,9 @@ import { useHeader } from '@/contexts/HeaderContext'
 import AdminSummaryCards from './AdminSummaryCards'
 import AdminUsersTable, { FILTRO_SEM_GRUPO } from './AdminUsersTable'
 import { useUsuarioAtual } from '@/hooks/useUsuarioAtual'
-import AdminMachinesTable, { isMachineOnline } from './AdminMachinesTable'
+import AdminMachinesTable, { isMachineOnline, machineEstado } from './AdminMachinesTable'
 import {
+  deleteMachine,
   deleteUser,
   getAdminMachines,
   getAdminUsers,
@@ -67,6 +68,8 @@ export default function AdminPageShell({
   const [searchMachine, setSearchMachine] = useState('')
   const [grupoFilter, setGrupoFilter] = useState('')
   const [busyId, setBusyId] = useState<string | null>(null)
+  // Erro de máquina mora na própria linha, não no banner do topo.
+  const [machineErros, setMachineErros] = useState<Record<string, string>>({})
   const [errorMessage, setErrorMessage] = useState('')
   const [resetPasswordResult, setResetPasswordResult] = useState<{
     nome: string
@@ -121,7 +124,8 @@ export default function AdminPageShell({
     const onlineMachines = machines.filter(
       (machine) => isMachineOnline(machine.last_seen)
     ).length
-    const offlineMachines = machines.length - onlineMachines
+    // Pausada é intencional e não entra na conta de alerta.
+    const offlineMachines = machines.filter((machine) => machineEstado(machine) === 'sem_sinal').length
 
     return {
       totalUsers: users.length,
@@ -154,8 +158,8 @@ export default function AdminPageShell({
     return users.filter((user) => {
       if (searchUser) {
         const normalized = searchUser.toLowerCase()
-        const name = (user.nome || user.email || '').toLowerCase()
-        if (!name.includes(normalized)) {
+        const campos = [user.nome, user.email, user.username].map((v) => (v || '').toLowerCase())
+        if (!campos.some((c) => c.includes(normalized.replace(/^@/, '')))) {
           return false
         }
       }
@@ -170,11 +174,21 @@ export default function AdminPageShell({
     })
   }, [users, grupoFilter, searchUser, gruposPorUsuario])
 
+  // Ordem por urgência: sem sinal (ativa e calada) primeiro, depois online, por
+  // fim as pausadas — quem abre a tela quer saber qual robô caiu.
   const filteredMachines = useMemo(() => {
-    return machines.filter((machine) => {
-      if (!searchMachine) return true
-      return (machine.nome || '').toLowerCase().includes(searchMachine.toLowerCase())
-    })
+    const ordem = { sem_sinal: 0, online: 1, pausada: 2 }
+    const termo = searchMachine.trim().toLowerCase()
+    return machines
+      .filter((machine) => {
+        if (!termo) return true
+        return [machine.nome, machine.hostname].some((v) => (v || '').toLowerCase().includes(termo))
+      })
+      .sort(
+        (a, b) =>
+          ordem[machineEstado(a)] - ordem[machineEstado(b)] ||
+          (a.nome || '').localeCompare(b.nome || '', 'pt-BR')
+      )
   }, [machines, searchMachine])
 
   async function handleToggleActive(userId: string, active: boolean) {
@@ -319,14 +333,26 @@ export default function AdminPageShell({
     setBusyId(null)
   }
 
+  function setMachineErro(machineId: string, mensagem: string | null) {
+    setMachineErros((current) => {
+      const next = { ...current }
+      if (mensagem) next[machineId] = mensagem
+      else delete next[machineId]
+      return next
+    })
+  }
+
   async function handleMachineToggle(machineId: string, currentAtiva: boolean) {
     setBusyId(machineId)
-    setErrorMessage('')
+    setMachineErro(machineId, null)
 
     const updated = await updateMachineStatus(machineId, !currentAtiva)
 
     if (!updated) {
-      setErrorMessage('Não foi possível atualizar o status da máquina.')
+      setMachineErro(
+        machineId,
+        currentAtiva ? 'Não foi possível pausar a máquina. Tente novamente.' : 'Não foi possível retomar a máquina. Tente novamente.'
+      )
       setBusyId(null)
       return
     }
@@ -339,6 +365,23 @@ export default function AdminPageShell({
     setBusyId(null)
   }
 
+  async function handleMachineDelete(machineId: string) {
+    setBusyId(machineId)
+    setMachineErro(machineId, null)
+
+    const result = await deleteMachine(machineId)
+
+    if (!result.ok) {
+      setMachineErro(machineId, result.error ?? 'Não foi possível excluir a máquina. Tente novamente.')
+      setBusyId(null)
+      return
+    }
+
+    toast.success('Máquina excluída com sucesso')
+    setMachines((current) => current.filter((m) => m.id !== machineId))
+    setBusyId(null)
+  }
+
   return (
     <div className="bg-card rounded-2xl p-6">
       <div className="space-y-4">
@@ -346,7 +389,7 @@ export default function AdminPageShell({
           <AdminSummaryCards counts={totals} />
 
           {errorMessage ? (
-            <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <div role="alert" className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               {errorMessage}
             </div>
           ) : null}
@@ -369,14 +412,19 @@ export default function AdminPageShell({
               onSearchUserChange={setSearchUser}
               grupoFilter={grupoFilter}
               onGrupoFilterChange={setGrupoFilter}
-              searchMachine={searchMachine}
-              onSearchMachineChange={setSearchMachine}
             />
 
             <AdminMachinesTable
               machines={filteredMachines}
+              totalMachines={machines.length}
               onToggle={handleMachineToggle}
+              onDelete={handleMachineDelete}
+              podeAdministrar={meuNivel === 'admin'}
               loadingId={busyId}
+              erros={machineErros}
+              onDismissErro={(id) => setMachineErro(id, null)}
+              searchMachine={searchMachine}
+              onSearchMachineChange={setSearchMachine}
             />
           </div>
         </div>

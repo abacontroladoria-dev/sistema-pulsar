@@ -449,7 +449,7 @@ export function OcupacaoCategoriaView({ cRows }: Props) {
               <span className="text-[15px] font-extrabold text-foreground">Ocupar por unidade, dia e especialidade</span>
             </div>
             <div className="mb-3 text-xs text-muted-foreground">
-              Escolha uma unidade, um ou mais dias/turnos e uma especialidade pra ver todas as vagas dessa combinação — com qualquer profissional que já tenha horário "Livre" real ali — direto ou via remanejamento. Sem escrever nada na TiTa, é só visualização.
+              Escolha uma unidade, um ou mais dias/turnos e uma especialidade pra ver todas as vagas dessa combinação — com qualquer profissional que já tenha horário "Livre" real ali — direto ou via remanejamento. Sem escrever nada no TiTa, é só visualização.
             </div>
             <div className="flex flex-wrap items-start gap-3">
               <div className="flex w-full lg:w-56 shrink-0 flex-col gap-2 rounded-xl border border-border bg-muted/40 p-3">

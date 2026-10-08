@@ -4,17 +4,17 @@ import { useEffect, useState } from "react"
 import { montarMapaConvenioCadastro, type FavorecidoCadastroCliente, type MapaConvenioCadastro } from "@/lib/cronograma/convenioCadastro"
 
 export interface ConvenioCadastroState {
-  /** null enquanto carrega ou quando a TiTa falhou — quem consome cai no convênio da agenda. */
+  /** null enquanto carrega ou quando o TiTa falhou — quem consome cai no convênio da agenda. */
   mapa: MapaConvenioCadastro | null
   loading: boolean
   /** Código de erro da rota (ex.: "token_nao_configurado", "tita_http_500"), ou null. */
   erro: string | null
-  /** A rota serviu um cache vencido porque a TiTa falhou agora. */
+  /** A rota serviu um cache vencido porque o TiTa falhou agora. */
   obsoleto: boolean
 }
 
 /**
- * Convênio de cada paciente pelo CADASTRO da TiTa (ver lib/cronograma/convenioCadastro.ts).
+ * Convênio de cada paciente pelo CADASTRO do TiTa (ver lib/cronograma/convenioCadastro.ts).
  * Reaproveita a rota existente /api/tita/situacao-favorecidos (cache de 5 min no
  * servidor), a mesma que a modalidade Criar Novo Cronograma consulta.
  */

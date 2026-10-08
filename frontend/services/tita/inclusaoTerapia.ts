@@ -17,13 +17,13 @@ import type { ResumoCriacao } from "./confirmar"
  * implantar, que é o único jeito de o esquecimento deixar de ser possível.
  *
  * POR QUE ISTO VIVE NA ROTA E NÃO NUM TRIGGER
- * A implantação não passa pelo Postgres: a rota escreve direto na API da TiTa, e
+ * A implantação não passa pelo Postgres: a rota escreve direto na API do TiTa, e
  * csv_grades_profissionais só reflete a sessão nova depois do sync, horas
  * depois. Não há o que um trigger capturasse a tempo. Ver o cabeçalho de
  * supabase/migrations/20260902120000_inclusao_terapia_avisa_cronograma.sql.
  *
  * A REGRA QUE GOVERNA ESTE ARQUIVO INTEIRO
- * AVISAR NÃO PODE DERRUBAR IMPLANTAR. A terapia já foi criada na TiTa quando
+ * AVISAR NÃO PODE DERRUBAR IMPLANTAR. A terapia já foi criada no TiTa quando
  * esta função roda; se ela lançasse, o usuário veria erro numa operação que deu
  * certo e tentaria de novo, criando agendamento duplicado. Por isso nada aqui
  * lança — é a mesma blindagem que avisar_glosa_clickup() tem no trigger.
@@ -45,7 +45,7 @@ interface SessaoIncluida {
   conflitos: number
 }
 
-/** O que a rota entrega, já com grade resolvida e resultado da TiTa em mãos. */
+/** O que a rota entrega, já com grade resolvida e resultado do TiTa em mãos. */
 export interface EntradaInclusao {
   csvGradeId: string
   grade: GradeProfissionalRow
@@ -130,7 +130,7 @@ export async function resolverNome(userId: string, email: string | null): Promis
  * ato gera UM card listando as duas — o cronograma trata o paciente de uma vez e
  * a lista PACIENTES não vira mural.
  *
- * `entradas` deve conter SÓ o que a TiTa aceitou (success ou partial_success);
+ * `entradas` deve conter SÓ o que o TiTa aceitou (success ou partial_success);
  * quem filtra é o chamador, que é quem sabe o resultado de cada chamada.
  *
  * Nunca lança: toda falha vira log. Ver a regra no topo do arquivo.

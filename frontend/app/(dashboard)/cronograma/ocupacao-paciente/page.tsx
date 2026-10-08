@@ -36,7 +36,7 @@ export default function OcupacaoPacientePage() {
   const [suspensaoSet, setSuspensaoSet] = useState<Set<string>>(new Set())
   const [suspensaoInfo, setSuspensaoInfo] = useState<Map<string, SuspensaoLinkInfo>>(new Map())
   const [erro, setErro] = useState<string | null>(null)
-  // Quantas horas faz que a TiTa não reconfirma a grade desta janela. Ver o
+  // Quantas horas faz que o TiTa não reconfirma a grade desta janela. Ver o
   // aviso mais abaixo e medirFrescorGrade() em lib/grade/fonte.ts.
   const [gradeVelhaHoras, setGradeVelhaHoras] = useState<number | null>(null)
   const fetchedRef = useRef(false)
@@ -101,7 +101,7 @@ export default function OcupacaoPacientePage() {
   // O relatório de laudos é pré-requisito das TRÊS modalidades, não um dado
   // opcional: "Aumentar Cronograma" mede déficit contra a quantidade autorizada,
   // "Criar Novo Cronograma" monta a lista de elegíveis a partir do laudo (e tira
-  // dele o ID Favorecido usado para gravar na TiTa), e o "Orçamento" compara o
+  // dele o ID Favorecido usado para gravar no TiTa), e o "Orçamento" compara o
   // simulado com o autorizado. Sem ele, as telas responderiam com números
   // silenciosamente errados — então a página inteira fica travada até o anexo,
   // em vez de deixar consultar e induzir a decisão equivocada.
@@ -118,11 +118,11 @@ export default function OcupacaoPacientePage() {
       {gradeVelhaHoras !== null && (
         <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
           <strong className="font-semibold">Grade desatualizada.</strong>{" "}
-          A TiTa não reconfirma estes dias há {Math.floor(gradeVelhaHoras / 24) >= 1
+          O TiTa não reconfirma estes dias há {Math.floor(gradeVelhaHoras / 24) >= 1
             ? `${Math.floor(gradeVelhaHoras / 24)} dia(s)`
             : `${Math.round(gradeVelhaHoras)} hora(s)`}
           . Pode faltar sessão recém-remarcada e sobrar horário que já foi ocupado —
-          confira na TiTa antes de confirmar implantação.
+          confira no TiTa antes de confirmar implantação.
         </div>
       )}
 

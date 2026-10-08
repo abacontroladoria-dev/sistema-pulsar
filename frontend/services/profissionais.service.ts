@@ -22,7 +22,7 @@ const TODAS = [
   "criado_em", "atualizado_em",
 ]
 
-// A lista não precisa de endereço, e-mail, observações, assinatura nem do retrato da TiTa.
+// A lista não precisa de endereço, e-mail, observações, assinatura nem do retrato do TiTa.
 const DA_LISTA = [
   "id", "tita_profissional_id", "origem", "nome", "cpf", "celular",
   "tipo_registro", "uf_registro", "codigo_registro", "cbo", "terapia_focal_id", "ativo", "foto_path",
@@ -258,7 +258,7 @@ export async function salvarHabilitadas(
   })
 }
 
-/** A trilha guarda o cadastro, não o retrato da TiTa (que muda a cada importação). */
+/** A trilha guarda o cadastro, não o retrato do TiTa (que muda a cada importação). */
 function semRetratoTita(p: Profissional): Record<string, unknown> {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { dados_tita, sincronizado_tita_em, ...resto } = p

@@ -120,7 +120,7 @@ function resumoPorDia(agendamentos: AgendamentoNormalizado[], semanas: number): 
 }
 
 function normalizarLinha(r: AgendaSalaRow, mapa: MapaConvenioCadastro | null | undefined): AgendamentoNormalizado {
-  // Convênio pelo cadastro da TiTa quando disponível; sem mapa (ou sem o
+  // Convênio pelo cadastro do TiTa quando disponível; sem mapa (ou sem o
   // paciente no cadastro) é o da agenda, como sempre foi. Ver convenioCadastro.ts.
   const conv = convenioDaLinha(r, mapa)
   return {

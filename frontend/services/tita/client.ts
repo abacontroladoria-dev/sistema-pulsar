@@ -10,7 +10,7 @@ import type {
 
 // Base URL e header confirmados em "Integração - Documentação API TITA.pdf" (seção
 // "Configuração de Acesso") e usados de forma consistente em todas as Edge
-// Functions do projeto que já integram com a TiTa.
+// Functions do projeto que já integram com o TiTa.
 const TITA_BASE_URL = process.env.TITA_API_URL || "https://apiv2.apptita.com.br/api"
 
 function getTitaToken(): string {
@@ -20,7 +20,7 @@ function getTitaToken(): string {
 }
 
 /**
- * Extrai só a mensagem textual (campo "message") de um corpo de erro da TiTa —
+ * Extrai só a mensagem textual (campo "message") de um corpo de erro do TiTa —
  * nunca repassa error_stack_trace, error_file, error_function ou params, que
  * contêm caminhos internos do servidor deles. Essa é a única parte da resposta
  * de erro que sai de postTita(); o corpo bruto completo só é logado no servidor
@@ -35,7 +35,7 @@ function extrairMensagemTita(data: unknown): string | undefined {
 }
 
 /**
- * Detecta deadlock no MySQL da TiTa (achado real em produção, 2026-08-07: duas
+ * Detecta deadlock no MySQL do TiTa (achado real em produção, 2026-08-07: duas
  * chamadas concorrentes de agendamento/create do mesmo bundle, cada uma inserindo
  * em lote em agenda_fav_items, colidiram com "SQLSTATE[40001]: Deadlock found when
  * trying to get lock; try restarting transaction" — a própria TiTa recomenda
@@ -57,7 +57,7 @@ const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 // enviado, resposta recebida e tempo de execução fiquem logados para as duas
 // chamadas (get_disponibilidade e agendamento/create) sem duplicar código.
 //
-// deadlockRetryBackoffsMs: se informado, reexecuta a chamada quando a TiTa
+// deadlockRetryBackoffsMs: se informado, reexecuta a chamada quando o TiTa
 // sinalizar deadlock (ver isDeadlockTita), esperando o backoff indicado entre
 // tentativas. Vazio/omitido = nunca reexecuta (comportamento original).
 async function postTita<T>(
@@ -86,7 +86,7 @@ async function postTita<T>(
     const duracaoMs = Date.now() - inicio
 
     if (!response.ok) {
-      // Corpo bruto (pode conter stack trace/caminhos internos da TiTa) só vai para
+      // Corpo bruto (pode conter stack trace/caminhos internos do TiTa) só vai para
       // o log do servidor — nunca é retornado ao chamador (ver extrairMensagemTita).
       console.error(
         `[tita:client] ← POST ${path} falhou (status ${response.status}, ${duracaoMs}ms, tentativa ${tentativa}/${tentativas})`,
@@ -123,8 +123,8 @@ export function verificarDisponibilidade(payload: DisponibilidadeRequest): Promi
 }
 
 /**
- * POST /integracao/agendamento/create — cria o agendamento recorrente na TiTa.
- * Reexecuta até 2x (backoff 300ms, 800ms) se a TiTa sinalizar deadlock no MySQL
+ * POST /integracao/agendamento/create — cria o agendamento recorrente no TiTa.
+ * Reexecuta até 2x (backoff 300ms, 800ms) se o TiTa sinalizar deadlock no MySQL
  * dela (ver isDeadlockTita) — cenário real e transiente, não um erro de dados
  * nosso; ver route.ts para o porquê das chamadas desta fase serem sequenciais.
  */

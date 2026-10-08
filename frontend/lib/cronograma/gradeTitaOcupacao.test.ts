@@ -1,7 +1,7 @@
 // Testes das regras C1/C2 de gradeTitaOcupacao — ver o cabeçalho do módulo.
 //
 // Os casos usam os dados reais medidos em produção em 2026-09-10 (Evelyn
-// Andressa, profissional_id 8638, segunda-feira 05/10): a grade da TiTa tem 7
+// Andressa, profissional_id 8638, segunda-feira 05/10): a grade do TiTa tem 7
 // slots dela (13:00→17:00) e NADA na manhã, enquanto o CSV de agendamentos tem
 // 13 linhas, com 6 fantasmas em 08:00→11:20. Era a manhã inteira sendo ofertada
 // em cima de horário sem grade aberta.
@@ -189,7 +189,7 @@ describe("fail-open", () => {
 
   it("mas a abstenção NÃO é por dia: profissional lido decide em todos os dias", async () => {
     // Medido em produção: abster por dia deixava passar 71 slots que a API bruta
-    // da TiTa confirma não existirem (profissional com grade em três dias sendo
+    // do TiTa confirma não existirem (profissional com grade em três dias sendo
     // ofertado nos outros). A Evelyn foi lida, então a terça dela também é
     // julgada — mesmo sem nenhuma linha de terça na grade.
     linhasGrade = SEGUNDA_REAL

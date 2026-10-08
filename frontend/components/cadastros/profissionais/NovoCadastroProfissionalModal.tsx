@@ -15,7 +15,7 @@ import { maskCpfCnpj, onlyDigits } from "@/lib/remuneracao/formatacao"
 import { criarProfissional } from "@/services/profissionais.service"
 import { idExibicaoProfissional, type ProfissionalLista } from "@/types/profissional"
 
-// Cadastro manual — quem ainda não existe na TiTa (contratação nova). Pede só o
+// Cadastro manual — quem ainda não existe no TiTa (contratação nova). Pede só o
 // essencial; o resto se completa na ficha, que abre logo depois de salvar.
 
 export function NovoCadastroProfissionalModal({
@@ -82,7 +82,7 @@ export function NovoCadastroProfissionalModal({
   return (
     <ScheduleModal
       title="Novo profissional"
-      subtitle="Para quem ainda não está na TiTa. Quando aparecer lá com o mesmo CPF, a importação vincula este cadastro em vez de criar outro."
+      subtitle="Para quem ainda não está no TiTa. Quando aparecer lá com o mesmo CPF, a importação vincula este cadastro em vez de criar outro."
       maxWidth={560}
       onClose={onFechar}
       footer={
