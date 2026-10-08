@@ -27,6 +27,7 @@ interface Numero {
   ultimaSincronizacao: string | null
   membros: number
   maiaSugere: boolean
+  maiaResponde: boolean
 }
 
 interface Usuario { id: string; nome: string; central_role: string }
@@ -87,7 +88,7 @@ export function EvolutionSettings() {
       })
       setNomeNovo('')
       await carregar()
-      setQrDe({ channelId, nome, status: 'connecting', ultimaSincronizacao: null, membros: 1, maiaSugere: false })
+      setQrDe({ channelId, nome, status: 'connecting', ultimaSincronizacao: null, membros: 1, maiaSugere: false, maiaResponde: false })
     } catch (err) {
       toast.error((err as Error).message)
     } finally {
@@ -123,6 +124,25 @@ export function EvolutionSettings() {
       toast.success(n.maiaSugere
         ? `${n.nome}: Maia desligada.`
         : `${n.nome}: a Maia vai sugerir respostas. Nada é enviado sem a atendente.`)
+      await carregar()
+    } catch (err) {
+      toast.error((err as Error).message)
+    } finally {
+      setOcupado(null)
+    }
+  }
+
+  const alternarMaiaResponde = async (n: Numero) => {
+    setOcupado(n.channelId)
+    try {
+      await api(`${BASE}/${n.channelId}/`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'maia_automatica', ligar: !n.maiaResponde }),
+      })
+      toast.success(n.maiaResponde
+        ? `${n.nome}: a Maia volta a só sugerir.`
+        : `${n.nome}: a Maia responde sozinha nas conversas sem atendente atribuída.`)
       await carregar()
     } catch (err) {
       toast.error((err as Error).message)
@@ -184,7 +204,8 @@ export function EvolutionSettings() {
       <p className="text-sm text-muted-foreground mb-5">
         A Maia atende pelo número oficial. Os demais números são de atendimento humano e
         aparecem na caixa de entrada só para quem for membro deles. Com &quot;Maia sugere&quot;
-        ligado, ela deixa uma sugestão de resposta na conversa — quem envia é sempre a atendente.
+        ligado, ela deixa uma sugestão de resposta na conversa para a atendente enviar. Com
+        &quot;Maia responde&quot;, ela envia sozinha nas conversas sem atendente atribuída.
       </p>
 
       {/* O número da Maia — só leitura */}
@@ -256,6 +277,27 @@ export function EvolutionSettings() {
                     Maia sugere
                     <span className={`relative w-7 h-4 rounded-full transition-colors ${n.maiaSugere ? 'bg-violet-500' : 'bg-muted-foreground/30'}`}>
                       <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${n.maiaSugere ? 'left-3.5' : 'left-0.5'}`} />
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={n.maiaResponde}
+                    onClick={() => alternarMaiaResponde(n)}
+                    disabled={travado}
+                    title={n.maiaResponde
+                      ? 'A Maia responde sozinha nas conversas sem atendente atribuída. Clique para voltar a só sugerir.'
+                      : 'Ligar: a Maia passa a enviar as respostas sozinha (conversa atribuída a alguém continua só com sugestão).'}
+                    className={`h-8 px-2.5 rounded-lg border text-xs font-medium flex items-center gap-2 transition-colors disabled:opacity-60 ${
+                      n.maiaResponde
+                        ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                        : 'border-border text-muted-foreground hover:bg-muted'
+                    }`}
+                  >
+                    <Bot className="w-3.5 h-3.5" />
+                    Maia responde
+                    <span className={`relative w-7 h-4 rounded-full transition-colors ${n.maiaResponde ? 'bg-emerald-500' : 'bg-muted-foreground/30'}`}>
+                      <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${n.maiaResponde ? 'left-3.5' : 'left-0.5'}`} />
                     </span>
                   </button>
                   <Button size="sm" variant="outline" onClick={() => setMembrosDe(n)} disabled={travado}>

@@ -39,6 +39,9 @@ export interface NumeroEvolution {
   membros: number
   // Chave "Maia sugere" (central.inboxes.maia_sugestao). Só rascunho, nunca envio.
   maiaSugere: boolean
+  // Chave "Maia responde" (central.inboxes.maia_automatica). Envia sozinha em
+  // conversa sem atendente atribuída; implica maiaSugere.
+  maiaResponde: boolean
 }
 
 interface CanalDoBanco {
@@ -82,15 +85,19 @@ export async function listarNumeros(orgId: string): Promise<NumeroEvolution[]> {
   }
 
   const sugere = new Set<string>()
+  const responde = new Set<string>()
   if (inboxIds.length) {
     const { data: inboxes, error: e3 } = await supabaseService
       .schema('central')
       .from('inboxes')
-      .select('id')
+      .select('id, maia_automatica')
       .in('id', inboxIds)
       .eq('maia_sugestao', true)
     if (e3) throw e3
-    for (const i of (inboxes ?? []) as { id: string }[]) sugere.add(i.id)
+    for (const i of (inboxes ?? []) as { id: string; maia_automatica: boolean }[]) {
+      sugere.add(i.id)
+      if (i.maia_automatica) responde.add(i.id)
+    }
   }
 
   return canais.map(c => {
@@ -104,6 +111,7 @@ export async function listarNumeros(orgId: string): Promise<NumeroEvolution[]> {
       ultimaSincronizacao: conexao?.last_sync_at ?? null,
       membros: contagem.get(c.inbox_id) ?? 0,
       maiaSugere: sugere.has(c.inbox_id),
+      maiaResponde: responde.has(c.inbox_id),
     }
   })
 }
@@ -113,7 +121,19 @@ export async function listarNumeros(orgId: string): Promise<NumeroEvolution[]> {
 export async function definirMaiaSugestao(orgId: string, channelId: string, ligar: boolean): Promise<void> {
   const { inboxId } = await instanciaDoCanal(orgId, channelId)
   const { error } = await supabaseService.schema('central').from('inboxes')
-    .update({ maia_sugestao: ligar }).eq('id', inboxId).eq('organization_id', orgId)
+    // Desligar a sugestão desliga a resposta automática junto (CHECK no banco).
+    .update(ligar ? { maia_sugestao: true } : { maia_sugestao: false, maia_automatica: false })
+    .eq('id', inboxId).eq('organization_id', orgId)
+  if (error) throw error
+}
+
+// Liga/desliga "Maia responde": ligar liga a sugestão junto (mesmo worker).
+// Desligar volta ao modo sugestão. ai_mode segue 'off' (trg_evolution_sem_ia).
+export async function definirMaiaAutomatica(orgId: string, channelId: string, ligar: boolean): Promise<void> {
+  const { inboxId } = await instanciaDoCanal(orgId, channelId)
+  const { error } = await supabaseService.schema('central').from('inboxes')
+    .update(ligar ? { maia_sugestao: true, maia_automatica: true } : { maia_automatica: false })
+    .eq('id', inboxId).eq('organization_id', orgId)
   if (error) throw error
 }
 
