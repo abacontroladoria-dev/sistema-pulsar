@@ -1,6 +1,6 @@
 "use client"
 
-import { ChevronRight, FileText, History } from "lucide-react"
+import { ChevronRight, History } from "lucide-react"
 import {
   ROTULO_TIPO,
   TIPOS_CONTRATO,
@@ -110,11 +110,6 @@ function Linha({
               <span>
                 · assinado em {dataBRDeTimestamp(c.assinado_em)}
                 {c.origem_assinatura === "manual" ? " (manual)" : " (D4Sign)"}
-              </span>
-            )}
-            {c.arquivo_original_path && (
-              <span className="inline-flex items-center gap-0.5">
-                · <FileText className="h-3 w-3" aria-hidden="true" /> PDF
               </span>
             )}
           </p>

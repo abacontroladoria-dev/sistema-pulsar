@@ -1,13 +1,10 @@
 "use client"
 
-import { useEffect, useRef, useState, type ReactNode } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import toast from "react-hot-toast"
 import {
   Ban,
   CircleCheck,
-  Download,
-  FileText,
-  FileUp,
   Loader2,
   MessageCircle,
   Pencil,
@@ -30,13 +27,7 @@ import {
   transicaoPermitida,
   vigencia,
 } from "@/lib/contratos/status"
-import {
-  TAMANHO_MAXIMO_PDF,
-  cancelarContrato,
-  enviarArquivoOriginal,
-  marcarAssinadoManual,
-  urlDoArquivo,
-} from "@/services/pacienteContratos.service"
+import { cancelarContrato, marcarAssinadoManual } from "@/services/pacienteContratos.service"
 import { getVinculosDoPaciente } from "@/services/responsaveis.service"
 import type { ContratoPaciente, EventoContrato, SignatarioContrato } from "@/types/contratosPaciente"
 import type { VinculoResponsavel } from "@/types/responsavel"
@@ -44,13 +35,16 @@ import { campo, rotulo } from "../../ui/campos"
 import { LinhaDoTempo } from "./LinhaDoTempo"
 import { SelosContrato } from "./Selos"
 
-// Painel lateral de UM contrato: dados, documento, assinatura, ações e linha do
-// tempo. Fica de lado (Drawer) para a lista continuar visível atrás.
+// Painel lateral de UM contrato: dados, assinatura, ações e linha do tempo.
+// Fica de lado (Drawer) para a lista continuar visível atrás.
 //
-// Ações da fase 1 (modo manual): marcar como assinado, cancelar, anexar e
-// baixar PDF. As da integração D4Sign/WhatsApp (fases 3 e 4) aparecem
-// desligadas com "em breve" — o lugar delas já existe, para a tela não mudar
-// de forma quando forem ligadas.
+// SEM PDF (pedido do usuário, 09/10/2026): o contrato do paciente não guarda
+// nem troca arquivo nenhum por aqui — nada de anexar, nada de baixar. O
+// documento em si vive na D4Sign (fase 3, integração do colega).
+//
+// Ações da fase 1 (modo manual): marcar como assinado, cancelar. As da
+// integração D4Sign/WhatsApp (fases 3 e 4) aparecem desligadas com "em breve" —
+// o lugar delas já existe, para a tela não mudar de forma quando forem ligadas.
 
 type Acao = null | "assinar" | "cancelar"
 
@@ -79,14 +73,10 @@ export function DetalheContratoPainel({
   const [acao, setAcao] = useState<Acao>(null)
   const [assinadoEm, setAssinadoEm] = useState(hoje)
   const [motivo, setMotivo] = useState("")
-  const [ocupado, setOcupado] = useState<null | "assinar" | "cancelar" | "upload" | "original" | "assinado">(null)
-  const fileRef = useRef<HTMLInputElement>(null)
+  const [ocupado, setOcupado] = useState<null | "assinar" | "cancelar">(null)
 
   const podeAssinar = transicaoPermitida(status, "assinado")
   const podeCancelar = transicaoPermitida(status, "cancelado")
-  // O PDF original só troca enquanto o contrato é rascunho: depois de enviado,
-  // o documento da D4Sign é o que vale. Sem PDF ainda, qualquer status vivo aceita.
-  const podeAnexar = status !== "cancelado" && (status === "rascunho" || !c.arquivo_original_path)
 
   async function assinar() {
     if (!assinadoEm || assinadoEm > hoje) {
@@ -144,47 +134,6 @@ export function DetalheContratoPainel({
     }
   }
 
-  async function anexar(f: File | undefined) {
-    if (!f) return
-    if (f.type !== "application/pdf") return void toast.error("Escolha um arquivo PDF.")
-    if (f.size > TAMANHO_MAXIMO_PDF) return void toast.error("O PDF passa de 10 MB.")
-    if (c.arquivo_original_path) {
-      const ok = await confirmar({
-        titulo: "Substituir o PDF?",
-        texto: "O PDF atual deixa de ser o do contrato. A troca fica registrada na linha do tempo.",
-        confirmar: "Substituir",
-      })
-      if (!ok) return
-    }
-    setOcupado("upload")
-    try {
-      await enviarArquivoOriginal(c.id, f)
-      toast.success("PDF anexado.")
-      await onMudou()
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Não foi possível enviar o PDF.", { duration: 8000 })
-    } finally {
-      setOcupado(null)
-    }
-  }
-
-  async function baixar(qual: "original" | "assinado") {
-    // A aba abre ANTES do await: aberta depois, o bloqueador de pop-up do
-    // navegador a trata como pop-up não solicitado.
-    const aba = window.open("about:blank", "_blank")
-    setOcupado(qual)
-    try {
-      const url = await urlDoArquivo(c.id, qual)
-      if (aba) aba.location.href = url
-      else window.location.href = url
-    } catch (e) {
-      aba?.close()
-      toast.error(e instanceof Error ? e.message : "Não foi possível abrir o PDF.")
-    } finally {
-      setOcupado(null)
-    }
-  }
-
   return (
     <Drawer
       title={ROTULO_TIPO[c.tipo]}
@@ -222,53 +171,6 @@ export function DetalheContratoPainel({
           </dl>
         </section>
 
-        {/* ── Documento ── */}
-        <section>
-          <h3 className={rotulo}>Documento</h3>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {c.arquivo_original_path ? (
-              <button type="button" onClick={() => void baixar("original")} disabled={!!ocupado} className={`${btnSecundario} min-h-11 sm:min-h-0`}>
-                {ocupado === "original" ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Download className="h-4 w-4" aria-hidden />}
-                Baixar PDF
-              </button>
-            ) : (
-              <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                <FileText className="h-4 w-4" aria-hidden /> Nenhum PDF anexado.
-              </p>
-            )}
-            {podeAnexar && (
-              <button type="button" onClick={() => fileRef.current?.click()} disabled={!!ocupado} className={`${btnSecundario} min-h-11 sm:min-h-0`}>
-                {ocupado === "upload" ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <FileUp className="h-4 w-4" aria-hidden />}
-                {c.arquivo_original_path ? "Substituir PDF" : "Anexar PDF"}
-              </button>
-            )}
-            {/* Sem "em breve" quando ainda não há PDF assinado: antes do envio
-                para a D4Sign (fase 3) o botão não tem nada a fazer, e ficava
-                ali sem utilidade em todo contrato que ainda não foi assinado. */}
-            {c.arquivo_assinado_path && (
-              <button type="button" onClick={() => void baixar("assinado")} disabled={!!ocupado} className={`${btnSecundario} min-h-11 sm:min-h-0`}>
-                {ocupado === "assinado" ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Download className="h-4 w-4" aria-hidden />}
-                Baixar contrato assinado
-              </button>
-            )}
-          </div>
-          {c.arquivo_original_nome && (
-            <p className="mt-1.5 truncate text-xs text-muted-foreground" title={c.arquivo_original_nome}>
-              {c.arquivo_original_nome}
-            </p>
-          )}
-          <input
-            ref={fileRef}
-            type="file"
-            accept="application/pdf,.pdf"
-            className="hidden"
-            onChange={(e) => {
-              void anexar(e.target.files?.[0])
-              e.target.value = ""
-            }}
-          />
-        </section>
-
         {/* ── Assinatura ── */}
         <section>
           <h3 className={rotulo}>Assinatura</h3>
@@ -303,7 +205,7 @@ export function DetalheContratoPainel({
             <EmBreve Icone={MessageCircle}>Ver status das assinaturas</EmBreve>
           </div>
           <p className="mt-1.5 text-xs text-muted-foreground">
-            Envio pela D4Sign com link no WhatsApp: em breve. Até lá, anexe o PDF e marque como assinado.
+            Envio pela D4Sign com link no WhatsApp: em breve. Até lá, marque como assinado quando o responsável assinar fora do sistema.
           </p>
         </section>
 

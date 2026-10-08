@@ -4,18 +4,18 @@ import { createClient } from "@/lib/supabase/server"
 import { temPermissao } from "@/lib/permissions/resolver"
 import { carregarPermissoesEfetivas } from "@/lib/permissions/carregar"
 
-// Quem pode o quê nas rotas de contrato do paciente (/api/contratos/* e
-// /api/status-contratos). Molde: services/laudos/acesso.ts.
+// Quem pode o quê nas rotas de contrato do paciente (/api/status-contratos).
+// Molde: services/laudos/acesso.ts.
 //
-// As rotas leem e gravam com service_role (o bucket `contratos-pacientes` não
-// tem policy para o navegador, e a Status Contratos cruza a grade do TiTa, que
-// só a service_role lê), então a RLS não protege nada ali: a checagem é ESTA.
+// A rota lê com service_role (a Status Contratos cruza a grade do TiTa, que só
+// a service_role lê), então a RLS não protege nada ali: a checagem é ESTA.
+// SEM PDF neste tema (pedido do usuário, 09/10/2026): não há rota de arquivo.
 //
-//   • editar (criar, anexar PDF, baixar PDF, e — fase 3 — enviar/reenviar/
-//     cancelar na D4Sign): `cadastros_pacientes`. Mesma regra das RPCs
-//     contratos_* no banco.
+//   • editar (criar contrato, marcar assinado, cancelar, e — fase 3 —
+//     enviar/reenviar/cancelar na D4Sign): `cadastros_pacientes`. Mesma regra
+//     das RPCs contratos_* no banco.
 //   • ler a Status Contratos: `status_contratos` OU `cadastros_pacientes`. A
-//     tela é só leitura; o PDF continua exigindo `cadastros_pacientes`.
+//     tela é só leitura.
 
 export const PERMISSAO_CADASTRO = "cadastros_pacientes"
 export const PERMISSAO_STATUS = "status_contratos"

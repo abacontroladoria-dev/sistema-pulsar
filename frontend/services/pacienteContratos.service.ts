@@ -6,9 +6,10 @@ import type { ContratoPaciente, EventoContrato, SignatarioContrato } from "@/typ
 //
 // Leitura direta das tabelas (RLS: cadastros_pacientes OU status_contratos);
 // escrita do status SÓ pelas RPCs da migration 20261008160000 — o banco nem
-// concede UPDATE a authenticated. Arquivo (PDF) vai e volta pelas rotas
-// /api/contratos/[id]/*, que usam a service_role depois de conferir a
-// permissão: o bucket `contratos-pacientes` não tem policy para o navegador.
+// concede UPDATE a authenticated.
+//
+// SEM arquivo: o contrato do paciente não guarda PDF nenhum (pedido do
+// usuário, 09/10/2026) — o documento vive na D4Sign (fase 3).
 //
 // Toda escrita devolve a linha gravada, e retorno vazio é FALHA — a defesa
 // contra a escrita barrada que não gera erro (mesma regra de
@@ -54,8 +55,7 @@ function falhar(erro: { code?: string; message?: string }, padrao: string): neve
 
 const COLUNAS_CONTRATO =
   "id, paciente_id, tipo, data_inicio, data_vencimento, status, assinado_em, origem_assinatura, " +
-  "arquivo_original_path, arquivo_original_nome, arquivo_assinado_path, d4sign_documento_uuid, " +
-  "link_expira_em, observacao, criado_por_nome, criado_em, atualizado_em"
+  "d4sign_documento_uuid, link_expira_em, observacao, criado_por_nome, criado_em, atualizado_em"
 
 export type ContratosDoPaciente = {
   /** Mais recentes primeiro (início desc, id desc). Só `ativo = true`. */
@@ -166,41 +166,4 @@ export async function cancelarContrato(id: number, motivo: string): Promise<Cont
   const linha = linhaOuFalha(data, "o cancelamento")
   if (linha.status !== "cancelado") throw new ErroContratos("O banco não confirmou o cancelamento. Recarregue e confira.")
   return linha
-}
-
-// ─── Arquivo (rotas de API) ──────────────────────────────────────────────────
-
-/** Limite do bucket (20261008160000). Conferido aqui para o erro sair antes do upload. */
-export const TAMANHO_MAXIMO_PDF = 10 * 1024 * 1024
-
-async function lerErroDaRota(resposta: Response, padrao: string): Promise<string> {
-  try {
-    const corpo = await resposta.json()
-    if (typeof corpo?.mensagem === "string") return corpo.mensagem
-  } catch {
-    /* corpo não-JSON: cai no padrão */
-  }
-  return `${padrao} (HTTP ${resposta.status})`
-}
-
-export async function enviarArquivoOriginal(contratoId: number, arquivo: File): Promise<ContratoPaciente> {
-  if (arquivo.type !== "application/pdf") throw new ErroContratos("Envie o contrato em PDF.")
-  if (arquivo.size > TAMANHO_MAXIMO_PDF) throw new ErroContratos("O PDF passa de 10 MB.")
-
-  const corpo = new FormData()
-  corpo.append("arquivo", arquivo)
-  // Barra no fim: `trailingSlash: true` no next.config.
-  const resposta = await fetch(`/api/contratos/${contratoId}/arquivo/`, { method: "POST", body: corpo })
-  if (!resposta.ok) throw new ErroContratos(await lerErroDaRota(resposta, "Não foi possível enviar o PDF"))
-  const json = await resposta.json()
-  return linhaOuFalha(json?.contrato, "o envio do PDF")
-}
-
-/** URL assinada (5 minutos) do PDF. Abre numa aba nova; não guardar. */
-export async function urlDoArquivo(contratoId: number, qual: "original" | "assinado"): Promise<string> {
-  const resposta = await fetch(`/api/contratos/${contratoId}/download/?qual=${qual}`, { cache: "no-store" })
-  if (!resposta.ok) throw new ErroContratos(await lerErroDaRota(resposta, "Não foi possível abrir o PDF"))
-  const json = await resposta.json()
-  if (typeof json?.url !== "string") throw new ErroContratos("O servidor não devolveu o link do PDF.")
-  return json.url
 }

@@ -3,8 +3,8 @@
 -- Plano: docs/PLANO_CONTRATOS_PACIENTE.md. Esta migration é a FASE 0, o ponto
 -- de encontro entre as duas metades do trabalho:
 --
---   - aba Contratos + Status Contratos (modo MANUAL): a equipe cria o contrato,
---     anexa o PDF e marca "assinado" com a data;
+--   - aba Contratos + Status Contratos (modo MANUAL): a equipe cria o contrato
+--     e marca "assinado" com a data;
 --   - integração D4Sign + WhatsApp (feita depois, por outra pessoa): o mesmo
 --     registro passa a ser movido pelo webhook da D4Sign, pela RPC
 --     contratos_registrar_evento_externo, só service_role.
@@ -12,7 +12,12 @@
 -- Nada aqui é de prestador: remuneracao_contratos* e /cadastros/contratos são
 -- contratos de PROFISSIONAL e não se misturam com isto.
 --
--- Cinco decisões que valem explicação:
+-- SEM ARQUIVO (decisão do usuário, 09/10/2026): o contrato do paciente não
+-- guarda PDF nenhum neste tema — nem anexo manual, nem bucket, nem rota de
+-- upload/download. O documento em si vai viver na D4Sign (fase 3); aqui só o
+-- ANDAMENTO da assinatura é rastreado.
+--
+-- Quatro decisões que valem explicação:
 --
 -- 1. DOIS EIXOS, UM GRAVADO. `status` é o andamento da ASSINATURA (rascunho →
 --    enviado → aguardando → assinado; recusado/cancelado/expirado). A VIGÊNCIA
@@ -32,14 +37,6 @@
 --
 -- 4. HISTÓRICO IMUTÁVEL. pacientes_contratos_eventos só recebe INSERT; um
 --    trigger recusa UPDATE e DELETE (mesma função de Disponibilidade).
---
--- 5. ARQUIVO SÓ PELA SERVICE_ROLE. O bucket `contratos-pacientes` é privado e
---    sem policy para authenticated. Quem grava e assina URL é a rota de API,
---    depois de conferir a permissão. O caminho NUNCA leva o nome do paciente
---    ({paciente_id}/{contrato_id}/{original|assinado}-{timestamp}.pdf), e o
---    caminho só é registrado por RPC de service_role — se fosse do navegador,
---    um usuário poderia apontar o contrato dele para o PDF de outro paciente e
---    baixá-lo pela rota de download.
 --
 -- Sem `force row level security` pelo mesmo motivo de 20261005160000: as RPCs
 -- SECURITY DEFINER gravam como DONAS da tabela, e authenticated/anon não têm
@@ -61,13 +58,6 @@ create table if not exists public.pacientes_contratos (
   status                 text not null default 'rascunho',
   assinado_em            timestamptz,
   origem_assinatura      text,
-
-  -- Caminhos no bucket privado `contratos-pacientes`. Nunca uma URL.
-  arquivo_original_path  text,
-  -- Nome do arquivo como a equipe o subiu, só para exibir. Fica sob a RLS da
-  -- tabela, nunca no caminho do storage.
-  arquivo_original_nome  text,
-  arquivo_assinado_path  text,
 
   -- Preenchidos pela integração D4Sign (fase 3).
   d4sign_documento_uuid  text,
@@ -105,9 +95,22 @@ create table if not exists public.pacientes_contratos (
 
   constraint pac_contratos_textos_curtos
     check (coalesce(length(observacao), 0) <= 1000
-           and coalesce(length(arquivo_original_nome), 0) <= 255
            and coalesce(length(criado_por_nome), 0) <= 200)
 );
+
+-- Esta migration já tinha sido aplicada com três colunas de arquivo
+-- (arquivo_original_path, arquivo_original_nome, arquivo_assinado_path) e com
+-- 'arquivo_anexado' na lista de tipos de evento, antes da decisão de tirar o
+-- PDF do tema (09/10/2026). `create table if not exists` acima não re-aplica
+-- nada em quem já tem a tabela — por isso os ALTER explícitos abaixo, que
+-- cobrem tanto quem já rodou a versão anterior quanto uma instalação nova (onde
+-- são só no-ops). Medido em produção antes de escrever isto: as três colunas
+-- sempre nulas nos 3 contratos existentes, nenhum evento 'arquivo_anexado' —
+-- dropar não perde dado nenhum.
+alter table public.pacientes_contratos
+  drop column if exists arquivo_original_path,
+  drop column if exists arquivo_original_nome,
+  drop column if exists arquivo_assinado_path;
 
 create unique index if not exists uq_pac_contratos_d4sign_documento
   on public.pacientes_contratos (d4sign_documento_uuid)
@@ -122,11 +125,9 @@ create trigger trg_pac_contratos_atualizado_em
   for each row execute function public.set_atualizado_em();
 
 comment on table public.pacientes_contratos is
-  'Contratos do PACIENTE (Avaliação Neuropsicológica, Terapias, Técnico Terapêutico Particular). status = andamento da assinatura; a vigência é calculada das datas, nunca gravada. Escrita só pelas RPCs contratos_* (ver 20261008160000).';
+  'Contratos do PACIENTE (Avaliação Neuropsicológica, Terapias, Técnico Terapêutico Particular). status = andamento da assinatura; a vigência é calculada das datas, nunca gravada. Sem arquivo: o documento vive na D4Sign (fase 3). Escrita só pelas RPCs contratos_* (ver 20261008160000).';
 comment on column public.pacientes_contratos.status is
   'rascunho | enviado | aguardando_assinatura | assinado | recusado | cancelado | expirado. "expirado" = link de assinatura venceu sem assinatura (não confundir com contrato vencido).';
-comment on column public.pacientes_contratos.arquivo_original_path is
-  'Caminho no bucket privado contratos-pacientes: {paciente_id}/{contrato_id}/original-{timestamp}.pdf. Sem nome do paciente.';
 
 -- ═════════════════════════════════════════════════════════════════════════════
 -- B) Signatários (retrato no momento do envio)
@@ -189,12 +190,24 @@ create table if not exists public.pacientes_contratos_eventos (
   criado_em_brasilia  text,
 
   constraint pac_contratos_ev_tipo_check
-    check (tipo in ('criado', 'editado', 'arquivo_anexado', 'enviado_d4sign',
+    check (tipo in ('criado', 'editado', 'enviado_d4sign',
                     'link_enviado_whatsapp', 'link_reenviado', 'assinado', 'recusado',
                     'cancelado', 'expirado', 'assinado_manual', 'status_corrigido')),
   constraint pac_contratos_ev_origem_check
     check (origem in ('usuario', 'd4sign', 'sistema'))
 );
+
+-- Mesmo raciocínio do ALTER em A): esta migration já tinha 'arquivo_anexado'
+-- na lista. Reaplicar a constraint com a lista nova (sem ele) em quem já tinha
+-- a tabela — `create table if not exists` não mexeria nisso sozinho. Medido em
+-- produção: nenhum evento com esse tipo, então não há linha para violar a
+-- constraint nova.
+alter table public.pacientes_contratos_eventos drop constraint if exists pac_contratos_ev_tipo_check;
+alter table public.pacientes_contratos_eventos
+  add constraint pac_contratos_ev_tipo_check
+  check (tipo in ('criado', 'editado', 'enviado_d4sign',
+                  'link_enviado_whatsapp', 'link_reenviado', 'assinado', 'recusado',
+                  'cancelado', 'expirado', 'assinado_manual', 'status_corrigido'));
 
 create index if not exists idx_pac_contratos_ev_contrato
   on public.pacientes_contratos_eventos (contrato_id, criado_em desc);
@@ -497,82 +510,15 @@ comment on function public.contratos_cancelar(bigint, text) is
   'Cancela o contrato no Pulsar (motivo obrigatório). Se já estiver na D4Sign, a rota de API da fase 3 cancela lá antes de chamar esta função.';
 
 -- ═════════════════════════════════════════════════════════════════════════════
--- G) RPCs só service_role (rotas de API e webhook)
+-- G) RPC só service_role (webhook)
 -- ═════════════════════════════════════════════════════════════════════════════
-
--- Registra o PDF que a rota de upload acabou de gravar no bucket. Recebe o
--- usuário já conferido pela rota — por isso é só service_role.
-create or replace function public.contratos_registrar_arquivo(
-  p_id            bigint,
-  p_qual          text,
-  p_path          text,
-  p_nome          text,
-  p_usuario_id    uuid,
-  p_usuario_nome  text
-)
-returns public.pacientes_contratos
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v_antes public.pacientes_contratos;
-  v_linha public.pacientes_contratos;
-begin
-  select * into v_antes from public.pacientes_contratos
-  where id = p_id and ativo for update;
-  if v_antes.id is null then
-    raise exception 'Contrato % não encontrado.', p_id using errcode = 'P0002';
-  end if;
-
-  -- O caminho tem de ser deste contrato: {paciente_id}/{contrato_id}/...
-  if p_path is null
-     or p_path not like (v_antes.paciente_id::text || '/' || v_antes.id::text || '/%') then
-    raise exception 'Caminho de arquivo inválido para o contrato %.', p_id using errcode = '22023';
-  end if;
-
-  if p_qual = 'original' then
-    if v_antes.status in ('cancelado') then
-      raise exception 'Contrato cancelado não recebe arquivo.' using errcode = '22023';
-    end if;
-    update public.pacientes_contratos
-       set arquivo_original_path = p_path,
-           arquivo_original_nome = left(nullif(btrim(p_nome), ''), 255)
-     where id = p_id
-    returning * into v_linha;
-  elsif p_qual = 'assinado' then
-    update public.pacientes_contratos
-       set arquivo_assinado_path = p_path
-     where id = p_id
-    returning * into v_linha;
-  else
-    raise exception 'Tipo de arquivo inválido: %.', p_qual using errcode = '22023';
-  end if;
-
-  insert into public.pacientes_contratos_eventos
-    (contrato_id, tipo, status_antes, status_depois, detalhe, origem, usuario_id, usuario_nome)
-  values
-    (p_id, 'arquivo_anexado', v_antes.status, v_antes.status,
-     jsonb_build_object('qual', p_qual,
-                        'substituiu', case when p_qual = 'original'
-                                           then v_antes.arquivo_original_path is not null
-                                           else v_antes.arquivo_assinado_path is not null end),
-     case when p_usuario_id is null then 'sistema' else 'usuario' end,
-     p_usuario_id, p_usuario_nome);
-
-  return v_linha;
-end $$;
-
-comment on function public.contratos_registrar_arquivo(bigint, text, text, text, uuid, text) is
-  'Registra o PDF (original ou assinado) gravado no bucket contratos-pacientes. Só service_role: o caminho nunca vem do navegador.';
 
 -- Ponto de entrada da integração D4Sign/WhatsApp. IDEMPOTENTE: se o contrato já
 -- está no status pedido e o evento é o mesmo, não grava nada de novo e devolve
 -- a linha — o webhook pode chegar duas vezes.
 --
 -- p_campos aceita SÓ estas chaves (o resto é ignorado):
---   d4sign_documento_uuid, d4sign_cofre_uuid, link_expira_em,
---   arquivo_assinado_path, assinado_em
+--   d4sign_documento_uuid, d4sign_cofre_uuid, link_expira_em, assinado_em
 create or replace function public.contratos_registrar_evento_externo(
   p_contrato_id  bigint,
   p_tipo_evento  text,
@@ -624,11 +570,6 @@ begin
          d4sign_documento_uuid = coalesce(v_c ->> 'd4sign_documento_uuid', d4sign_documento_uuid),
          d4sign_cofre_uuid     = coalesce(v_c ->> 'd4sign_cofre_uuid', d4sign_cofre_uuid),
          link_expira_em        = coalesce((v_c ->> 'link_expira_em')::timestamptz, link_expira_em),
-         arquivo_assinado_path = case
-           when v_c ? 'arquivo_assinado_path'
-                and (v_c ->> 'arquivo_assinado_path') like (paciente_id::text || '/' || id::text || '/%')
-             then v_c ->> 'arquivo_assinado_path'
-           else arquivo_assinado_path end,
          assinado_em = case
            when v_status = 'assinado'
              then coalesce((v_c ->> 'assinado_em')::timestamptz, assinado_em, now())
@@ -650,21 +591,17 @@ end $$;
 comment on function public.contratos_registrar_evento_externo(bigint, text, text, jsonb, text, jsonb) is
   'Webhook D4Sign / envio WhatsApp / job de expiração. Só service_role. Idempotente; valida a transição; grava o evento. NUNCA chamar com dado vindo só do payload: reconsultar a D4Sign antes.';
 
--- ═════════════════════════════════════════════════════════════════════════════
--- H) Bucket privado
--- ═════════════════════════════════════════════════════════════════════════════
--- Sem policy nenhuma em storage.objects para este bucket: authenticated não
--- lista, não baixa, não grava. Só service_role (que ignora RLS), pelas rotas
--- /api/contratos/*.
-insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values (
-  'contratos-pacientes',
-  'contratos-pacientes',
-  false,
-  10485760,                     -- 10 MiB; contrato em PDF tem poucas centenas de KB
-  array['application/pdf']
-)
-on conflict (id) do nothing;
+-- Esta migration já tinha criado contratos_registrar_arquivo e o bucket
+-- `contratos-pacientes` antes da decisão de tirar o PDF do tema (09/10/2026).
+-- DROP explícito para quem já rodou a versão anterior — `create or replace`
+-- sozinho nunca remove uma função que parou de ser declarada. Medido em
+-- produção antes disto: nenhum objeto em storage.objects para este bucket
+-- (nenhum upload chegou a ser concluído), então o DELETE abaixo é seguro.
+drop function if exists public.contratos_registrar_arquivo(bigint, text, text, text, uuid, text);
+
+delete from storage.buckets
+ where id = 'contratos-pacientes'
+   and not exists (select 1 from storage.objects where bucket_id = 'contratos-pacientes');
 
 -- ═════════════════════════════════════════════════════════════════════════════
 -- RLS e GRANTs
@@ -716,7 +653,7 @@ grant select on public.pacientes_contratos             to authenticated;
 grant select on public.pacientes_contratos_signatarios to authenticated;
 grant select on public.pacientes_contratos_eventos     to authenticated;
 
--- service_role: rotas de API (Status Contratos, upload/download) e integração.
+-- service_role: rota de API (Status Contratos) e integração D4Sign.
 grant select, insert, update on public.pacientes_contratos             to service_role;
 grant select, insert, update on public.pacientes_contratos_signatarios to service_role;
 grant select, insert         on public.pacientes_contratos_eventos     to service_role;
@@ -730,7 +667,6 @@ revoke all on function public.contratos_criar(bigint, text, date, date, text) fr
 revoke all on function public.contratos_editar_rascunho(bigint, text, date, date, text) from public, anon;
 revoke all on function public.contratos_marcar_assinado_manual(bigint, date) from public, anon;
 revoke all on function public.contratos_cancelar(bigint, text)               from public, anon;
-revoke all on function public.contratos_registrar_arquivo(bigint, text, text, text, uuid, text) from public, anon, authenticated;
 revoke all on function public.contratos_registrar_evento_externo(bigint, text, text, jsonb, text, jsonb) from public, anon, authenticated;
 
 grant execute on function public.sp_contratos_transicao_ok(text, text)          to authenticated, service_role;
@@ -738,5 +674,4 @@ grant execute on function public.contratos_criar(bigint, text, date, date, text)
 grant execute on function public.contratos_editar_rascunho(bigint, text, date, date, text) to authenticated;
 grant execute on function public.contratos_marcar_assinado_manual(bigint, date) to authenticated;
 grant execute on function public.contratos_cancelar(bigint, text)               to authenticated;
-grant execute on function public.contratos_registrar_arquivo(bigint, text, text, text, uuid, text) to service_role;
 grant execute on function public.contratos_registrar_evento_externo(bigint, text, text, jsonb, text, jsonb) to service_role;

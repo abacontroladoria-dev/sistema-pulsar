@@ -15,10 +15,107 @@ import { readFileSync } from 'fs'
 
 const [, , migPath, statusPath] = process.argv
 const mig = readFileSync(migPath, 'utf8')
-const db = new PGlite()
 
 let falhas = 0
 const ok = (cond, msg) => { if (cond) console.log('  ok  ', msg); else { falhas++; console.log('  FALHA', msg) } }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 0. UPGRADE: quem já tinha a versão com PDF (arquivo_original_path etc.,
+//    contratos_registrar_arquivo, bucket contratos-pacientes) antes da decisão
+//    de 09/10/2026. Instância PGLITE PRÓPRIA — não reaproveita `db` abaixo,
+//    porque `create table if not exists` da migration não mexeria numa tabela
+//    que já existisse com o shape novo, e isso poluiria o resto do teste.
+// ═══════════════════════════════════════════════════════════════════════════
+{
+  const dbUp = new PGlite()
+  await dbUp.exec(`
+    create role anon; create role authenticated; create role service_role bypassrls;
+    create schema auth;
+    create function auth.uid() returns uuid language sql stable as $$ select null::uuid $$;
+    grant usage on schema auth to anon, authenticated, service_role;
+    grant usage on schema public to anon, authenticated, service_role;
+    alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
+    alter default privileges in schema public grant all on functions to anon, authenticated, service_role;
+    alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;
+    create schema storage;
+    create table storage.buckets(id text primary key, name text, public boolean, file_size_limit bigint, allowed_mime_types text[]);
+    create table storage.objects(id bigint generated always as identity primary key, bucket_id text);
+    create table public.pacientes(id_paciente bigint primary key, nome text);
+    create table public.responsaveis(id bigint primary key, nome text);
+    create function public.set_atualizado_em() returns trigger language plpgsql as $$
+    begin new.atualizado_em := now(); return new; end $$;
+    create or replace function public.sp_pac_disp_imutavel() returns trigger language plpgsql as $$
+    begin
+      if tg_op = 'DELETE' and pg_trigger_depth() > 1 then return old; end if;
+      raise exception '% é histórico imutável: % não é permitido', tg_table_name, tg_op using errcode = '42501';
+    end $$;
+    create or replace function public.usuario_tem_permissao(p_codigo text) returns boolean
+    language sql stable as $$ select true $$;
+
+    -- Shape da versão anterior (com arquivo).
+    create table public.pacientes_contratos (
+      id bigint generated always as identity primary key,
+      paciente_id bigint not null,
+      tipo text not null,
+      data_inicio date not null,
+      data_vencimento date not null,
+      status text not null default 'rascunho',
+      assinado_em timestamptz,
+      origem_assinatura text,
+      arquivo_original_path text,
+      arquivo_original_nome text,
+      arquivo_assinado_path text,
+      d4sign_documento_uuid text,
+      d4sign_cofre_uuid text,
+      link_expira_em timestamptz,
+      observacao text,
+      ativo boolean not null default true,
+      criado_por_usuario_id uuid,
+      criado_por_nome text,
+      criado_em timestamptz not null default now(),
+      atualizado_em timestamptz not null default now()
+    );
+    create table public.pacientes_contratos_eventos (
+      id bigint generated always as identity primary key,
+      contrato_id bigint not null references public.pacientes_contratos(id),
+      tipo text not null,
+      status_antes text,
+      status_depois text,
+      detalhe jsonb,
+      origem text not null default 'usuario',
+      usuario_id uuid,
+      usuario_nome text,
+      criado_em timestamptz not null default now(),
+      criado_em_brasilia text,
+      constraint pac_contratos_ev_tipo_check check (tipo in ('criado', 'arquivo_anexado'))
+    );
+    insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+      values ('contratos-pacientes', 'contratos-pacientes', false, 1, array['application/pdf']);
+    create function public.contratos_registrar_arquivo(bigint, text, text, text, uuid, text)
+      returns bigint language sql as $$ select $1 $$;
+  `)
+  await dbUp.exec(mig)
+  const cols = await dbUp.query(
+    `select column_name from information_schema.columns where table_schema='public' and table_name='pacientes_contratos' and column_name like 'arquivo%'`,
+  )
+  ok(cols.rows.length === 0, 'upgrade: colunas de arquivo removidas de quem já tinha a tabela')
+  const bucketGone = await dbUp.query(`select 1 from storage.buckets where id = 'contratos-pacientes'`)
+  ok(bucketGone.rows.length === 0, 'upgrade: bucket removido (estava vazio)')
+  const fnGone = await dbUp.query(
+    `select count(*)::int n from pg_proc where proname = 'contratos_registrar_arquivo'`,
+  )
+  ok(fnGone.rows[0].n === 0, 'upgrade: função contratos_registrar_arquivo removida')
+  const chk = await dbUp.query(
+    `select pg_get_constraintdef(oid) def from pg_constraint where conname = 'pac_contratos_ev_tipo_check'`,
+  )
+  ok(!chk.rows[0].def.includes('arquivo_anexado'), 'upgrade: arquivo_anexado fora do check de tipo de evento')
+  await dbUp.close()
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Resto do teste: instalação NOVA (nunca teve arquivo).
+// ═══════════════════════════════════════════════════════════════════════════
+const db = new PGlite()
 async function erro(sql, params = []) {
   try { await db.query(sql, params); return null } catch (e) { return e }
 }
@@ -37,6 +134,7 @@ grant usage on schema auth to anon, authenticated, service_role;
 grant usage on schema public to anon, authenticated, service_role;
 create schema storage;
 create table storage.buckets(id text primary key, name text, public boolean, file_size_limit bigint, allowed_mime_types text[]);
+create table storage.objects(id bigint generated always as identity primary key, bucket_id text);
 
 -- Supabase concede tudo por padrão em public: o revoke da migration é que fecha.
 alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
@@ -78,8 +176,8 @@ await db.exec(mig)
 ok(true, 'primeira execução')
 await db.exec(mig)
 ok(true, 'segunda execução (idempotente)')
-const bucket = await db.query(`select public from storage.buckets where id = 'contratos-pacientes'`)
-ok(bucket.rows.length === 1 && bucket.rows[0].public === false, 'bucket privado criado')
+const bucketNovo = await db.query(`select 1 from storage.buckets where id = 'contratos-pacientes'`)
+ok(bucketNovo.rows.length === 0, 'instalação nova não cria bucket nenhum (sem PDF neste tema)')
 
 async function como(papel, uid) {
   await db.exec(`reset role; set request.jwt.claim.sub = '${uid ?? ''}'; set role ${papel};`)
@@ -122,8 +220,6 @@ e = await erro(`insert into public.pacientes_contratos (paciente_id, tipo, data_
 ok(e && /permission denied/.test(e.message), 'INSERT direto recusado')
 e = await erro(`insert into public.pacientes_contratos_eventos (contrato_id, tipo, origem) values ($1, 'assinado', 'usuario')`, [id1])
 ok(e && /permission denied/.test(e.message), 'INSERT direto em eventos recusado')
-e = await erro(`select public.contratos_registrar_arquivo($1, 'original', '1/${'$'}1/x.pdf', 'x.pdf', null, null)`, [id1])
-ok(e && /permission denied/.test(e.message), 'registrar_arquivo recusado para authenticated')
 e = await erro(`select public.contratos_registrar_evento_externo($1, 'assinado', 'assinado')`, [id1])
 ok(e && /permission denied/.test(e.message), 'registrar_evento_externo recusado para authenticated')
 const leA = await db.query(`select count(*)::int n from public.pacientes_contratos`)
@@ -175,12 +271,8 @@ for (const f of [
   ok(e && /permission denied/.test(e.message), `anon não executa ${f.split('(')[0]}`)
 }
 
-console.log('7. service_role (rotas e webhook)')
+console.log('7. service_role (webhook)')
 await como('service_role', null)
-e = await erro(`select public.contratos_registrar_arquivo($1, 'original', '1/999/original-1.pdf', 'x.pdf', null, null)`, [id2])
-ok(e && /Caminho/.test(e.message), 'caminho de outro contrato recusado')
-const arq = await db.query(`select * from public.contratos_registrar_arquivo($1, 'original', $2, 'contrato.pdf', $3, 'Dora Diretoria')`, [id2, `2/${id2}/original-123.pdf`, D])
-ok(arq.rows[0].arquivo_original_path === `2/${id2}/original-123.pdf`, 'registra arquivo')
 const env = await db.query(`select * from public.contratos_registrar_evento_externo($1, 'enviado_d4sign', 'enviado', '{"x":1}', 'd4sign', '{"d4sign_documento_uuid":"uuid-1","link_expira_em":"2026-10-15T12:00:00Z"}')`, [id2])
 ok(env.rows[0].status === 'enviado' && env.rows[0].d4sign_documento_uuid === 'uuid-1', 'rascunho → enviado com campos D4Sign')
 await db.query(`select public.contratos_registrar_evento_externo($1, 'link_enviado_whatsapp', 'aguardando_assinatura')`, [id2])
@@ -192,9 +284,8 @@ e = await erro(`select public.contratos_registrar_evento_externo($1, 'status_cor
 ok(e && /Transição inválida/.test(e.message), 'aguardando → rascunho recusado')
 e = await erro(`select public.contratos_registrar_evento_externo($1, 'assinado', 'assinado', null, 'usuario')`, [id2])
 ok(e && /Origem/.test(e.message), 'origem "usuario" recusada na rota externa')
-const fim = await db.query(`select * from public.contratos_registrar_evento_externo($1, 'assinado', 'assinado', null, 'd4sign', $2)`, [id2, JSON.stringify({ arquivo_assinado_path: '1/1/forjado.pdf' })])
+const fim = await db.query(`select * from public.contratos_registrar_evento_externo($1, 'assinado', 'assinado', null, 'd4sign', $2)`, [id2, JSON.stringify({ assinado_em: '2026-10-09T12:00:00Z' })])
 ok(fim.rows[0].status === 'assinado' && fim.rows[0].origem_assinatura === 'd4sign' && fim.rows[0].assinado_em, 'aguardando → assinado (d4sign)')
-ok(fim.rows[0].arquivo_assinado_path === null, 'caminho assinado de outro contrato é ignorado')
 e = await erro(`update public.pacientes_contratos_eventos set tipo = 'criado' where contrato_id = $1`, [id2])
 ok(e && /imutável/.test(e.message), 'evento imutável até para service_role (UPDATE)')
 e = await erro(`delete from public.pacientes_contratos_eventos where contrato_id = $1`, [id2])

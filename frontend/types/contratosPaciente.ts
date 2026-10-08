@@ -17,9 +17,6 @@ export type ContratoPaciente = {
   status: StatusContrato
   assinado_em: string | null
   origem_assinatura: "manual" | "d4sign" | null
-  arquivo_original_path: string | null
-  arquivo_original_nome: string | null
-  arquivo_assinado_path: string | null
   d4sign_documento_uuid: string | null
   link_expira_em: string | null
   observacao: string | null

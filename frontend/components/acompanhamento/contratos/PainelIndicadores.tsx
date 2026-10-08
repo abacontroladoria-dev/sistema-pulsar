@@ -44,11 +44,11 @@ export function PainelIndicadoresContratos({
   carregando: boolean
 }) {
   return (
-    // Mesmas colunas do grid de filtros (FiltrosContratos.tsx) a partir do
-    // `lg` — pedido do usuário (09/10/2026): os dois precisam ter a MESMA
-    // largura de item. Abaixo de `lg`, 2 colunas (os filtros empilham 1 por
-    // linha ali, mas um card de KPI é pequeno demais para isso sozinho).
-    <section aria-label="Indicadores" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+    // OS SETE numa linha só a partir do `lg` (pedido do usuário, 09/10/2026:
+    // "não separe em duas linhas") — por isso 7 colunas aqui, não as 4 do
+    // painel de filtros: 7 cards do tamanho de 1/4 da linha não cabem numa
+    // linha só no mesmo espaço. Abaixo de `lg`, empilha em 2-3 colunas.
+    <section aria-label="Indicadores" className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
       {CARDS.map(({ recorte: r, Icone, tom, ativo }) => {
         const marcado = recorte === r
         return (

@@ -5,24 +5,29 @@
 | Fase | Situação |
 |---|---|
 | 0 — Modelo de dados | Feita: `supabase/migrations/20261008160000_pacientes_contratos.sql` (**não aplicada**) |
-| 1 — Aba Contratos | Feita (modo manual: criar, editar rascunho, anexar/baixar PDF, marcar assinado, cancelar) |
+| 1 — Aba Contratos | Feita (modo manual: criar, editar rascunho, marcar assinado, cancelar — SEM PDF, ver abaixo) |
 | 2 — Status Contratos | Feita: `/acompanhamento/contratos`, código `status_contratos` |
 | 3 — D4Sign | **Colega** — ganchos prontos (abaixo) |
 | 4 — WhatsApp | **Colega** |
 | 5 — Segurança | PGlite feito (`supabase/tests/pacientes_contratos.pglite.mjs`, 50+ checagens); falta anon REST + Security Advisor **depois de aplicar** |
 
 Decisões da seção 12 adotadas como sugerido (renovação = vários por tipo, o atual é o mais
-recente não cancelado; PDF por upload; A vencer = 30 dias; "Sem contrato" = na grade do TiTa
-sem Terapias valendo hoje).
+recente não cancelado; A vencer = 30 dias; "Sem contrato" = na grade do TiTa sem Terapias
+valendo hoje) — EXCETO a decisão 2 (PDF por upload), revertida: ver abaixo.
 
 Desvios do plano, de propósito:
+- **SEM PDF neste tema** (decisão do usuário, 09/10/2026, revertendo a decisão 2 da seção 12):
+  o contrato do paciente não guarda, anexa nem baixa arquivo nenhum. Não existe bucket, nem rota
+  de upload/download, nem campo "Documento" no painel de detalhe. O documento em si vai viver na
+  D4Sign (fase 3) — quando ela existir, a tela mostra o *status* da assinatura, não o PDF.
+  As colunas `arquivo_original_path`/`arquivo_original_nome`/`arquivo_assinado_path` e a função
+  `contratos_registrar_arquivo` que a migration chegou a ter foram removidas (com `alter table
+  drop column`/`drop function` explícitos, para quem já tinha a versão antiga aplicada).
 - **Signatários** só são legíveis com `cadastros_pacientes` (guardam CPF/celular; a Status
   Contratos não usa).
 - **Assinado → Cancelado** é permitido (rescisão). Nunca volta a Rascunho.
 - **Sem filtro de unidade** na Status Contratos: a grade que a alimenta já é toda da unidade 280.
 - Status e vigência são filtrados pelos **cards de indicador** (como em Status Laudos), não por lista suspensa.
-- Rota de upload do PDF (`POST /api/contratos/[id]/arquivo/`) e de download
-  (`GET /api/contratos/[id]/download/?qual=original|assinado`) já existem — a fase 1 precisa delas.
 - **"Cadastro"** (Ativo/Inativo/Fictício) e **"Possui agendamentos"** (Sim/Não) são filtros
   SEPARADOS na Status Contratos (decisão do usuário, 08/10/2026) — não um só "Grade do TiTa".
 - **"Sem contrato" não exige mais ter agendamento** (decisão do usuário, 08/10/2026): o ideal é
@@ -38,12 +43,11 @@ Desvios do plano, de propósito:
 - Mudar status **só** por `contratos_registrar_evento_externo(p_contrato_id, p_tipo_evento,
   p_status_novo, p_detalhe jsonb, p_origem 'd4sign'|'sistema', p_campos jsonb)` — service_role.
   Valida a transição, é idempotente (mesmo status + mesmo último evento = no-op) e grava o evento.
-  `p_campos` aceita só: `d4sign_documento_uuid`, `d4sign_cofre_uuid`, `link_expira_em`,
-  `arquivo_assinado_path` (precisa começar com `{paciente_id}/{contrato_id}/`), `assinado_em`.
+  `p_campos` aceita só: `d4sign_documento_uuid`, `d4sign_cofre_uuid`, `link_expira_em`, `assinado_em`.
 - Matriz de transição: `sp_contratos_transicao_ok` no banco = `TRANSICOES` em
   `frontend/lib/contratos/status.ts` (o teste PGlite compara as duas).
-- Bucket privado `contratos-pacientes`, caminho via `montarCaminho()` em
-  `frontend/services/contratos/arquivo.ts`. PDF assinado: gravar o objeto e passar o caminho em `p_campos`.
+- SEM PDF/bucket neste tema (ver acima): se a fase 3 precisar guardar o PDF final da D4Sign, é
+  um bucket e um caminho de leitura NOVOS, fora do escopo desta migration.
 - Acesso nas rotas: `lerAcessoContratos()` em `frontend/services/contratos/acesso.ts` (`editar` = `cadastros_pacientes`).
 - Log cru do webhook: `public.d4sign_webhook_logs` (service_role).
 - Signatários: inserir em `pacientes_contratos_signatarios` (service_role) com o retrato do
