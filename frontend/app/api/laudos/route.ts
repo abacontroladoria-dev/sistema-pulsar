@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { AcessoNegado, lerAcessoLaudos } from "@/services/laudos/acesso"
 import { buscarLaudosDoRelatorio } from "@/services/laudos/relatorio"
 
 // GET /api/laudos → { ok, rows: LaudoRow[], meta }
@@ -24,6 +25,27 @@ import { buscarLaudosDoRelatorio } from "@/services/laudos/relatorio"
 export const dynamic = "force-dynamic"
 
 export async function GET() {
+  // ATENÇÃO: esta rota roda com service_role e devolve o relatório inteiro do
+  // Órbita (nome, nascimento, plano, especialidade, alta…) — dado de saúde de
+  // criança. A RLS não a protege e o proxy.ts exclui /api do matcher, então a
+  // checagem TEM de estar aqui. Até 08/10/2026 ela respondia a qualquer pessoa
+  // na internet, sem login.
+  //
+  // Exige sessão válida e usuário ativo (lerAcessoLaudos → 401 sem sessão ou
+  // inativo). Não exige uma permissão específica de laudos de propósito: o
+  // layout de TODO o Cronograma carrega esta rota ao abrir qualquer tela (ver
+  // CronogramaDataLayout). Restringir por permissão exige antes separar quem
+  // precisa dos laudos de quem só precisa da grade — fica como próximo passo.
+  try {
+    await lerAcessoLaudos()
+  } catch (e) {
+    if (e instanceof AcessoNegado) {
+      return NextResponse.json({ ok: false, error: "not_authenticated" }, { status: e.status })
+    }
+    console.error("[api/laudos] falha ao verificar o acesso", e)
+    return NextResponse.json({ ok: false, error: "falha_ao_verificar_acesso" }, { status: 500 })
+  }
+
   try {
     const { rows, meta } = await buscarLaudosDoRelatorio()
     // `meta` é aditivo: quem só lê `body.rows` continua válido.
