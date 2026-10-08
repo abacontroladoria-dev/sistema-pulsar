@@ -1,8 +1,8 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { useState } from "react"
 import toast from "react-hot-toast"
-import { FileText, Loader2, Save, X } from "lucide-react"
+import { Loader2, Save } from "lucide-react"
 import { Drawer } from "@/components/cronograma/ui/Drawer"
 import { DatePicker } from "@/components/ui/date-picker"
 import { btnPrimario, btnSecundario, opcaoForm } from "@/components/cronograma/grade/estilo"
@@ -14,12 +14,7 @@ import {
   vencimentoSugerido,
   type TipoContrato,
 } from "@/lib/contratos/status"
-import {
-  TAMANHO_MAXIMO_PDF,
-  criarContrato,
-  editarRascunho,
-  enviarArquivoOriginal,
-} from "@/services/pacienteContratos.service"
+import { criarContrato, editarRascunho } from "@/services/pacienteContratos.service"
 import type { ContratoPaciente } from "@/types/contratosPaciente"
 import { CampoSelect, campo, rotulo } from "../../ui/campos"
 
@@ -27,9 +22,8 @@ import { CampoSelect, campo, rotulo } from "../../ui/campos"
 // (depois de enviado para assinatura, o documento é o que vale e as datas
 // travam; a RPC recusa a edição).
 //
-// O PDF é opcional na criação: a equipe pode registrar o contrato agora e
-// anexar depois pelo detalhe. Se o contrato for criado e só o upload falhar, o
-// contrato fica (já tem evento na linha do tempo) e o aviso diz o que faltou.
+// Sem campo de PDF aqui (pedido do usuário, 08/10/2026): o anexo é sempre pelo
+// detalhe do contrato, depois de criado — este painel só registra tipo/datas.
 
 const OPCOES_TIPO = TIPOS_CONTRATO.map((t) => ({ valor: t, rotulo: ROTULO_TIPO[t] }))
 
@@ -55,40 +49,17 @@ export function NovoContratoPainel({
   const [inicio, setInicio] = useState(editando?.data_inicio ?? hoje)
   const [vencimento, setVencimento] = useState(editando?.data_vencimento ?? vencimentoSugerido(hoje, 12))
   const [observacao, setObservacao] = useState(editando?.observacao ?? "")
-  const [arquivo, setArquivo] = useState<File | null>(null)
-  const [erroArquivo, setErroArquivo] = useState<string | null>(null)
   const [salvando, setSalvando] = useState(false)
-  const fileRef = useRef<HTMLInputElement>(null)
 
   const datasOk = !!inicio && !!vencimento && vencimento >= inicio
   const valido = !!tipo && datasOk
-
-  function escolherArquivo(f: File | undefined) {
-    setErroArquivo(null)
-    if (!f) return
-    if (f.type !== "application/pdf") return setErroArquivo("Escolha um arquivo PDF.")
-    if (f.size > TAMANHO_MAXIMO_PDF) return setErroArquivo("O PDF passa de 10 MB.")
-    setArquivo(f)
-  }
 
   async function salvar() {
     if (!valido || !tipo) return
     setSalvando(true)
     const dados = { tipo, dataInicio: inicio, dataVencimento: vencimento, observacao: observacao.trim() || null }
     try {
-      let contrato = editando ? await editarRascunho(editando.id, dados) : await criarContrato(pacienteId, dados)
-      if (arquivo) {
-        try {
-          contrato = await enviarArquivoOriginal(contrato.id, arquivo)
-        } catch (e) {
-          toast.error(
-            `Contrato ${editando ? "salvo" : "criado"}, mas o PDF não subiu: ${e instanceof Error ? e.message : "erro"}. Anexe pelo detalhe do contrato.`,
-            { duration: 9000 },
-          )
-          onSalvo(contrato)
-          return
-        }
-      }
+      const contrato = editando ? await editarRascunho(editando.id, dados) : await criarContrato(pacienteId, dados)
       toast.success(editando ? "Contrato salvo." : "Contrato criado em Rascunho.")
       onSalvo(contrato)
     } catch (e) {
@@ -178,41 +149,6 @@ export function NovoContratoPainel({
             placeholder="Ex.: valor combinado, condição especial, quem negociou"
             className={`mt-1 ${campo} resize-y`}
           />
-        </div>
-
-        <div>
-          <span className={rotulo}>PDF do contrato</span>
-          <p className="mt-0.5 text-xs text-muted-foreground">Opcional agora — dá para anexar depois.</p>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <button type="button" onClick={() => fileRef.current?.click()} disabled={salvando} className={`${btnSecundario} min-h-11 sm:min-h-0`}>
-              <FileText className="h-4 w-4" aria-hidden />
-              {arquivo ? "Trocar PDF" : editando?.arquivo_original_path ? "Substituir PDF" : "Escolher PDF"}
-            </button>
-            {arquivo && (
-              <span className="inline-flex min-w-0 items-center gap-1 text-xs text-foreground">
-                <span className="truncate" title={arquivo.name}>{arquivo.name}</span>
-                <button
-                  type="button"
-                  onClick={() => setArquivo(null)}
-                  aria-label="Remover PDF escolhido"
-                  className="inline-flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground hover:bg-muted"
-                >
-                  <X className="h-3.5 w-3.5" aria-hidden />
-                </button>
-              </span>
-            )}
-          </div>
-          <input
-            ref={fileRef}
-            type="file"
-            accept="application/pdf,.pdf"
-            className="hidden"
-            onChange={(e) => {
-              escolherArquivo(e.target.files?.[0])
-              e.target.value = ""
-            }}
-          />
-          {erroArquivo && <p className="mt-1 text-xs text-destructive">{erroArquivo}</p>}
         </div>
       </div>
     </Drawer>
