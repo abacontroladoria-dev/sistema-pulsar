@@ -38,7 +38,7 @@ export const RECORTE_LABEL: Record<RecorteContratos, string> = {
 export const RECORTE_DICA: Record<RecorteContratos, string> = {
   todos: "Todos os pacientes do filtro.",
   sem_contrato:
-    "Paciente sem contrato de Terapias valendo hoje (recusado e link expirado não contam como contrato). Quem só teve Triagem na grade fica de fora: ainda é avaliação de entrada, não tratamento.",
+    "Paciente sem contrato de Terapias valendo hoje (recusado e link expirado não contam como contrato). Quem só teve Triagem na grade fica de fora — ainda é avaliação de entrada, não tratamento —, exceto paciente Particular: a Triagem dele também precisa de contrato.",
   rascunho: "Contrato criado no Pulsar e ainda não enviado nem assinado.",
   aguardando: "Enviado para assinatura e ainda sem resposta.",
   assinado_vigente: "Assinado e valendo hoje (inclui os que vencem nos próximos 30 dias).",
@@ -93,12 +93,27 @@ const temContratoTerapiasVigente = (item: ItemStatusContratos) =>
   item.contratos.some((c) => c.tipo === "terapias" && !morto(c) && cobreHoje(c.vigencia))
 
 /**
- * Paciente dispensado da cobrança de "Sem contrato": tem agendamento, mas
- * SÓ de Triagem (avaliação de entrada) — ainda não é tratamento terapêutico.
+ * Convênio particular (pagamento direto, sem convênio de saúde). Mesma
+ * convenção de lib/cronograma/inconsistencias.ts: substring, sem acento no
+ * texto de origem ("Particular", "Particular - Mensal"...).
+ */
+const ehParticular = (convenio: string | null): boolean => !!convenio && convenio.toLowerCase().includes("particular")
+
+/**
+ * Paciente dispensado da cobrança de "Sem contrato": tem agendamento, mas SÓ
+ * de Triagem (avaliação de entrada) — ainda não é tratamento terapêutico.
  * Decisão do usuário (08/10/2026): sem agendamento nenhum AINDA cobra (ver
  * `sem_contrato`); com terapia real, cobra; só com Triagem, não.
+ *
+ * EXCETO paciente PARTICULAR (decisão do usuário, 09/10/2026): sem convênio de
+ * saúde cobrindo a sessão, é o próprio contrato quem autoriza o atendimento —
+ * inclusive a Triagem. Medido em produção: 28 pacientes com atendimento
+ * "Particular" têm SÓ sessão(ões) de Triagem na grade, quase todos num único
+ * dia (uma avaliação pontual) — o oposto de "ainda não começou tratamento" é
+ * irrelevante aqui, porque mesmo a Triagem precisava de contrato assinado.
  */
-export const dispensadoDeContrato = (item: ItemStatusContratos): boolean => item.naGrade && !item.temTerapiaReal
+export const dispensadoDeContrato = (item: ItemStatusContratos): boolean =>
+  item.naGrade && !item.temTerapiaReal && !ehParticular(item.convenio)
 
 /** O cartão e o card de indicador usam a MESMA regra — ver `dispensadoDeContrato`. */
 export const semContratoDeTerapias = (item: ItemStatusContratos): boolean =>

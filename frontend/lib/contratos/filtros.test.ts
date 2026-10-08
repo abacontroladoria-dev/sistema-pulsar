@@ -60,6 +60,8 @@ const ITENS: ItemStatusContratos[] = [
   paciente(11, "Horário Administrativo", { ficticio: true, contratos: [] }),
   // Só teve Triagem na grade: dispensado de "Sem contrato" (decisão do usuário, 08/10/2026).
   paciente(12, "Léo", { naGrade: true, temTerapiaReal: false, contratos: [] }),
+  // Só teve Triagem, mas é Particular: NÃO dispensado (decisão do usuário, 09/10/2026).
+  paciente(13, "Mel", { naGrade: true, temTerapiaReal: false, convenio: "Particular", contratos: [] }),
 ]
 
 test("o número do card é o tamanho da lista ao clicar nele, em qualquer combinação", () => {
@@ -83,13 +85,16 @@ test("o número do card é o tamanho da lista ao clicar nele, em qualquer combin
   }
 })
 
-test("sem contrato: sem Terapias valendo hoje, com ou sem agendamento; só Triagem fica de fora", () => {
+test("sem contrato: sem Terapias valendo hoje, com ou sem agendamento; só Triagem fica de fora (menos Particular)", () => {
   const nomes = aplicar(ITENS, { ...filtrosIniciais(), recorte: "sem_contrato" }).map((i) => i.nome)
   // Bruno (nada), Eva (Terapias vencido), Fábio (link expirado) e Gil (sem
   // agendamento nenhum — decisão do usuário, 08/10/2026, cobra do mesmo jeito).
-  // Léo tem agendamento mas só de Triagem: dispensado. Íris inativa fica fora
-  // pelo filtro padrão "Cadastro: Ativo", não por este recorte.
-  assert.deepEqual(nomes, ["Bruno", "Eva", "Fábio", "Gil"])
+  // Léo tem agendamento mas só de Triagem: dispensado. Mel também só teve
+  // Triagem, mas é Particular — cobra do mesmo jeito (decisão do usuário,
+  // 09/10/2026; medido em produção: 28 pacientes Particular com só Triagem na
+  // grade, quase todos uma avaliação pontual num único dia). Íris inativa fica
+  // fora pelo filtro padrão "Cadastro: Ativo", não por este recorte.
+  assert.deepEqual(nomes, ["Bruno", "Eva", "Fábio", "Gil", "Mel"])
 })
 
 test("recortes por status e vigência", () => {
@@ -115,17 +120,20 @@ test("cadastro e agendamento são filtros separados", () => {
   assert.equal(nomes({ agendamento: new Set(["sim"]) }).includes("Gil"), false)
 })
 
-test("dispensado de contrato: só com agendamento E só Triagem", () => {
+test("dispensado de contrato: só com agendamento E só Triagem E não-Particular", () => {
   const semGrade = paciente(90, "x", { naGrade: false, temTerapiaReal: false })
   const soTriagem = paciente(91, "x", { naGrade: true, temTerapiaReal: false })
   const comTerapiaReal = paciente(92, "x", { naGrade: true, temTerapiaReal: true })
+  const particularSoTriagem = paciente(93, "x", { naGrade: true, temTerapiaReal: false, convenio: "Particular - Mensal" })
   assert.equal(dispensadoDeContrato(semGrade), false, "sem agendamento nenhum NÃO é dispensado")
   assert.equal(dispensadoDeContrato(soTriagem), true, "agendamento só de Triagem é dispensado")
   assert.equal(dispensadoDeContrato(comTerapiaReal), false)
+  assert.equal(dispensadoDeContrato(particularSoTriagem), false, "Particular não é dispensado nem só com Triagem")
 
   assert.equal(semContratoDeTerapias(semGrade), true)
   assert.equal(semContratoDeTerapias(soTriagem), false)
   assert.equal(semContratoDeTerapias(comTerapiaReal), true)
+  assert.equal(semContratoDeTerapias(particularSoTriagem), true)
   assert.equal(semContratoDeTerapias({ ...comTerapiaReal, contratos: [contrato({})] }), false)
 })
 
