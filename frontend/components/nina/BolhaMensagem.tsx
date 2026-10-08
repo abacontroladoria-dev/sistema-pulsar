@@ -1,7 +1,8 @@
 'use client'
 
 import React from 'react'
-import { Check, CheckCheck, AlertCircle, Loader2, Trash2, Reply, Pencil } from 'lucide-react'
+import { Check, CheckCheck, AlertCircle, Loader2, Trash2, Reply, Pencil, Copy } from 'lucide-react'
+import { toast } from 'sonner'
 
 import { MessageDirection } from '@/types/nina'
 import type { NinaMessage } from './adapters/centralToNina'
@@ -90,6 +91,20 @@ export const BolhaMensagem: React.FC<Props> = ({
         <div className="flex items-center mt-1 gap-1.5 text-[10px] px-1">
           {msg.isAiDraft && (
             <span className="text-violet-400 font-medium">Sugestão da Maia — não enviada</span>
+          )}
+          {msg.isAiDraft && msg.content && (
+            <button
+              type="button"
+              title="Copiar sugestão"
+              aria-label="Copiar sugestão da Maia"
+              onClick={() => navigator.clipboard?.writeText(msg.content!).then(
+                () => toast.success('Sugestão copiada. Cole na resposta e revise antes de enviar.'),
+                () => toast.error('Não foi possível copiar.'),
+              )}
+              className="p-0.5 rounded text-violet-400 hover:text-violet-600 dark:hover:text-violet-200 transition-colors"
+            >
+              <Copy className="w-3 h-3" />
+            </button>
           )}
           {msg.editada && <span className="text-muted-foreground/70 italic">Editada</span>}
           <span className="text-muted-foreground/70 opacity-60">{msg.timestamp}</span>

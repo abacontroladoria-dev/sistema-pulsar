@@ -37,6 +37,8 @@ export interface NumeroEvolution {
   status: string
   ultimaSincronizacao: string | null
   membros: number
+  // Chave "Maia sugere" (central.inboxes.maia_sugestao). Só rascunho, nunca envio.
+  maiaSugere: boolean
 }
 
 interface CanalDoBanco {
@@ -79,6 +81,18 @@ export async function listarNumeros(orgId: string): Promise<NumeroEvolution[]> {
     }
   }
 
+  const sugere = new Set<string>()
+  if (inboxIds.length) {
+    const { data: inboxes, error: e3 } = await supabaseService
+      .schema('central')
+      .from('inboxes')
+      .select('id')
+      .in('id', inboxIds)
+      .eq('maia_sugestao', true)
+    if (e3) throw e3
+    for (const i of (inboxes ?? []) as { id: string }[]) sugere.add(i.id)
+  }
+
   return canais.map(c => {
     const conexao = primeiraConexao(c.channel_connections)
     return {
@@ -89,8 +103,18 @@ export async function listarNumeros(orgId: string): Promise<NumeroEvolution[]> {
       status: c.status,
       ultimaSincronizacao: conexao?.last_sync_at ?? null,
       membros: contagem.get(c.inbox_id) ?? 0,
+      maiaSugere: sugere.has(c.inbox_id),
     }
   })
+}
+
+// Liga/desliga a sugestão da Maia no número. Não toca em ai_mode: a Maia
+// continua sem enviar nada por número Evolution (trg_evolution_sem_ia).
+export async function definirMaiaSugestao(orgId: string, channelId: string, ligar: boolean): Promise<void> {
+  const { inboxId } = await instanciaDoCanal(orgId, channelId)
+  const { error } = await supabaseService.schema('central').from('inboxes')
+    .update({ maia_sugestao: ligar }).eq('id', inboxId).eq('organization_id', orgId)
+  if (error) throw error
 }
 
 export async function criarNumero(input: {

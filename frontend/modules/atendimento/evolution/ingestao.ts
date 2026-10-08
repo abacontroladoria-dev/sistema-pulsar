@@ -14,7 +14,9 @@ import { variantesBr } from '../utils/telefone-br'
 // Diferente da Meta, NÃO passa pela message_grouping_queue: aquela fila existe
 // para a janela de debounce da Maia, e o único consumidor dela roda o turno da
 // IA. Número Evolution é atendimento humano — a mensagem vai direto para a
-// conversa, e a atendente a vê no próximo polling do inbox.
+// conversa, e a atendente a vê no próximo polling do inbox. Com a chave
+// "Maia sugere" ligada no número, o rascunho vem depois, do
+// sugestao-evolution.worker.ts.
 //
 // Tudo com service role (sem sessão: quem chama é a Evolution). A organização
 // vem da connection do canal, nunca de parâmetro da requisição.
@@ -102,6 +104,9 @@ async function processarMensagem(
     .eq('conversation_id', conversation.id)
     .eq('direction', 'outbound')
     .eq('status', 'pending')
+    // Sugestão da Maia também é outbound pending sem id. Se a atendente enviar
+    // o mesmo texto, o eco é DELA — casar com o rascunho o marcaria como enviado.
+    .eq('sent_by_ai', false)
     .is('external_message_id', null)
     .eq('body', m.body ?? '')
     .gte('created_at', desde)

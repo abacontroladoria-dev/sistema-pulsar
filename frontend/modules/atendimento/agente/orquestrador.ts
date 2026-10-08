@@ -104,7 +104,25 @@ export interface DepsTurno {
   //
   // Nunca lança para este laço — falha de rastro não derruba o turno.
   aoChamarFerramenta?: (registro: RegistroChamadaFerramenta) => void
+  // Turno que só SUGERE (números Evolution, ver sugestao-evolution.worker.ts):
+  // o modelo recebe apenas as ferramentas de consulta. Uma sugestão que a
+  // atendente pode descartar não pode ter já agendado, cancelado, movido o
+  // funil ou gravado cadastro. Retirar a capacidade, não instruir contenção —
+  // e o executor recusa também, caso o modelo invente uma chamada fora da lista.
+  somenteLeitura?: boolean
 }
+
+export const FERRAMENTAS_SO_LEITURA = new Set([
+  'consultar_especialidades_disponiveis',
+  'consultar_horarios_disponiveis',
+  'consultar_agendamentos_do_contato',
+])
+
+const FERRAMENTA_BLOQUEADA = JSON.stringify({
+  ok: false,
+  motivo: 'somente_sugestao',
+  mensagem: 'Neste atendimento você só sugere a resposta; nenhuma ação é executada. Responda em texto.',
+})
 
 // O que se grava de uma chamada de ferramenta. Deliberadamente magro: ver a
 // allowlist de campos em `argumentosLogaveis`.
@@ -265,7 +283,8 @@ export async function executarTurno(
     // tipo "não pergunte a quem já é paciente" dependeria de o modelo saber
     // quem já é paciente — e ele não sabe. Retirar a capacidade é a única forma
     // confiável de retirar o comportamento.
-    f.function.name !== 'registrar_dados_do_paciente' || deps.coletaDeCadastro === true
+    (f.function.name !== 'registrar_dados_do_paciente' || deps.coletaDeCadastro === true)
+    && (!deps.somenteLeitura || FERRAMENTAS_SO_LEITURA.has(f.function.name))
   ))
 
   const jaChamadas = new Set<string>()
@@ -349,6 +368,10 @@ export async function executarTurno(
             duracaoMs:  0,
           })
           return { chamada, conteudo: ARGUMENTOS_INVALIDOS }
+        }
+
+        if (deps.somenteLeitura && !FERRAMENTAS_SO_LEITURA.has(chamada.nome)) {
+          return { chamada, conteudo: FERRAMENTA_BLOQUEADA }
         }
 
         const comecou = Date.now()
