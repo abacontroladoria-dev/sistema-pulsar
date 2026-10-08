@@ -2,9 +2,13 @@
 // PGlite. Decisão do usuário (08/10/2026): "Sem contrato" não cobra de quem só
 // teve Triagem na grade.
 //
+// `normalizar_nome_terapia()` (20261006120000) é recriada aqui IGUAL à do
+// banco — é dela que a função depende para casar "Triagem", e o teste
+// precisa provar o comportamento real (acento incluso), não uma reimplementação.
+//
 // Prova: terapia_nome nulo não conta como "real" (seria assumir tratamento sem
-// provas); comparação de Triagem ignora caixa e espaço; fora da unidade 280
-// não entra; authenticated e anon não executam a função.
+// provas); comparação de Triagem ignora caixa, espaço E ACENTO; fora da
+// unidade 280 não entra; authenticated e anon não executam a função.
 //
 // Rodar FORA do repo (o pacote não é dependência do projeto):
 //   mkdir /tmp/pg && cd /tmp/pg && npm i @electric-sql/pglite
@@ -23,6 +27,20 @@ const ok = (cond, msg) => { if (cond) console.log('  ok  ', msg); else { falhas+
 
 await db.exec(`
 create role anon; create role authenticated; create role service_role bypassrls;
+
+-- Cópia fiel de 20261006120000_cadastro_terapias.sql — a função da qual
+-- grade_pacientes_com_terapia_real() depende.
+create or replace function public.normalizar_nome_terapia(p text)
+returns text
+language sql
+immutable
+parallel safe
+as $$
+  select lower(regexp_replace(btrim(translate(coalesce(p, ''),
+    'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇáàâãäéèêëíìîïóòôõöúùûüç',
+    'AAAAAEEEEIIIIOOOOOUUUUCaaaaaeeeeiiiiooooouuuuc')), '\\s+', ' ', 'g'))
+$$;
+
 create table public.vw_grade_atendimentos_src (paciente_id bigint, terapia_nome text, unidade_id int);
 create view public.vw_grade_atendimentos as select * from public.vw_grade_atendimentos_src;
 insert into public.vw_grade_atendimentos_src values
@@ -30,7 +48,8 @@ insert into public.vw_grade_atendimentos_src values
   (2, 'Fonoaudiologia', 280),
   (3, 'triagem', 280), (3, '  TRIAGEM  ', 280),
   (4, 'Fonoaudiologia', 999),
-  (5, null, 280);
+  (5, null, 280),
+  (6, 'Triágem', 280); -- acento: só a normalização do catálogo pega isto
 `)
 await db.exec(mig)
 await db.exec(mig) // idempotente
@@ -39,7 +58,8 @@ const r = await db.query('select paciente_id from public.grade_pacientes_com_ter
 const ids = r.rows.map((x) => Number(x.paciente_id))
 ok(
   JSON.stringify(ids) === JSON.stringify([2]),
-  'só paciente 2 (terapia real); 1/3 só Triagem, 4 fora da unidade, 5 sem terapia_nome: ' + JSON.stringify(ids),
+  'só paciente 2 (terapia real); 1/3/6 só Triagem (com acento/caixa/espaço), 4 fora da unidade, 5 sem terapia_nome: ' +
+    JSON.stringify(ids),
 )
 
 await db.exec('reset role; set role authenticated;')

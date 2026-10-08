@@ -13,10 +13,17 @@
 -- uma coluna a mais naquela: esta responde "tem terapia real?", aquela
 -- responde "qual o convênio?" — perguntas diferentes, chamadores diferentes.
 --
+-- Casamento de "Triagem" por `normalizar_nome_terapia()` (20261006120000) — a
+-- MESMA função que casa `terapia_nome` da grade com o Cadastro de Terapias, e
+-- não um `lower(btrim(...))` próprio: ela também tira acento, e o catálogo tem
+-- exatamente UMA terapia chamada "Triagem" (nome_normalizado = 'triagem',
+-- seed de 20261006150000) — não há variante tipo "Triagem ABA" para perder.
+--
 -- Só pede o paciente que TEM pelo menos uma sessão não-Triagem; ausência do
--- paciente no resultado = só teve Triagem (ou nenhuma sessão). Comparar com o
--- conjunto de quem tem agendamento (`grade_convenio_por_paciente`) decide os
--- três casos que a tela precisa diferenciar:
+-- paciente no resultado = só teve Triagem (ou nenhuma sessão, ou terapia_nome
+-- nulo — não é prova de tratamento real). Comparar com o conjunto de quem tem
+-- agendamento (`grade_convenio_por_paciente`) decide os três casos que a tela
+-- precisa diferenciar:
 --
 --   sem agendamento nenhum          → cobra contrato (decisão do usuário)
 --   agendamento só de Triagem       → NÃO cobra (este é o caso que esta função resolve)
@@ -35,7 +42,7 @@ as $$
   where g.unidade_id = 280
     and g.paciente_id is not null
     and g.terapia_nome is not null
-    and lower(btrim(g.terapia_nome)) <> 'triagem'
+    and public.normalizar_nome_terapia(g.terapia_nome) <> 'triagem'
 $$;
 
 comment on function public.grade_pacientes_com_terapia_real() is
