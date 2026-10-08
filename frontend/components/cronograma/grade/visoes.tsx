@@ -1,11 +1,11 @@
 "use client"
 
-import { useState, type ReactNode } from "react"
+import { useEffect, useRef, useState, type ReactNode } from "react"
 import { Lock } from "lucide-react"
 import { foco } from "@/components/cadastros/pacientes/ui/campos"
 import { DIAS_CURTOS, diaDaSemana } from "@/lib/grade/motor"
 import { seletorOpcao, seletorTrilha } from "./estilo"
-import { ColunaHorarios, EixoHoras, LinhasEscala, type Escala, type ItemColuna } from "./pecas"
+import { ColunaHorarios, EixoHoras, GradeGrandeProvider, LinhasEscala, SoExibicaoProvider, useGradeGrande, type Escala, type ItemColuna } from "./pecas"
 
 // As três visões da Grade, no design padrão (receitas da Agenda do Connect).
 // Semana (dias em colunas) e Dia (profissionais em colunas) usam a mesma grade
@@ -33,8 +33,12 @@ export type ColunaGrade = {
 }
 
 export function GradeColunas({
-  colunas, escala, larguraMin = 128, rotuloAbas, abaInicial,
+  colunas, escala, larguraMin = 128, rotuloAbas, abaInicial, onAlturaLivre, soExibicao = false,
 }: {
+  /** Cartões mostram só a terapia de exibição (olho fechado). */
+  soExibicao?: boolean
+  /** Tela cheia: a grade ocupa a altura do pai e informa quanto sobra para a régua (px). */
+  onAlturaLivre?: (px: number) => void
   colunas: ColunaGrade[]
   escala: Escala
   larguraMin?: number
@@ -48,10 +52,30 @@ export function GradeColunas({
     ?? visiveisNoCelular.find(c => c.chave === abaInicial)
     ?? visiveisNoCelular[0]
 
-  const template = `56px ${colunas.map(c => (c.estreita ? "72px" : `minmax(${larguraMin}px, 1fr)`)).join(" ")}`
+  const rolagem = useRef<HTMLDivElement>(null)
+  const cabecalho = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = rolagem.current
+    if (!onAlturaLivre || !el) return
+    const medir = () => {
+      // 16 = py-2 da área das colunas; 2 = folga para não aparecer barra de rolagem por arredondamento.
+      const livre = el.clientHeight - (cabecalho.current?.offsetHeight ?? 0) - 18
+      if (el.clientHeight > 0 && livre > 0) onAlturaLivre(livre)
+    }
+    medir()
+    const ro = new ResizeObserver(medir)
+    ro.observe(el)
+    if (cabecalho.current) ro.observe(cabecalho.current)
+    return () => ro.disconnect()
+  }, [onAlturaLivre])
+
+  const grande = !!onAlturaLivre
+  const template = `${grande ? 80 : 56}px ${colunas.map(c => (c.estreita ? "72px" : `minmax(${larguraMin}px, 1fr)`)).join(" ")}`
 
   return (
-    <div>
+    <GradeGrandeProvider value={grande}>
+    <SoExibicaoProvider value={soExibicao}>
+    <div className={grande ? "h-full" : undefined}>
       {/* Celular: abas, uma coluna por vez */}
       <div className="md:hidden">
         <div className="overflow-x-auto border-b border-border p-2">
@@ -80,9 +104,9 @@ export function GradeColunas({
       {/* Tela larga: todas as colunas. Um só contêiner rola nos dois sentidos,
           para o cabeçalho grudar no topo (sticky não funciona dentro de um
           overflow-x separado). */}
-      <div className="hidden max-h-[calc(100vh-17rem)] min-h-80 overflow-auto md:block">
+      <div ref={rolagem} className={`hidden overflow-auto md:block ${onAlturaLivre ? "h-full" : "max-h-[calc(100vh-17rem)] min-h-80"}`}>
         <div className="min-w-fit">
-          <div className="sticky top-0 z-10 grid border-b border-border bg-card" style={{ gridTemplateColumns: template }}>
+          <div ref={cabecalho} className="sticky top-0 z-10 grid border-b border-border bg-card" style={{ gridTemplateColumns: template }}>
             <div aria-hidden />
             {colunas.map(c => (
               <div key={c.chave} className={`min-w-0 border-l border-border px-1.5 py-1 ${c.destaque ? "bg-muted/30" : ""}`}>
@@ -98,13 +122,15 @@ export function GradeColunas({
                 {c.estreita
                   ? <div style={{ height: escala.altura }} className="relative opacity-40" aria-hidden><LinhasEscala escala={escala} /></div>
                   : <ColunaHorarios itens={c.itens} escala={escala} fundo={c.fundo}
-                      vazio={c.textoVazio ? <p className="absolute inset-x-1 top-2 text-center text-[11px] text-muted-foreground">{c.textoVazio}</p> : undefined} />}
+                      vazio={c.textoVazio ? <p className={`absolute inset-x-1 top-2 text-center text-muted-foreground ${grande ? "text-[13px]" : "text-[11px]"}`}>{c.textoVazio}</p> : undefined} />}
               </div>
             ))}
           </div>
         </div>
       </div>
     </div>
+    </SoExibicaoProvider>
+    </GradeGrandeProvider>
   )
 }
 
@@ -123,12 +149,13 @@ export function CabecalhoDia({ data, hoje, extra }: {
   extra?: ReactNode
 }) {
   const ehHoje = data === hoje
+  const grande = useGradeGrande()
   return (
     <div className="flex items-center justify-center gap-1.5 text-center">
-      <span className={`text-[11px] font-medium uppercase ${ehHoje ? "text-foreground" : "text-muted-foreground"}`}>
+      <span className={`font-medium uppercase ${grande ? "text-sm" : "text-[11px]"} ${ehHoje ? "text-foreground" : "text-muted-foreground"}`}>
         {DIAS_CURTOS[diaDaSemana(data)]}
       </span>
-      <span className={`flex h-7 w-7 items-center justify-center rounded-full text-sm tabular-nums ${
+      <span className={`flex items-center justify-center rounded-full tabular-nums ${grande ? "h-9 w-9 text-lg" : "h-7 w-7 text-sm"} ${
         ehHoje ? "bg-primary font-semibold text-primary-foreground" : "text-foreground"}`}
         aria-label={ehHoje ? "hoje" : undefined}>
         {Number(data.slice(8, 10))}
@@ -140,9 +167,10 @@ export function CabecalhoDia({ data, hoje, extra }: {
 
 /** Linha de feriado no cabeçalho da coluna. */
 export function AvisoFeriado({ nome }: { nome: string }) {
+  const grande = useGradeGrande()
   return (
-    <p className="mt-1 flex items-center justify-center gap-1 truncate text-[11px] font-medium text-muted-foreground" title={`Feriado: ${nome}`}>
-      <Lock className="h-3 w-3 shrink-0" aria-hidden /><span className="truncate">{nome}</span>
+    <p className={`mt-1 flex items-center justify-center gap-1 truncate font-medium text-muted-foreground ${grande ? "text-[13px]" : "text-[11px]"}`} title={`Feriado: ${nome}`}>
+      <Lock className={`${grande ? "h-4 w-4" : "h-3 w-3"} shrink-0`} aria-hidden /><span className="truncate">{nome}</span>
     </p>
   )
 }
