@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
-  MessageSquare, Smartphone, Bot, Plus, Loader2, QrCode, Users, RotateCw, Unplug, Trash2, X, Check,
+  MessageSquare, Smartphone, Bot, Plus, Loader2, QrCode, Users, RotateCw, Unplug, Trash2, X, Check, Download,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -111,6 +111,32 @@ export function EvolutionSettings() {
     }
   }
 
+  const importar = async (n: Numero) => {
+    setOcupado(n.channelId)
+    try {
+      const r = await api<{ lidos: number; importados: number; atualizados: number; descartados: number; precisaReconectar?: boolean }>(
+        `${BASE}/${n.channelId}/contatos/`, { method: 'POST' },
+      )
+      if (r.precisaReconectar) {
+        toast.info(
+          `${n.nome}: a agenda ainda não foi sincronizada. Desconecte e conecte de novo pelo QR, `
+          + 'aguarde uns minutos e importe outra vez.',
+          { duration: 10_000 },
+        )
+        return
+      }
+      toast.success(
+        `${n.nome}: ${r.importados} ${r.importados === 1 ? 'contato novo' : 'contatos novos'}, `
+        + `${r.atualizados} ${r.atualizados === 1 ? 'nome preenchido' : 'nomes preenchidos'} `
+        + `(${r.lidos} na agenda, ${r.descartados} sem telefone).`,
+      )
+    } catch (err) {
+      toast.error((err as Error).message)
+    } finally {
+      setOcupado(null)
+    }
+  }
+
   const remover = async (n: Numero) => {
     setOcupado(n.channelId)
     try {
@@ -193,6 +219,11 @@ export function EvolutionSettings() {
                   <Button size="sm" variant="outline" onClick={() => setMembrosDe(n)} disabled={travado}>
                     <Users className="w-3.5 h-3.5 mr-1.5" /> Membros
                   </Button>
+                  {n.status === 'active' && (
+                    <Button size="sm" variant="outline" onClick={() => importar(n)} disabled={travado}>
+                      <Download className="w-3.5 h-3.5 mr-1.5" /> Importar contatos
+                    </Button>
+                  )}
                   <Button size="sm" variant="ghost" title="Reiniciar" aria-label={`Reiniciar ${n.nome}`}
                     onClick={() => acao(n, 'restart')} disabled={travado}>
                     {travado ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCw className="w-3.5 h-3.5" />}

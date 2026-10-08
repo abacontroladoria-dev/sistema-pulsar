@@ -1,14 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Shield, Bot, Plug, Loader2, Save, RotateCcw, BookOpen, Lock, Check } from 'lucide-react';
+import { Shield, Bot, Plug, Loader2, Save, Lock, Check } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import AgentSettings, { AgentSettingsRef } from './settings/AgentSettings';
 import ApiSettings, { ApiSettingsRef } from './settings/ApiSettings';
-import SystemRoadmap from './SystemRoadmap';
 import { useCompanySettings } from '@/hooks/nina/useCompanySettings';
 import { Button } from './Button';
-import { useOnboardingStatus } from '@/hooks/nina/useOnboardingStatus';
 
-const Settings: React.FC<{ setShowOnboarding?: (show: boolean) => void }> = ({ setShowOnboarding = () => {} }) => {
+const Settings: React.FC = () => {
   const { companyName, isAdmin, centralRole } = useCompanySettings();
 
   // A diretoria tem a página inteira, igual ao admin — as duas abas, incluindo
@@ -20,13 +18,7 @@ const Settings: React.FC<{ setShowOnboarding?: (show: boolean) => void }> = ({ s
   const apiRef = useRef<ApiSettingsRef>(null);
   const [activeTab, setActiveTab] = useState('agent');
 
-  const podeSalvarAqui = activeTab !== 'docs' && podeEditar;
-  const { resetWizard } = useOnboardingStatus();
-
-  const handleReopenOnboarding = () => {
-    resetWizard();
-    setShowOnboarding(true);
-  };
+  const podeSalvarAqui = podeEditar;
 
   // Confirmação inline, ao lado do botão. O toast aparece no canto oposto da
   // tela e passa despercebido justamente quando mais importa — depois de um
@@ -88,17 +80,6 @@ const Settings: React.FC<{ setShowOnboarding?: (show: boolean) => void }> = ({ s
           </p>
         </div>
         <div className="flex gap-2 items-center">
-          {isAdmin && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleReopenOnboarding}
-              className="text-muted-foreground hover:text-foreground gap-2"
-            >
-              <RotateCcw className="w-4 h-4" />
-              Refazer Onboarding
-            </Button>
-          )}
           <span className="px-3 py-1 bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-xs rounded-full font-mono flex items-center">
             {isAdmin ? (
               <>
@@ -123,22 +104,18 @@ const Settings: React.FC<{ setShowOnboarding?: (show: boolean) => void }> = ({ s
         onValueChange={tab => { setActiveTab(tab); setSalvoEm(null); }}
       >
         <div className="flex items-center justify-between mb-8">
-          <TabsList>
-            <TabsTrigger value="agent" className="gap-2">
+          <TabsList className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-100 p-1 dark:border-slate-800 dark:bg-slate-900/60">
+            <TabsTrigger value="agent" className="gap-2 data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm data-[state=active]:ring-1 data-[state=active]:ring-slate-200 data-[state=inactive]:text-slate-500 data-[state=inactive]:hover:text-slate-800 dark:data-[state=active]:bg-slate-800 dark:data-[state=active]:text-white dark:data-[state=active]:ring-slate-700 dark:data-[state=inactive]:text-slate-400 dark:data-[state=inactive]:hover:text-slate-200">
               <Bot className="w-4 h-4" />
               Agente
             </TabsTrigger>
-            <TabsTrigger value="apis" className="gap-2">
+            <TabsTrigger value="apis" className="gap-2 data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm data-[state=active]:ring-1 data-[state=active]:ring-slate-200 data-[state=inactive]:text-slate-500 data-[state=inactive]:hover:text-slate-800 dark:data-[state=active]:bg-slate-800 dark:data-[state=active]:text-white dark:data-[state=active]:ring-slate-700 dark:data-[state=inactive]:text-slate-400 dark:data-[state=inactive]:hover:text-slate-200">
               <Plug className="w-4 h-4" />
               APIs
             </TabsTrigger>
-            <TabsTrigger value="docs" className="gap-2">
-              <BookOpen className="w-4 h-4" />
-              Documentação
-            </TabsTrigger>
           </TabsList>
 
-          {activeTab !== 'docs' && podeSalvarAqui && (
+          {podeSalvarAqui && (
             <div className="flex gap-3 items-center">
               {salvoEm !== null && !isSaving && (
                 <span
@@ -178,7 +155,7 @@ const Settings: React.FC<{ setShowOnboarding?: (show: boolean) => void }> = ({ s
             </div>
           )}
 
-          {activeTab !== 'docs' && !podeSalvarAqui && (
+          {!podeSalvarAqui && (
             <div className="flex items-center gap-2 text-sm text-amber-400">
               <Lock className="w-4 h-4" />
               Apenas administradores e diretoria podem editar
@@ -192,10 +169,6 @@ const Settings: React.FC<{ setShowOnboarding?: (show: boolean) => void }> = ({ s
 
         <TabsContent value="apis">
           <ApiSettings ref={apiRef} />
-        </TabsContent>
-
-        <TabsContent value="docs">
-          <SystemRoadmap />
         </TabsContent>
       </Tabs>
     </div>
