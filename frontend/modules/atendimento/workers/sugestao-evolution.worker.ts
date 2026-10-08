@@ -28,9 +28,9 @@ import { lerAgentSettings } from '../agente/agent-settings'
 // pode ter agendado nem movido nada.
 //
 // "Maia responde" (`inboxes.maia_automatica`, exige maia_sugestao): o texto sai
-// pelo envio normal em vez de virar rascunho — só em conversa sem atendente
-// atribuída. Quem assumiu a conversa volta a receber sugestão. Continua
-// somenteLeitura e continua sem ai_mode.
+// pelo envio normal em vez de virar rascunho, em TODAS as conversas do número
+// (atribuída ou não — pedido do usuário em 08/10). Continua somenteLeitura e
+// continua sem ai_mode.
 // ============================================================================
 
 // Curto: divide o maxDuration de 60s do tique com agrupamento e envio.
@@ -50,7 +50,6 @@ interface ConversaCandidata {
   id: string
   inbox_id: string
   contact_id: string
-  assigned_user_id: string | null
   ai_context: Record<string, unknown> | null
 }
 
@@ -76,7 +75,7 @@ export async function processarSugestoesEvolution(
   const agora = Date.now()
   const { data: conversas, error: e2 } = await db
     .from('conversations')
-    .select('id, inbox_id, contact_id, assigned_user_id, ai_context')
+    .select('id, inbox_id, contact_id, ai_context')
     .eq('organization_id', orgId)
     .in('inbox_id', inboxIds)
     .gte('last_message_at', new Date(agora - JANELA_MS).toISOString())
@@ -162,7 +161,7 @@ export async function processarSugestoesEvolution(
 
       // Falha de envio sobe para o catch: a mensagem fica como 'failed' na
       // conversa (MessageService) e a reivindicação impede repetir.
-      if (automaticas.has(conv.inbox_id) && !conv.assigned_user_id) {
+      if (automaticas.has(conv.inbox_id)) {
         await createSystemServices().messageService.send({
           conversationId: conv.id,
           body: resultado.texto,

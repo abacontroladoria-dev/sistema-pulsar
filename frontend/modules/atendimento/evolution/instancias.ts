@@ -40,7 +40,7 @@ export interface NumeroEvolution {
   // Chave "Maia sugere" (central.inboxes.maia_sugestao). Só rascunho, nunca envio.
   maiaSugere: boolean
   // Chave "Maia responde" (central.inboxes.maia_automatica). Envia sozinha em
-  // conversa sem atendente atribuída; implica maiaSugere.
+  // todas as conversas do número; implica maiaSugere.
   maiaResponde: boolean
 }
 
