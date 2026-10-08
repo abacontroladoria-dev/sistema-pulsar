@@ -3,10 +3,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
-  AlertCircle, CalendarPlus, ChevronLeft, ChevronRight, CloudDownload, Database, History, Loader2, Lock, Stethoscope, Users,
+  AlertCircle, CalendarDays, CalendarPlus, ChevronLeft, ChevronRight, CloudDownload, Database, History, Loader2, Lock, Search, Stethoscope, Users,
 } from "lucide-react"
 import toast from "react-hot-toast"
-import { campo } from "@/components/cadastros/pacientes/ui/campos"
+import { campo, foco } from "@/components/cadastros/pacientes/ui/campos"
 import { InlineNotice } from "@/components/cronograma/ui/InlineNotice"
 import { Drawer } from "@/components/cronograma/ui/Drawer"
 import { DatePicker } from "@/components/ui/date-picker"
@@ -21,14 +21,14 @@ import {
 import { disponibilidadePaciente } from "@/services/grade.service"
 import type { AgendamentoGrade, BloqueioGrade, DiaGrade, DisponibilidadePacienteGrade, HorarioGrade, ProfissionalGrade } from "@/types/grade"
 import { ResumoPaciente, ResumoProfissional } from "./CartaoResumo"
-import { ListaPacientes, ListaProfissionais, type LinhaPaciente, type LinhaProfissional } from "./ListaLateral"
+import { ListaPacientes, ListaProfissionais, SeletorDaLista, type LinhaPaciente, type LinhaProfissional } from "./ListaLateral"
 import { PainelAgendamento } from "./PainelAgendamento"
 import { PainelNovoBloqueio, PainelVerBloqueio } from "./PainelBloqueio"
 import { PainelImportarTita } from "./PainelImportarTita"
 import { PainelNovoAgendamento, type InicialNovo } from "./PainelNovoAgendamento"
 import { PainelRegistro } from "./PainelRegistro"
 import {
-  BlocoHorario, CartaoSessao, Legenda, TOM_ESTADO, grupoDoEstado, janelaDeTempo, minutos, type FiltroEstados, type ItemColuna,
+  BlocoHorario, CartaoSessao, INICIOS_PADRAO, Legenda, TOM_ESTADO, grupoDoEstado, minutos, montarEscala, type FiltroEstados, type ItemColuna,
 } from "./pecas"
 import { AvisoFeriado, CabecalhoDia, GradeColunas, GradeMes, type ColunaGrade, type NumerosDia } from "./visoes"
 import { btnIcone, btnPrimario, btnSecundario, cartao, seletorOpcao, seletorTrilha } from "./estilo"
@@ -51,7 +51,6 @@ type Painel =
   | { tipo: "bloqueio"; b: BloqueioGrade }
   | { tipo: "importar" }
   | { tipo: "registro" }
-  | { tipo: "lista" }
   | { tipo: "horario"; h: HorarioGrade; profissionalId: number }
   | null
 
@@ -86,6 +85,7 @@ export function GradeShell() {
   const [painel, setPainel] = useState<Painel>(null)
   const [ocultos, setOcultos] = useState<FiltroEstados>(new Set())
   const [filtroDia, setFiltroDia] = useState("")
+  const [buscaAberta, setBuscaAberta] = useState(false)
 
   // ── Dados ───────────────────────────────────────────────────────────────────
   const base = useGradeBase(visao === "paciente" || painel?.tipo === "novo")
@@ -223,7 +223,7 @@ export function GradeShell() {
     }))
   }, [base.pacientes, dadosSemana.agendamentos, profPorId])
 
-  const selecionar = (novoId: number) => { ir({ id: novoId }); if (painel?.tipo === "lista") setPainel(null) }
+  const selecionar = (novoId: number) => { ir({ id: novoId }); setBuscaAberta(false) }
   const lista = visao === "profissional"
     ? <ListaProfissionais linhas={linhasProf} selecionado={id} onSelecionar={selecionar} opcoesTerapia={opcoesTerapia} />
     : <ListaPacientes linhas={linhasPac} selecionado={id} onSelecionar={selecionar} carregando={!base.pacientes} />
@@ -333,11 +333,21 @@ export function GradeShell() {
   }, [visao, periodo, filtroDia, base.profissionais, diasPorProf, data, focal, itensDoDia, dadosSemana.bloqueios, dadosSemana.agendamentos, dadosSemana.feriados,
       profSel, datasMes, dadosMes.faixas, dadosMes.agendamentos, dadosMes.bloqueios, dadosMes.feriados, hoje, id, semana, dispPac, profPorId, ocultos, corDe, abrirSessao, ir])
 
-  const janela = useMemo(() => {
-    if (conteudo.tipo !== "colunas") return { de: 8 * 60, ate: 18 * 60 }
-    const intervalos = conteudo.colunas.flatMap(c => [...c.itens.map(i => ({ ini: i.ini, fim: i.fim })), ...(c.fundo ?? [])])
-    return janelaDeTempo(intervalos)
-  }, [conteudo])
+  // Régua pelos horários da regra de negócio (08:00, 08:40, 09:20…). Usa os
+  // horários da grade SEM o filtro da legenda, para a régua não pular quando
+  // "Livre" é escondido. Profissional com disponibilidade fora do padrão (visto
+  // sozinho) ganha a régua dos próprios horários cadastrados.
+  const escala = useMemo(() => {
+    if (conteudo.tipo !== "colunas") return montarEscala([], true)
+    const daGrade = conteudo.dias.flatMap(d => d.horarios)
+    const intervalos = [
+      ...daGrade.map(h => ({ ini: minutos(h.inicio), fim: minutos(h.fim) })),
+      ...conteudo.colunas.flatMap(c => c.itens.map(i => ({ ini: i.ini, fim: i.fim }))),
+    ]
+    const foraDoPadrao = visao === "profissional" && periodo !== "dia"
+      && daGrade.some(h => h.estado !== "fora_da_grade" && h.estado !== "inativo" && !INICIOS_PADRAO.has(h.inicio))
+    return montarEscala(intervalos, !foraDoPadrao)
+  }, [conteudo, visao, periodo])
 
   // Contagens da legenda (no que está na tela), na mesma unidade do resumo:
   // vagas livres (grupo de 3 vazio = 3) e sessões; bloqueado conta horários.
@@ -402,15 +412,15 @@ export function GradeShell() {
         </div>
       )}
 
-      <div className="flex gap-4">
-        {/* Lista à esquerda (tela larga) */}
-        <aside className="sticky top-0 hidden h-[calc(100vh-9rem)] w-72 shrink-0 lg:block" aria-label={visao === "profissional" ? "Profissionais" : "Pacientes"}>
-          {lista}
-        </aside>
-
-        <main className="min-w-0 flex-1 space-y-3">
-          {/* Barra: visão, período, navegação — mesmo vocabulário do header */}
+      <div>
+        <main className="min-w-0 space-y-3">
+          {/* Barra: quem, visão, período, navegação — mesmo vocabulário do header */}
           <div className="flex flex-wrap items-center gap-2">
+            <SeletorDaLista aberto={buscaAberta} onAberto={setBuscaAberta}
+              rotulo={visao === "profissional" ? "Buscar profissional" : "Buscar paciente"}
+              escolhido={profSel ? { nome: profSel.nome, cor: focal(profSel).cor } : pacSel ? { nome: pacSel.nome } : null}>
+              {lista}
+            </SeletorDaLista>
             <div className={seletorTrilha} role="tablist" aria-label="Visão">
               {([["profissional", "Por profissional"], ["paciente", "Por paciente"]] as const).map(([v, r]) => (
                 <button key={v} type="button" role="tab" aria-selected={visao === v} onClick={() => ir({ visao: v, id: null })}
@@ -427,21 +437,17 @@ export function GradeShell() {
             <button type="button" onClick={() => ir({ data: hoje })} className={btnSecundario}>Hoje</button>
             <button type="button" onClick={() => navegar(-1)} className={btnIcone} aria-label="Período anterior"><ChevronLeft className="h-4 w-4" aria-hidden /></button>
             <button type="button" onClick={() => navegar(1)} className={btnIcone} aria-label="Próximo período"><ChevronRight className="h-4 w-4" aria-hidden /></button>
-            <div className="w-36"><DatePicker value={data} onChange={v => v && ir({ data: v })} classeGatilho="h-9" /></div>
-            <p className="flex min-w-0 items-center gap-2 text-base font-semibold text-foreground" aria-live="polite">
-              <span className="truncate">{rotuloPeriodo}</span>
+            {/* O período por extenso É o botão do calendário (sem a data repetida ao lado). */}
+            <div className="flex min-w-0 items-center gap-2" aria-live="polite">
+              <DatePicker value={data} onChange={v => v && ir({ data: v })} rotuloGatilho={`${rotuloPeriodo} — escolher data`}
+                classeGatilho={`inline-flex h-9 min-w-0 items-center gap-2 rounded-md px-2 text-base font-semibold text-foreground transition-colors hover:bg-muted ${foco}`}
+                conteudoGatilho={<>
+                  <span className="truncate">{rotuloPeriodo}</span>
+                  <CalendarDays className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                </>} />
               {carregando && <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" aria-label="Carregando" />}
-            </p>
+            </div>
           </div>
-
-          {/* Escolher (celular) */}
-          <button type="button" onClick={() => setPainel({ tipo: "lista" })} className={`${btnSecundario} w-full justify-between lg:hidden`}>
-            <span className="flex min-w-0 items-center gap-2">
-              {visao === "profissional" ? <Stethoscope className="h-4 w-4" aria-hidden /> : <Users className="h-4 w-4" aria-hidden />}
-              <span className="truncate">{profSel?.nome ?? pacSel?.nome ?? (visao === "profissional" ? "Escolher profissional" : "Escolher paciente")}</span>
-            </span>
-            <ChevronRight className="h-4 w-4" aria-hidden />
-          </button>
 
           {/* Resumo */}
           {profSel && periodo !== "dia" && "resumo" in conteudo && conteudo.resumo && (
@@ -469,12 +475,15 @@ export function GradeShell() {
           {conteudo.tipo === "escolher" ? (
             <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border bg-card px-6 py-14 text-center">
               {visao === "profissional" ? <Stethoscope className="h-9 w-9 text-muted-foreground" aria-hidden /> : <Users className="h-9 w-9 text-muted-foreground" aria-hidden />}
-              <h2 className="text-base font-bold text-foreground">{visao === "profissional" ? "Escolha um profissional na lista" : "Escolha um paciente na lista"}</h2>
+              <h2 className="text-base font-bold text-foreground">{visao === "profissional" ? "Escolha um profissional" : "Escolha um paciente"}</h2>
               <p className="max-w-md text-sm text-muted-foreground">
                 {visao === "profissional"
                   ? "A grade de cada profissional vem da Disponibilidade do cadastro. Em “Dia”, todos aparecem lado a lado."
                   : "Mostra as sessões do paciente com todos os profissionais e a disponibilidade que a família informou."}
               </p>
+              <button type="button" onClick={() => setBuscaAberta(true)} className={btnSecundario}>
+                <Search className="h-4 w-4" aria-hidden />{visao === "profissional" ? "Buscar profissional" : "Buscar paciente"}
+              </button>
             </div>
           ) : (
             <section className={`${cartao} overflow-hidden`} aria-label="Grade">
@@ -490,7 +499,7 @@ export function GradeShell() {
                     </div>
                   )}
                   {conteudo.colunas.length ? (
-                    <GradeColunas colunas={conteudo.colunas} janela={janela} abaInicial={hoje}
+                    <GradeColunas colunas={conteudo.colunas} escala={escala} abaInicial={hoje}
                       larguraMin={visao === "profissional" && periodo === "dia" ? 150 : 128}
                       rotuloAbas={periodo === "dia" && visao === "profissional" ? "Profissionais do dia" : "Dias da semana"} />
                   ) : (
@@ -508,11 +517,6 @@ export function GradeShell() {
       </div>
 
       {/* Painéis */}
-      {painel?.tipo === "lista" && (
-        <Drawer title={visao === "profissional" ? "Profissionais" : "Pacientes"} width={400} onClose={() => setPainel(null)}>
-          <div className="h-[calc(100vh-9rem)]">{lista}</div>
-        </Drawer>
-      )}
       {painel?.tipo === "horario" && (
         <Drawer title={`${rotuloDia(painel.h.data)} · ${painel.h.inicio}–${painel.h.fim}`}
           subtitle={`${painel.h.ocupados.length} de ${painel.h.capacidade} vaga${painel.h.capacidade === 1 ? "" : "s"} ocupada${painel.h.ocupados.length === 1 ? "" : "s"}`}

@@ -41,13 +41,21 @@ interface DatePickerProps {
    * muda de aparência.
    */
   classeGatilho?: string
+  /**
+   * SUBSTITUI o miolo do gatilho (a data "dd/mm/aaaa" + o ícone). Para quando
+   * a tela já mostra o período por extenso e o botão é esse próprio texto
+   * (ex.: Grade, "04 – 10 de outubro de 2026" + ícone). Use com `rotuloGatilho`.
+   */
+  conteudoGatilho?: React.ReactNode
+  /** aria-label do gatilho quando o miolo não diz que é uma escolha de data. */
+  rotuloGatilho?: string
 }
 
 // `align` sem valor padrão: o antigo era `"start" as any` — uma string que não
 // pertence ao próprio tipo do prop, sustentada por um cast. Omitido, o
 // `radixAlign` abaixo já nasce "start", que era o efeito pretendido. Nenhum
 // chamador muda: os que passam "right"/"center" continuam mapeados igual.
-export function DatePicker({ value, onChange, disabled, placeholder = "dd/mm/aaaa", align, classeGatilho }: DatePickerProps) {
+export function DatePicker({ value, onChange, disabled, placeholder = "dd/mm/aaaa", align, classeGatilho, conteudoGatilho, rotuloGatilho }: DatePickerProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [currentMonth, setCurrentMonth] = useState(() => parseDateLocal(value))
   
@@ -91,13 +99,18 @@ export function DatePicker({ value, onChange, disabled, placeholder = "dd/mm/aaa
         <button
           type="button"
           disabled={disabled}
+          aria-label={rotuloGatilho}
           className={
             classeGatilho ??
             "flex w-full mt-1 items-center justify-between rounded-md border border-border bg-transparent px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-default disabled:bg-muted/40 disabled:text-muted-foreground"
           }
         >
-          <span className={value ? "" : "text-muted-foreground/60"}>{displayDate}</span>
-          <CalendarIcon className="h-4 w-4 text-muted-foreground/50" />
+          {conteudoGatilho ?? (
+            <>
+              <span className={value ? "" : "text-muted-foreground/60"}>{displayDate}</span>
+              <CalendarIcon className="h-4 w-4 text-muted-foreground/50" />
+            </>
+          )}
         </button>
       </Popover.Trigger>
       

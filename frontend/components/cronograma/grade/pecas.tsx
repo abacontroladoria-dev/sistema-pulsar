@@ -178,26 +178,89 @@ export function BlocoHorario({
 
 export type ItemColuna = { chave: string; ini: number; fim: number; conteudo: (altura: number) => ReactNode }
 
-/** Fundo com uma linha por hora (técnica da Agenda do Connect: sem divs por linha). */
-export function fundoHoras(de: number): React.CSSProperties {
-  const passo = 60 * PX_POR_MIN
-  const desloc = ((60 - (de % 60)) % 60) * PX_POR_MIN
-  return {
-    backgroundImage: `repeating-linear-gradient(to bottom, var(--border) 0 1px, transparent 1px ${passo}px)`,
-    backgroundPosition: `0 ${desloc}px`,
-  }
+// ── Escala de tempo ───────────────────────────────────────────────────────────
+// A régua segue os horários da regra de negócio (sessões de 40 min), não a hora
+// cheia (decisão do usuário, 08/10/2026). Quem tem disponibilidade fora desse
+// padrão ganha a régua dos próprios horários cadastrados. Intervalos sem nenhum
+// horário (ex.: 12:00–13:00) viram uma pausa estreita, para sobrar tela.
+
+export const HORARIOS_PADRAO: [string, string][] = [
+  ["08:00", "08:40"], ["08:40", "09:20"], ["09:20", "10:00"], ["10:00", "10:40"], ["10:40", "11:20"], ["11:20", "12:00"],
+  ["13:00", "13:40"], ["13:40", "14:20"], ["14:20", "15:00"], ["15:00", "15:40"], ["15:40", "16:20"], ["16:20", "17:00"], ["17:00", "17:40"],
+]
+export const INICIOS_PADRAO = new Set(HORARIOS_PADRAO.map(([i]) => i))
+const INTERVALOS_PADRAO = HORARIOS_PADRAO.map(([i, f]) => ({ ini: paraMin(i), fim: paraMin(f) }))
+
+/** Altura da pausa entre blocos sem horário. */
+const PAUSA_PX = 14
+
+export type Escala = {
+  altura: number
+  /** Posição vertical (px) de um minuto do dia. */
+  y: (m: number) => number
+  /** Início de cada horário e fim de cada bloco: linha na grade e rótulo na régua. */
+  marcas: { m: number; y: number }[]
+  pausas: { y: number; h: number }[]
 }
 
 /**
- * Coluna com itens posicionados por minuto (suporta durações mistas). Itens que
+ * Monta a escala a partir dos horários que vão aparecer. `comPadrao` soma os
+ * horários da regra de negócio (dia todo à vista); sem ele, a régua usa só os
+ * horários informados (profissional com grade fora do padrão).
+ */
+export function montarEscala(intervalos: { ini: number; fim: number }[], comPadrao: boolean): Escala {
+  const todos = [...(comPadrao || !intervalos.length ? INTERVALOS_PADRAO : []), ...intervalos.filter(i => i.fim > i.ini)]
+    .sort((a, b) => a.ini - b.ini || a.fim - b.fim)
+  const blocos: { ini: number; fim: number; y: number }[] = []
+  let y = 0
+  for (const i of todos) {
+    const ult = blocos[blocos.length - 1]
+    if (ult && i.ini <= ult.fim) { ult.fim = Math.max(ult.fim, i.fim); continue }
+    if (ult) y = ult.y + (ult.fim - ult.ini) * PX_POR_MIN + PAUSA_PX
+    blocos.push({ ini: i.ini, fim: i.fim, y })
+  }
+  const ultimo = blocos[blocos.length - 1]
+  const altura = ultimo ? ultimo.y + (ultimo.fim - ultimo.ini) * PX_POR_MIN : 0
+  const posicao = (m: number) => {
+    let r = 0
+    for (const b of blocos) {
+      if (m < b.ini) return r
+      if (m <= b.fim) return b.y + (m - b.ini) * PX_POR_MIN
+      r = b.y + (b.fim - b.ini) * PX_POR_MIN
+    }
+    return r
+  }
+  const pontos = new Set<number>()
+  for (const i of todos) pontos.add(i.ini)
+  for (const b of blocos) pontos.add(b.fim)
+  const marcas = [...pontos].sort((a, b) => a - b).map(m => ({ m, y: posicao(m) }))
+  const pausas = blocos.slice(1).map(b => ({ y: b.y - PAUSA_PX, h: PAUSA_PX }))
+  return { altura, y: posicao, marcas, pausas }
+}
+
+/** Linhas dos horários e faixas das pausas, atrás dos cartões. */
+export function LinhasEscala({ escala }: { escala: Escala }) {
+  return (
+    <>
+      {escala.pausas.map(p => (
+        <div key={`p${p.y}`} className="pointer-events-none absolute inset-x-0 bg-muted/60" style={{ top: p.y, height: p.h }} aria-hidden />
+      ))}
+      {escala.marcas.map(mk => (
+        <div key={mk.m} className="pointer-events-none absolute inset-x-0 border-t border-border/70" style={{ top: mk.y }} aria-hidden />
+      ))}
+    </>
+  )
+}
+
+/**
+ * Coluna com itens posicionados na escala (suporta durações mistas). Itens que
  * se cruzam dividem a largura em raias.
  */
 export function ColunaHorarios({
-  itens, de, ate, fundo, vazio,
+  itens, escala, fundo, vazio,
 }: {
   itens: ItemColuna[]
-  de: number
-  ate: number
+  escala: Escala
   /** Faixas de fundo (ex.: janela que a família informou). */
   fundo?: { ini: number; fim: number; rotulo: string }[]
   vazio?: ReactNode
@@ -225,21 +288,26 @@ export function ColunaHorarios({
   if (grupo.length) fechar()
 
   return (
-    <div className="relative" style={{ height: Math.max(0, (ate - de) * PX_POR_MIN), ...fundoHoras(de) }}>
-      {fundo?.map(f => (
-        <div key={`${f.ini}-${f.fim}`} title={f.rotulo}
-          className="absolute inset-x-0 bg-emerald-500/10 dark:bg-emerald-400/10"
-          style={{ top: (Math.max(f.ini, de) - de) * PX_POR_MIN, height: (Math.min(f.fim, ate) - Math.max(f.ini, de)) * PX_POR_MIN }}
-          aria-hidden />
-      ))}
+    <div className="relative" style={{ height: escala.altura }}>
+      <LinhasEscala escala={escala} />
+      {fundo?.map(f => {
+        const topo = escala.y(f.ini)
+        const alt = escala.y(f.fim) - topo
+        return alt > 0 && (
+          <div key={`${f.ini}-${f.fim}`} title={f.rotulo}
+            className="absolute inset-x-0 bg-emerald-500/10 dark:bg-emerald-400/10"
+            style={{ top: topo, height: alt }} aria-hidden />
+        )
+      })}
       {!itens.length && vazio}
       {ordenados.map(it => {
         const n = total.get(it.chave) ?? 1
         const r = raia.get(it.chave) ?? 0
-        const h = Math.max(20, (it.fim - it.ini) * PX_POR_MIN - 3)
+        const topo = escala.y(it.ini)
+        const h = Math.max(20, escala.y(it.fim) - topo - 3)
         return (
           <div key={it.chave} className="absolute px-0.5"
-            style={{ top: (it.ini - de) * PX_POR_MIN + 1, height: h, left: `${(r / n) * 100}%`, width: `${100 / n}%` }}>
+            style={{ top: topo + 1, height: h, left: `${(r / n) * 100}%`, width: `${100 / n}%` }}>
             {it.conteudo(h)}
           </div>
         )
@@ -248,27 +316,25 @@ export function ColunaHorarios({
   )
 }
 
-/** Régua de horas à esquerda da grade. */
-export function EixoHoras({ de, ate }: { de: number; ate: number }) {
-  const horas: number[] = []
-  for (let m = Math.ceil(de / 60) * 60; m <= ate; m += 60) horas.push(m)
+/** Régua à esquerda: início de cada horário (08:00, 08:40, 09:20…) e o fim de cada bloco. */
+export function EixoHoras({ escala }: { escala: Escala }) {
+  // Rótulos muito próximos (horário fora do padrão colado num do padrão) se sobrepõem: pula o segundo.
+  const rotulos = escala.marcas.reduce<Escala["marcas"]>((acc, mk) => {
+    const ultimo = acc[acc.length - 1]
+    return !ultimo || mk.y - ultimo.y >= 13 ? [...acc, mk] : acc
+  }, [])
   return (
-    <div className="relative w-14 shrink-0" style={{ height: (ate - de) * PX_POR_MIN }} aria-hidden>
-      {horas.map(m => (
-        <span key={m} className="absolute right-2 -translate-y-1/2 text-[11px] tabular-nums text-muted-foreground" style={{ top: (m - de) * PX_POR_MIN }}>
-          {deMin(m)}
+    <div className="relative w-14 shrink-0" style={{ height: escala.altura }} aria-hidden>
+      {escala.pausas.map(p => (
+        <div key={`p${p.y}`} className="absolute inset-x-0 bg-muted/60" style={{ top: p.y, height: p.h }} />
+      ))}
+      {rotulos.map(mk => (
+        <span key={mk.m} className="absolute right-2 -translate-y-1/2 text-[11px] leading-3 tabular-nums text-muted-foreground" style={{ top: mk.y }}>
+          {deMin(mk.m)}
         </span>
       ))}
     </div>
   )
-}
-
-/** Janela de tempo que cobre os horários (de hora cheia a hora cheia); padrão 08–18. */
-export function janelaDeTempo(intervalos: { ini: number; fim: number }[]): { de: number; ate: number } {
-  if (!intervalos.length) return { de: 8 * 60, ate: 18 * 60 }
-  const de = Math.floor(Math.min(...intervalos.map(i => i.ini)) / 60) * 60
-  const ate = Math.ceil(Math.max(...intervalos.map(i => i.fim)) / 60) * 60
-  return { de, ate: Math.max(ate, de + 60) }
 }
 
 export const minutos = (h: string) => paraMin(horaCurta(h))

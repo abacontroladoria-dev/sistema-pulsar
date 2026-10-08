@@ -5,7 +5,7 @@ import { Lock } from "lucide-react"
 import { foco } from "@/components/cadastros/pacientes/ui/campos"
 import { DIAS_CURTOS, diaDaSemana } from "@/lib/grade/motor"
 import { seletorOpcao, seletorTrilha } from "./estilo"
-import { ColunaHorarios, EixoHoras, PX_POR_MIN, fundoHoras, type ItemColuna } from "./pecas"
+import { ColunaHorarios, EixoHoras, LinhasEscala, type Escala, type ItemColuna } from "./pecas"
 
 // As três visões da Grade, no design padrão (receitas da Agenda do Connect).
 // Semana (dias em colunas) e Dia (profissionais em colunas) usam a mesma grade
@@ -28,10 +28,10 @@ export type ColunaGrade = {
 }
 
 export function GradeColunas({
-  colunas, janela, larguraMin = 128, rotuloAbas, abaInicial,
+  colunas, escala, larguraMin = 128, rotuloAbas, abaInicial,
 }: {
   colunas: ColunaGrade[]
-  janela: { de: number; ate: number }
+  escala: Escala
   larguraMin?: number
   rotuloAbas: string
   /** Aba que abre no celular (ex.: hoje). */
@@ -44,7 +44,6 @@ export function GradeColunas({
     ?? visiveisNoCelular[0]
 
   const template = `56px ${colunas.map(c => (c.estreita ? "72px" : `minmax(${larguraMin}px, 1fr)`)).join(" ")}`
-  const altura = (janela.ate - janela.de) * PX_POR_MIN
 
   return (
     <div>
@@ -64,9 +63,9 @@ export function GradeColunas({
           <div>
             <div className="border-b border-border px-3 py-2">{selecionada.cabecalho}{selecionada.aviso}</div>
             <div className="flex py-2 pr-2">
-              <EixoHoras de={janela.de} ate={janela.ate} />
+              <EixoHoras escala={escala} />
               <div className="min-w-0 flex-1 border-l border-border">
-                <ColunaHorarios itens={selecionada.itens} de={janela.de} ate={janela.ate} fundo={selecionada.fundo} vazio={<Vazio />} />
+                <ColunaHorarios itens={selecionada.itens} escala={escala} fundo={selecionada.fundo} vazio={<Vazio />} />
               </div>
             </div>
           </div>
@@ -88,12 +87,12 @@ export function GradeColunas({
             ))}
           </div>
           <div className="grid py-2" style={{ gridTemplateColumns: template }}>
-            <EixoHoras de={janela.de} ate={janela.ate} />
+            <EixoHoras escala={escala} />
             {colunas.map(c => (
               <div key={c.chave} className={`relative min-w-0 border-l border-border ${c.destaque ? "bg-muted/30" : ""}`}>
                 {c.estreita
-                  ? <div style={{ height: altura, ...fundoHoras(janela.de) }} className="opacity-40" aria-hidden />
-                  : <ColunaHorarios itens={c.itens} de={janela.de} ate={janela.ate} fundo={c.fundo} />}
+                  ? <div style={{ height: escala.altura }} className="relative opacity-40" aria-hidden><LinhasEscala escala={escala} /></div>
+                  : <ColunaHorarios itens={c.itens} escala={escala} fundo={c.fundo} />}
               </div>
             ))}
           </div>

@@ -1,7 +1,8 @@
 "use client"
 
-import { useMemo, useState } from "react"
-import { Search, UserRoundX, X } from "lucide-react"
+import { useMemo, useState, type ReactNode } from "react"
+import * as Popover from "@radix-ui/react-popover"
+import { ChevronDown, Search, UserRoundX, X } from "lucide-react"
 import { campo, foco } from "@/components/cadastros/pacientes/ui/campos"
 import { MultiSearchCombobox } from "@/components/cronograma/ui/MultiSearchCombobox"
 import { normTxt } from "@/lib/cronograma/constants"
@@ -9,10 +10,11 @@ import { dataBR } from "@/lib/disponibilidadeProfissional"
 import type { ProfissionalGrade, ResumoGrade } from "@/types/grade"
 import { btnSecundario, cartao, selo } from "./estilo"
 
-// Lista à esquerda (decisão do usuário, 07/10/2026), enxuta (08/10/2026):
-// ponto na cor da terapia principal, nome e os números da semana em cinza —
-// no padrão das linhas do modo lista de /cadastros/profissionais. No celular
-// ela abre num painel a partir do botão "Escolher …" (ver GradeShell).
+// Lista de profissionais/pacientes, enxuta (08/10/2026): ponto na cor da
+// terapia principal, nome e os números da semana em cinza — no padrão das
+// linhas do modo lista de /cadastros/profissionais. Fica RECOLHIDA num campo
+// "Buscar profissional/paciente" (decisão do usuário, 08/10/2026: a grade
+// ganha a largura toda); a lista completa abre por cima ao clicar nele.
 
 export type LinhaProfissional = {
   p: ProfissionalGrade
@@ -46,6 +48,57 @@ function Busca({ valor, onMudar, rotulo }: { valor: string; onMudar: (v: string)
         </button>
       )}
     </div>
+  )
+}
+
+/**
+ * Campo recolhido "Buscar profissional/paciente" (mostra quem está escolhido);
+ * o clique abre a lista completa num painel flutuante, com a busca em foco.
+ */
+export function SeletorDaLista({
+  aberto, onAberto, rotulo, escolhido, children,
+}: {
+  aberto: boolean
+  onAberto: (v: boolean) => void
+  /** "Buscar profissional" / "Buscar paciente". */
+  rotulo: string
+  escolhido: { nome: string; cor?: string | null } | null
+  /** A lista completa (ListaProfissionais / ListaPacientes). */
+  children: ReactNode
+}) {
+  return (
+    <Popover.Root open={aberto} onOpenChange={onAberto}>
+      <Popover.Trigger asChild>
+        <button type="button" aria-haspopup="dialog" title={escolhido ? `${escolhido.nome} — trocar` : rotulo}
+          className={`flex h-9 w-full min-w-0 items-center gap-2 rounded-md border border-border bg-card px-2.5 text-left text-sm transition-colors hover:bg-muted/50 sm:w-72 ${foco}`}>
+          {escolhido ? (
+            <>
+              {escolhido.cor !== undefined && (
+                <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: escolhido.cor ?? "var(--border)" }} aria-hidden />
+              )}
+              <span className="min-w-0 flex-1 truncate font-medium text-foreground">{escolhido.nome}</span>
+              <span className="sr-only">— {rotulo}</span>
+            </>
+          ) : (
+            <>
+              <Search className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+              <span className="min-w-0 flex-1 truncate text-muted-foreground">{rotulo}</span>
+            </>
+          )}
+          <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+        </button>
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content align="start" sideOffset={6} collisionPadding={16} aria-label={rotulo}
+          // O filtro de terapia abre a própria lista num portal: clicar nela
+          // não é "clicar fora", e o Esc dela não fecha este painel.
+          onInteractOutside={e => { if ((e.target as Element | null)?.closest?.("[data-multisearch-aberto]")) e.preventDefault() }}
+          onEscapeKeyDown={e => { if (document.querySelector("[data-multisearch-aberto]")) e.preventDefault() }}
+          className="z-50 h-[min(70vh,36rem)] w-[min(24rem,calc(100vw-2rem))] rounded-xl shadow-xl outline-none">
+          {children}
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
   )
 }
 
