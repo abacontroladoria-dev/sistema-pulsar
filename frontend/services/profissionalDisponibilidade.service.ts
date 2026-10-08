@@ -39,7 +39,16 @@ const COLS_VERSAO =
 // tem as colunas de substituição — a tela segue sem elas em vez de quebrar.
 const COLS_VERSAO_ANTIGAS = COLS_VERSAO.replace("substituida_em, substituida_por, ", "")
 const COLS_FAIXA =
-  "id, versao_id, dia_semana, hora_inicio, hora_fim, duracao_min, intervalo_ativo, intervalo_inicio, intervalo_fim, local_id, local_nome, unidade_nome, ordem, profissionais_disponibilidade_faixa_terapias(terapia_id, terapia_nome)"
+  "id, versao_id, dia_semana, hora_inicio, hora_fim, duracao_min, capacidade, intervalo_ativo, intervalo_inicio, intervalo_fim, local_id, local_nome, unidade_nome, ordem, profissionais_disponibilidade_faixa_terapias(terapia_id, terapia_nome)"
+// Sem a migration 20261008100100 a faixa não tem `capacidade`: lê sem ela (vale 1).
+const COLS_FAIXA_SEM_CAPACIDADE = COLS_FAIXA.replace("capacidade, ", "")
+
+/**
+ * null = ainda não se sabe; false = o banco não tem a coluna. Enquanto for false,
+ * gravar "Pacientes por horário" > 1 é recusado — a RPC antiga ignoraria o campo
+ * e o número se perderia em silêncio.
+ */
+let bancoTemCapacidade: boolean | null = null
 
 /** Todas as versões do profissional com as faixas (mais recente primeiro). */
 export async function listarVersoes(profissionalId: number): Promise<VersaoDisponibilidade[]> {
@@ -56,12 +65,19 @@ export async function listarVersoes(profissionalId: number): Promise<VersaoDispo
   const lista = (versoes ?? []).map(v => ({ substituida_em: null, substituida_por: null, ...(v as object) })) as Omit<VersaoDisponibilidade, "faixas">[]
   if (!lista.length) return []
 
-  const { data: faixas, error: e2 } = await sb
-    .from("profissionais_disponibilidade_faixas")
-    .select(COLS_FAIXA)
-    .in("versao_id", lista.map(v => v.id))
-    .order("dia_semana")
-    .order("hora_inicio")
+  const lerFaixas = (cols: string) =>
+    sb.from("profissionais_disponibilidade_faixas")
+      .select(cols)
+      .in("versao_id", lista.map(v => v.id))
+      .order("dia_semana")
+      .order("hora_inicio") as unknown as PromiseLike<Resposta>
+  let { data: faixas, error: e2 } = await lerFaixas(COLS_FAIXA)
+  if (e2 && (e2.code === "42703" || e2.code === "PGRST204")) {
+    bancoTemCapacidade = false
+    ;({ data: faixas, error: e2 } = await lerFaixas(COLS_FAIXA_SEM_CAPACIDADE))
+  } else if (!e2) {
+    bancoTemCapacidade = true
+  }
   if (e2) falha(e2)
 
   type Linha = Omit<FaixaGravada, "terapias"> & {
@@ -142,6 +158,13 @@ export async function criarVersao(args: {
   origem: OrigemVersao
   restauradaDe?: string | null
 }): Promise<string> {
+  const temGrupo = args.faixas.some(f => ((f as { capacidade?: number }).capacidade ?? 1) > 1)
+  if (temGrupo && bancoTemCapacidade === false) {
+    throw new Error(
+      "\"Pacientes por horário\" maior que 1 ainda não pode ser gravado: falta aplicar a migration " +
+      "20261008100100_grade_capacidade_faixa_e_saida_profissional.sql. Nada foi salvo."
+    )
+  }
   const { data, error } = await getSupabaseClient().rpc("profissional_disponibilidade_criar_versao", {
     p_profissional_id: args.profissionalId,
     p_vigente_de: args.vigenteDe,

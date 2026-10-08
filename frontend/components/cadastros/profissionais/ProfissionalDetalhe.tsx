@@ -20,6 +20,7 @@ import { AbaCadastro } from "./AbaCadastro"
 import { AbaTerapias } from "./AbaTerapias"
 import { SecaoImagens, TrocarFotoAvatar } from "./imagens"
 import { AvatarProfissional, estiloCor } from "./pecas"
+import { InativarProfissionalModal } from "./InativarProfissionalModal"
 import { AbaDisponibilidade } from "./disponibilidade/AbaDisponibilidade"
 import { AbaHistorico } from "./disponibilidade/AbaHistorico"
 import { SeloGrade } from "./disponibilidade/pecasDisponibilidade"
@@ -49,6 +50,7 @@ export function ProfissionalDetalhe({ id, abaInicial }: { id: number; abaInicial
   const [verHistorico, setVerHistorico] = useState(false)
   const [versaoFoco, setVersaoFoco] = useState<string | null>(null)
   const [alternandoAtivo, setAlternandoAtivo] = useState(false)
+  const [inativando, setInativando] = useState(false)
 
   const { registerGuard } = useUnsavedChangesGuard()
   const { camposSujos, salvar } = d
@@ -121,24 +123,21 @@ export function ProfissionalDetalhe({ id, abaInicial }: { id: number; abaInicial
     if (await d.salvar()) setEditando(false)
   }
   const alternarAtivo = async () => {
-    const ok = await confirmar(prof.ativo
-      ? {
-          titulo: `Inativar ${prof.nome}?`,
-          texto: "O cadastro, a disponibilidade e o histórico continuam guardados; o profissional só sai da lista padrão.",
-          confirmar: "Inativar",
-          t: "vermelho",
-          Icone: CircleSlash,
-        }
-      : {
-          titulo: `Reativar ${prof.nome}?`,
-          texto: "O profissional volta para a lista de ativos.",
-          confirmar: "Reativar",
-          t: "verde",
-          Icone: RotateCcw,
-        })
+    // Inativar pede data de saída e o destino dos agendamentos (Grade): modal próprio.
+    if (prof.ativo) {
+      setInativando(true)
+      return
+    }
+    const ok = await confirmar({
+      titulo: `Reativar ${prof.nome}?`,
+      texto: "O profissional volta para a lista de ativos. Sessões excluídas na saída não voltam; a disponibilidade precisa de uma versão nova.",
+      confirmar: "Reativar",
+      t: "verde",
+      Icone: RotateCcw,
+    })
     if (!ok) return
     setAlternandoAtivo(true)
-    if (await d.gravarDireto({ ativo: !prof.ativo })) avisoFeito(prof.ativo ? "Profissional inativado" : "Profissional reativado")
+    if (await d.gravarDireto({ ativo: true })) avisoFeito("Profissional reativado")
     setAlternandoAtivo(false)
   }
 
@@ -333,6 +332,15 @@ export function ProfissionalDetalhe({ id, abaInicial }: { id: number; abaInicial
       </div>
 
       {dialogo}
+
+      {inativando && (
+        <InativarProfissionalModal
+          profissional={{ id: prof.id, nome: prof.nome }}
+          onFechar={() => setInativando(false)}
+          onFeito={() => { void d.recarregar(); void refetchProfissionais(); void disp.recarregar() }}
+          inativarSemGrade={() => d.gravarDireto({ ativo: false })}
+        />
+      )}
 
       {verHistorico && (
         <HistoricoCadastrosModal

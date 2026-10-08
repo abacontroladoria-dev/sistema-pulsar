@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react"
 import {
-  ArrowUpRight, CalendarRange, ChevronDown, CircleSlash, FastForward, FileClock, GitCompare, History, Plus, Replace, RotateCcw, UserRound,
+  ArrowUpRight, CalendarRange, ChevronDown, CircleSlash, FastForward, FileClock, GitCompare, History, Plus, Replace, RotateCcw, UserRound, Users,
 } from "lucide-react"
 import { CabecalhoPastel, SecaoPastel, tom, type Tom } from "@/components/ui/pastel/pecas"
 import {
@@ -23,6 +23,7 @@ const EVENTO: Record<EventoDisponibilidade["tipo"], { t: Tom; Icone: typeof Plus
   restaurar: { t: "azul", Icone: RotateCcw, verbo: "restaurou como" },
   substituir: { t: "cinza", Icone: Replace, verbo: "substituiu" },
   antecipar: { t: "verde", Icone: FastForward, verbo: "fez valer a partir de hoje" },
+  carga_capacidade: { t: "aco", Icone: Users, verbo: "copiou \"Pacientes por horário\" dos Indicadores para" },
 }
 
 const ORIGEM: Record<VersaoDisponibilidade["origem"], string> = {

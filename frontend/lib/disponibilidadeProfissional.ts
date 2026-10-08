@@ -17,6 +17,10 @@ export const DIAS_SEMANA = [
 
 export const DURACOES = [30, 40, 45, 50, 60] as const
 
+/** "Pacientes por horário" (capacidade da faixa): 1 = individual. Mesmo limite da RPC. */
+export const CAPACIDADE_MIN = 1
+export const CAPACIDADE_MAX = 10
+
 export const nomeDia = (n: number) => DIAS_SEMANA.find(d => d.n === n)?.nome ?? `Dia ${n}`
 export const curtoDia = (n: number) => DIAS_SEMANA.find(d => d.n === n)?.curto ?? String(n)
 
@@ -90,6 +94,7 @@ export function novaFaixa(dia: number, base?: Partial<FaixaRascunho>): FaixaRasc
     inicio: "08:00",
     fim: "17:40",
     duracao: 40,
+    capacidade: 1,
     intervaloAtivo: true,
     intervaloInicio: "12:00",
     intervaloFim: "13:00",
@@ -116,6 +121,7 @@ export function faixaDeGravada(f: FaixaGravada): FaixaRascunho {
     inicio: horaCurta(f.hora_inicio),
     fim: horaCurta(f.hora_fim),
     duracao: f.duracao_min,
+    capacidade: f.capacidade ?? 1,
     intervaloAtivo: f.intervalo_ativo,
     intervaloInicio: horaCurta(f.intervalo_inicio) || "12:00",
     intervaloFim: horaCurta(f.intervalo_fim) || "13:00",
@@ -134,6 +140,7 @@ export function faixasParaRpc(r: RascunhoDisponibilidade) {
       hora_inicio: f.inicio,
       hora_fim: f.fim,
       duracao_min: f.duracao,
+      capacidade: f.capacidade,
       intervalo_ativo: f.intervaloAtivo,
       intervalo_inicio: f.intervaloAtivo ? f.intervaloInicio : null,
       intervalo_fim: f.intervaloAtivo ? f.intervaloFim : null,
@@ -190,6 +197,9 @@ export function validarRascunho(r: RascunhoDisponibilidade, habilitadas: Set<num
     const fora = f.terapias.filter(t => !habilitadas.has(t))
     if (fora.length) add(erros, f.chave, "Há terapia que não está habilitada para o profissional.")
     if (!f.localId) add(erros, f.chave, "Escolha o local.")
+    if (!Number.isInteger(f.capacidade) || f.capacidade < CAPACIDADE_MIN || f.capacidade > CAPACIDADE_MAX) {
+      add(erros, f.chave, `Pacientes por horário deve ficar entre ${CAPACIDADE_MIN} e ${CAPACIDADE_MAX}.`)
+    }
     const sobra = fim > ini ? sobraDaFaixa(f) : 0
     if (sobra > 0) add(avisos, f.chave, `Sobram ${sobra} min sem formar sessão.`)
   }
@@ -214,21 +224,26 @@ export function validarRascunho(r: RascunhoDisponibilidade, habilitadas: Set<num
 
 // ── Totais ────────────────────────────────────────────────────────────────────
 
+/**
+ * `sessoes` = horários da semana; `vagas` = horários × pacientes por horário
+ * (um grupo de 3 é 1 horário e 3 vagas).
+ */
 export function totaisDaSemana(r: RascunhoDisponibilidade) {
   const ativos = new Set(r.diasAtivos)
-  let sessoes = 0, minutos = 0
+  let sessoes = 0, minutos = 0, vagas = 0
   const porDia = new Map<number, number>()
   const porTerapia = new Map<number, number>()
   for (const f of r.faixas) {
     if (!ativos.has(f.dia)) continue
     const n = sessoesDaFaixa(f).length
     sessoes += n
+    vagas += n * (f.capacidade ?? 1)
     minutos += n * f.duracao
     porDia.set(f.dia, (porDia.get(f.dia) ?? 0) + n)
     // Faixa com várias terapias: a sessão pode ser de qualquer uma — conta para todas.
     for (const t of f.terapias) porTerapia.set(t, (porTerapia.get(t) ?? 0) + n)
   }
-  return { sessoes, minutos, porDia, porTerapia }
+  return { sessoes, vagas, minutos, porDia, porTerapia }
 }
 
 // ── Cópia de dia ──────────────────────────────────────────────────────────────
@@ -376,7 +391,7 @@ export function diferencasEntreVersoes(
 ): Diferenca[] {
   const out: Diferenca[] = []
   const desc = (f: FaixaRascunho) =>
-    `${f.inicio}–${f.fim}${f.intervaloAtivo ? ` (intervalo ${f.intervaloInicio}–${f.intervaloFim})` : ""} · ${f.duracao} min · ${nomeLocal(f.localId)} · ${f.terapias.map(nomeTerapia).join(", ")}`
+    `${f.inicio}–${f.fim}${f.intervaloAtivo ? ` (intervalo ${f.intervaloInicio}–${f.intervaloFim})` : ""} · ${f.duracao} min${(f.capacidade ?? 1) > 1 ? ` · ${f.capacidade} pacientes por horário` : ""} · ${nomeLocal(f.localId)} · ${f.terapias.map(nomeTerapia).join(", ")}`
   const assinatura = (f: FaixaRascunho) => desc(f)
 
   for (const d of DIAS_SEMANA) {

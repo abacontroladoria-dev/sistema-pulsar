@@ -117,6 +117,11 @@ function CronogramaLayoutInner({ children }: { children: React.ReactNode }) {
   // renomeação (2026-08-25) continuarem escondendo o badge certo.
   const isOportunidadesRecusadasTab = !!pathname?.includes('/ocupacao') && !isOcupacaoPacientePage && !isOcupacaoSalasPage &&
     (searchParams.get('tab') === 'oportunidades-recusadas' || searchParams.get('tab') === 'acompanhamento')
+  // A Grade (agenda própria do Pulsar) NÃO lê a grade do TiTa nem os laudos ao
+  // abrir — decisão do usuário (07/10/2026): o TiTa só entra pelo botão
+  // "Importar do TiTa" da própria página. Aqui ela não dispara nenhuma carga nem
+  // ocupa o lado direito do header (a página usa o espaço).
+  const isGradePage = !!pathname && /\/cronograma\/grade(\/|$)/.test(pathname)
   const gradeFetchedRef = useRef(false)
   const laudosFetchedRef = useRef(false)
 
@@ -124,7 +129,7 @@ function CronogramaLayoutInner({ children }: { children: React.ReactNode }) {
   // ao entrar no módulo. A grade é a fonte canônica no banco — não depende do upload de
   // laudos, então o badge "Grade" (status-only) preenche sozinho nas abas Saída/Ocup.
   useEffect(() => {
-    if (gradeFetchedRef.current || cRows.length > 0) return
+    if (isGradePage || gradeFetchedRef.current || cRows.length > 0) return
     gradeFetchedRef.current = true
     const rw = getRefWeek()
     setGradeLoading(true)
@@ -139,7 +144,7 @@ function CronogramaLayoutInner({ children }: { children: React.ReactNode }) {
         setGradeError(e instanceof Error ? e.message : "Erro ao carregar a grade.")
       })
       .finally(() => setGradeLoading(false))
-  }, [cRows.length, setCRows])
+  }, [isGradePage, cRows.length, setCRows])
 
   // Carrega os laudos automaticamente do relatório do Órbita que o robô hospedado
   // no Coolify grava todo dia no Supabase (orbita_laudos_importacoes +
@@ -157,7 +162,7 @@ function CronogramaLayoutInner({ children }: { children: React.ReactNode }) {
   // se dá por executado e o badge fica preso no erro sem permitir nova
   // tentativa.
   useEffect(() => {
-    if (laudosFetchedRef.current || lRows.length > 0) return
+    if (isGradePage || laudosFetchedRef.current || lRows.length > 0) return
     laudosFetchedRef.current = true
     setUploading(true)
     setUploadError(null)
@@ -177,7 +182,7 @@ function CronogramaLayoutInner({ children }: { children: React.ReactNode }) {
         setUploadError(e instanceof Error ? e.message : "Erro ao carregar os laudos.")
       })
       .finally(() => setUploading(false))
-  }, [lRows.length, setLRows])
+  }, [isGradePage, lRows.length, setLRows])
 
   const handleLaudosFile = useCallback(async (file: File) => {
     const rw = getRefWeek()
@@ -240,7 +245,7 @@ function CronogramaLayoutInner({ children }: { children: React.ReactNode }) {
   }, [setDispRows])
 
   useEffect(() => {
-    if (isIndicadoresPage || isReposicaoPage || isOportunidadesRecusadasTab) return // página gerencia o próprio rightContent — não interferir
+    if (isGradePage || isIndicadoresPage || isReposicaoPage || isOportunidadesRecusadasTab) return // página gerencia o próprio rightContent — não interferir
     setRightContent(
       <CronogramaUploadBadges
         cRows={cRows}
@@ -263,7 +268,7 @@ function CronogramaLayoutInner({ children }: { children: React.ReactNode }) {
       />
     )
     return () => setRightContent(null)
-  }, [cRows, lRows, dispRows, uploading, gradeLoading, uploadError, gradeError, dispUploading, dispError, laudosMeta, handleLaudosFile, handleClear, handleDispFile, handleClearDisp, setRightContent, isIndicadoresPage, isOcupacaoSalasPage, isReposicaoPage, isNovoCron, isOcupacaoPacientePage, isOportunidadesRecusadasTab])
+  }, [cRows, lRows, dispRows, uploading, gradeLoading, uploadError, gradeError, dispUploading, dispError, laudosMeta, handleLaudosFile, handleClear, handleDispFile, handleClearDisp, setRightContent, isGradePage, isIndicadoresPage, isOcupacaoSalasPage, isReposicaoPage, isNovoCron, isOcupacaoPacientePage, isOportunidadesRecusadasTab])
 
   return <div>{children}</div>
 }
