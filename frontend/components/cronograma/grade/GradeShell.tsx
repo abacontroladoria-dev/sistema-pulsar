@@ -20,7 +20,7 @@ import {
 } from "@/lib/grade/motor"
 import { disponibilidadePaciente } from "@/services/grade.service"
 import type { AgendamentoGrade, BloqueioGrade, DiaGrade, DisponibilidadePacienteGrade, HorarioGrade, ProfissionalGrade } from "@/types/grade"
-import { ResumoPaciente, ResumoProfissional } from "./CartaoResumo"
+import { PainelResumo, QuemPaciente, QuemProfissional, type EstadoFiltro, type FiltroResumo, type NumeroResumo } from "./CartaoResumo"
 import { ListaPacientes, ListaProfissionais, SeletorDaLista, type LinhaPaciente, type LinhaProfissional } from "./ListaLateral"
 import { PainelAgendamento } from "./PainelAgendamento"
 import { PainelNovoBloqueio, PainelVerBloqueio } from "./PainelBloqueio"
@@ -28,7 +28,7 @@ import { PainelImportarTita } from "./PainelImportarTita"
 import { PainelNovoAgendamento, type InicialNovo } from "./PainelNovoAgendamento"
 import { PainelRegistro } from "./PainelRegistro"
 import {
-  BlocoHorario, CartaoSessao, INICIOS_PADRAO, Legenda, TOM_ESTADO, grupoDoEstado, minutos, montarEscala, type FiltroEstados, type ItemColuna,
+  BlocoHorario, CartaoSessao, INICIOS_PADRAO, TOM_ESTADO, grupoDoEstado, linhasQueCabem, minutos, montarEscala, type FiltroEstados, type ItemColuna, type VisualTerapia,
 } from "./pecas"
 import { AvisoFeriado, CabecalhoDia, GradeColunas, GradeMes, type ColunaGrade, type NumerosDia } from "./visoes"
 import { btnIcone, btnPrimario, btnSecundario, cartao, seletorOpcao, seletorTrilha } from "./estilo"
@@ -118,7 +118,10 @@ export function GradeShell() {
   }, [dadosSemana, dadosMes, base])
 
   const catalogoPorId = useMemo(() => new Map(catalogo.map(t => [t.id, t])), [catalogo])
-  const corDe = useCallback((terapiaId: number) => catalogoPorId.get(terapiaId)?.cor_hex ?? null, [catalogoPorId])
+  const visualDe = useCallback((terapiaId: number): VisualTerapia => {
+    const t = catalogoPorId.get(terapiaId)
+    return { cor: t?.cor_hex ?? null, icone: t?.icone ?? null }
+  }, [catalogoPorId])
   const profPorId = useMemo(() => new Map(base.profissionais.map(p => [p.id, p])), [base.profissionais])
   const focal = useCallback((p: ProfissionalGrade) => {
     const t = catalogoPorId.get(p.terapia_focal_id ?? p.terapias[0] ?? -1)
@@ -177,13 +180,13 @@ export function GradeShell() {
         ini: minutos(h.inicio),
         fim: minutos(h.fim),
         conteudo: (altura: number) => (
-          <BlocoHorario h={h} altura={altura} corDe={corDe}
+          <BlocoHorario h={h} altura={altura} visualDe={visualDe}
             onSessao={a => abrirSessao(a, h.estado === "fora_da_grade")}
             onLivre={h.data >= hoje ? hh => abrirLivre(hh, profissionalId) : undefined}
             onFechado={hh => abrirFechado(hh, bloqueios)}
             onVerTodos={hh => setPainel({ tipo: "horario", h: hh, profissionalId })} />
         ),
-      })), [ocultos, corDe, abrirSessao, abrirLivre, abrirFechado, hoje])
+      })), [ocultos, visualDe, abrirSessao, abrirLivre, abrirFechado, hoje])
 
   // ── Lista lateral ───────────────────────────────────────────────────────────
   const diasPorProf = useMemo(() => {
@@ -278,7 +281,8 @@ export function GradeShell() {
       const colunas: ColunaGrade[] = dias.map(d => ({
         chave: d.data,
         aba: `${DIAS_CURTOS[diaDaSemana(d.data)]} ${Number(d.data.slice(8, 10))}`,
-        cabecalho: <CabecalhoDia data={d.data} hoje={hoje} vazio={!d.horarios.length && !d.feriado} />,
+        cabecalho: <CabecalhoDia data={d.data} hoje={hoje} />,
+        textoVazio: !d.horarios.length && !d.feriado && ![0, 6].includes(diaDaSemana(d.data)) ? "Sem atendimento" : undefined,
         itens: itensDoDia(d, profSel.id, dadosSemana.bloqueios),
         estreita: [0, 6].includes(diaDaSemana(d.data)) && !d.horarios.length,
         destaque: d.data === hoje,
@@ -312,7 +316,7 @@ export function GradeShell() {
         .map(({ a, rep, fora }) => ({
           chave: a.id, ini: minutos(a.hora_inicio), fim: minutos(a.hora_fim),
           conteudo: (altura: number) => (
-            <CartaoSessao a={a} cor={corDe(a.terapia_id)} titulo={a.profissional_nome} linhas={altura >= 70 ? 3 : altura >= 44 ? 2 : 1}
+            <CartaoSessao a={a} visual={visualDe(a.terapia_id)} titulo={a.profissional_nome} linhas={linhasQueCabem(altura)}
               alerta={rep ? { t: "red", rotulo: "reposição" } : fora ? { t: "amber", rotulo: "fora da janela" } : null}
               onClick={() => abrirSessao(a)} />
           ),
@@ -321,7 +325,8 @@ export function GradeShell() {
       return {
         chave: d,
         aba: `${DIAS_CURTOS[diaDaSemana(d)]} ${Number(d.slice(8, 10))}`,
-        cabecalho: <CabecalhoDia data={d} hoje={hoje} vazio={!s.length && !fer} />,
+        cabecalho: <CabecalhoDia data={d} hoje={hoje} />,
+        textoVazio: !s.length && !fer && ![0, 6].includes(diaDaSemana(d)) ? "Sem sessão" : undefined,
         itens,
         fundo: janela ? [{ ini: minutos(janela.inicio), fim: minutos(janela.fim), rotulo: `Família disponível ${janela.inicio}–${janela.fim}` }] : undefined,
         estreita: periodo === "semana" && [0, 6].includes(diaDaSemana(d)) && !s.length,
@@ -331,7 +336,7 @@ export function GradeShell() {
     })
     return { tipo: "colunas" as const, colunas, dias: [], sessoes: doPac.filter(a => datas.includes(a.data)) }
   }, [visao, periodo, filtroDia, base.profissionais, diasPorProf, data, focal, itensDoDia, dadosSemana.bloqueios, dadosSemana.agendamentos, dadosSemana.feriados,
-      profSel, datasMes, dadosMes.faixas, dadosMes.agendamentos, dadosMes.bloqueios, dadosMes.feriados, hoje, id, semana, dispPac, profPorId, ocultos, corDe, abrirSessao, ir])
+      profSel, datasMes, dadosMes.faixas, dadosMes.agendamentos, dadosMes.bloqueios, dadosMes.feriados, hoje, id, semana, dispPac, profPorId, ocultos, visualDe, abrirSessao, ir])
 
   // Régua pelos horários da regra de negócio (08:00, 08:40, 09:20…). Usa os
   // horários da grade SEM o filtro da legenda, para a régua não pular quando
@@ -394,7 +399,49 @@ export function GradeShell() {
   }
   const erro = base.erro ?? dadosSemana.erro ?? dadosMes.erro
   const carregando = base.carregando || dadosSemana.carregando || (periodo === "mes" && dadosMes.carregando)
-  const resumoPeriodo = periodo === "dia" ? "no dia" : periodo === "semana" ? "na semana" : "no mês"
+
+  // Painel único (resumo + filtro): os números de estado escondem/mostram na
+  // grade; "fora da grade" e "reposição" só aparecem quando existem.
+  const alternar = (k: EstadoFiltro) => setOcultos(prev => { const n = new Set(prev); if (n.has(k)) n.delete(k); else n.add(k); return n })
+  const filtroSe = (k: EstadoFiltro, valor: number, rotulo: string, sempre = true): FiltroResumo[] =>
+    sempre || valor > 0 || ocultos.has(k) ? [{ k, valor, rotulo }] : []
+  const filtraveis = conteudo.tipo === "colunas"
+  let painelResumo: React.ReactNode = null
+  if (visao === "profissional" && conteudo.tipo !== "escolher" && "resumo" in conteudo && conteudo.resumo) {
+    const r = conteudo.resumo
+    const c = conteudo.tipo === "mes"
+      ? { disponivel: r.disponiveis, agendado: r.agendados - r.reposicao, bloqueado: r.bloqueados, fora_da_grade: 0, inativo: r.reposicao }
+      : contagens
+    const numeros: NumeroResumo[] = [{ valor: r.ocupacao == null ? "—" : `${Math.round(r.ocupacao * 100)}%`, rotulo: "Ocupação" }]
+    painelResumo = (
+      <PainelResumo ocultos={ocultos} onAlternar={filtraveis ? alternar : undefined} numeros={numeros}
+        esquerda={profSel
+          ? <QuemProfissional p={profSel} {...focal(profSel)} />
+          : <div><h2 className="text-base font-bold text-foreground">Todos os profissionais</h2>
+              <p className="text-xs text-muted-foreground">{conteudo.tipo === "colunas" ? conteudo.colunas.length : 0} com grade ou sessão no dia</p></div>}
+        filtros={[
+          ...filtroSe("disponivel", c.disponivel ?? 0, "Livres"),
+          ...filtroSe("agendado", c.agendado ?? 0, "Agendados"),
+          ...filtroSe("bloqueado", c.bloqueado ?? 0, "Bloqueados"),
+          ...filtroSe("fora_da_grade", c.fora_da_grade ?? 0, "Fora da grade", false),
+          ...filtroSe("inativo", c.inativo ?? 0, "Reposição", false),
+        ]} />
+    )
+  } else if (pacSel && "sessoes" in conteudo && conteudo.sessoes) {
+    const foraJanela = conteudo.sessoes.filter(a => foraDaJanelaDoPaciente(dispPac, a)).length
+    painelResumo = (
+      <PainelResumo ocultos={ocultos} onAlternar={filtraveis ? alternar : undefined}
+        esquerda={<QuemPaciente nome={pacSel.nome} convenio={pacSel.convenio_nome} semDisponibilidade={!dispPac} />}
+        filtros={[
+          ...filtroSe("agendado", contagens.agendado ?? 0, "Sessões"),
+          ...filtroSe("inativo", contagens.inativo ?? 0, "Reposição", false),
+        ]}
+        numeros={[
+          { valor: new Set(conteudo.sessoes.map(a => a.profissional_id)).size, rotulo: "Profissionais" },
+          ...(foraJanela ? [{ valor: foraJanela, rotulo: "Fora da janela", destaque: true }] : []),
+        ]} />
+    )
+  }
 
   // Profissional escolhido sem nenhuma faixa de disponibilidade no período: a
   // grade só mostraria "fora da grade" sem explicar por quê.
@@ -449,21 +496,7 @@ export function GradeShell() {
             </div>
           </div>
 
-          {/* Resumo */}
-          {profSel && periodo !== "dia" && "resumo" in conteudo && conteudo.resumo && (
-            <ResumoProfissional p={profSel} {...focal(profSel)} resumo={conteudo.resumo} periodo={resumoPeriodo} />
-          )}
-          {pacSel && "sessoes" in conteudo && conteudo.sessoes && (
-            <ResumoPaciente nome={pacSel.nome} convenio={pacSel.convenio_nome} periodo={resumoPeriodo}
-              sessoes={conteudo.sessoes.length}
-              profissionais={new Set(conteudo.sessoes.map(a => a.profissional_id)).size}
-              reposicao={conteudo.sessoes.filter(a => precisaReposicao(a, profPorId)).length}
-              foraDaJanela={conteudo.sessoes.filter(a => foraDaJanelaDoPaciente(dispPac, a)).length}
-              semDisponibilidade={!dispPac} />
-          )}
-
-          {conteudo.tipo !== "escolher" && conteudo.tipo !== "mes" && <Legenda contagens={contagens} ocultos={ocultos}
-            onAlternar={k => setOcultos(prev => { const n = new Set(prev); if (n.has(k)) n.delete(k); else n.add(k); return n })} />}
+          {painelResumo}
 
           {semDisponibilidade && (
             <InlineNotice tone="amber" icon={<CalendarPlus className="h-4 w-4" />}>
@@ -524,7 +557,7 @@ export function GradeShell() {
           <ul className="space-y-2">
             {painel.h.ocupados.map(a => (
               <li key={a.id} className="h-14">
-                <CartaoSessao a={a} cor={corDe(a.terapia_id)} titulo={a.paciente_nome} linhas={2} onClick={() => abrirSessao(a)} />
+                <CartaoSessao a={a} visual={visualDe(a.terapia_id)} titulo={a.paciente_nome} linhas={3} onClick={() => abrirSessao(a)} />
               </li>
             ))}
           </ul>
@@ -536,7 +569,7 @@ export function GradeShell() {
         </Drawer>
       )}
       {painel?.tipo === "sessao" && (
-        <PainelAgendamento a={painel.a} cor={corDe(painel.a.terapia_id)}
+        <PainelAgendamento a={painel.a} cor={visualDe(painel.a.terapia_id).cor}
           reposicao={precisaReposicao(painel.a, profPorId)} foraDaGrade={painel.foraDaGrade}
           foraDaJanela={visao === "paciente" && foraDaJanelaDoPaciente(dispPac, painel.a)}
           onFechar={() => setPainel(null)} onMudou={recarregar} />

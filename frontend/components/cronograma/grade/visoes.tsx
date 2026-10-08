@@ -24,6 +24,11 @@ export type ColunaGrade = {
   estreita?: boolean
   /** Linha extra no cabeçalho (feriado). */
   aviso?: ReactNode
+  /**
+   * Dia útil sem grade nem sessão: o aviso fica no topo da própria coluna, não
+   * no cabeçalho (que assim não cresce). Fim de semana não ganha aviso.
+   */
+  textoVazio?: string
   destaque?: boolean
 }
 
@@ -65,7 +70,7 @@ export function GradeColunas({
             <div className="flex py-2 pr-2">
               <EixoHoras escala={escala} />
               <div className="min-w-0 flex-1 border-l border-border">
-                <ColunaHorarios itens={selecionada.itens} escala={escala} fundo={selecionada.fundo} vazio={<Vazio />} />
+                <ColunaHorarios itens={selecionada.itens} escala={escala} fundo={selecionada.fundo} vazio={<Vazio texto={selecionada.textoVazio} />} />
               </div>
             </div>
           </div>
@@ -80,7 +85,7 @@ export function GradeColunas({
           <div className="sticky top-0 z-10 grid border-b border-border bg-card" style={{ gridTemplateColumns: template }}>
             <div aria-hidden />
             {colunas.map(c => (
-              <div key={c.chave} className={`min-w-0 border-l border-border px-1.5 py-2 ${c.destaque ? "bg-muted/30" : ""}`}>
+              <div key={c.chave} className={`min-w-0 border-l border-border px-1.5 py-1 ${c.destaque ? "bg-muted/30" : ""}`}>
                 {c.cabecalho}
                 {c.aviso}
               </div>
@@ -92,7 +97,8 @@ export function GradeColunas({
               <div key={c.chave} className={`relative min-w-0 border-l border-border ${c.destaque ? "bg-muted/30" : ""}`}>
                 {c.estreita
                   ? <div style={{ height: escala.altura }} className="relative opacity-40" aria-hidden><LinhasEscala escala={escala} /></div>
-                  : <ColunaHorarios itens={c.itens} escala={escala} fundo={c.fundo} />}
+                  : <ColunaHorarios itens={c.itens} escala={escala} fundo={c.fundo}
+                      vazio={c.textoVazio ? <p className="absolute inset-x-1 top-2 text-center text-[11px] text-muted-foreground">{c.textoVazio}</p> : undefined} />}
               </div>
             ))}
           </div>
@@ -102,35 +108,32 @@ export function GradeColunas({
   )
 }
 
-function Vazio() {
+function Vazio({ texto }: { texto?: string }) {
   return (
     <p className="absolute inset-x-2 top-6 rounded-lg border border-dashed border-border px-3 py-4 text-center text-sm text-muted-foreground">
-      Nada neste dia.
+      {texto ?? "Nada neste dia."}
     </p>
   )
 }
 
-/** Cabeçalho de um dia: "SEG" e o número num círculo (hoje preenchido). */
-export function CabecalhoDia({ data, hoje, extra, vazio = false }: {
+/** Cabeçalho de um dia, numa linha só: "SEG" e o número num círculo (hoje preenchido). */
+export function CabecalhoDia({ data, hoje, extra }: {
   data: string
   hoje: string
   extra?: ReactNode
-  /** Dia sem grade nem sessão: avisa uma vez aqui, não em cada horário. */
-  vazio?: boolean
 }) {
   const ehHoje = data === hoje
   return (
-    <div className="flex flex-col items-center gap-0.5 text-center">
+    <div className="flex items-center justify-center gap-1.5 text-center">
       <span className={`text-[11px] font-medium uppercase ${ehHoje ? "text-foreground" : "text-muted-foreground"}`}>
         {DIAS_CURTOS[diaDaSemana(data)]}
       </span>
-      <span className={`flex h-9 w-9 items-center justify-center rounded-full text-base tabular-nums ${
+      <span className={`flex h-7 w-7 items-center justify-center rounded-full text-sm tabular-nums ${
         ehHoje ? "bg-primary font-semibold text-primary-foreground" : "text-foreground"}`}
         aria-label={ehHoje ? "hoje" : undefined}>
         {Number(data.slice(8, 10))}
       </span>
       {extra}
-      {vazio && <span className="text-[11px] text-muted-foreground">Sem atendimento</span>}
     </div>
   )
 }

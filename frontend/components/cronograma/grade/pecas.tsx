@@ -4,6 +4,7 @@ import type { ReactNode } from "react"
 import { Lock, Plus } from "lucide-react"
 import { foco } from "@/components/cadastros/pacientes/ui/campos"
 import type { Tone } from "@/components/cronograma/ui/tones"
+import { IconeTerapia } from "@/lib/cadastros/iconesTerapia"
 import { estiloTons } from "@/lib/cadastros/tonsTerapia"
 import { deMin, horaCurta, paraMin } from "@/lib/disponibilidadeProfissional"
 import { rotuloVagas } from "@/lib/grade/motor"
@@ -37,22 +38,27 @@ export function grupoDoEstado(e: EstadoHorario): keyof typeof TOM_ESTADO {
 
 // ── Sessão ────────────────────────────────────────────────────────────────────
 
+/** Cor e ícone de uma terapia (cadastro_terapias.cor_hex / icone). */
+export type VisualTerapia = { cor: string | null; icone: string | null }
+
 /**
- * Uma sessão na cor da terapia (receita do bloco da Agenda do Connect).
- * `linhas` = quanto cabe: 1 (só o título), 2 (+ horário · terapia), 3 (+ sala).
+ * Uma sessão na cor da terapia (receita do bloco da Agenda do Connect). Sem a
+ * hora — a régua à esquerda já mostra (decisão do usuário, 08/10/2026).
+ * `linhas` = quanto cabe: 1 (só o título), 2 (+ ícone e terapia),
+ * 3 (+ terapia de exibição, só quando difere da terapia principal).
  */
 export function CartaoSessao({
-  a, cor, titulo, linhas = 2, alerta, onClick,
+  a, visual, titulo, linhas = 2, alerta, onClick,
 }: {
   a: AgendamentoGrade
-  cor: string | null
+  visual: VisualTerapia
   titulo: string
   linhas?: 1 | 2 | 3
   /** Selo pequeno (fora da grade, reposição…). */
   alerta?: { t: Tone; rotulo: string } | null
   onClick: () => void
 }) {
-  const terapia = a.terapia_exibicao_nome ?? a.terapia_nome
+  const exibicao = a.terapia_exibicao_nome && a.terapia_exibicao_nome !== a.terapia_nome ? a.terapia_exibicao_nome : null
   const hora = `${horaCurta(a.hora_inicio)}–${horaCurta(a.hora_fim)}`
   const contorno = alerta?.t === "amber" ? "ring-amber-400 dark:ring-amber-500"
     : alerta?.t === "red" ? "ring-rose-400 dark:ring-rose-500"
@@ -61,29 +67,37 @@ export function CartaoSessao({
     <button
       type="button"
       onClick={e => { e.stopPropagation(); onClick() }}
-      style={estiloTons(cor)}
-      title={`${hora} · ${a.paciente_nome} × ${a.profissional_nome} · ${terapia}${a.sala_nome ? ` · ${a.sala_nome}` : ""}`}
+      style={estiloTons(visual.cor)}
+      title={`${hora} · ${a.paciente_nome} × ${a.profissional_nome} · ${a.terapia_nome}${exibicao ? ` (exibição: ${exibicao})` : ""}${a.sala_nome ? ` · ${a.sala_nome}` : ""}`}
       className={`ua-tons block h-full w-full min-w-0 overflow-hidden rounded-md bg-[var(--t-50)] px-2 py-0.5 text-left text-[var(--t-700)] ring-1 ring-inset transition-shadow ${contorno} ${foco}`}
     >
       <span className="flex min-w-0 items-center gap-1">
         <span className="truncate text-xs font-semibold leading-4">{titulo}</span>
         {alerta && <span className={`${selo(alerta.t)} ml-auto shrink-0`}>{alerta.rotulo}</span>}
       </span>
-      {linhas >= 2 && <span className="block truncate text-[11px] leading-4 opacity-80 tabular-nums">{hora} · {terapia}</span>}
-      {linhas >= 3 && a.sala_nome && <span className="block truncate text-[11px] leading-4 opacity-70">{a.sala_nome}</span>}
+      {linhas >= 2 && (
+        <span className="flex min-w-0 items-center gap-1 text-[11px] leading-4 opacity-80">
+          <IconeTerapia chave={visual.icone} className="h-3 w-3 shrink-0" strokeWidth={2} />
+          <span className="truncate">{a.terapia_nome}</span>
+        </span>
+      )}
+      {linhas >= 3 && exibicao && <span className="block truncate text-[11px] leading-4 opacity-70">({exibicao})</span>}
     </button>
   )
 }
+
+/** Linhas do cartão que cabem na altura (16 px cada + respiro): 40 min = 3 linhas. */
+export const linhasQueCabem = (altura: number): 1 | 2 | 3 => (altura >= 52 ? 3 : altura >= 36 ? 2 : 1)
 
 // ── Bloco de um horário ───────────────────────────────────────────────────────
 
 /** Um horário da grade na visão do profissional. A altura vem da duração. */
 export function BlocoHorario({
-  h, altura, corDe, onSessao, onLivre, onFechado, onVerTodos,
+  h, altura, visualDe, onSessao, onLivre, onFechado, onVerTodos,
 }: {
   h: HorarioGrade
   altura: number
-  corDe: (terapiaId: number) => string | null
+  visualDe: (terapiaId: number) => VisualTerapia
   onSessao: (a: AgendamentoGrade) => void
   /** Clique no espaço livre: novo agendamento já preenchido. */
   onLivre?: (h: HorarioGrade) => void
@@ -126,7 +140,7 @@ export function BlocoHorario({
         </button>
         {h.ocupados.map(a => (
           <div key={a.id} className="min-h-0 flex-1">
-            <CartaoSessao a={a} cor={corDe(a.terapia_id)} titulo={a.paciente_nome} linhas={1}
+            <CartaoSessao a={a} visual={visualDe(a.terapia_id)} titulo={a.paciente_nome} linhas={1}
               alerta={{ t: "amber", rotulo: "no bloqueio" }} onClick={() => onSessao(a)} />
           </div>
         ))}
@@ -141,13 +155,13 @@ export function BlocoHorario({
   const cabem = Math.max(1, Math.floor((altura - (emGrupo || h.ocupados.length > 1 ? 18 : 0)) / 22))
   const visiveis = h.ocupados.slice(0, cabem)
   const escondidos = h.ocupados.length - visiveis.length
-  const linhas: 1 | 2 | 3 = h.ocupados.length > 1 ? 1 : altura >= 70 ? 3 : altura >= 40 ? 2 : 1
+  const linhas = linhasQueCabem(h.ocupados.length > 1 ? 0 : altura)
 
   return (
     <div className="flex h-full w-full flex-col gap-0.5 overflow-hidden">
       {visiveis.map((a, i) => (
         <div key={a.id} className="min-h-0 flex-1">
-          <CartaoSessao a={a} cor={corDe(a.terapia_id)} titulo={a.paciente_nome} linhas={linhas}
+          <CartaoSessao a={a} visual={visualDe(a.terapia_id)} titulo={a.paciente_nome} linhas={linhas}
             alerta={i === 0 ? alerta : null} onClick={() => onSessao(a)} />
         </div>
       ))}
@@ -339,42 +353,16 @@ export function EixoHoras({ escala }: { escala: Escala }) {
 
 export const minutos = (h: string) => paraMin(horaCurta(h))
 
-// ── Legenda com filtro ────────────────────────────────────────────────────────
+// ── Filtro por estado (usado no painel de resumo) ─────────────────────────────
 
 export type FiltroEstados = Set<keyof typeof TOM_ESTADO>
 
 /** A mesma forma que aparece na grade, em miniatura. */
-function Amostra({ k }: { k: keyof typeof TOM_ESTADO }) {
+export function Amostra({ k }: { k: keyof typeof TOM_ESTADO }) {
   const base = "inline-block h-2.5 w-2.5 shrink-0 rounded-sm"
   if (k === "disponivel") return <span className={`${base} border border-dashed border-muted-foreground/60`} aria-hidden />
   if (k === "bloqueado") return <span className={`${base} border border-border bg-muted`} style={LISTRAS_BLOQUEIO} aria-hidden />
   if (k === "agendado") return <span className={`${base} bg-sky-500/70`} aria-hidden />
   if (k === "fora_da_grade") return <span className={`${base} ring-1 ring-inset ring-amber-400`} aria-hidden />
   return <span className={`${base} ring-1 ring-inset ring-rose-400`} aria-hidden />
-}
-
-export function Legenda({ contagens, ocultos, onAlternar }: {
-  contagens: Partial<Record<keyof typeof TOM_ESTADO, number>>
-  ocultos: FiltroEstados
-  onAlternar: (k: keyof typeof TOM_ESTADO) => void
-}) {
-  return (
-    <ul className="flex flex-wrap items-center gap-x-1 gap-y-1 text-xs text-muted-foreground" aria-label="Legenda — clique para esconder ou mostrar">
-      {(Object.keys(TOM_ESTADO) as (keyof typeof TOM_ESTADO)[]).map(k => {
-        const { rotulo } = TOM_ESTADO[k]
-        const visivel = !ocultos.has(k)
-        return (
-          <li key={k}>
-            <button type="button" aria-pressed={visivel} onClick={() => onAlternar(k)}
-              className={`inline-flex min-h-8 items-center gap-1.5 rounded-md px-2 hover:bg-muted ${visivel ? "" : "opacity-50 line-through"} ${foco}`}
-              title={visivel ? `Esconder: ${rotulo}` : `Mostrar: ${rotulo}`}>
-              <Amostra k={k} />
-              {rotulo}
-              {contagens[k] != null && <span className="font-semibold tabular-nums text-foreground">{contagens[k]}</span>}
-            </button>
-          </li>
-        )
-      })}
-    </ul>
-  )
 }
