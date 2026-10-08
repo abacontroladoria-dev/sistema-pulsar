@@ -100,8 +100,6 @@ export default function AdminUsersTable({
   onSearchUserChange,
   grupoFilter,
   onGrupoFilterChange,
-  searchMachine,
-  onSearchMachineChange,
 }: {
   users: AdminUser[]
   grupos: GrupoOption[]
@@ -124,8 +122,6 @@ export default function AdminUsersTable({
   onSearchUserChange: (value: string) => void
   grupoFilter: string
   onGrupoFilterChange: (value: string) => void
-  searchMachine: string
-  onSearchMachineChange: (value: string) => void
 }) {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
@@ -154,9 +150,9 @@ export default function AdminUsersTable({
       {/*FILTROS*/}
       <div className="mt-4 grid gap-3 md:grid-cols-3">
         <label>
-          <span className="sr-only">Buscar usuário</span>
+          <span className="sr-only">Buscar usuário por nome, e-mail ou @usuário</span>
           <input
-            placeholder="Buscar usuário..."
+            placeholder="Buscar por nome, e-mail ou @usuário..."
             value={searchUser}
             onChange={(e) => onSearchUserChange(e.target.value)}
             className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-5 py-3 text-sm outline-none transition focus:border-brand focus:ring-4 focus:ring-brand/10"
@@ -195,16 +191,6 @@ export default function AdminUsersTable({
             </DropdownMenuRadioGroup>
           </DropdownMenuContent>
         </DropdownMenu>
-
-        <label>
-          <span className="sr-only">Buscar máquina</span>
-          <input
-            placeholder="Buscar máquina..."
-            value={searchMachine}
-            onChange={(e) => onSearchMachineChange(e.target.value)}
-            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-5 py-3 text-sm outline-none transition focus:border-brand focus:ring-4 focus:ring-brand/10"
-          />
-        </label>
       </div>
 
       {/* LISTA — bandeja levemente rebaixada pra que os cards brancos leiam como
@@ -409,6 +395,7 @@ function UserRow({
               </button>
             )
           })}
+          {!podeAdministrar && <span className="text-xs text-slate-500">{SO_ADMIN} alteram</span>}
         </div>
 
         {/* STATUS */}

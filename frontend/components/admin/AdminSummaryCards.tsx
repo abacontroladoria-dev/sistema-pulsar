@@ -71,9 +71,9 @@ export default function AdminSummaryCards({
     },
 
     {
-      title: 'Máquinas offline',
+      title: 'Máquinas sem sinal',
       value: counts.offlineMachines,
-      subtitle: 'offline',
+      subtitle: 'ativas e sem sinal',
       icon: WifiOff,
       iconColor: 'text-rose-500',
       bg: 'bg-rose-50/60',
