@@ -1,9 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import toast from "react-hot-toast"
-import { Loader2, Save } from "lucide-react"
-import { Drawer } from "@/components/cronograma/ui/Drawer"
+import { Loader2, Save, X } from "lucide-react"
 import { DatePicker } from "@/components/ui/date-picker"
 import { btnPrimario, btnSecundario, opcaoForm } from "@/components/cronograma/grade/estilo"
 import {
@@ -18,7 +17,7 @@ import { criarContrato, editarRascunho } from "@/services/pacienteContratos.serv
 import type { ContratoPaciente } from "@/types/contratosPaciente"
 import { CampoSelect, campo, rotulo } from "../../ui/campos"
 
-// Painel lateral "Novo contrato" — e o mesmo painel para editar um RASCUNHO
+// Formulário "Novo contrato", aberto na própria aba (não em gaveta) — e o mesmo painel para editar um RASCUNHO
 // (depois de enviado para assinatura, o documento é o que vale e as datas
 // travam; a RPC recusa a edição).
 //
@@ -50,6 +49,12 @@ export function NovoContratoPainel({
   const [vencimento, setVencimento] = useState(editando?.data_vencimento ?? vencimentoSugerido(hoje, 12))
   const [observacao, setObservacao] = useState(editando?.observacao ?? "")
   const [salvando, setSalvando] = useState(false)
+  const ref = useRef<HTMLElement>(null)
+
+  // Abre na própria página: leva o formulário à vista.
+  useEffect(() => {
+    ref.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+  }, [])
 
   const datasOk = !!inicio && !!vencimento && vencimento >= inicio
   const valido = !!tipo && datasOk
@@ -70,24 +75,34 @@ export function NovoContratoPainel({
   }
 
   return (
-    <Drawer
-      title={editando ? "Editar contrato" : "Novo contrato"}
-      subtitle={editando ? "Só é possível editar enquanto está em Rascunho." : "Nasce em Rascunho. A assinatura vem depois."}
-      width={480}
-      onClose={() => !salvando && onFechar()}
-      footer={
-        <>
-          <button type="button" onClick={onFechar} disabled={salvando} className={`${btnSecundario} min-h-11 sm:min-h-0`}>
-            Cancelar
-          </button>
-          <button type="button" onClick={() => void salvar()} disabled={!valido || salvando} className={`${btnPrimario} min-h-11 sm:min-h-0`}>
-            {salvando ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Save className="h-4 w-4" aria-hidden />}
-            {salvando ? "Salvando…" : editando ? "Salvar" : "Criar contrato"}
-          </button>
-        </>
-      }
+    <section
+      ref={ref}
+      aria-labelledby="novo-contrato-titulo"
+      onKeyDown={(e) => {
+        if (e.key === "Escape" && !salvando && !e.defaultPrevented) onFechar()
+      }}
+      className="scroll-mt-4 rounded-lg border border-primary/30 bg-card shadow-sm"
     >
-      <div className="space-y-5">
+      <header className="flex items-start justify-between gap-3 border-b border-border px-4 py-3">
+        <div>
+          <h2 id="novo-contrato-titulo" className="text-base font-semibold text-foreground">
+            {editando ? "Editar contrato" : "Novo contrato"}
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            {editando ? "Só é possível editar enquanto está em Rascunho." : "Nasce em Rascunho. A assinatura vem depois."}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onFechar}
+          disabled={salvando}
+          aria-label="Fechar"
+          className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          <X className="h-4 w-4" aria-hidden />
+        </button>
+      </header>
+      <div className="space-y-5 px-4 py-4">
         <CampoSelect<TipoContrato>
           label="Tipo de contrato *"
           value={tipo}
@@ -151,6 +166,15 @@ export function NovoContratoPainel({
           />
         </div>
       </div>
-    </Drawer>
+      <footer className="flex flex-col-reverse gap-2 border-t border-border px-4 py-3 sm:flex-row sm:justify-end">
+        <button type="button" onClick={onFechar} disabled={salvando} className={`${btnSecundario} min-h-11 sm:min-h-0`}>
+          Cancelar
+        </button>
+        <button type="button" onClick={() => void salvar()} disabled={!valido || salvando} className={`${btnPrimario} min-h-11 sm:min-h-0`}>
+          {salvando ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Save className="h-4 w-4" aria-hidden />}
+          {salvando ? "Salvando…" : editando ? "Salvar" : "Criar contrato"}
+        </button>
+      </footer>
+    </section>
   )
 }

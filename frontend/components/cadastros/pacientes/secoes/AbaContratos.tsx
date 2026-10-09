@@ -124,34 +124,13 @@ export function AbaContratos({ pacienteId }: { pacienteId: number }) {
     </button>
   )
 
+  const formAberto = novo || !!editando
+
   return (
     <div className="min-w-0 flex-1 space-y-4">
-      {dados.contratos.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border bg-card px-4 py-10 text-center">
-          <FileSignature className="mx-auto h-8 w-8 text-muted-foreground" strokeWidth={1.5} aria-hidden="true" />
-          <p className="mt-3 text-sm font-medium text-foreground">Nenhum contrato registrado</p>
-          <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
-            Registre o contrato de Avaliação Neuropsicológica, Terapias ou Técnico Terapêutico Particular, com início, vencimento e assinatura.
-          </p>
-          <div className="mt-4">{botaoNovo}</div>
-        </div>
-      ) : (
-        <>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-base font-semibold text-foreground">Contratos</h2>
-              <p className="text-sm text-muted-foreground">
-                Status da assinatura e vigência de cada contrato. Clique para ver o detalhe e o histórico.
-              </p>
-            </div>
-            {botaoNovo}
-          </div>
-          <ListaContratos contratos={dados.contratos} hoje={hoje} onAbrir={(c) => setAbertoId(c.id)} />
-        </>
-      )}
-
-      {(novo || editando) && (
+      {formAberto && (
         <NovoContratoPainel
+          key={editando?.id ?? "novo"}
           pacienteId={pacienteId}
           editando={editando ?? undefined}
           onFechar={() => {
@@ -165,6 +144,32 @@ export function AbaContratos({ pacienteId }: { pacienteId: number }) {
             void carregar()
           }}
         />
+      )}
+
+      {dados.contratos.length === 0 ? (
+        !formAberto && (
+        <div className="rounded-lg border border-dashed border-border bg-card px-4 py-10 text-center">
+          <FileSignature className="mx-auto h-8 w-8 text-muted-foreground" strokeWidth={1.5} aria-hidden="true" />
+          <p className="mt-3 text-sm font-medium text-foreground">Nenhum contrato registrado</p>
+          <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
+            Registre o contrato de Avaliação Neuropsicológica, Terapias ou Técnico Terapêutico Particular, com início, vencimento e assinatura.
+          </p>
+          <div className="mt-4">{botaoNovo}</div>
+        </div>
+        )
+      ) : (
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-base font-semibold text-foreground">Contratos</h2>
+              <p className="text-sm text-muted-foreground">
+                Status da assinatura e vigência de cada contrato. Clique para ver o detalhe e o histórico.
+              </p>
+            </div>
+            {!formAberto && botaoNovo}
+          </div>
+          <ListaContratos contratos={dados.contratos} hoje={hoje} onAbrir={(c) => setAbertoId(c.id)} />
+        </>
       )}
 
       {aberto && !editando && (
