@@ -913,10 +913,8 @@ async function solicitarLista(
 		.eq('paciente_id', p.paciente_id)
 		.eq('data_atendimento', p.data_atendimento)
 		.eq('horario', p.horario)
-		.eq(
-		  'tuss',
-		  p.codigos_tuss?.[0]
-		)
+		// TUSS nulo (não-ASSIM sem código) precisa de IS, não de =
+		.filter('tuss', p.codigos_tuss?.[0] ? 'eq' : 'is', p.codigos_tuss?.[0] ?? null)
 		.order('created_at', { ascending: false })
 		.limit(1)
 		.maybeSingle()
@@ -1220,10 +1218,8 @@ async function handleFalta(
 		.eq('paciente_id', p.paciente_id)
 		.eq('data_atendimento', p.data_atendimento)
 		.eq('horario', p.horario)
-		.eq(
-  'tuss',
-  p.codigos_tuss?.[0]
-)
+		// TUSS nulo (não-ASSIM sem código) precisa de IS, não de =
+		.filter('tuss', p.codigos_tuss?.[0] ? 'eq' : 'is', p.codigos_tuss?.[0] ?? null)
 		.order('created_at', { ascending: false })
 		.limit(1)
 		.maybeSingle()
@@ -1356,10 +1352,8 @@ const atendimentos = Object.values(
 		.eq('paciente_id', p.paciente_id)
 		.eq('data_atendimento', p.data_atendimento)
 		.eq('horario', p.horario)
-		.eq(
-		  'tuss',
-		  p.codigos_tuss?.[0]
-		)
+		// TUSS nulo (não-ASSIM sem código) precisa de IS, não de =
+		.filter('tuss', p.codigos_tuss?.[0] ? 'eq' : 'is', p.codigos_tuss?.[0] ?? null)
 		.order('created_at', { ascending: false })
 		.limit(1)
 		.maybeSingle()
@@ -1605,10 +1599,8 @@ async function handleManualLista(p: any) {
 		.eq('paciente_id', p.paciente_id)
 		.eq('data_atendimento', p.data_atendimento)
 		.eq('horario', p.horario)
-		.eq(
-		  'tuss',
-		  p.codigos_tuss?.[0]
-		)
+		// TUSS nulo (não-ASSIM sem código) precisa de IS, não de =
+		.filter('tuss', p.codigos_tuss?.[0] ? 'eq' : 'is', p.codigos_tuss?.[0] ?? null)
 		.order('created_at', { ascending: false })
 		.limit(1)
 		.maybeSingle()
@@ -1715,7 +1707,8 @@ async function handleCancelarProcessamento(p: any) {
       .eq('paciente_id', p.paciente_id)
       .eq('data_atendimento', p.data_atendimento)
       .eq('horario', p.horario)
-      .eq('tuss', p.codigos_tuss?.[0])
+      // TUSS nulo (não-ASSIM sem código) precisa de IS, não de =
+		.filter('tuss', p.codigos_tuss?.[0] ? 'eq' : 'is', p.codigos_tuss?.[0] ?? null)
       .in('status', ['pendente', 'processando'])
       .order('created_at', { ascending: false })
       .limit(1)
