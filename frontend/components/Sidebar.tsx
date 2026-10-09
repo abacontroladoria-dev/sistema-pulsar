@@ -612,11 +612,11 @@ export default function Sidebar() {
 
           {/* Autorização */}
           {(canAccess("/auditoria-assim?tab=auditoria") || canAccess("/auditoria-assim?tab=reconciliacao") ||
-            canAccess("/cco") || canAccess("/conferencia-guias") || canAccess("/preauditoria")) && (
+            canAccess("/cco") || canAccess("/conferencia-guias")) && (
             <SidebarGroup
               title={GRUPO.autorizacao.nome}
               icon={GRUPO.autorizacao.icon}
-              defaultOpen={["/cco", "/auditoria-assim", "/conferencia-guias", "/preauditoria"].some(p => pathname === p)}
+              defaultOpen={["/cco", "/auditoria-assim", "/conferencia-guias"].some(p => pathname === p)}
             >
               {canAccess("/cco") && (
                 <Item codigo="cco" />
@@ -634,11 +634,6 @@ export default function Sidebar() {
               )}
               {canAccess("/conferencia-guias") && (
                 <Item codigo="conferencia_guias" />
-              )}
-              {/* Mesma origem de Outros Convênios: tela sem item no menu até
-                  29/09/2026. */}
-              {canAccess("/preauditoria") && (
-                <Item codigo="preauditoria" />
               )}
             </SidebarGroup>
           )}

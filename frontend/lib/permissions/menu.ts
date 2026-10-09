@@ -16,7 +16,6 @@ import {
   ClipboardPlus,
   Database,
   DoorOpen,
-  FileCheck,
   FileClock,
   FileSearch,
   FileSignature,
@@ -113,7 +112,6 @@ export const MENU_ITENS: MenuItemDef[] = [
   { codigo: 'auditoria_assim', label: 'Conferência ASSIM', grupo: G.autorizacao.nome, path: '/auditoria-assim?tab=auditoria', icon: ClipboardList },
   { codigo: 'reconciliacao_assim', label: 'Reconciliação ASSIM', grupo: G.autorizacao.nome, path: '/auditoria-assim?tab=reconciliacao', icon: Link2 },
   { codigo: 'conferencia_guias', label: 'Conferência de Guias', grupo: G.autorizacao.nome, path: '/conferencia-guias', icon: ClipboardPenLine },
-  { codigo: 'preauditoria', label: 'Pré-auditoria', grupo: G.autorizacao.nome, path: '/preauditoria', icon: FileCheck },
 
   { codigo: 'insumos', label: 'Solicitações', grupo: G.suprimentos.nome, path: '/insumos', icon: Package },
 

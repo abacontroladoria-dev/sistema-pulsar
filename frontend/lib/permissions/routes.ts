@@ -65,7 +65,6 @@ export const CODIGO_PARA_ROTAS: Record<string, string[]> = {
   // entrada aqui, `codigosToRotas` simplesmente o ignora (`?? []`). Saiu também
   // do catálogo em 29/09/2026, junto com `indicadores_historico_receitas` (aba
   // que não existe mais).
-  preauditoria: ['/preauditoria'],
   outros_convenios: ['/outros-convenios'],
   cronograma_solicitacoes: ['/relacionamento-prestador/solicitacoes'],
   cronograma_saida_profissional: ['/cronograma/saida-profissional'],
