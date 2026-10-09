@@ -69,12 +69,53 @@ export async function uploadFotoPaciente(
   return { path, error: null }
 }
 
+// Pedidos em voo, por path: quem pede a mesma foto enquanto o lote ainda não
+// voltou espera o lote, em vez de abrir uma requisição própria.
+const emVoo = new Map<string, Promise<string | null>>()
+
+function urlValidaEmCache(path: string): string | null {
+  const cacheada = cacheUrls.get(path)
+  if (cacheada && cacheada.expiraEm - Date.now() > MARGEM_RENOVACAO_MS) return cacheada.url
+  return null
+}
+
+/**
+ * Assina várias fotos numa requisição só (uma página da listagem). Chamado
+ * antes de os avatares montarem: cada `getFotoUrlAssinada` dali em diante cai
+ * no cache ou no pedido em voo, e a página faz 1 ida ao Storage em vez de 75.
+ */
+export function precarregarFotosAssinadas(paths: string[]): void {
+  const faltam = [...new Set(paths)].filter((p) => !urlValidaEmCache(p) && !emVoo.has(p))
+  if (faltam.length === 0) return
+
+  const lote = getSupabaseClient()
+    .storage.from(BUCKET_FOTOS)
+    .createSignedUrls(faltam, TTL_SEGUNDOS)
+    .then(({ data, error }) => {
+      if (error) console.error("Erro ao gerar URLs das fotos:", error)
+      const expiraEm = Date.now() + TTL_SEGUNDOS * 1000
+      const porPath = new Map<string, string>()
+      for (const item of data ?? []) {
+        if (item.path && item.signedUrl && !item.error) {
+          porPath.set(item.path, item.signedUrl)
+          cacheUrls.set(item.path, { url: item.signedUrl, expiraEm })
+        }
+      }
+      return porPath
+    })
+    .finally(() => {
+      for (const p of faltam) emVoo.delete(p)
+    })
+
+  for (const p of faltam) emVoo.set(p, lote.then((m) => m.get(p) ?? null))
+}
+
 /** URL assinada, com cache em memória enquanto ainda houver margem de validade. */
 export async function getFotoUrlAssinada(path: string): Promise<string | null> {
-  const cacheada = cacheUrls.get(path)
-  if (cacheada && cacheada.expiraEm - Date.now() > MARGEM_RENOVACAO_MS) {
-    return cacheada.url
-  }
+  const cacheada = urlValidaEmCache(path)
+  if (cacheada) return cacheada
+  const pendente = emVoo.get(path)
+  if (pendente) return pendente
 
   const supabase = getSupabaseClient()
   const { data, error } = await supabase.storage

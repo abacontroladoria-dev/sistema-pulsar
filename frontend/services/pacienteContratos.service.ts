@@ -110,6 +110,35 @@ export async function buscarContratosDoPaciente(pacienteId: number): Promise<Con
   return { contratos, eventos, signatarios }
 }
 
+/**
+ * Quem TEM contrato, para a listagem de pacientes: `id_paciente` de todo
+ * paciente com ao menos um contrato `ativo = true` e não cancelado — qualquer
+ * status de assinatura, qualquer vigência. É a EXISTÊNCIA do registro, não se
+ * ele está valendo (vigência é outro eixo, ver lib/contratos/status.ts).
+ *
+ * Uma leitura só para a base inteira (nunca uma por paciente), paginada porque
+ * o PostgREST corta em 1.000 linhas sem erro. Falha LANÇA: um Set vazio por
+ * erro seria lido como "ninguém tem contrato".
+ */
+export async function getPacientesComContrato(): Promise<Set<number>> {
+  const com = new Set<number>()
+  const TAMANHO = 1000
+  for (let de = 0; ; de += TAMANHO) {
+    const { data, error } = await supabase
+      .from("pacientes_contratos")
+      .select("id, paciente_id")
+      .eq("ativo", true)
+      .neq("status", "cancelado")
+      .order("id", { ascending: true })
+      .range(de, de + TAMANHO - 1)
+    if (error) falhar(error, "Não foi possível consultar os contratos.")
+    const linhas = (data ?? []) as unknown as { paciente_id: number }[]
+    for (const l of linhas) com.add(Number(l.paciente_id))
+    if (linhas.length < TAMANHO) break
+  }
+  return com
+}
+
 function linhaOuFalha(data: unknown, acao: string): ContratoPaciente {
   const linha = data as ContratoPaciente | null
   if (!linha || typeof linha.id !== "number") {

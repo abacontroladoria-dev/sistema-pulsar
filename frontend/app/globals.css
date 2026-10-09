@@ -250,6 +250,16 @@
        para L=0.932 é o que compra croma suficiente para o azul aparecer. As
        outras duas mantêm a lightness original, então a escada 1.35/1.50 e a
        hierarquia contra o campo (1.26:1) estão preservadas. */
+    /* ── Texto de estado (selos, avisos curtos) ───────────────────────────
+       Os -700 do Tailwind, não os -600: em texto pequeno sobre branco o
+       emerald-600 dá ~3,8:1 e o amber-600 ~3,2:1, abaixo do AA (4,5:1).
+       ok #047857 5,5:1 · atencao #b45309 5,0:1 (= status-partial do
+       DESIGN.md) · alerta #be123c 6,2:1. Fora do @theme pelo mesmo motivo
+       das --bloco-*: consumidas como text-[var(--status-ok)]. */
+    --status-ok: #047857;
+    --status-atencao: #b45309;
+    --status-alerta: #be123c;
+
     --bloco-cap: oklch(0.932 0.032 255.585);
     --bloco-cap-borda: oklch(0.900 0.045 255);
     --bloco-borda: oklch(0.865 0.055 255);
@@ -346,6 +356,11 @@
        #192433 / #253447 / #2A3C53. O nome é quase-branco no escuro (lá
        --sidebar-accent-foreground é oklch(0.985 0 0), sem azul — igual ao
        próprio menu escuro), e continua com 14,96:1 sobre a faixa. */
+    /* Os -400 no escuro: emerald/amber/rose-400 sobre o fundo escuro. */
+    --status-ok: #34d399;
+    --status-atencao: #fbbf24;
+    --status-alerta: #fb7185;
+
     --bloco-cap: oklch(0.258 0.032 255);
     --bloco-cap-borda: oklch(0.320 0.040 255);
     --bloco-borda: oklch(0.352 0.046 255);

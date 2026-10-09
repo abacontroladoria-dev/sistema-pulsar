@@ -27,12 +27,15 @@ export function BarraAlfabeto({
   disponiveis,
   onChange,
   rotuloTodos = "Todos",
+  embutida = false,
 }: {
   value: string | null
   disponiveis: Set<string>
   onChange: (v: string | null) => void
   /** Texto do botão que limpa a letra (Pacientes: "Todos"; Profissionais: "TUDO"). */
   rotuloTodos?: string
+  /** Sem moldura própria, para morar dentro da barra de filtros. */
+  embutida?: boolean
 }) {
   return (
     <div
@@ -41,16 +44,28 @@ export function BarraAlfabeto({
       // Do tamanho das letras (w-fit) e centralizada. overflow-x: no celular as
       // 27 opções não cabem numa tela de 360px;
       // rolar de lado é melhor do que quebrar linha e virar um bloco confuso.
-      className="mx-auto mb-4 w-fit max-w-full overflow-x-auto rounded-md border border-border bg-card"
+      className={
+        embutida
+          ? "max-w-full overflow-x-auto"
+          : "mx-auto mb-4 w-fit max-w-full overflow-x-auto rounded-md border border-border bg-card"
+      }
     >
-      <div className="flex w-max divide-x divide-border text-xs font-semibold">
+      <div
+        className={`flex w-max text-xs ${embutida ? "gap-0.5 font-medium" : "divide-x divide-border font-semibold"}`}
+      >
         <button
           type="button"
           onClick={() => onChange(null)}
           aria-pressed={value === null}
-          className={`shrink-0 px-3 py-1.5 ${
-            value === null ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"
-          } ${foco} focus-visible:ring-inset`}
+          className={`min-h-11 shrink-0 px-3 py-1.5 sm:min-h-0 ${
+            embutida
+              ? value === null
+                ? "rounded-md bg-sidebar-primary text-sidebar-primary-foreground"
+                : "rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+              : value === null
+                ? "bg-primary/10 text-primary"
+                : "text-foreground hover:bg-muted"
+          } ${foco} ${embutida ? "" : "focus-visible:ring-inset"}`}
         >
           {rotuloTodos}
         </button>
@@ -64,13 +79,19 @@ export function BarraAlfabeto({
               onClick={() => onChange(l)}
               disabled={!tem}
               aria-pressed={ativa}
-              className={`w-7 shrink-0 py-1.5 transition-colors motion-reduce:transition-none ${
-                ativa
-                  ? "bg-primary/10 text-primary"
-                  : tem
-                    ? "text-foreground hover:bg-muted"
-                    : "cursor-not-allowed text-foreground"
-              } ${foco} focus-visible:ring-inset`}
+              className={`min-h-11 w-11 shrink-0 py-1.5 transition-colors sm:min-h-0 sm:w-7 motion-reduce:transition-none ${
+                embutida
+                  ? ativa
+                    ? "rounded-md bg-sidebar-primary text-sidebar-primary-foreground"
+                    : tem
+                      ? "rounded-md text-foreground/80 hover:bg-muted hover:text-foreground"
+                      : "cursor-not-allowed text-muted-foreground/50"
+                  : ativa
+                    ? "bg-primary/10 text-primary"
+                    : tem
+                      ? "text-foreground hover:bg-muted"
+                      : "cursor-not-allowed text-foreground"
+              } ${foco} ${embutida ? "" : "focus-visible:ring-inset"}`}
             >
               {l}
             </button>
@@ -85,9 +106,12 @@ export function BarraAlfabeto({
 export function SeletorModo({
   value,
   onChange,
+  destaque = false,
 }: {
   value: ModoExibicao
   onChange: (v: ModoExibicao) => void
+  /** Modo ativo em azul claro (Pacientes) em vez do cinza neutro. */
+  destaque?: boolean
 }) {
   const opcoes = [
     { valor: "grade" as const, icone: LayoutGrid, rotulo: "Exibir em grade" },
@@ -110,8 +134,12 @@ export function SeletorModo({
             aria-pressed={ativo}
             aria-label={rotulo}
             title={rotulo}
-            className={`inline-flex h-8 w-8 items-center justify-center rounded ${
-              ativo ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+            className={`inline-flex h-10 w-10 items-center justify-center rounded sm:h-8 sm:w-8 ${
+              ativo
+                ? destaque
+                  ? "bg-sidebar-primary/10 text-sidebar-primary"
+                  : "bg-muted text-foreground"
+                : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
             } ${foco}`}
           >
             <Icone className="h-4 w-4" aria-hidden="true" />
@@ -126,18 +154,30 @@ export function LinhaDado({
   icone: Icone,
   rotulo,
   valor,
+  children,
 }: {
   icone: typeof IdCard
   rotulo: string
-  valor: string | null
+  valor?: string | null
+  /** Conteúdo próprio no lugar do valor em texto (ex.: o selo do contrato). */
+  children?: React.ReactNode
 }) {
   return (
-    <div className="flex items-center gap-2">
-      <dt className="flex w-24 shrink-0 items-center gap-1.5 text-muted-foreground">
-        <Icone className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+    // Rótulo à esquerda, valor encostado à direita: a coluna de valores se lê
+    // de cima a baixo sem o olho voltar ao rótulo. O valor não usa negrito para
+    // não competir com o nome do card.
+    <div className="flex items-center justify-between gap-3">
+      <dt className="flex shrink-0 items-center gap-2 text-muted-foreground">
+        <Icone className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
         {rotulo}
       </dt>
-      <dd className="truncate text-left font-semibold text-foreground">{valor || "—"}</dd>
+      <dd
+        className={`min-w-0 truncate text-right tabular-nums ${
+          children || valor ? "text-foreground" : "text-muted-foreground"
+        }`}
+      >
+        {children ?? (valor || "—")}
+      </dd>
     </div>
   )
 }

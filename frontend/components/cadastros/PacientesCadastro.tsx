@@ -3,7 +3,7 @@
 import { memo, useCallback, useMemo, useState, useEffect, useRef } from "react"
 import Link from "next/link"
 import { useHeader } from "@/contexts/HeaderContext"
-import { getFotoUrlAssinada } from "@/services/pacientesFoto.service"
+import { getFotoUrlAssinada, precarregarFotosAssinadas } from "@/services/pacientesFoto.service"
 import {
   Search,
   UserPlus,
@@ -18,10 +18,10 @@ import {
   Check,
   X,
   GraduationCap,
-  School,
+  ChevronDown,
+  FileSignature,
 } from "lucide-react"
 import { HistoricoCadastrosModal } from "@/components/cadastros/historico/HistoricoCadastrosModal"
-import { ICONES, getTomAvatar, indiceIconeAvatar } from "@/lib/cadastros/avatarPastel"
 import { usePacientes } from "@/hooks/usePacientes"
 import type { ResumoEscolar } from "@/services/pacienteDadosEscolares.service"
 import { maskCpfCnpj, onlyDigits } from "@/lib/remuneracao/formatacao"
@@ -81,7 +81,22 @@ const CHAVE_MODO = "pacientes:modoExibicao"
 // Mesmas colunas no cabeçalho e em cada linha — definidas uma vez para os dois
 // nunca desalinharem.
 const COLUNAS_LISTA =
-  "md:grid-cols-[minmax(0,2.4fr)_minmax(0,0.7fr)_minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,0.7fr)]"
+  "md:grid-cols-[minmax(0,2.2fr)_minmax(0,0.6fr)_minmax(0,1fr)_minmax(0,0.85fr)_minmax(0,1fr)_minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,0.7fr)]"
+
+// 44px de altura no toque (as atendentes usam no celular); compacto no desktop.
+const BOTAO_PAGINA =
+  "inline-flex min-h-11 items-center gap-1 rounded-md border border-border px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted disabled:opacity-40 disabled:hover:bg-transparent sm:min-h-0"
+
+// Tons de estado: tokens --status-* do globals.css (contraste medido lá).
+const TOM = {
+  ok: "text-[var(--status-ok)]",
+  atencao: "text-[var(--status-atencao)]",
+  alerta: "text-[var(--status-alerta)]",
+} as const
+const SELO = "inline-flex shrink-0 rounded-md px-2 py-0.5 text-xs font-medium"
+
+// Sombra quase imperceptível: só descola o cartão do fundo.
+const SOMBRA = "shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
 
 /** "há 3 dias" / "há 2 meses" — a idade da resposta importa mais que a data. */
 function tempoDecorrido(iso: string): string {
@@ -101,6 +116,8 @@ export function PacientesCadastro() {
     telefonesResponsaveis,
     fichasEscolares,
     fichasEscolaresIndisponivel,
+    pacientesComContrato,
+    contratosIndisponivel,
     loading,
     error,
   } = usePacientes()
@@ -242,6 +259,13 @@ export function PacientesCadastro() {
     [filtrados, inicio]
   )
 
+  // Assina as fotos da página num lote só. Roda no render (e não num efeito)
+  // de propósito: efeitos dos filhos rodam antes dos do pai, e os avatares
+  // abririam cada um sua requisição antes de o lote existir.
+  useMemo(() => {
+    precarregarFotosAssinadas(daPagina.flatMap((p) => (p.foto_path ? [p.foto_path] : [])))
+  }, [daPagina])
+
   function irPara(destino: number) {
     setPagina(Math.min(Math.max(1, destino), totalPaginas))
     // Trocar de página mantendo o scroll no rodapé deixaria o usuário no fim de
@@ -251,18 +275,52 @@ export function PacientesCadastro() {
 
   const { setRightContent } = useHeader()
 
+  // No header ficam só as AÇÕES. Busca e filtros desceram para a barra da
+  // página (padrão de Contratos): numa linha só com as ações, o header quebrava
+  // em três andares no celular das atendentes.
   useEffect(() => {
     setRightContent(
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="relative min-w-0 flex-1">
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setVerHistorico(true)}
+          className={`inline-flex shrink-0 items-center gap-2 rounded-md border border-border px-3 py-2 text-sm font-semibold text-foreground hover:bg-muted ${foco}`}
+          aria-label="Histórico"
+        >
+          <History className="h-4 w-4" aria-hidden="true" />
+          <span className="hidden sm:inline">Histórico</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setModalAberto(true)}
+          className={`inline-flex shrink-0 items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 ${foco}`}
+        >
+          <UserPlus className="h-4 w-4" aria-hidden="true" />
+          Novo paciente
+        </button>
+      </div>
+    )
+    return () => setRightContent(null)
+  }, [setRightContent])
+
+  return (
+    // Mais largo que as outras telas de cadastro: o grid precisa de espaço para
+    // as 4–5 colunas em tela larga sem espremer o card — e a lista, para as
+    // sete colunas sem truncar nome.
+    <div className="mx-auto w-full max-w-screen-2xl px-4 py-6">
+      {/* Busca, filtros e A–Z num bloco só: tudo que recorta a lista mora junto,
+          e a lista abaixo é a resposta. */}
+      <div className={`mb-5 rounded-xl border border-border/70 bg-card ${SOMBRA}`}>
+      <div className="flex flex-wrap items-center gap-2 px-3 pb-2 pt-3">
+        <div className="relative w-full md:w-80 lg:w-96">
           <Search
             className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
             aria-hidden="true"
           />
           <input
             type="text"
-            className={`${campo} pl-9 ${buscaTexto ? "pr-9" : ""} w-72`}
-            placeholder="Buscar nome, CPF ou ID"
+            className={`${campo} w-full pl-9 ${buscaTexto ? "pr-11 sm:pr-9" : ""}`}
+            placeholder="Buscar por nome, CPF ou ID…"
             value={buscaTexto}
             onChange={(e) => {
               setBuscaTexto(e.target.value)
@@ -277,7 +335,8 @@ export function PacientesCadastro() {
                 setBuscaTexto("")
                 setPagina(1)
               }}
-              className={`absolute right-1.5 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground ${foco}`}
+              // 40px no toque (o campo inteiro tem essa altura), 24px no mouse.
+              className={`absolute right-0 top-1/2 flex h-10 w-10 -translate-y-1/2 sm:right-1.5 sm:h-6 sm:w-6 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground ${foco}`}
               aria-label="Limpar busca"
             >
               <X className="h-4 w-4" aria-hidden="true" />
@@ -299,35 +358,30 @@ export function PacientesCadastro() {
             setPagina(1)
           }}
         />
-        <SeletorModo value={modo} onChange={trocarModo} />
-        <button
-          type="button"
-          onClick={() => setVerHistorico(true)}
-          className={`inline-flex shrink-0 items-center gap-2 rounded-md border border-border px-3 py-2 text-sm font-semibold text-foreground hover:bg-muted ${foco}`}
-        >
-          <History className="h-4 w-4" aria-hidden="true" />
-          Histórico
-        </button>
-        <button
-          type="button"
-          onClick={() => setModalAberto(true)}
-          className={`inline-flex shrink-0 items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 ${foco}`}
-        >
-          <UserPlus className="h-4 w-4" aria-hidden="true" />
-          Novo paciente
-        </button>
+        <div className="ml-auto flex w-full items-center justify-between gap-3 sm:w-auto sm:justify-end">
+          {!loading && (
+            // Contagem única da tela (o rodapé ficou só com a paginação). Vale
+            // para todos os filtros, não só para a busca.
+            <span className="shrink-0 text-xs tabular-nums text-muted-foreground" aria-live="polite">
+              <span className="text-sm font-semibold text-foreground">{filtrados.length}</span> de{" "}
+              {pacientes.length} {pacientes.length === 1 ? "paciente" : "pacientes"}
+            </span>
+          )}
+          <SeletorModo value={modo} onChange={trocarModo} destaque />
+        </div>
       </div>
-    )
-    return () => setRightContent(null)
-    // `contagemEscola` entra por identidade, e isso é estável: vem de useMemo,
-    // então só troca quando a contagem realmente muda.
-  }, [buscaTexto, situacoes, escolas, contagemEscola, modo, trocarModo, setRightContent])
-
-  return (
-    // Mais largo que as outras telas de cadastro: o grid precisa de espaço para
-    // as 4–5 colunas em tela larga sem espremer o card — e a lista, para as
-    // sete colunas sem truncar nome.
-    <div className="mx-auto w-full max-w-7xl px-4 py-6">
+      <div className="px-3 pb-3">
+        <BarraAlfabeto
+          embutida
+          value={letra}
+          disponiveis={letrasDisponiveis}
+          onChange={(v) => {
+            setLetra(v)
+            setPagina(1)
+          }}
+        />
+      </div>
+      </div>
       {error && (
         <div
           role="alert"
@@ -338,17 +392,12 @@ export function PacientesCadastro() {
         </div>
       )}
 
-      <BarraAlfabeto
-        value={letra}
-        disponiveis={letrasDisponiveis}
-        onChange={(v) => {
-          setLetra(v)
-          setPagina(1)
-        }}
-      />
-
       {loading ? (
         modo === "lista" ? <ListaEsqueleto /> : <GridEsqueleto />
+      ) : error && pacientes.length === 0 ? (
+        // A carga falhou: o alerta acima já diz o porquê. Um "nenhum paciente
+        // cadastrado" aqui seria falso.
+        null
       ) : filtrados.length === 0 ? (
         <p className="rounded-xl border border-border bg-card px-4 py-16 text-center text-sm text-muted-foreground">
           {busca
@@ -364,7 +413,7 @@ export function PacientesCadastro() {
                   : "Nenhum paciente cadastrado ainda."}
         </p>
       ) : modo === "lista" ? (
-        <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+        <div className={`overflow-hidden rounded-xl border border-border/70 bg-card ${SOMBRA}`}>
           <div
             className={`hidden gap-4 border-b border-border bg-muted/50 px-4 py-2.5 text-xs font-semibold text-muted-foreground md:grid ${COLUNAS_LISTA}`}
             aria-hidden="true"
@@ -375,6 +424,7 @@ export function PacientesCadastro() {
             <span>Nascimento</span>
             <span>Celular</span>
             <span>Escola</span>
+            <span>Contrato</span>
             <span>Situação</span>
           </div>
           <ul>
@@ -386,12 +436,13 @@ export function PacientesCadastro() {
                 telefoneResponsavel={telefonesResponsaveis.get(p.id_paciente) ?? null}
                 fichaEscolar={fichasEscolares.get(p.id_paciente) ?? null}
                 escolaIndisponivel={fichasEscolaresIndisponivel}
+                temContrato={temContrato(p, pacientesComContrato, contratosIndisponivel)}
               />
             ))}
           </ul>
         </div>
       ) : (
-        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
           {daPagina.map((p) => (
             <CardPaciente
               key={p.id_paciente}
@@ -405,53 +456,39 @@ export function PacientesCadastro() {
               // inteiro invalidaria todos os cards.
               fichaEscolar={fichasEscolares.get(p.id_paciente) ?? null}
               escolaIndisponivel={fichasEscolaresIndisponivel}
+              // Boolean (ou null) e não o Set: o memo do card só invalida
+              // quando a resposta DESTE paciente muda.
+              temContrato={temContrato(p, pacientesComContrato, contratosIndisponivel)}
             />
           ))}
         </ul>
       )}
 
-      {!loading && filtrados.length > 0 && (
-        // Grid de 3 colunas no desktop — a contagem fica na 1ª (à esquerda,
-        // como sempre foi) e a paginação na 2ª, centralizada em relação à
-        // LINHA INTEIRA, não ao espaço que sobra ao lado da contagem. A 3ª
-        // coluna fica vazia de propósito, só para equilibrar a 1ª. No mobile
-        // os dois empilham centralizados.
-        <div className="mt-4 flex flex-col items-center gap-3 sm:grid sm:grid-cols-3 sm:items-center">
-          <p className="text-xs text-muted-foreground sm:justify-self-start" aria-live="polite">
-            Mostrando {inicio + 1}–{Math.min(inicio + PACIENTES_POR_PAGINA, filtrados.length)} de{" "}
-            {filtrados.length} {filtrados.length === 1 ? "paciente" : "pacientes"}
-            {busca && ` (filtrado de ${pacientes.length})`}
-          </p>
-
-          {totalPaginas > 1 && (
-            <nav
-              className="flex items-center gap-2 sm:col-start-2 sm:justify-self-center"
-              aria-label="Paginação de pacientes"
-            >
-              <button
-                type="button"
-                onClick={() => irPara(paginaAtual - 1)}
-                disabled={paginaAtual <= 1}
-                className={`inline-flex items-center gap-1 rounded-md border border-border px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted disabled:opacity-40 disabled:hover:bg-transparent ${foco}`}
-              >
-                <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />
-                Anterior
-              </button>
-              <span className="text-xs text-muted-foreground">
-                Página {paginaAtual} de {totalPaginas}
-              </span>
-              <button
-                type="button"
-                onClick={() => irPara(paginaAtual + 1)}
-                disabled={paginaAtual >= totalPaginas}
-                className={`inline-flex items-center gap-1 rounded-md border border-border px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted disabled:opacity-40 disabled:hover:bg-transparent ${foco}`}
-              >
-                Próxima
-                <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
-              </button>
-            </nav>
-          )}
-        </div>
+      {!loading && totalPaginas > 1 && (
+        // Só a paginação: a contagem mora na barra de filtros, no topo.
+        <nav className="mt-4 flex items-center justify-center gap-2" aria-label="Paginação de pacientes">
+          <button
+            type="button"
+            onClick={() => irPara(paginaAtual - 1)}
+            disabled={paginaAtual <= 1}
+            className={`${BOTAO_PAGINA} ${foco}`}
+          >
+            <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />
+            Anterior
+          </button>
+          <span className="text-xs tabular-nums text-muted-foreground">
+            Página {paginaAtual} de {totalPaginas}
+          </span>
+          <button
+            type="button"
+            onClick={() => irPara(paginaAtual + 1)}
+            disabled={paginaAtual >= totalPaginas}
+            className={`${BOTAO_PAGINA} ${foco}`}
+          >
+            Próxima
+            <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+          </button>
+        </nav>
       )}
 
       {/* Montado condicionalmente para nascer limpo — convenção do projeto,
@@ -476,10 +513,155 @@ export function PacientesCadastro() {
 }
 
 /**
- * Botão que expande um painel de checkboxes — Ativos/Inativos/Fictícios,
- * complementares (marcar mais de um SOMA ao resultado, não restringe mais).
- * Substitui o antigo checkbox "Somente ativos", que só dava pra excluir
- * inativos, nunca isolar só eles.
+ * Gatilho + painel de opções marcáveis, compartilhado pelos dois filtros.
+ *
+ * Teclado: abrir leva o foco à primeira opção; ↑/↓, Home/End navegam; Esc ou
+ * Tab fecham e devolvem o foco ao gatilho. Clique fora também fecha.
+ */
+function PopoverFiltro({
+  icone: Icone,
+  nome,
+  valor,
+  rotuloPainel,
+  larguraPainel,
+  children,
+  rodape,
+}: {
+  icone: typeof ListFilter
+  /** "Situação", "Escola" — em tom apagado, antes do valor. */
+  nome: string
+  /** O recorte atual ("Todos", "Ativos"…). */
+  valor: string
+  rotuloPainel: string
+  larguraPainel: string
+  children: React.ReactNode
+  rodape?: React.ReactNode
+}) {
+  const [aberto, setAberto] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  const gatilho = useRef<HTMLButtonElement>(null)
+  const painel = useRef<HTMLDivElement>(null)
+
+  const opcoes = () =>
+    Array.from(painel.current?.querySelectorAll<HTMLElement>('[role="option"]') ?? [])
+
+  useEffect(() => {
+    if (!aberto) return
+    opcoes()[0]?.focus()
+    function aoClicarFora(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setAberto(false)
+    }
+    document.addEventListener("mousedown", aoClicarFora)
+    return () => document.removeEventListener("mousedown", aoClicarFora)
+  }, [aberto])
+
+  function fechar() {
+    setAberto(false)
+    gatilho.current?.focus()
+  }
+
+  function aoTeclar(e: React.KeyboardEvent) {
+    const lista = opcoes()
+    const atual = lista.indexOf(document.activeElement as HTMLElement)
+    let destino: number | null = null
+    if (e.key === "ArrowDown") destino = (atual + 1) % lista.length
+    else if (e.key === "ArrowUp") destino = (atual - 1 + lista.length) % lista.length
+    else if (e.key === "Home") destino = 0
+    else if (e.key === "End") destino = lista.length - 1
+    else if (e.key === "Escape") {
+      e.preventDefault()
+      fechar()
+      return
+    } else if (e.key === "Tab") {
+      setAberto(false)
+      return
+    }
+    if (destino !== null) {
+      e.preventDefault()
+      lista[destino]?.focus()
+    }
+  }
+
+  return (
+    <div ref={ref} className="relative min-w-0 flex-1 sm:flex-none">
+      <button
+        ref={gatilho}
+        type="button"
+        onClick={() => setAberto((a) => !a)}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowDown" && !aberto) {
+            e.preventDefault()
+            setAberto(true)
+          }
+        }}
+        aria-expanded={aberto}
+        aria-haspopup="listbox"
+        aria-label={`${nome}: ${valor}`}
+        className={`inline-flex min-h-11 w-full items-center gap-2 rounded-lg border border-border/80 px-3 py-2 text-sm hover:bg-muted sm:min-h-0 sm:w-auto sm:min-w-44 ${foco}`}
+      >
+        <Icone className="h-4 w-4 shrink-0 text-muted-foreground" strokeWidth={1.75} aria-hidden="true" />
+        <span className="shrink-0 text-muted-foreground">{nome}</span>
+        <span className="min-w-0 flex-1 truncate text-left font-medium text-foreground">{valor}</span>
+        <ChevronDown
+          className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none ${aberto ? "rotate-180" : ""}`}
+          aria-hidden="true"
+        />
+      </button>
+      {aberto && (
+        <div
+          ref={painel}
+          role="listbox"
+          aria-multiselectable="true"
+          aria-label={rotuloPainel}
+          onKeyDown={aoTeclar}
+          className={`absolute left-0 top-[calc(100%+4px)] z-[100] ${larguraPainel} rounded-md border border-border bg-popover p-1 shadow-lg`}
+        >
+          {children}
+          {rodape}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** Uma opção do `PopoverFiltro`: alvo de 44px no toque, marca à direita. */
+function OpcaoFiltro({
+  marcado,
+  onAlternar,
+  children,
+}: {
+  marcado: boolean
+  onAlternar: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      role="option"
+      aria-selected={marcado}
+      onClick={onAlternar}
+      className={`flex min-h-11 w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted sm:min-h-0 ${foco}`}
+    >
+      {children}
+      <Check
+        className={`h-4 w-4 shrink-0 text-primary ${marcado ? "" : "invisible"}`}
+        aria-hidden="true"
+      />
+    </button>
+  )
+}
+
+function alternarEm<T>(conjunto: Set<T>, item: T): Set<T> {
+  const novo = new Set(conjunto)
+  if (novo.has(item)) novo.delete(item)
+  else novo.add(item)
+  return novo
+}
+
+/**
+ * Ativos/Inativos/Fictícios, complementares (marcar mais de um SOMA ao
+ * resultado, não restringe mais). Substitui o antigo checkbox "Somente ativos",
+ * que só dava pra excluir inativos, nunca isolar só eles.
  */
 function FiltroSituacao({
   value,
@@ -488,68 +670,36 @@ function FiltroSituacao({
   value: Set<SituacaoFiltro>
   onChange: (v: Set<SituacaoFiltro>) => void
 }) {
-  const [aberto, setAberto] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!aberto) return
-    function aoClicarFora(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setAberto(false)
-    }
-    document.addEventListener("mousedown", aoClicarFora)
-    return () => document.removeEventListener("mousedown", aoClicarFora)
-  }, [aberto])
-
-  function alternar(situacao: SituacaoFiltro) {
-    const novo = new Set(value)
-    if (novo.has(situacao)) novo.delete(situacao)
-    else novo.add(situacao)
-    onChange(novo)
-  }
-
+  // Ativos + inativos é o padrão e é "todos os pacientes": fictício não é
+  // paciente, então só aparece no rótulo quando entra de propósito.
+  const reais = value.has("ativo") && value.has("inativo")
   const resumo =
     value.size === 0
       ? "Nenhuma"
-      : value.size === SITUACOES.length
-        ? "Todas"
+      : reais
+        ? value.has("ficticio")
+          ? "Todos + fictícios"
+          : "Todos"
         : SITUACOES.filter((s) => value.has(s.valor)).map((s) => s.rotulo).join(", ")
 
   return (
-    <div ref={ref} className="relative shrink-0">
-      <button
-        type="button"
-        onClick={() => setAberto((a) => !a)}
-        aria-expanded={aberto}
-        className={`inline-flex w-56 items-center gap-2 rounded-md border border-border px-3 py-2 text-sm font-semibold text-foreground hover:bg-muted ${foco}`}
-      >
-        <ListFilter className="h-4 w-4 shrink-0" aria-hidden="true" />
-        <span className="truncate">Situação: {resumo}</span>
-      </button>
-      {aberto && (
-        <div
-          role="listbox"
-          aria-label="Filtrar por situação"
-          className="absolute left-0 top-[calc(100%+4px)] z-[100] w-48 rounded-md border border-border bg-popover p-1 shadow-lg"
+    <PopoverFiltro
+      icone={ListFilter}
+      nome="Situação"
+      valor={resumo}
+      rotuloPainel="Filtrar por situação"
+      larguraPainel="w-48"
+    >
+      {SITUACOES.map((s) => (
+        <OpcaoFiltro
+          key={s.valor}
+          marcado={value.has(s.valor)}
+          onAlternar={() => onChange(alternarEm(value, s.valor))}
         >
-          {SITUACOES.map((s) => {
-            const marcado = value.has(s.valor)
-            return (
-              <button
-                key={s.valor}
-                type="button"
-                role="option"
-                aria-selected={marcado}
-                onClick={() => alternar(s.valor)}
-                className={`flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted ${foco}`}
-              >
-                {s.rotulo}
-                {marcado && <Check className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />}
-              </button>
-            )
-          })}
-        </div>
-      )}
-    </div>
+          <span className="flex-1">{s.rotulo}</span>
+        </OpcaoFiltro>
+      ))}
+    </PopoverFiltro>
   )
 }
 
@@ -571,25 +721,6 @@ function FiltroEscola({
   contagem: { respondida: number; pendente: number } | null
   onChange: (v: Set<EscolaFiltro>) => void
 }) {
-  const [aberto, setAberto] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!aberto) return
-    function aoClicarFora(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setAberto(false)
-    }
-    document.addEventListener("mousedown", aoClicarFora)
-    return () => document.removeEventListener("mousedown", aoClicarFora)
-  }, [aberto])
-
-  function alternar(escola: EscolaFiltro) {
-    const novo = new Set(value)
-    if (novo.has(escola)) novo.delete(escola)
-    else novo.add(escola)
-    onChange(novo)
-  }
-
   const resumo =
     value.size === 0
       ? "Nenhuma"
@@ -600,65 +731,45 @@ function FiltroEscola({
           : "Pendente"
 
   return (
-    <div ref={ref} className="relative shrink-0">
-      <button
-        type="button"
-        onClick={() => setAberto((a) => !a)}
-        aria-expanded={aberto}
-        className={`inline-flex w-56 items-center gap-2 rounded-md border border-border px-3 py-2 text-sm font-semibold text-foreground hover:bg-muted ${foco}`}
-      >
-        <GraduationCap className="h-4 w-4 shrink-0" aria-hidden="true" />
-        <span className="truncate">Escola: {resumo}</span>
-      </button>
-      {aberto && (
-        <div
-          role="listbox"
-          aria-label="Filtrar por ficha escolar"
-          className="absolute left-0 top-[calc(100%+4px)] z-[100] w-64 rounded-md border border-border bg-popover p-1 shadow-lg"
-        >
-          {ESCOLAS.map((e) => {
-            const marcado = value.has(e.valor)
-            const quantos = contagem?.[e.valor]
-            return (
-              <button
-                key={e.valor}
-                type="button"
-                role="option"
-                aria-selected={marcado}
-                onClick={() => alternar(e.valor)}
-                className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted ${foco}`}
+    <PopoverFiltro
+      icone={GraduationCap}
+      nome="Escola"
+      valor={resumo}
+      rotuloPainel="Filtrar por ficha escolar"
+      larguraPainel="w-64"
+      rodape={
+        contagem === null && (
+          <p className="px-2 py-1.5 text-xs text-muted-foreground">
+            Não foi possível ler as fichas agora. Recarregue a página para filtrar por
+            escola.
+          </p>
+        )
+      }
+    >
+      {ESCOLAS.map((e) => {
+        const quantos = contagem?.[e.valor]
+        return (
+          <OpcaoFiltro
+            key={e.valor}
+            marcado={value.has(e.valor)}
+            onAlternar={() => onChange(alternarEm(value, e.valor))}
+          >
+            <span className="flex-1 truncate">{e.rotulo}</span>
+            {/* Amber para pendente — a mesma cor do selo no cartão, para o
+                número e o cartão falarem a mesma língua. */}
+            {quantos !== undefined && (
+              <span
+                className={`shrink-0 tabular-nums ${
+                  e.valor === "pendente" ? `font-semibold ${TOM.atencao}` : "text-muted-foreground"
+                }`}
               >
-                <span className="flex-1 truncate">{e.rotulo}</span>
-                {/* Emerald para informada, amber para pendente — as mesmas cores
-                    do selo no cartão, para o número e o cartão falarem a mesma
-                    língua. */}
-                {quantos !== undefined && (
-                  <span
-                    className={`shrink-0 tabular-nums ${
-                      e.valor === "pendente"
-                        ? "font-semibold text-amber-600 dark:text-amber-400"
-                        : "text-muted-foreground"
-                    }`}
-                  >
-                    {quantos}
-                  </span>
-                )}
-                <Check
-                  className={`h-4 w-4 shrink-0 text-primary ${marcado ? "" : "invisible"}`}
-                  aria-hidden="true"
-                />
-              </button>
-            )
-          })}
-          {contagem === null && (
-            <p className="px-2 py-1.5 text-xs text-muted-foreground">
-              Não foi possível ler as fichas agora. Recarregue a página para filtrar por
-              escola.
-            </p>
-          )}
-        </div>
-      )}
-    </div>
+                {quantos}
+              </span>
+            )}
+          </OpcaoFiltro>
+        )
+      })}
+    </PopoverFiltro>
   )
 }
 
@@ -667,49 +778,49 @@ const CardPaciente = memo(function CardPaciente({
   telefoneResponsavel,
   fichaEscolar,
   escolaIndisponivel,
+  temContrato,
 }: {
   paciente: Paciente
   telefoneResponsavel: string | null
   fichaEscolar: ResumoEscolar | null
   escolaIndisponivel: boolean
+  /** `null` = não se aplica (fictício) ou a leitura falhou: a linha some. */
+  temContrato: boolean | null
 }) {
-  const tom = getTomAvatar(paciente.id_paciente)
-
   return (
     <li>
       {/* O card inteiro é o alvo de clique — num diretório, mirar só o nome é
           um alvo pequeno demais para o tamanho do cartão. */}
       <Link
         href={`/cadastros/pacientes/${paciente.id_paciente}`}
-        className={`group flex h-full flex-col rounded-xl border border-border bg-card p-5 shadow-sm transition-all duration-200 ease-out hover:-translate-y-1.5 hover:border-foreground/15 hover:shadow-lg motion-reduce:transform-none motion-reduce:transition-none ${foco}`}
+        className={`group flex h-full flex-col rounded-xl border border-border/70 bg-card p-4 ${SOMBRA} transition-colors hover:border-sidebar-primary/40 motion-reduce:transition-none ${foco}`}
       >
-        <div className="flex items-start justify-between gap-2">
-          <span className="text-sm text-muted-foreground">
-            ID <span className="font-semibold text-foreground">{idExibicao(paciente)}</span>
-          </span>
-          <div className="flex flex-wrap justify-end gap-1">
+        <div className="flex items-start gap-3">
+          <AvatarLista paciente={paciente} tamanho="md" />
+          <div className="min-w-0 flex-1 pt-0.5">
+            {/* Uma linha só, com o nome inteiro no title: duas linhas
+                desalinhavam a grade por causa de um nome comprido. */}
+            <h2
+              className="truncate text-[15px] font-semibold leading-snug text-foreground"
+              title={paciente.nome}
+            >
+              {paciente.nome}
+            </h2>
+            <p className="mt-0.5 text-xs tabular-nums text-muted-foreground">
+              ID {idExibicao(paciente)}
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-col items-end gap-1">
             <Situacao paciente={paciente} />
             {paciente.ficticio && (
-              <span className="inline-flex rounded-full bg-amber-500/10 px-2 py-0.5 text-sm font-medium text-amber-600 dark:text-amber-400">
+              <span className={`${SELO} bg-amber-500/10 ${TOM.atencao}`}>
                 Fictício
               </span>
             )}
           </div>
         </div>
 
-        <div className="mt-4 flex flex-col items-center text-center">
-          <AvatarLista paciente={paciente} tom={tom} />
-          <h2
-            className="mt-4 w-full truncate text-base font-bold leading-snug text-foreground"
-            title={paciente.nome}
-          >
-            {paciente.nome}
-          </h2>
-        </div>
-
-        <hr className="my-4 border-border" />
-
-        <dl className="space-y-3 pb-4 text-sm">
+        <dl className="mt-4 space-y-2 text-[13px]">
           <LinhaDado icone={IdCard} rotulo="CPF" valor={paciente.cpf ? maskCpfCnpj(paciente.cpf) : null} />
           <LinhaDado icone={Cake} rotulo="Nascimento" valor={dataBR(paciente.data_nascimento)} />
           {/* O telefone útil é o de quem responde pelo paciente: a clínica
@@ -717,13 +828,16 @@ const CardPaciente = memo(function CardPaciente({
               maioria dos cadastros enquanto o do responsável vinha preenchido
               do TiTa. */}
           <LinhaDado icone={Phone} rotulo="Celular" valor={telefoneResponsavel} />
+          {temContrato !== null && (
+            <LinhaDado icone={FileSignature} rotulo="Contrato">
+              <SeloContrato tem={temContrato} />
+            </LinhaDado>
+          )}
         </dl>
 
-        {/* Fictício não é criança — não tem escola a informar, e um selo de
-            pendência ali seria uma cobrança impossível de atender. */}
-        {!paciente.ficticio && !escolaIndisponivel && (
-          <SeloEscola ficha={fichaEscolar} />
-        )}
+        {/* Fictício não é criança — não tem escola a informar, e "não
+            informada" ali seria uma cobrança impossível de atender. */}
+        {!paciente.ficticio && !escolaIndisponivel && <LinhaEscola ficha={fichaEscolar} />}
       </Link>
     </li>
   )
@@ -742,13 +856,14 @@ const LinhaPaciente = memo(function LinhaPaciente({
   telefoneResponsavel,
   fichaEscolar,
   escolaIndisponivel,
+  temContrato,
 }: {
   paciente: Paciente
   telefoneResponsavel: string | null
   fichaEscolar: ResumoEscolar | null
   escolaIndisponivel: boolean
+  temContrato: boolean | null
 }) {
-  const tom = getTomAvatar(paciente.id_paciente)
   const nascimento = dataBR(paciente.data_nascimento)
 
   return (
@@ -759,17 +874,17 @@ const LinhaPaciente = memo(function LinhaPaciente({
         className={`group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 px-4 py-3 text-sm transition-colors hover:bg-muted/50 motion-reduce:transition-none ${COLUNAS_LISTA} ${foco} focus-visible:ring-inset`}
       >
         <div className="flex min-w-0 items-center gap-3">
-          <AvatarLista paciente={paciente} tom={tom} tamanho="sm" />
+          <AvatarLista paciente={paciente} tamanho="sm" />
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-2">
               <span
-                className="truncate font-medium text-primary group-hover:underline"
+                className="truncate font-medium text-foreground group-hover:underline"
                 title={paciente.nome}
               >
                 {paciente.nome}
               </span>
               {paciente.ficticio && (
-                <span className="inline-flex shrink-0 rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-600 dark:text-amber-400">
+                <span className={`${SELO} bg-amber-500/10 ${TOM.atencao}`}>
                   Fictício
                 </span>
               )}
@@ -795,6 +910,13 @@ const LinhaPaciente = memo(function LinhaPaciente({
             aplicavel={!paciente.ficticio && !escolaIndisponivel}
           />
         </span>
+        <span className="hidden min-w-0 md:block">
+          {temContrato === null ? (
+            <span className="text-muted-foreground">—</span>
+          ) : (
+            <SeloContrato tem={temContrato} />
+          )}
+        </span>
         <span className="justify-self-end md:justify-self-start">
           <Situacao paciente={paciente} />
         </span>
@@ -807,9 +929,7 @@ function CelulaEscola({ ficha, aplicavel }: { ficha: ResumoEscolar | null; aplic
   if (!aplicavel) return <span className="text-muted-foreground">—</span>
   if (!ficha) {
     return (
-      <span className="block truncate text-xs font-medium text-amber-600 dark:text-amber-400">
-        Não informada
-      </span>
+      <span className="block truncate text-muted-foreground">Não informada</span>
     )
   }
   return (
@@ -823,40 +943,56 @@ function CelulaEscola({ ficha, aplicavel }: { ficha: ResumoEscolar | null; aplic
 }
 
 /**
- * A resposta da família na própria lista: qual escola, e há quanto tempo.
+ * A resposta da família na própria lista: qual escola. Mostra o NOME da
+ * escola, não só "respondida" — é o dado que hoje só existe entrando na ficha.
+ * Há quanto tempo veio fica no title, para não pesar no cartão.
  *
- * Mostra o NOME DA ESCOLA, não só "respondida". Saber que respondeu resolve a
- * cobrança; saber onde a criança estuda é o motivo de ter perguntado — e é o
- * dado que hoje só existe entrando na ficha.
- *
- * Cores herdadas da tela: emerald já é "em ordem" (paciente Ativo) e amber já é
- * "requer atenção" (Fictício, "Verificar telefone" na aba Escola). Nenhum matiz
- * novo — na lista, uma cor nova significaria uma categoria nova.
+ * Pendência sem cor de alarme: o filtro "Escola" já conta e isola os
+ * pendentes; no cartão, o ícone verde marca quem respondeu e o resto fica
+ * neutro.
  */
-function SeloEscola({ ficha }: { ficha: ResumoEscolar | null }) {
-  if (!ficha) {
-    return (
-      <div className="mt-auto flex items-center gap-2 border-t border-border pt-3 text-xs font-medium text-amber-600 dark:text-amber-400">
-        <School className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-        Escola não informada
-      </div>
-    )
-  }
-
+function LinhaEscola({ ficha }: { ficha: ResumoEscolar | null }) {
   return (
-    <div className="mt-auto flex items-baseline gap-2 border-t border-border pt-3 text-xs">
-      <School
-        className="h-3.5 w-3.5 shrink-0 translate-y-0.5 text-emerald-600 dark:text-emerald-400"
+    <p
+      className={`mt-2 flex min-w-0 items-center gap-2 text-[13px] ${ficha ? "text-foreground" : "text-muted-foreground"}`}
+      title={ficha ? `${ficha.escola_nome} — informada ${tempoDecorrido(ficha.criado_em)}` : undefined}
+    >
+      <GraduationCap
+        className={`h-3.5 w-3.5 shrink-0 ${ficha ? TOM.ok : ""}`}
+        strokeWidth={1.75}
         aria-hidden="true"
       />
-      <span className="min-w-0 flex-1 truncate font-medium text-foreground" title={ficha.escola_nome}>
-        {ficha.escola_nome}
-      </span>
-      <span className="shrink-0 text-muted-foreground" title={`Informada ${tempoDecorrido(ficha.criado_em)}`}>
-        {tempoDecorrido(ficha.criado_em)}
-      </span>
-    </div>
+      <span className="sr-only">Escola: </span>
+      <span className="truncate">{ficha ? ficha.escola_nome : "Escola não informada"}</span>
+    </p>
   )
+}
+
+/**
+ * Existência de contrato (registro não cancelado), não vigência. Um ponto e
+ * texto em tom normal: compacto, e não disputa com o selo de situação.
+ */
+function SeloContrato({ tem }: { tem: boolean }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span
+        className={`h-1.5 w-1.5 shrink-0 rounded-full ${tem ? "bg-emerald-500" : "bg-amber-500"}`}
+        aria-hidden="true"
+      />
+      <span className={tem ? "text-foreground" : "text-muted-foreground"}>
+        {tem ? "Com contrato" : "Sem contrato"}
+      </span>
+    </span>
+  )
+}
+
+/**
+ * `null` quando não há o que afirmar: fictício não é paciente de verdade, e
+ * leitura que falhou não é "sem contrato".
+ */
+function temContrato(p: Paciente, com: Set<number>, indisponivel: boolean): boolean | null {
+  if (p.ficticio || indisponivel) return null
+  return com.has(p.id_paciente)
 }
 
 // Falecido e inativo são estados independentes (ver 20260826100000): um paciente
@@ -865,20 +1001,20 @@ function SeloEscola({ ficha }: { ficha: ResumoEscolar | null }) {
 function Situacao({ paciente }: { paciente: Paciente }) {
   if (paciente.falecido) {
     return (
-      <span className="inline-flex rounded-full bg-muted px-2 py-0.5 text-sm font-medium text-muted-foreground">
+      <span className={`${SELO} bg-muted text-muted-foreground`}>
         Falecido
       </span>
     )
   }
   if (!paciente.ativo) {
     return (
-      <span className="inline-flex rounded-full bg-rose-500/10 px-2 py-0.5 text-sm font-medium text-rose-600 dark:text-rose-400">
+      <span className={`${SELO} bg-rose-500/10 ${TOM.alerta}`}>
         Inativo
       </span>
     )
   }
   return (
-    <span className="inline-flex rounded-full bg-emerald-500/10 px-2 py-0.5 text-sm font-medium text-emerald-600 dark:text-emerald-400">
+    <span className={`${SELO} bg-emerald-500/10 ${TOM.ok}`}>
       Ativo
     </span>
   )
@@ -889,23 +1025,22 @@ function Situacao({ paciente }: { paciente: Paciente }) {
 // chegam.
 function GridEsqueleto() {
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
       {Array.from({ length: 10 }).map((_, i) => (
-        <div key={i} className="rounded-xl border border-border bg-card p-5 shadow-sm">
-          <div className="flex items-start justify-between">
-            <div className="h-3 w-14 animate-pulse rounded bg-muted" />
-            <div className="h-4 w-12 animate-pulse rounded-full bg-muted" />
+        <div key={i} className={`rounded-xl border border-border/70 bg-card p-4 ${SOMBRA}`}>
+          <div className="flex items-start gap-3">
+            <div className="h-12 w-12 shrink-0 animate-pulse rounded-full bg-muted" />
+            <div className="flex-1 space-y-1.5 pt-1">
+              <div className="h-3 w-28 animate-pulse rounded bg-muted" />
+              <div className="h-2.5 w-14 animate-pulse rounded bg-muted" />
+            </div>
+            <div className="h-5 w-12 animate-pulse rounded-md bg-muted" />
           </div>
-          <div className="mt-4 flex flex-col items-center">
-            <div className="h-24 w-24 animate-pulse rounded-full bg-muted" />
-            <div className="mt-4 h-3 w-28 animate-pulse rounded bg-muted" />
-          </div>
-          <hr className="my-4 border-border" />
-          <div className="space-y-3">
-            {Array.from({ length: 3 }).map((__, j) => (
-              <div key={j}>
+          <div className="mt-4 space-y-3">
+            {Array.from({ length: 4 }).map((__, j) => (
+              <div key={j} className="flex justify-between">
                 <div className="h-2.5 w-16 animate-pulse rounded bg-muted" />
-                <div className="mt-1 h-3 w-24 animate-pulse rounded bg-muted" />
+                <div className="h-2.5 w-24 animate-pulse rounded bg-muted" />
               </div>
             ))}
           </div>
@@ -918,7 +1053,7 @@ function GridEsqueleto() {
 // Mesmo formato da linha real: foto, nome e o selo à direita.
 function ListaEsqueleto() {
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+    <div className={`overflow-hidden rounded-xl border border-border/70 bg-card ${SOMBRA}`}>
       <div className="hidden h-9 border-b border-border bg-muted/50 md:block" />
       {Array.from({ length: 8 }).map((_, i) => (
         <div
@@ -934,32 +1069,51 @@ function ListaEsqueleto() {
   )
 }
 
+// Quatro tons só, todos claros e do mesmo peso: a cor ajuda a separar um card
+// do vizinho, não diz nada sobre o paciente — por isso poucos e sem saturação.
+const TONS_INICIAIS = [
+  "bg-sky-100 text-sky-800 dark:bg-sky-950/60 dark:text-sky-200",
+  "bg-violet-100 text-violet-800 dark:bg-violet-950/60 dark:text-violet-200",
+  "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-200",
+  "bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-200",
+] as const
+
+// Conectivos não viram inicial: "Ana da Silva" é AS, não AD.
+const CONECTIVOS = new Set(["da", "das", "de", "do", "dos", "e"])
+
+/** Primeira e última palavra do nome: "Adrian Araújo Lima" → "AL". */
+function iniciais(nome: string): string {
+  const partes = nome
+    .trim()
+    .split(/\s+/)
+    .filter((p) => p && !CONECTIVOS.has(p.toLowerCase()))
+  if (partes.length === 0) return "?"
+  const primeira = partes[0].charAt(0)
+  const ultima = partes.length > 1 ? partes[partes.length - 1].charAt(0) : ""
+  return (primeira + ultima).toUpperCase()
+}
+
 function AvatarLista({
   paciente,
-  tom,
-  tamanho = "lg",
+  tamanho = "md",
 }: {
   paciente: Paciente
-  tom: { bg: string; fg: string }
-  /** "lg" no card (96px), "sm" na linha da lista (40px). */
-  tamanho?: "lg" | "sm"
+  /** "md" no card (48px), "sm" na linha da lista (40px). */
+  tamanho?: "md" | "sm"
 }) {
-  const caixa =
-    tamanho === "sm"
-      ? "h-10 w-10 shrink-0"
-      : "h-24 w-24 transition-transform duration-200 ease-out group-hover:scale-105 motion-reduce:transform-none motion-reduce:transition-none"
-  const icone = tamanho === "sm" ? "h-5 w-5" : "h-11 w-11"
+  const caixa = tamanho === "sm" ? "h-10 w-10 shrink-0 text-xs" : "h-12 w-12 shrink-0 text-sm"
 
-  const [url, setUrl] = useState<string | null>(null)
+  // A URL fica presa ao path que a gerou: se o path muda (ou some), a URL
+  // antiga deixa de valer sem precisar zerar estado dentro do efeito.
+  const [assinada, setAssinada] = useState<{ path: string; url: string | null } | null>(null)
+  const url = paciente.foto_path && assinada?.path === paciente.foto_path ? assinada.url : null
 
   useEffect(() => {
+    const path = paciente.foto_path
+    if (!path) return
     let ativo = true
-    if (!paciente.foto_path) {
-      setUrl(null)
-      return
-    }
-    getFotoUrlAssinada(paciente.foto_path).then((assinada) => {
-      if (ativo) setUrl(assinada)
+    getFotoUrlAssinada(path).then((u) => {
+      if (ativo) setAssinada({ path, url: u })
     })
     return () => {
       ativo = false
@@ -969,23 +1123,20 @@ function AvatarLista({
   if (url) {
     return (
       <div className={`flex overflow-hidden rounded-full border border-border bg-muted ${caixa}`}>
-        <img src={url} alt={`Foto de ${paciente.nome}`} className="h-full w-full object-cover" />
+        <img src={url} loading="lazy" decoding="async" width={64} height={64} alt={`Foto de ${paciente.nome}`} className="h-full w-full object-cover" />
       </div>
     )
   }
 
-  // Mesmo ID que decide a cor (`tom`, no chamador): o mesmo paciente mantém o
-  // mesmo bicho aqui e em Acompanhamento de Laudos. Acesso por ÍNDICE em
-  // `ICONES`, não chamada de função — ver o comentário lá.
-  const Icone = ICONES[indiceIconeAvatar(paciente.id_paciente)]
+  // Tom pelo ID (estável entre visitas), não pelo nome — renomear não troca a cor.
+  const tom = TONS_INICIAIS[Math.abs(paciente.id_paciente) % TONS_INICIAIS.length]
 
   return (
     <span
-      className={`flex items-center justify-center rounded-full ${caixa}`}
-      style={{ backgroundColor: tom.bg, color: tom.fg }}
+      className={`flex select-none items-center justify-center rounded-full font-semibold tracking-wide ${tom} ${caixa}`}
       aria-hidden="true"
     >
-      <Icone className={icone} strokeWidth={1.75} />
+      {iniciais(paciente.nome)}
     </span>
   )
 }
