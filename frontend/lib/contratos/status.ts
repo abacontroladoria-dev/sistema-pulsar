@@ -25,6 +25,8 @@ export const TIPOS_CONTRATO = [
   "avaliacao_neuropsicologica",
   "terapias",
   "tecnico_terapeutico_particular",
+  // Instrumento apartado, vinculado ao contrato de Terapias (20261009160000).
+  "termo_uso_imagem",
 ] as const
 export type TipoContrato = (typeof TIPOS_CONTRATO)[number]
 
@@ -32,6 +34,7 @@ export const ROTULO_TIPO: Record<TipoContrato, string> = {
   avaliacao_neuropsicologica: "Avaliação Neuropsicológica",
   terapias: "Terapias",
   tecnico_terapeutico_particular: "Técnico Terapêutico Particular",
+  termo_uso_imagem: "Termo de Uso de Imagem",
 }
 
 /** Rótulo curto, para selo de cartão. */
@@ -39,6 +42,7 @@ export const ROTULO_TIPO_CURTO: Record<TipoContrato, string> = {
   avaliacao_neuropsicologica: "Avaliação",
   terapias: "Terapias",
   tecnico_terapeutico_particular: "Técnico Terapêutico",
+  termo_uso_imagem: "Uso de Imagem",
 }
 
 // ─── Status da assinatura ────────────────────────────────────────────────────
