@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight } from "lucide-react"
 import * as Popover from "@radix-ui/react-popover"
 
@@ -49,21 +49,54 @@ interface DatePickerProps {
   conteudoGatilho?: React.ReactNode
   /** aria-label do gatilho quando o miolo não diz que é uma escolha de data. */
   rotuloGatilho?: string
+  /** "AAAA-MM-DD": dias anteriores ficam desabilitados (equivale ao `min` do input nativo). */
+  min?: string
+  /** "AAAA-MM-DD": dias posteriores ficam desabilitados. */
+  max?: string
+  /** id do botão-gatilho, para `<label htmlFor>`. */
+  id?: string
+  "aria-invalid"?: boolean
+  "aria-describedby"?: string
+  /**
+   * Escolha de MÊS (substitui o `<input type="month">`): abre na grade de meses
+   * e devolve "AAAA-MM-01". `min`/`max` comparam pelo mês.
+   */
+  apenasMes?: boolean
 }
+
+type Visao = "dias" | "meses" | "anos"
 
 // `align` sem valor padrão: o antigo era `"start" as any` — uma string que não
 // pertence ao próprio tipo do prop, sustentada por um cast. Omitido, o
 // `radixAlign` abaixo já nasce "start", que era o efeito pretendido. Nenhum
 // chamador muda: os que passam "right"/"center" continuam mapeados igual.
-export function DatePicker({ value, onChange, disabled, placeholder = "dd/mm/aaaa", align, classeGatilho, conteudoGatilho, rotuloGatilho }: DatePickerProps) {
+export function DatePicker({
+  value,
+  onChange,
+  disabled,
+  placeholder = "dd/mm/aaaa",
+  align,
+  classeGatilho,
+  conteudoGatilho,
+  rotuloGatilho,
+  min,
+  max,
+  id,
+  "aria-invalid": ariaInvalid,
+  "aria-describedby": ariaDescribedBy,
+  apenasMes,
+}: DatePickerProps) {
   const [isOpen, setIsOpen] = useState(false)
+  // Clicar em "Mês Ano" sobe para meses e depois anos: data de nascimento não
+  // pode custar cem cliques de "mês anterior".
+  const [visao, setVisao] = useState<Visao>("dias")
   const [currentMonth, setCurrentMonth] = useState(() => parseDateLocal(value))
-  
-  useEffect(() => {
-    if (value) {
-      setCurrentMonth(parseDateLocal(value))
-    }
-  }, [value])
+  // Valor mudou de fora: o mês visível acompanha (ajuste no render, sem efeito).
+  const [valorAnterior, setValorAnterior] = useState(value)
+  if (value !== valorAnterior) {
+    setValorAnterior(value)
+    if (value) setCurrentMonth(parseDateLocal(value))
+  }
 
   const year = currentMonth.getFullYear()
   const month = currentMonth.getMonth()
@@ -79,8 +112,20 @@ export function DatePicker({ value, onChange, disabled, placeholder = "dd/mm/aaa
     setIsOpen(false)
   }
 
-  const prev = (e: React.MouseEvent) => { e.preventDefault(); setCurrentMonth(new Date(year, month - 1, 1)) }
-  const next = (e: React.MouseEvent) => { e.preventDefault(); setCurrentMonth(new Date(year, month + 1, 1)) }
+  // Passo das setas conforme a visão: 1 mês, 1 ano ou 12 anos.
+  const anoInicioGrade = year - (year % 12)
+  const passo = (dir: 1 | -1) =>
+    visao === "dias"
+      ? new Date(year, month + dir, 1)
+      : new Date(year + dir * (visao === "meses" ? 1 : 12), month, 1)
+  const prev = (e: React.MouseEvent) => { e.preventDefault(); setCurrentMonth(passo(-1)) }
+  const next = (e: React.MouseEvent) => { e.preventDefault(); setCurrentMonth(passo(1)) }
+  const foraDoLimite = (iso: string) => (!!min && iso < min) || (!!max && iso > max)
+  const mesForaDoLimite = (a: number, m: number) => {
+    const ym = formatDate(a, m, 1).slice(0, 7)
+    return (!!min && ym < min.slice(0, 7)) || (!!max && ym > max.slice(0, 7))
+  }
+  const hojeIso = formatDate(new Date().getFullYear(), new Date().getMonth(), apenasMes ? 1 : new Date().getDate())
 
   const monthNames = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
   const dayNames = ["D", "S", "T", "Q", "Q", "S", "S"]
@@ -94,12 +139,21 @@ export function DatePicker({ value, onChange, disabled, placeholder = "dd/mm/aaa
   else if (align === "center") radixAlign = "center"
 
   return (
-    <Popover.Root open={isOpen} onOpenChange={setIsOpen}>
+    <Popover.Root
+      open={isOpen}
+      onOpenChange={(aberto) => {
+        setIsOpen(aberto)
+        if (aberto) setVisao(apenasMes ? "meses" : "dias")
+      }}
+    >
       <Popover.Trigger asChild>
         <button
           type="button"
+          id={id}
           disabled={disabled}
           aria-label={rotuloGatilho}
+          aria-invalid={ariaInvalid}
+          aria-describedby={ariaDescribedBy}
           className={
             classeGatilho ??
             "flex w-full mt-1 items-center justify-between rounded-md border border-border bg-transparent px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-default disabled:bg-muted/40 disabled:text-muted-foreground"
@@ -126,14 +180,53 @@ export function DatePicker({ value, onChange, disabled, placeholder = "dd/mm/aaa
               <button type="button" onClick={prev} className="flex h-7 w-7 items-center justify-center rounded-md border border-transparent hover:border-border hover:bg-muted/50">
                 <ChevronLeft size={16} className="text-muted-foreground" />
               </button>
-              <div className="text-sm font-semibold text-foreground">
-                {monthNames[month]} {year}
-              </div>
+              <button
+                type="button"
+                onClick={() => setVisao(visao === "dias" ? "meses" : "anos")}
+                disabled={visao === "anos"}
+                aria-label={visao === "dias" ? "Escolher mês e ano" : visao === "meses" ? "Escolher ano" : undefined}
+                className="rounded-md px-2 py-0.5 text-sm font-semibold text-foreground hover:bg-muted/50 disabled:hover:bg-transparent"
+              >
+                {visao === "dias" ? `${monthNames[month]} ${year}` : visao === "meses" ? year : `${anoInicioGrade} – ${anoInicioGrade + 11}`}
+              </button>
               <button type="button" onClick={next} className="flex h-7 w-7 items-center justify-center rounded-md border border-transparent hover:border-border hover:bg-muted/50">
                 <ChevronRight size={16} className="text-muted-foreground" />
               </button>
             </div>
 
+            {visao !== "dias" && (
+              <div className="grid grid-cols-3 gap-1">
+                {(visao === "meses"
+                  ? monthNames.map((nome, m) => ({ chave: m, rotulo: nome.slice(0, 3), atual: dateObj?.getFullYear() === year && dateObj?.getMonth() === m }))
+                  : Array.from({ length: 12 }, (_, i) => anoInicioGrade + i).map((a) => ({ chave: a, rotulo: String(a), atual: dateObj?.getFullYear() === a }))
+                ).map((it) => (
+                  <button
+                    key={it.chave}
+                    type="button"
+                    disabled={visao === "meses" && apenasMes && mesForaDoLimite(year, it.chave)}
+                    onClick={() => {
+                      if (visao === "meses" && apenasMes) {
+                        onChange(formatDate(year, it.chave, 1))
+                        setIsOpen(false)
+                      } else if (visao === "meses") {
+                        setCurrentMonth(new Date(year, it.chave, 1))
+                        setVisao("dias")
+                      } else {
+                        setCurrentMonth(new Date(it.chave, month, 1))
+                        setVisao("meses")
+                      }
+                    }}
+                    className={`flex h-10 items-center justify-center rounded-md text-sm transition-colors disabled:cursor-not-allowed disabled:text-muted-foreground/30 disabled:hover:bg-transparent ${
+                      it.atual ? "bg-primary font-bold text-primary-foreground hover:bg-primary/90" : "text-foreground hover:bg-muted"
+                    }`}
+                  >
+                    {it.rotulo}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {visao === "dias" && (<>
             {/* Days header */}
             <div className="mb-2 grid grid-cols-7 gap-1 text-center">
               {dayNames.map((day, i) => (
@@ -151,16 +244,20 @@ export function DatePicker({ value, onChange, disabled, placeholder = "dd/mm/aaa
                 }
                 const currentDate = formatDate(year, month, day)
                 const isSelected = currentDate === value
-                const isToday = currentDate === formatDate(new Date().getFullYear(), new Date().getMonth(), new Date().getDate())
+                const isToday = currentDate === hojeIso
                 const isWeekend = idx % 7 === 0 || idx % 7 === 6
+                const bloqueado = foraDoLimite(currentDate)
 
                 return (
                   <button
                     key={day}
                     type="button"
+                    disabled={bloqueado}
                     onClick={() => handleDateSelect(day)}
                     className={`flex h-8 w-full items-center justify-center rounded-md text-sm transition-colors ${
-                      isSelected
+                      bloqueado
+                        ? "cursor-not-allowed text-muted-foreground/30"
+                        : isSelected
                         ? "bg-primary font-bold text-primary-foreground hover:bg-primary/90"
                         : isToday
                         ? "bg-accent font-semibold text-accent-foreground hover:bg-accent/80"
@@ -174,6 +271,7 @@ export function DatePicker({ value, onChange, disabled, placeholder = "dd/mm/aaa
                 )
               })}
             </div>
+            </>)}
             <div className="mt-4 flex justify-between">
                <button
                   type="button"
@@ -187,11 +285,12 @@ export function DatePicker({ value, onChange, disabled, placeholder = "dd/mm/aaa
                </button>
                <button
                   type="button"
+                  disabled={apenasMes ? mesForaDoLimite(new Date().getFullYear(), new Date().getMonth()) : foraDoLimite(hojeIso)}
                   onClick={() => {
-                     onChange(formatDate(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()))
+                     onChange(hojeIso)
                      setIsOpen(false)
                   }}
-                  className="text-xs text-primary hover:underline"
+                  className="text-xs text-primary hover:underline disabled:cursor-not-allowed disabled:opacity-40 disabled:no-underline"
                >
                   Hoje
                </button>

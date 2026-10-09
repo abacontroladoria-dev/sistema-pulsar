@@ -74,6 +74,9 @@ export function useModalDialog(aberto: boolean, aoFechar: () => void, idTitulo: 
         // essa decisão cabe — um handler no próprio campo nunca chegaria antes.
         const foco = document.activeElement
         if (foco instanceof HTMLElement && foco.getAttribute('aria-expanded') === 'true') return
+        // Popup em portal (ex.: DatePicker): o foco está DENTRO do popover, fora
+        // do diálogo, e o gatilho aberto continua aqui dentro com aria-expanded.
+        if (refDialogo.current?.querySelector('[aria-expanded="true"]')) return
         e.stopPropagation()
         aoFechar()
         return
