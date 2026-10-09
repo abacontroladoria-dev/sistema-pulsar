@@ -64,7 +64,6 @@ export const CODIGO_PARA_ROTAS: Record<string, string[]> = {
   // (20260831150000). A rota /tv da TV em si continua PÚBLICA em proxy.ts: isto
   // é a tela de gestão, não a de exibição.
   tv_avisos: ['/tv-avisos'],
-  cco: ['/cco'],
   // `autorizacoes` (a rota /autorizacoes) saiu em 2026-08-26: a tela foi
   // descontinuada e quem chama o responsável agora é a /solicitar. O código
   // pode continuar existindo em permissões já gravadas de usuários — sem

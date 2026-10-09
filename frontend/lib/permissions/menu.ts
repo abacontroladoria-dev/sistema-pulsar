@@ -110,7 +110,6 @@ export const MENU_ITENS: MenuItemDef[] = [
   { codigo: 'terapeutico_pdi', label: 'PDI - Controle', grupo: G.terapeutico.nome, path: '/terapeutico/prazos-pdi', icon: CalendarClock },
   { codigo: 'terapeutico_pdi_painel', label: 'PDI - Painel', grupo: G.terapeutico.nome, path: '/terapeutico/pdi-painel-analista', icon: Gauge },
 
-  { codigo: 'cco', label: 'Conciliação ASSIM', grupo: G.autorizacao.nome, path: '/cco', icon: BarChart3 },
   { codigo: 'auditoria_assim', label: 'Conferência ASSIM', grupo: G.autorizacao.nome, path: '/auditoria-assim?tab=auditoria', icon: ClipboardList },
   { codigo: 'reconciliacao_assim', label: 'Reconciliação ASSIM', grupo: G.autorizacao.nome, path: '/auditoria-assim?tab=reconciliacao', icon: Link2 },
   { codigo: 'conferencia_guias', label: 'Conferência de Guias', grupo: G.autorizacao.nome, path: '/conferencia-guias', icon: ClipboardPenLine },

@@ -85,7 +85,6 @@ const pathIconLegado: Record<string, LucideIcon> = {
   "/auditoria-assim?tab=auditoria": ClipboardList,
   "/auditoria-assim?tab=reconciliacao": Link2,
   "/conferencia-guias": ClipboardPenLine,
-  "/cco": BarChart3,
   "/admin": ShieldCheck,
   "/admin/permissoes": KeyRound,
   "/admin/api": Plug,
@@ -617,16 +616,12 @@ export default function Sidebar() {
           )}
 
           {/* Autorização */}
-          {(canAccess("/auditoria-assim?tab=auditoria") || canAccess("/auditoria-assim?tab=reconciliacao") ||
-            canAccess("/cco") || canAccess("/conferencia-guias")) && (
+          {(canAccess("/auditoria-assim?tab=auditoria") || canAccess("/auditoria-assim?tab=reconciliacao") || canAccess("/conferencia-guias")) && (
             <SidebarGroup
               title={GRUPO.autorizacao.nome}
               icon={GRUPO.autorizacao.icon}
-              defaultOpen={["/cco", "/auditoria-assim", "/conferencia-guias"].some(p => pathname === p)}
+              defaultOpen={["/auditoria-assim", "/conferencia-guias"].some(p => pathname === p)}
             >
-              {canAccess("/cco") && (
-                <Item codigo="cco" />
-              )}
               {/* Duas abas da mesma rota, cada uma com código próprio desde
                   29/09/2026 (auditoria_assim / reconciliacao_assim). Quem pode
                   VINCULAR na Reconciliação continua decidido pelas RPCs

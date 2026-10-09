@@ -133,7 +133,7 @@ describe('ASSIM — uma permissão por aba', () => {
   it('URL pura sem aba liberada, ou com ?tab= já presente, não redireciona', () => {
     expect(abaPadraoLiberada('recepcao', new Set(), '/auditoria-assim')).toBeNull()
     expect(abaPadraoLiberada('recepcao', new Set(['auditoria_assim']), '/auditoria-assim', '?tab=auditoria')).toBeNull()
-    expect(abaPadraoLiberada('recepcao', new Set(['auditoria_assim']), '/cco')).toBeNull()
+    expect(abaPadraoLiberada('recepcao', new Set(['auditoria_assim']), '/conferencia-guias')).toBeNull()
   })
 })
 
