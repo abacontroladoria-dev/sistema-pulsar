@@ -3,6 +3,10 @@ import { getUsuarioAtual } from "@/lib/supabase/usuarioAtual"
 import { registrarAuditoria } from "@/services/cadastrosAuditoria.service"
 import { mensagemDeErroBanco } from "@/lib/cadastros/erroBanco"
 import type { Paciente, PacienteEdit, PacienteFichaMedica } from "@/types/paciente"
+import type {
+  PacienteImportacaoLog,
+  ResultadoImportacaoPacientes,
+} from "@/types/pacienteImportacao"
 
 /**
  * Resultado de escrita com a MENSAGEM do banco preservada.
@@ -375,4 +379,52 @@ export async function definirAtivoPaciente(
   })
 
   return { ok: true, error: null }
+}
+
+/**
+ * Dispara manualmente a importação de pacientes do TiTa via RPC.
+ */
+export async function importarPacientesDaTita(): Promise<ResultadoImportacaoPacientes> {
+  const { data, error } = await getSupabaseClient().rpc("pacientes_importar_tita", { p_origem: "manual" })
+  if (error) {
+    throw new Error(mensagemDeErro(error))
+  }
+  return data as ResultadoImportacaoPacientes
+}
+
+/**
+ * Obtém a última execução registrada no log de importações.
+ */
+export async function getUltimaImportacaoPacientes(): Promise<PacienteImportacaoLog | null> {
+  const { data, error } = await getSupabaseClient()
+    .from("pacientes_importacoes_log")
+    .select("*")
+    .order("iniciado_em", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (error) {
+    console.error("Erro ao obter última importação de pacientes:", error)
+    return null
+  }
+  return (data as PacienteImportacaoLog) ?? null
+}
+
+/**
+ * Lista as últimas execuções da importação de pacientes para o histórico do "Ver mais".
+ */
+export async function getHistoricoImportacoesPacientes(
+  limite = 10
+): Promise<PacienteImportacaoLog[]> {
+  const { data, error } = await getSupabaseClient()
+    .from("pacientes_importacoes_log")
+    .select("*")
+    .order("iniciado_em", { ascending: false })
+    .limit(limite)
+
+  if (error) {
+    console.error("Erro ao obter histórico de importações de pacientes:", error)
+    return []
+  }
+  return (data ?? []) as PacienteImportacaoLog[]
 }

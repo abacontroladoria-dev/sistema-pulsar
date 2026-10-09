@@ -2,6 +2,7 @@
 
 import { memo, useCallback, useMemo, useState, useEffect, useRef } from "react"
 import Link from "next/link"
+import toast from "react-hot-toast"
 import { useHeader } from "@/contexts/HeaderContext"
 import { getFotoUrlAssinada, precarregarFotosAssinadas } from "@/services/pacientesFoto.service"
 import {
@@ -20,9 +21,19 @@ import {
   GraduationCap,
   ChevronDown,
   FileSignature,
+  CloudDownload,
+  Loader2,
 } from "lucide-react"
+import { InlineNotice } from "@/components/cronograma/ui/InlineNotice"
 import { HistoricoCadastrosModal } from "@/components/cadastros/historico/HistoricoCadastrosModal"
-import { usePacientes } from "@/hooks/usePacientes"
+import { usePacientes, refetchPacientes } from "@/hooks/usePacientes"
+import {
+  importarPacientesDaTita,
+  getUltimaImportacaoPacientes,
+  getHistoricoImportacoesPacientes,
+} from "@/services/pacientes.service"
+import type { PacienteImportacaoLog } from "@/types/pacienteImportacao"
+import { ModalDetalheImportacao } from "./pacientes/ModalDetalheImportacao"
 import type { ResumoEscolar } from "@/services/pacienteDadosEscolares.service"
 import { maskCpfCnpj, onlyDigits } from "@/lib/remuneracao/formatacao"
 import { idExibicao } from "@/types/paciente"
@@ -134,6 +145,53 @@ export function PacientesCadastro() {
   }, [buscaTexto])
   const [modalAberto, setModalAberto] = useState(false)
   const [verHistorico, setVerHistorico] = useState(false)
+  const [modalDetalhe, setModalDetalhe] = useState(false)
+  const [importando, setImportando] = useState(false)
+  const [ultimaImportacao, setUltimaImportacao] = useState<PacienteImportacaoLog | null>(null)
+  const [historicoImportacao, setHistoricoImportacao] = useState<PacienteImportacaoLog[]>([])
+
+  const carregarStatusImportacao = useCallback(async () => {
+    try {
+      const [ultimo, hist] = await Promise.all([
+        getUltimaImportacaoPacientes(),
+        getHistoricoImportacoesPacientes(10),
+      ])
+      setUltimaImportacao(ultimo)
+      setHistoricoImportacao(hist)
+    } catch (err) {
+      console.error("Falha ao carregar status de importação de pacientes:", err)
+    }
+  }, [])
+
+  useEffect(() => {
+    void carregarStatusImportacao()
+  }, [carregarStatusImportacao])
+
+  const importar = useCallback(async () => {
+    setImportando(true)
+    try {
+      const r = await importarPacientesDaTita()
+      const partes = [
+        r.novos ? `${r.novos} novo${r.novos === 1 ? "" : "s"}` : null,
+        r.vinculados_por_cpf
+          ? `${r.vinculados_por_cpf} vinculado${r.vinculados_por_cpf === 1 ? "" : "s"} pelo CPF`
+          : null,
+        r.atualizados ? `${r.atualizados} com dados do TiTa atualizados` : null,
+      ].filter(Boolean)
+      toast.success(
+        partes.length
+          ? `TiTa: ${partes.join(" · ")}.`
+          : `TiTa conferido: ${r.vistos_na_tita} pacientes, nada novo.`,
+        { duration: 6000 }
+      )
+      await refetchPacientes()
+      await carregarStatusImportacao()
+    } catch (e) {
+      toast.error(String((e as Error)?.message ?? e))
+    } finally {
+      setImportando(false)
+    }
+  }, [carregarStatusImportacao])
   // Complementar: cada situação soma ao resultado, não filtra em cascata.
   // Default espelha o comportamento antigo (ativos + inativos, fictícios de
   // fora) — só passa a incluir fictício quem marcar de propósito.
@@ -290,6 +348,40 @@ export function PacientesCadastro() {
           <History className="h-4 w-4" aria-hidden="true" />
           <span className="hidden sm:inline">Histórico</span>
         </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={importar}
+            disabled={importando}
+            title="Atualizar (import. do TiTa) — sincroniza imediatamente com a base oficial do TiTa e traz novos pacientes e dados alterados"
+            aria-label="Atualizar (import. do TiTa)"
+            className={`inline-flex shrink-0 items-center gap-2 rounded-md border border-border px-3 py-2 text-sm font-semibold text-foreground hover:bg-muted disabled:opacity-50 ${foco}`}
+          >
+            {importando ? (
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+            ) : (
+              <CloudDownload className="h-4 w-4" aria-hidden="true" />
+            )}
+            <span className="hidden sm:inline">Atualizar (import. do TiTa)</span>
+            <span className="sm:hidden">Atualizar</span>
+          </button>
+          {ultimaImportacao && (
+            <button
+              type="button"
+              onClick={() => setModalDetalhe(true)}
+              title="Ver o que mudou na sincronização do TiTa"
+              aria-label="Ver mais da sincronização do TiTa"
+              className={`inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2.5 py-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors ${foco}`}
+            >
+              <span className="hidden xl:inline text-muted-foreground">
+                {ultimaImportacao.status === "erro"
+                  ? "Sincronização 04:00 falhou"
+                  : `${ultimaImportacao.novos} novos · ${ultimaImportacao.atualizados} alterados`}
+              </span>
+              <span className="font-semibold text-primary underline">Ver mais</span>
+            </button>
+          )}
+        </div>
         <button
           type="button"
           onClick={() => setModalAberto(true)}
@@ -301,7 +393,7 @@ export function PacientesCadastro() {
       </div>
     )
     return () => setRightContent(null)
-  }, [setRightContent])
+  }, [setRightContent, importar, importando, ultimaImportacao])
 
   return (
     // Mais largo que as outras telas de cadastro: o grid precisa de espaço para
@@ -382,6 +474,7 @@ export function PacientesCadastro() {
         />
       </div>
       </div>
+
       {error && (
         <div
           role="alert"
@@ -392,6 +485,35 @@ export function PacientesCadastro() {
         </div>
       )}
 
+      {ultimaImportacao?.status === "erro" && (
+        <div className="mb-4">
+          <InlineNotice tone="red" icon={<AlertCircle className="h-4 w-4 shrink-0" />}>
+            <div className="flex flex-wrap items-center justify-between gap-3 w-full">
+              <span>
+                A sincronização automática do TiTa falhou às 04:00:{" "}
+                {ultimaImportacao.erro_mensagem ?? "Erro inesperado ao consultar a base do TiTa."}
+              </span>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setModalDetalhe(true)}
+                  className="font-semibold underline hover:opacity-80"
+                >
+                  Ver detalhes
+                </button>
+                <button
+                  type="button"
+                  onClick={importar}
+                  disabled={importando}
+                  className="font-bold underline hover:opacity-80 disabled:opacity-50"
+                >
+                  {importando ? "Importando..." : "Tentar importar agora"}
+                </button>
+              </div>
+            </div>
+          </InlineNotice>
+        </div>
+      )}
       {loading ? (
         modo === "lista" ? <ListaEsqueleto /> : <GridEsqueleto />
       ) : error && pacientes.length === 0 ? (
@@ -506,6 +628,13 @@ export function PacientesCadastro() {
             "alta_individualidade",
           ]}
           onClose={() => setVerHistorico(false)}
+        />
+      )}
+      {modalDetalhe && (
+        <ModalDetalheImportacao
+          log={ultimaImportacao}
+          historico={historicoImportacao}
+          onClose={() => setModalDetalhe(false)}
         />
       )}
     </div>
