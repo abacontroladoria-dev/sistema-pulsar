@@ -20,7 +20,8 @@ export default function PacienteDetalhePage() {
   // `?aba=escola` vem da listagem de pacientes: o selo de escola no cartão abre
   // direto na aba, para conferir o que a família declarou sem passar por
   // Cadastro. `?aba=disponibilidade` abre a disponibilidade (link do cronograma,
-  // no futuro). Lista fechada de propósito — `aba` cru viria de URL e o valor
+  // no futuro). `?aba=contratos` vem da Status Contratos ("Abrir cadastro").
+  // Lista fechada de propósito — `aba` cru viria de URL e o valor
   // precisa casar com o type `Aba`.
   const abaParam = searchParams.get("aba")
   const abaInicial =
@@ -30,7 +31,9 @@ export default function PacienteDetalhePage() {
         ? "escola"
         : abaParam === "disponibilidade"
           ? "disponibilidade"
-          : undefined
+          : abaParam === "contratos"
+            ? "contratos"
+            : undefined
   const suspensaoIdParam = searchParams.get("suspensao")
   const suspensaoIdInicial = suspensaoIdParam ? Number(suspensaoIdParam) : undefined
 

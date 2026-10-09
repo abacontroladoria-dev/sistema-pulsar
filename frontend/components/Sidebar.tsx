@@ -553,11 +553,11 @@ export default function Sidebar() {
 
           {/* Pacientes */}
           {(canAccess("/solicitar") || canAccess("/autorizacoes-avulsas") || canAccess("/central-pacientes") ||
-            canAccess("/acompanhamento/laudos") || canAccess("/outros-convenios")) && (
+            canAccess("/acompanhamento/laudos") || canAccess("/acompanhamento/contratos") || canAccess("/outros-convenios")) && (
             <SidebarGroup
               title={GRUPO.pacientes.nome}
               icon={GRUPO.pacientes.icon}
-              defaultOpen={["/solicitar", "/autorizacoes-avulsas", "/central-pacientes", "/acompanhamento/laudos", "/outros-convenios"].some(p => pathname === p)}
+              defaultOpen={["/solicitar", "/autorizacoes-avulsas", "/central-pacientes", "/acompanhamento/laudos", "/acompanhamento/contratos", "/outros-convenios"].some(p => pathname === p)}
             >
               {canAccess("/solicitar") && (
                 <Item codigo="atendimentos" />
@@ -575,6 +575,12 @@ export default function Sidebar() {
                   usuário em 28/08/2026. */}
               {canAccess("/acompanhamento/laudos") && (
                 <Item codigo="acompanhamento_laudos" />
+              )}
+              {/* Contratos do paciente: assinatura e vigência, no mesmo molde
+                  da Status Laudos e Senhas. Só leitura — criar e assinar é na
+                  aba Contratos da ficha do paciente. */}
+              {canAccess("/acompanhamento/contratos") && (
+                <Item codigo="status_contratos" />
               )}
               {/* A tela existia sem item no menu (só abria pela URL). Entrou em
                   29/09/2026, quando o catálogo de permissões passou a espelhar

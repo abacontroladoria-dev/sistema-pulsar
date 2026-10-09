@@ -1,0 +1,157 @@
+// Filtros e indicadores da Status Contratos.
+//
+// O primeiro caso é o mais importante: o número do card e o tamanho da lista ao
+// clicar nele têm de ser o mesmo, porque o card É o filtro.
+//
+//   npx vitest run lib/contratos/filtros.test.ts
+
+import { test } from "vitest"
+import assert from "node:assert/strict"
+import {
+  RECORTES,
+  aplicar,
+  contarKpis,
+  dispensadoDeContrato,
+  filtrosIniciais,
+  proximoVencimento,
+  semContratoDeTerapias,
+  type FiltrosContratos,
+} from "./filtros"
+import type { ItemStatusContratos, ResumoContrato } from "@/types/contratosPaciente"
+
+let seq = 0
+const contrato = (p: Partial<ResumoContrato>): ResumoContrato => ({
+  id: ++seq,
+  tipo: "terapias",
+  dataInicio: "2026-01-01",
+  dataVencimento: "2026-12-31",
+  status: "assinado",
+  vigencia: "vigente",
+  assinadoEm: null,
+  ...p,
+})
+const paciente = (id: number, nome: string, p: Partial<ItemStatusContratos> = {}): ItemStatusContratos => ({
+  pacienteId: id,
+  origemCadastro: "pulsar",
+  titaPacienteId: null,
+  nome,
+  ativo: true,
+  ficticio: false,
+  fotoPath: null,
+  naGrade: true,
+  temTerapiaReal: true,
+  convenio: "ASSIM",
+  contratos: [],
+  totalContratos: 0,
+  ...p,
+})
+
+const ITENS: ItemStatusContratos[] = [
+  paciente(1, "Ana", { contratos: [contrato({})] }),
+  paciente(2, "Bruno", { contratos: [] }),
+  paciente(3, "Caio", { contratos: [contrato({ status: "rascunho" })] }),
+  paciente(4, "Davi", { contratos: [contrato({ status: "aguardando_assinatura", vigencia: "a_vencer" })] }),
+  paciente(5, "Eva", { contratos: [contrato({ vigencia: "vencido" })] }),
+  paciente(6, "Fábio", { contratos: [contrato({ status: "expirado" })] }),
+  paciente(7, "Gil", { naGrade: false, contratos: [] }),
+  paciente(8, "Hugo", {
+    contratos: [contrato({}), contrato({ tipo: "avaliacao_neuropsicologica", vigencia: "vencido" })],
+  }),
+  paciente(9, "Íris", { ativo: false, contratos: [] }),
+  paciente(10, "Júlia", { convenio: "LEVE", contratos: [contrato({ vigencia: "a_vencer" })] }),
+  paciente(11, "Horário Administrativo", { ficticio: true, contratos: [] }),
+  // Só teve Triagem na grade: dispensado de "Sem contrato" (decisão do usuário, 08/10/2026).
+  paciente(12, "Léo", { naGrade: true, temTerapiaReal: false, contratos: [] }),
+  // Só teve Triagem, mas é Particular: NÃO dispensado (decisão do usuário, 09/10/2026).
+  paciente(13, "Mel", { naGrade: true, temTerapiaReal: false, convenio: "Particular", contratos: [] }),
+]
+
+test("o número do card é o tamanho da lista ao clicar nele, em qualquer combinação", () => {
+  const variacoes: Partial<FiltrosContratos>[] = [
+    {},
+    { tipos: new Set(["terapias"]) },
+    { tipos: new Set(["avaliacao_neuropsicologica"]) },
+    { convenios: new Set(["LEVE"]) },
+    { agendamento: new Set(["sim"]) },
+    { agendamento: new Set(["nao"]) },
+    { situacoes: new Set(["ficticio"]) },
+    { situacoes: new Set(["ativo", "inativo"]) },
+    { busca: "a" },
+  ]
+  for (const v of variacoes) {
+    const f = { ...filtrosIniciais(), ...v }
+    const kpis = contarKpis(ITENS, f)
+    for (const r of RECORTES) {
+      assert.equal(aplicar(ITENS, { ...f, recorte: r }).length, kpis[r], `${r} em ${JSON.stringify(Object.keys(v))}`)
+    }
+  }
+})
+
+test("sem contrato: sem Terapias valendo hoje, com ou sem agendamento; só Triagem fica de fora (menos Particular)", () => {
+  const nomes = aplicar(ITENS, { ...filtrosIniciais(), recorte: "sem_contrato" }).map((i) => i.nome)
+  // Bruno (nada), Eva (Terapias vencido), Fábio (link expirado) e Gil (sem
+  // agendamento nenhum — decisão do usuário, 08/10/2026, cobra do mesmo jeito).
+  // Léo tem agendamento mas só de Triagem: dispensado. Mel também só teve
+  // Triagem, mas é Particular — cobra do mesmo jeito (decisão do usuário,
+  // 09/10/2026; medido em produção: 28 pacientes Particular com só Triagem na
+  // grade, quase todos uma avaliação pontual num único dia). Íris inativa fica
+  // fora pelo filtro padrão "Cadastro: Ativo", não por este recorte.
+  assert.deepEqual(nomes, ["Bruno", "Eva", "Fábio", "Gil", "Mel"])
+})
+
+test("recortes por status e vigência", () => {
+  const nomes = (r: FiltrosContratos["recorte"], extra: Partial<FiltrosContratos> = {}) =>
+    aplicar(ITENS, { ...filtrosIniciais(), recorte: r, ...extra }).map((i) => i.nome)
+  // Sem card de "Rascunho" (pedido do usuário, 09/10/2026: "não precisa") —
+  // Caio (único rascunho da lista) continua em ITENS só para a checagem
+  // genérica acima, que não depende do nome dele.
+  assert.deepEqual(nomes("aguardando"), ["Davi"])
+  assert.deepEqual(nomes("a_vencer"), ["Davi", "Júlia"])
+  assert.deepEqual(nomes("assinado_vigente"), ["Ana", "Hugo", "Júlia"])
+  assert.deepEqual(nomes("vencido"), ["Eva", "Hugo"])
+  // Com tipo Terapias, a Avaliação vencida do Hugo deixa de contar.
+  assert.deepEqual(nomes("vencido", { tipos: new Set(["terapias"]) }), ["Eva"])
+  assert.deepEqual(nomes("recusado_expirado"), ["Fábio"])
+})
+
+test("cadastro e agendamento são filtros separados", () => {
+  const nomes = (extra: Partial<FiltrosContratos>) => aplicar(ITENS, { ...filtrosIniciais(), ...extra }).map((i) => i.nome)
+  // Fictício fica fora do padrão (só Ativo), mesmo estando ativo e com agendamento.
+  assert.equal(nomes({}).includes("Horário Administrativo"), false)
+  assert.deepEqual(nomes({ situacoes: new Set(["ficticio"]) }), ["Horário Administrativo"])
+  assert.deepEqual(nomes({ situacoes: new Set(["inativo"]) }), ["Íris"])
+  assert.deepEqual(nomes({ agendamento: new Set(["nao"]) }), ["Gil"])
+  assert.equal(nomes({ agendamento: new Set(["sim"]) }).includes("Gil"), false)
+})
+
+test("dispensado de contrato: só com agendamento E só Triagem E não-Particular", () => {
+  const semGrade = paciente(90, "x", { naGrade: false, temTerapiaReal: false })
+  const soTriagem = paciente(91, "x", { naGrade: true, temTerapiaReal: false })
+  const comTerapiaReal = paciente(92, "x", { naGrade: true, temTerapiaReal: true })
+  const particularSoTriagem = paciente(93, "x", { naGrade: true, temTerapiaReal: false, convenio: "Particular - Mensal" })
+  assert.equal(dispensadoDeContrato(semGrade), false, "sem agendamento nenhum NÃO é dispensado")
+  assert.equal(dispensadoDeContrato(soTriagem), true, "agendamento só de Triagem é dispensado")
+  assert.equal(dispensadoDeContrato(comTerapiaReal), false)
+  assert.equal(dispensadoDeContrato(particularSoTriagem), false, "Particular não é dispensado nem só com Triagem")
+
+  assert.equal(semContratoDeTerapias(semGrade), true)
+  assert.equal(semContratoDeTerapias(soTriagem), false)
+  assert.equal(semContratoDeTerapias(comTerapiaReal), true)
+  assert.equal(semContratoDeTerapias(particularSoTriagem), true)
+  assert.equal(semContratoDeTerapias({ ...comTerapiaReal, contratos: [contrato({})] }), false)
+})
+
+test("busca ignora acento e caixa, e aceita o ID do paciente", () => {
+  assert.deepEqual(aplicar(ITENS, { ...filtrosIniciais(), busca: "fabio" }).map((i) => i.nome), ["Fábio"])
+  assert.deepEqual(aplicar(ITENS, { ...filtrosIniciais(), busca: "10" }).map((i) => i.nome), ["Júlia"])
+})
+
+test("próximo vencimento: o mais próximo que não passou; sem ele, o último que passou", () => {
+  const a = contrato({ dataVencimento: "2027-01-01" })
+  const b = contrato({ dataVencimento: "2026-11-01", vigencia: "a_vencer" })
+  const c = contrato({ dataVencimento: "2026-01-01", vigencia: "vencido" })
+  const d = contrato({ dataVencimento: "2025-01-01", vigencia: "vencido" })
+  assert.equal(proximoVencimento([a, b, c])?.id, b.id)
+  assert.equal(proximoVencimento([c, d])?.id, c.id)
+  assert.equal(proximoVencimento([contrato({ status: "recusado" })]), null)
+})

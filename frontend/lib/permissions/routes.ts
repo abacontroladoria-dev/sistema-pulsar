@@ -24,6 +24,12 @@ export const CODIGO_PARA_ROTAS: Record<string, string[]> = {
   // o cadastro e a negaria a quem faz a cobrança. A RLS de
   // public.laudos_acompanhamento exige este mesmo código (20260828150000).
   acompanhamento_laudos: ['/acompanhamento/laudos'],
+  // Contratos do PACIENTE (assinatura + vigência). Código próprio, e não
+  // `cadastros_contratos` (que é a tela de contratos de PRESTADOR), nem
+  // `cadastros_pacientes`: a recepção acompanha sem manter o cadastro. A RLS de
+  // public.pacientes_contratos* aceita este código só para LEITURA
+  // (20261008160000); criar e assinar continua exigindo `cadastros_pacientes`.
+  status_contratos: ['/acompanhamento/contratos'],
   escala_terapeutica: ['/central-terapeutas'],
   // As duas abas de /auditoria-assim têm código próprio (29/09/2026: "cada item
   // do sidebar precisa de uma permissão própria"). A URL pura, sem ?tab=, não
