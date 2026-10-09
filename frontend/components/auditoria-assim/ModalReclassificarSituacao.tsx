@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ArrowRight, CalendarClock, Loader2, ShieldAlert, Undo2, X } from 'lucide-react'
 import { useModalDialog } from '@/hooks/useModalDialog'
+import { DatePicker } from '@/components/ui/date-picker'
 import SituacaoBadge, { resolverConfig } from './SituacaoBadge'
 import {
   DESTINO_ADIANTADA,
@@ -352,14 +353,14 @@ export default function ModalReclassificarSituacao({
                         </button>
 
                         {abreData && (
-                          <label className="block border-t border-brand/25 px-3 py-2.5">
+                          <div className="block border-t border-brand/25 px-3 py-2.5">
                             <span className="text-[12px] font-medium text-slate-600">
                               Atendida de fato em
                             </span>
-                            <input
-                              type="date"
+                            <DatePicker
                               value={dataReal}
-                              onChange={(e) => setDataReal(e.target.value)}
+                              onChange={setDataReal}
+                              rotuloGatilho="Atendida de fato em"
                               min={
                                 agendada
                                   ? deslocar(agendada, -MAXIMO_DIAS_ADIANTAMENTO)
@@ -370,14 +371,14 @@ export default function ModalReclassificarSituacao({
                                   ? deslocar(agendada, MAXIMO_DIAS_ADIANTAMENTO)
                                   : undefined
                               }
-                              className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-[13px] tabular-nums text-slate-800 focus:border-slate-400 focus:outline-none sm:w-52"
+                              classeGatilho="mt-1 flex w-full items-center justify-between rounded-lg border border-slate-300 bg-white px-3 py-2 text-[13px] tabular-nums text-slate-800 focus:border-slate-400 focus:outline-none sm:w-52"
                             />
                             {dataReal !== '' && dataReal === agendada && (
                               <span className="mt-1 block text-[11px] text-amber-700">
                                 · precisa ser diferente da data agendada
                               </span>
                             )}
-                          </label>
+                          </div>
                         )}
                       </div>
                     )

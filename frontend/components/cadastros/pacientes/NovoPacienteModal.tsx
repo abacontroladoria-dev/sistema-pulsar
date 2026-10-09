@@ -8,7 +8,7 @@ import { maskCpf, validarCpfCnpj } from "@/lib/remuneracao/formatacao"
 import { upsertPaciente } from "@/services/pacientes.service"
 import { refetchPacientes } from "@/hooks/usePacientes"
 import type { SexoPaciente } from "@/types/paciente"
-import { Campo, CampoSelect, foco } from "./ui/campos"
+import { Campo, CampoData, CampoSelect, foco } from "./ui/campos"
 
 // Cadastro mínimo: o resto se preenche na tela de detalhe, que é onde o
 // formulário completo vive. A matrícula NÃO vai no payload — quem a gera é o
@@ -132,11 +132,10 @@ export function NovoPacienteModal({ onFechar }: { onFechar: () => void }) {
             inputMode="numeric"
             placeholder="000.000.000-00"
           />
-          <Campo
+          <CampoData
             label="Data de nascimento"
-            type="date"
-            value={dataNascimento ?? ""}
-            onChange={(v) => setDataNascimento(v || null)}
+            value={dataNascimento}
+            onChange={setDataNascimento}
             disabled={salvando}
           />
           <CampoSelect

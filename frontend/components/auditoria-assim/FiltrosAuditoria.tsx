@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { CalendarDays, ChartColumn, Clock, KeySquare, Search } from 'lucide-react'
+import { DatePicker } from '@/components/ui/date-picker'
 import type { AuditoriaFilters } from './types'
 import ModalTokenMensal from './ModalTokenMensal'
 import ModalVisaoGerencial from './ModalVisaoGerencial'
@@ -57,15 +58,20 @@ export default function FiltrosAuditoria({ filters, onChange }: Props) {
           alta, nunca mais estreita que o conteúdo. */}
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-[180px_1fr_190px_auto_auto]">
 
-        <label className="relative">
-          <CalendarDays className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input
-            type="date"
-            value={filters.data}
-            onChange={(e) => update('data', e.target.value)}
-            className={`${inputClass} pl-11`}
-          />
-        </label>
+        <DatePicker
+          value={filters.data}
+          onChange={(v) => update('data', v)}
+          rotuloGatilho="Data"
+          classeGatilho={`${inputClass} flex items-center gap-3 text-left`}
+          conteudoGatilho={
+            <>
+              <CalendarDays className="w-4 h-4 shrink-0 text-slate-400" aria-hidden />
+              <span className={filters.data ? '' : 'text-slate-400'}>
+                {filters.data ? filters.data.split('-').reverse().join('/') : 'dd/mm/aaaa'}
+              </span>
+            </>
+          }
+        />
 
         <label className="relative">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />

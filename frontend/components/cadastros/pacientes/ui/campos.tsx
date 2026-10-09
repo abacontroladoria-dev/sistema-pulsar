@@ -3,6 +3,7 @@
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react"
 import * as Popover from "@radix-ui/react-popover"
 import { Check, ChevronDown } from "lucide-react"
+import { DatePicker } from "@/components/ui/date-picker"
 
 // Classes de formulário do projeto. Mesmas constantes de
 // components/cadastros/NovoProfissionalModal.tsx — tokens semânticos, sem cor
@@ -87,6 +88,30 @@ export function Campo({
         maxLength={maxLength}
         inputMode={inputMode}
       />
+      {dica && <p className="mt-1 text-xs text-muted-foreground">{dica}</p>}
+    </div>
+  )
+}
+
+/** Campo de data com o calendário padrão do sistema (`DatePicker`). Vazio = null. */
+export function CampoData({
+  label,
+  value,
+  onChange,
+  disabled,
+  largo,
+  dica,
+}: CampoBaseProps & {
+  value: string | null
+  onChange: (v: string | null) => void
+  disabled: boolean
+}) {
+  return (
+    <div className={largo ? "sm:col-span-2" : undefined}>
+      <span className={rotulo}>{label}</span>
+      <div className="mt-1">
+        <DatePicker value={value ?? ""} onChange={(v) => onChange(v || null)} disabled={disabled} />
+      </div>
       {dica && <p className="mt-1 text-xs text-muted-foreground">{dica}</p>}
     </div>
   )

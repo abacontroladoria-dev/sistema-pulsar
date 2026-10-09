@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { CalendarDays, Download, FileSpreadsheet, Loader2, X } from 'lucide-react'
+import { Download, FileSpreadsheet, Loader2, X } from 'lucide-react'
+import { DateRangePicker } from '@/components/ui/date-range-picker'
 import toast from 'react-hot-toast'
 import { listarCentralTerapeuticaPeriodo } from '@/services/central-terapeutas-relatorio.service'
 import { montarRelatorio } from '@/lib/central-terapeutas/exportRelatorio'
@@ -15,9 +16,6 @@ type Props = {
   feriados: Record<string, FeriadoInfo>
   onClose: () => void
 }
-
-const inputClass =
-  'w-full h-10 pl-11 pr-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-700 outline-none focus:border-[#3A8FB7] transition'
 
 export default function RelatorioModal({ aberto, dataPadrao, feriados, onClose }: Props) {
   const [dataInicio, setDataInicio] = useState(dataPadrao)
@@ -125,45 +123,20 @@ export default function RelatorioModal({ aberto, dataPadrao, feriados, onClose }
 
         {/* Corpo */}
         <div className="px-5 py-5 space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <label className="block">
-              <span className="block text-xs font-medium text-slate-500 mb-1.5">
-                De
-              </span>
-              <span className="relative block">
-                <CalendarDays className="w-4 h-4 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
-                <input
-                  type="date"
-                  value={dataInicio}
-                  onChange={(e) => {
-                    setDataInicio(e.target.value)
-                    setAviso(null)
-                  }}
-                  disabled={gerando}
-                  className={inputClass}
-                />
-              </span>
-            </label>
-
-            <label className="block">
-              <span className="block text-xs font-medium text-slate-500 mb-1.5">
-                Até
-              </span>
-              <span className="relative block">
-                <CalendarDays className="w-4 h-4 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
-                <input
-                  type="date"
-                  value={dataFim}
-                  min={dataInicio || undefined}
-                  onChange={(e) => {
-                    setDataFim(e.target.value)
-                    setAviso(null)
-                  }}
-                  disabled={gerando}
-                  className={inputClass}
-                />
-              </span>
-            </label>
+          <div className={gerando ? 'pointer-events-none opacity-60' : undefined}>
+            <span className="block text-xs font-medium text-slate-500 mb-1.5">
+              Período
+            </span>
+            <DateRangePicker
+              inicio={dataInicio}
+              fim={dataFim}
+              onChange={({ inicio, fim }) => {
+                setDataInicio(inicio)
+                setDataFim(fim)
+                setAviso(null)
+              }}
+              className="w-full"
+            />
           </div>
 
           {periodoInvalido && dataInicio && dataFim && (

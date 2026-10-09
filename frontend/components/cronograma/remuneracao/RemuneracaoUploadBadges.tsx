@@ -19,6 +19,7 @@ import { validarModeloRelatorio, parseHtmlTable, type CsvGradeRow } from "@/lib/
 import { parseGradeCsv } from "@/lib/remuneracao/uploadParsers"
 import { periodoDoMes, type PeriodoRP, type ControlesGradeRP } from "@/hooks/useRemuneracao"
 import { SeletorMesPrevisao } from "@/components/cronograma/indicadores/SeletorMesPrevisao"
+import { DateRangePicker } from "@/components/ui/date-range-picker"
 import { GradeIncompletaModal } from "./GradeIncompletaModal"
 
 function parsePeFile(file: File): Promise<CsvGradeRow[]> {
@@ -120,10 +121,6 @@ export function RemuneracaoUploadBadges({ c, hidePe = false, hideStatusRow = fal
     void carregarGradeDoBanco(p)
   }
 
-  function ajustarData(campo: keyof PeriodoRP, valor: string) {
-    setPeriodo({ ...periodo, [campo]: valor })
-  }
-
   async function onGradeChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     e.target.value = ""
@@ -183,23 +180,12 @@ export function RemuneracaoUploadBadges({ c, hidePe = false, hideStatusRow = fal
       <div className="flex flex-wrap items-center justify-end gap-2">
         <SeletorMesPrevisao ano={ano} mes={mes} onChange={irParaMes} />
 
-        <div className="flex items-center gap-1 rounded-lg border border-border bg-card px-1.5 py-1 text-[11px] text-muted-foreground">
-          <input
-            type="date"
-            value={periodo.de}
-            onChange={e => ajustarData("de", e.target.value)}
-            className="bg-transparent text-foreground outline-none"
-            aria-label="Data inicial"
-          />
-          <span>→</span>
-          <input
-            type="date"
-            value={periodo.ate}
-            onChange={e => ajustarData("ate", e.target.value)}
-            className="bg-transparent text-foreground outline-none"
-            aria-label="Data final"
-          />
-        </div>
+        <DateRangePicker
+          inicio={periodo.de}
+          fim={periodo.ate}
+          onChange={({ inicio, fim }) => setPeriodo({ ...periodo, de: inicio, ate: fim })}
+          align="end"
+        />
 
         <button
           type="button"

@@ -5,6 +5,7 @@
 import { useEffect, useState, useMemo, useRef } from 'react'
 
 import { getSupabaseClient } from '@/lib/supabase/client'
+import { DatePicker } from '@/components/ui/date-picker'
 
 import { descreverErro, ehMigrationPendente } from '@/lib/supabase/erro'
 
@@ -2180,26 +2181,14 @@ useEffect(() => {
   />
 
   {/* 📅 DATA */}
-  <input
-    type="date"
-    value={dataSelecionada}
-    onChange={(e) =>
-      setDataSelecionada(e.target.value)
-    }
-    className="
-      col-span-2
-      border border-slate-200
-      rounded-lg
-      px-3 py-1.5
-      text-sm
-      bg-white
-      text-slate-600
-      shadow-sm
-      focus:outline-none
-      focus:ring-2
-      focus:ring-[#3A8FB7]/40
-    "
-  />
+  <div className="col-span-2">
+    <DatePicker
+      value={dataSelecionada}
+      onChange={setDataSelecionada}
+      rotuloGatilho="Data"
+      classeGatilho="flex w-full items-center justify-between border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white text-slate-600 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#3A8FB7]/40"
+    />
+  </div>
 
   {/* ⏰ HORÁRIO */}
   <div className="relative col-span-2">
@@ -3364,22 +3353,21 @@ useEffect(() => {
           >
             Qual dia a clínica não abriu?
           </label>
-          <input
+          <DatePicker
             id="lote-data"
-            type="date"
             value={loteData}
-            onChange={(e) => {
+            onChange={(v) => {
               // Trocar a data invalida o recorte: a unidade ou o horário
               // escolhidos podem nem existir no dia novo, e um filtro herdado
               // em silêncio faria o lote pegar menos sessões do que a atendente
               // espera — sem nada na tela explicando por quê.
-              setLoteData(e.target.value)
+              setLoteData(v)
               setLoteUnidade('')
               setLoteHorario('')
               setLoteConvenio('')
               setLoteContagem(null)
             }}
-            className="w-full border-2 border-[#3A8FB7]/40 rounded-lg px-3 py-2 text-sm font-medium text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#3A8FB7]/40"
+            classeGatilho="flex w-full items-center justify-between border-2 border-[#3A8FB7]/40 rounded-lg px-3 py-2 text-sm font-medium text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#3A8FB7]/40"
           />
         </div>
 

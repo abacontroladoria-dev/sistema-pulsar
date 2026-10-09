@@ -15,6 +15,7 @@ import { AlertTriangle, ClipboardPlus, Send, WifiOff } from 'lucide-react'
 import PageHeader from '@/components/PageHeader'
 import { CampoDetalhe, DetalheGrid, EmptyState, ListCard } from '@/components/cronograma/ui/DataTable'
 import { SearchCombobox } from '@/components/cronograma/ui/SearchCombobox'
+import { DateRangePicker } from '@/components/ui/date-range-picker'
 import { usePacientesAssim, type PacienteAssim } from '@/hooks/usePacientesAssim'
 import { useTerapiasTuss } from '@/hooks/useTerapiasTuss'
 import { getMachineId } from '@/lib/machine'
@@ -560,11 +561,15 @@ export default function AutorizacoesAvulsasPage() {
         title="Avulsas do período"
         count={avulsas.length}
         actions={
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <input type="date" value={de} onChange={(e) => setDe(e.target.value)} aria-label="Data inicial" style={{ ...campo, width: 'auto', padding: '5px 8px', fontSize: 'var(--text-xs)' }} />
-            <span style={{ color: 'var(--muted-foreground)', fontSize: 'var(--text-xs)' }}>até</span>
-            <input type="date" value={ate} onChange={(e) => setAte(e.target.value)} aria-label="Data final" style={{ ...campo, width: 'auto', padding: '5px 8px', fontSize: 'var(--text-xs)' }} />
-          </div>
+          <DateRangePicker
+            inicio={de}
+            fim={ate}
+            onChange={({ inicio, fim }) => {
+              setDe(inicio)
+              setAte(fim)
+            }}
+            align="end"
+          />
         }
       >
         {carregandoLista ? (

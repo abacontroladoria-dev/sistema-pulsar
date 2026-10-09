@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import {
   AlertTriangle, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, RefreshCw, Search, X,
 } from 'lucide-react'
+import { DatePicker } from '@/components/ui/date-picker'
 import Paginacao from '../Paginacao'
 import type { PacientePendencias, TipoPendencia } from '../types'
 import { PENDENCIAS } from './pendencias'
@@ -297,10 +298,16 @@ export default function ListaPendencias({
             <ChevronLeft size={16} />
           </button>
 
-          {/* O mês é o rótulo E o seletor: o input cobre o texto, então clicar
-              nele abre o seletor de mês do navegador. Um segundo controle ao
-              lado diria a mesma coisa duas vezes. */}
-          <label className="relative flex h-11 items-center gap-2 rounded-lg px-2 transition hover:bg-slate-100">
+          {/* O mês é o rótulo E o seletor: o próprio texto é o gatilho do
+              calendário padrão em modo mês. Um segundo controle ao lado diria a
+              mesma coisa duas vezes. */}
+          <DatePicker
+            apenasMes
+            value={mesRef}
+            onChange={(v) => v && onIrParaMesData(v.slice(0, 7))}
+            rotuloGatilho="Ir para outro mês"
+            classeGatilho="relative flex h-11 items-center gap-2 rounded-lg px-2 text-left transition hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-brand focus-visible:outline-none"
+            conteudoGatilho={<>
             <CalendarDays size={15} className="text-slate-400" aria-hidden />
             <span>
               {/* `capitalize` sobe a inicial de CADA palavra e escrevia "Agosto
@@ -316,14 +323,8 @@ export default function ListaPendencias({
                 {labelMes}
               </span>
             </span>
-            <span className="sr-only">Ir para outro mês</span>
-            <input
-              type="month"
-              value={mesRef.slice(0, 7)}
-              onChange={(e) => e.target.value && onIrParaMesData(e.target.value)}
-              className="absolute inset-0 cursor-pointer opacity-0"
-            />
-          </label>
+            </>}
+          />
 
           <button
             type="button"

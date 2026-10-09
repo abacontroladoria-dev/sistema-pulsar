@@ -15,6 +15,7 @@ import {
   UserX,
   X,
 } from 'lucide-react'
+import { DatePicker } from '@/components/ui/date-picker'
 import { unidadesControle } from './helpers'
 import type { ControleFilters } from './types'
 
@@ -214,16 +215,20 @@ export default function ControleFiltersBar({
           "
         >
           {/* Data */}
-          <label className="relative">
-            <span className="sr-only">Data do atendimento</span>
-            <CalendarDays className="w-4 h-4 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
-            <input
-              type="date"
-              value={filters.data}
-              onChange={(e) => updateFilter('data', e.target.value)}
-              className={`${inputClass} pl-11`}
-            />
-          </label>
+          <DatePicker
+            value={filters.data}
+            onChange={(v) => updateFilter('data', v)}
+            rotuloGatilho="Data do atendimento"
+            classeGatilho={`${inputClass} flex items-center gap-3 text-left`}
+            conteudoGatilho={
+              <>
+                <CalendarDays className="w-4 h-4 shrink-0 text-slate-400" aria-hidden />
+                <span className={filters.data ? '' : 'text-slate-400'}>
+                  {filters.data ? filters.data.split('-').reverse().join('/') : 'dd/mm/aaaa'}
+                </span>
+              </>
+            }
+          />
 
           {/* Busca unificada — terapeuta ou paciente */}
           <label className="relative">

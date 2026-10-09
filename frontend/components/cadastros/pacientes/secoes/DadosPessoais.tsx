@@ -6,6 +6,7 @@ import type { CorRaca, EstadoCivil, Paciente, SexoPaciente } from "@/types/pacie
 import type { PacienteForm } from "@/hooks/usePacienteDetalhe"
 import {
   Campo,
+  CampoData,
   CampoSelect,
   CampoSomenteLeitura,
   CampoToggleSimNao,
@@ -93,11 +94,10 @@ export function DadosPessoais({
         disabled={disabled}
         opcoes={ESTADOS_CIVIS}
       />
-      <Campo
+      <CampoData
         label="Data de nascimento"
-        type="date"
-        value={form.data_nascimento ?? ""}
-        onChange={(v) => set({ data_nascimento: v || null })}
+        value={form.data_nascimento}
+        onChange={(v) => set({ data_nascimento: v })}
         disabled={disabled}
       />
 
@@ -138,11 +138,10 @@ export function DadosPessoais({
         placeholder="RJ"
       />
 
-      <Campo
+      <CampoData
         label="Data de emissão"
-        type="date"
-        value={form.rg_data_emissao ?? ""}
-        onChange={(v) => set({ rg_data_emissao: v || null })}
+        value={form.rg_data_emissao}
+        onChange={(v) => set({ rg_data_emissao: v })}
         disabled={disabled}
       />
       {/* Sem campo de celular do paciente: a coluna foi removida em

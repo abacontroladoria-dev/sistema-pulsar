@@ -54,8 +54,10 @@ o campo nativo do navegador, não trazer outra biblioteca. O ESLint
 
 - **Data única:** `DatePicker` — `@/components/ui/date-picker`.
   Valor em `"AAAA-MM-DD"`; exibição `dd/mm/aaaa`; fim de semana em vermelho;
-  rodapé "Limpar" / "Hoje". Referência viva: "Data da alta *" em
-  `/cadastros/pacientes/[id]` → aba Altas → Nova Alta.
+  rodapé "Limpar" / "Hoje". É o calendário padrão de TODO o sistema.
+  Referências vivas: "Data de início *" / "Data de vencimento *" em
+  `/cadastros/pacientes/[id]` → aba Contratos → Novo contrato; e "Data da alta *"
+  na aba Altas → Nova Alta.
 - **Intervalo:** `DateRangePicker` — `@/components/ui/date-range-picker`, mesma
   aparência do `DatePicker`.
 - Para encaixar numa barra de filtros, use a prop `classeGatilho` (troca só a
@@ -78,10 +80,9 @@ o campo nativo do navegador, não trazer outra biblioteca. O ESLint
 
 ### Dívida
 
-Os arquivos que já tinham campo de data nativo estão listados em
-`LEGADO_DATA_NATIVA` (`frontend/eslint.config.mjs`). Ao mexer num deles, prefira
-trocar pelo `DatePicker` e tirar o arquivo da lista. Arquivo novo nunca entra
-nela. Seleção múltipla feita à mão que ainda existe: `UnidadeMultiSelect`
+Campo de data nativo: zerado em 09/10/2026 (`LEGADO_DATA_NATIVA` vazia em
+`frontend/eslint.config.mjs`); nenhum arquivo entra nela. Seleção de mês usa
+`DatePicker` com `apenasMes`; limites com `min`/`max`. Seleção múltipla feita à mão que ainda existe: `UnidadeMultiSelect`
 (Previsão de Receitas) e as listas de `ComparativoSessoesShell` e
 `AnaliseFuturaTab`.
 

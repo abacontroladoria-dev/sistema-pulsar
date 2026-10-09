@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react'
 import { X, Loader2 } from 'lucide-react'
+import { DatePicker } from '@/components/ui/date-picker'
 
 // ----------------------------------------------------------------------------
 // Agendar retorno — compromisso administrativo.
@@ -92,16 +93,15 @@ export const ModalAgendarRetorno: React.FC<{
           </label>
 
           <div className="grid grid-cols-2 gap-3">
-            <label className="block space-y-1.5">
+            <div className="block space-y-1.5">
               <span className="text-xs font-medium text-muted-foreground">Data</span>
-              <input
-                type="date"
+              <DatePicker
                 value={data}
                 min={hojeLocal()}
-                onChange={(e) => setData(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl bg-background border border-border text-sm text-foreground outline-none focus:border-cyan-500/60 focus:ring-2 focus:ring-cyan-500/20"
+                onChange={setData}
+                classeGatilho="flex w-full items-center justify-between px-3 py-2 rounded-xl bg-background border border-border text-sm text-foreground outline-none focus:border-cyan-500/60 focus:ring-2 focus:ring-cyan-500/20"
               />
-            </label>
+            </div>
             <label className="block space-y-1.5">
               <span className="text-xs font-medium text-muted-foreground">
                 Hora <span className="text-muted-foreground/70">(opcional)</span>

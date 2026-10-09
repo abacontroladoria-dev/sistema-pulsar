@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom'
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { ChartColumn, RefreshCw, Search, X } from 'lucide-react'
 import { useModalDialog } from '@/hooks/useModalDialog'
+import { DateRangePicker } from '@/components/ui/date-range-picker'
 import {
   normalizarNome,
   useResumoGerencial,
@@ -180,27 +181,16 @@ export default function ModalVisaoGerencial({ aberto, onClose }: Props) {
 
         {/* ── Intervalo + frescor ──────────────────────────────────────── */}
         <div className="flex flex-col gap-3 border-t border-slate-100 px-4 py-3 sm:flex-row sm:items-end sm:gap-5 sm:px-8 sm:py-4">
-          <div className="flex items-end gap-3">
-            <label className="flex flex-col gap-1">
-              <span className="text-[11px] font-semibold text-slate-500">De</span>
-              <input
-                type="date"
-                value={r.de}
-                max={r.ate}
-                onChange={(e) => r.setDe(e.target.value)}
-                className="h-11 rounded-xl border border-slate-200 px-3 text-sm text-slate-800 focus:border-transparent focus:ring-2 focus:ring-brand focus:outline-none"
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-[11px] font-semibold text-slate-500">Até</span>
-              <input
-                type="date"
-                value={r.ate}
-                min={r.de}
-                onChange={(e) => r.setAte(e.target.value)}
-                className="h-11 rounded-xl border border-slate-200 px-3 text-sm text-slate-800 focus:border-transparent focus:ring-2 focus:ring-brand focus:outline-none"
-              />
-            </label>
+          <div className="flex flex-col gap-1">
+            <span className="text-[11px] font-semibold text-slate-500">Período</span>
+            <DateRangePicker
+              inicio={r.de}
+              fim={r.ate}
+              onChange={({ inicio, fim }) => {
+                r.setDe(inicio)
+                r.setAte(fim)
+              }}
+            />
           </div>
 
           {/* A busca fica na mesma faixa do intervalo porque é do mesmo tipo:

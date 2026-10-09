@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ChevronDown, Search, LogOut } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { DatePicker } from '@/components/ui/date-picker'
 import { useControleDisponibilidade } from '@/hooks/useControleDisponibilidade'
 import StatusModal from '@/components/controle-disponibilidade/StatusModal'
 import DisponibilidadeTerapeutaCard from '@/components/controle-disponibilidade/DisponibilidadeTerapeutaCard'
@@ -301,14 +302,11 @@ export default function RegistroDisponibilidadePage() {
       <section className="p-3 space-y-3" aria-label="Filtros e lista de profissionais">
         <div className="bg-white rounded-2xl p-3 shadow-sm border border-slate-200 space-y-3" role="search" aria-label="Filtros">
           <label className="sr-only" htmlFor="filtro-data">Data</label>
-          <input
+          <DatePicker
             id="filtro-data"
-            type="date"
             value={filters.data}
-            onChange={(e) =>
-              setFilters((prev) => ({ ...prev, data: e.target.value }))
-            }
-            className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent"
+            onChange={(v) => setFilters((prev) => ({ ...prev, data: v }))}
+            classeGatilho="flex w-full items-center justify-between border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent"
           />
 
           <div className="relative">

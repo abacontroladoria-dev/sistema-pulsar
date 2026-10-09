@@ -12,7 +12,7 @@ import {
 } from "@/services/responsaveis.service"
 import { useResponsaveis, refetchResponsaveis } from "@/hooks/useResponsaveis"
 import type { Responsavel, ResponsavelEdit } from "@/types/responsavel"
-import { Campo, CampoSelect, foco } from "./ui/campos"
+import { Campo, CampoData, CampoSelect, foco } from "./ui/campos"
 
 // Evoluído de NovoResponsavelModal: cria e edita, e agora avisa nos dois
 // pontos onde duplicar um responsável causa dado ruim (ver plano de
@@ -279,11 +279,10 @@ export function ResponsavelFormModal({
             inputMode="numeric"
             placeholder="000.000.000-00"
           />
-          <Campo
+          <CampoData
             label="Data de nascimento"
-            type="date"
-            value={form.data_nascimento ?? ""}
-            onChange={(v) => set({ data_nascimento: v || null })}
+            value={form.data_nascimento}
+            onChange={(v) => set({ data_nascimento: v })}
             disabled={salvando}
           />
           <Campo

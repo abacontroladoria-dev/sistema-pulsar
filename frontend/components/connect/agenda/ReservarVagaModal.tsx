@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { AlignLeft, CalendarDays, Loader2, MapPin, Search, User, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/nina/Button'
+import { DatePicker } from '@/components/ui/date-picker'
 import type { Appointment, AppointmentType, VagaDisponivel } from '@/modules/atendimento/types/central.types'
 import {
   AgendamentoApiError,
@@ -131,6 +132,10 @@ export default function ReservarVagaModal({ dataInicial, onFechar, onCriado }: P
       } else {
         if (!titulo.trim()) {
           toast.error('Informe o título do compromisso')
+          return
+        }
+        if (!dataAdm) {
+          toast.error('Informe a data do compromisso')
           return
         }
         const criado = await criarAgendamentoAdministrativo({
@@ -335,12 +340,11 @@ export default function ReservarVagaModal({ dataInicial, onFechar, onCriado }: P
             <div className="grid grid-cols-3 gap-3">
               <div className="space-y-2">
                 <label className="text-xs font-bold uppercase text-muted-foreground/70 tracking-wider">Data</label>
-                <input
-                  type="date"
-                  required
+                <DatePicker
                   value={dataAdm}
-                  onChange={e => setDataAdm(e.target.value)}
-                  className="w-full bg-background border border-border rounded-lg px-3 py-2.5 text-sm text-foreground focus:ring-1 focus:ring-cyan-500 outline-none"
+                  onChange={setDataAdm}
+                  rotuloGatilho="Data"
+                  classeGatilho="flex w-full items-center justify-between bg-background border border-border rounded-lg px-3 py-2.5 text-sm text-foreground focus:ring-1 focus:ring-cyan-500 outline-none"
                 />
               </div>
               <div className="space-y-2">

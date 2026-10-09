@@ -20,33 +20,9 @@ const MSG_CALENDARIO =
 
 const TIPOS_DATA_NATIVOS = "/^(date|datetime-local|month|week)$/";
 
-// Arquivos que JÁ tinham campo de data nativo quando a regra nasceu. Ficam fora
-// dela para não quebrar o que existe — é dívida, não permissão: ao mexer num
-// deles, prefira trocar pelo DatePicker e tirar o arquivo desta lista. Arquivo
-// novo NUNCA entra aqui.
-const LEGADO_DATA_NATIVA = [
-  "app/(dashboard)/autorizacoes-avulsas/page.tsx",
-  "app/(dashboard)/solicitar/page.tsx",
-  "app/disponibilidade-terapeuta/page.tsx",
-  "app/ficha-escolar/page.tsx",
-  "components/acompanhamento/laudos/FiltrosLaudos.tsx",
-  "components/acompanhamento/laudos/RegistrarAvisoModal.tsx",
-  "components/auditoria-assim/FiltrosAuditoria.tsx",
-  "components/auditoria-assim/ModalReclassificarSituacao.tsx",
-  "components/auditoria-assim/ModalVisaoGerencial.tsx",
-  "components/auditoria-assim/reconciliacao/ListaPendencias.tsx",
-  "components/cadastros/FeriadosCadastro.tsx",
-  "components/cadastros/pacientes/NovoPacienteModal.tsx",
-  "components/cadastros/pacientes/ResponsavelFormModal.tsx",
-  "components/cadastros/pacientes/secoes/DadosPessoais.tsx",
-  "components/central-terapeutas/ControleFiltersBar.tsx",
-  "components/central-terapeutas/RelatorioModal.tsx",
-  "components/connect/agenda/ReservarVagaModal.tsx",
-  "components/cronograma/remuneracao/RemuneracaoUploadBadges.tsx",
-  "components/nina/detalhamento/ModalAgendarRetorno.tsx",
-  "components/nina/detalhamento/ModalDesignarTarefa.tsx",
-  "components/terapeutico/auditoria/AuditoriaEvolucoesShell.tsx",
-];
+// Arquivos isentos da regra de data nativa. Zerada em 09/10/2026, quando o
+// último campo nativo virou DatePicker/DateRangePicker. Arquivo NUNCA entra aqui.
+const LEGADO_DATA_NATIVA = [];
 
 const eslintConfig = defineConfig([
   ...nextVitals,

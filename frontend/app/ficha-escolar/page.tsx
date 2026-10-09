@@ -4,6 +4,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { GraduationCap, Check, Search, Loader2, ChevronDown } from 'lucide-react'
 import { PARENTESCOS } from '@/types/responsavel'
+import { DatePicker } from '@/components/ui/date-picker'
+
+function hojeLocalIso() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
 
 // Formulário que o RESPONSÁVEL preenche pelo link do WhatsApp — sem conta, num
 // celular, provavelmente uma única vez na vida. Isso define tudo aqui:
@@ -89,7 +95,6 @@ export default function FichaEscolarPage() {
   // campo errado, e quem digitou a data errada via só o botão "não fazer nada".
   const [campoComErro, setCampoComErro] = useState<CampoErro | null>(null)
 
-  const refNascimento = useRef<HTMLInputElement>(null)
   const refEscolaNome = useRef<HTMLInputElement>(null)
   const refPorNome = useRef<HTMLInputElement>(null)
   const refConfirmacao = useRef<HTMLHeadingElement>(null)
@@ -186,7 +191,8 @@ export default function FichaEscolarPage() {
   function focarCampo(campo: CampoErro) {
     const alvo =
       campo === 'nascimento'
-        ? refNascimento.current
+        ? // O DatePicker não repassa ref: o gatilho é achado pelo id.
+          document.getElementById('data-nascimento')
         : campo === 'escola'
           ? refEscolaNome.current
           : refPorNome.current
@@ -476,19 +482,16 @@ export default function FichaEscolarPage() {
                 dica="Para confirmar que é a criança certa."
                 erro={campoComErro === 'nascimento' ? erro : undefined}
               >
-                <input
+                <DatePicker
                   id="data-nascimento"
-                  ref={refNascimento}
-                  type="date"
-                  required
                   value={dataNascimento}
-                  onChange={(e) => setDataNascimento(e.target.value)}
+                  onChange={setDataNascimento}
+                  max={hojeLocalIso()}
                   aria-invalid={campoComErro === 'nascimento'}
                   aria-describedby={
                     campoComErro === 'nascimento' ? 'erro-envio' : 'data-nascimento-dica'
                   }
-                  className={ENTRADA}
-                  style={ESTILO_ENTRADA}
+                  classeGatilho={`flex items-center justify-between text-left bg-[#eef3fc] text-[#1e293b] ${ENTRADA}`}
                 />
               </Campo>
 

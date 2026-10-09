@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react"
 import toast from "react-hot-toast"
 import { Loader2, Plus, Save, Trash2, Calendar } from "lucide-react"
+import { DatePicker } from "@/components/ui/date-picker"
 import { B } from "@/lib/cronograma/constants"
 import { useFeriados, refetchFeriados } from "@/hooks/useFeriados"
 import { upsertFeriado, deleteFeriadoPorData } from "@/services/feriados.service"
@@ -155,8 +156,8 @@ export function FeriadosCadastro() {
 
         <div className="grid grid-cols-1 md:grid-cols-12 gap-3 mb-6 bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-100 dark:border-slate-800">
           <div className="col-span-12 md:col-span-3">
-            <label htmlFor="feriado-data" className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1 block">Data (YYYY-MM-DD)</label>
-            <input id="feriado-data" type="date" value={novaData} onChange={e => setNovaData(e.target.value)} className="w-full border border-slate-300 dark:border-slate-700 bg-transparent text-foreground rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
+            <label htmlFor="feriado-data" className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1 block">Data</label>
+            <DatePicker id="feriado-data" value={novaData} onChange={setNovaData} classeGatilho="flex w-full items-center justify-between border border-slate-300 dark:border-slate-700 bg-transparent text-foreground rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
           </div>
           <div className="col-span-12 md:col-span-5">
             <label htmlFor="feriado-nome" className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1 block">Nome do Feriado</label>
