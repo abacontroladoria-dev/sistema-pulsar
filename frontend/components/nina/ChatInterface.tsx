@@ -51,6 +51,10 @@ const ChatInterface: React.FC = () => {
   // trg_evolution_sem_ia). A chave Maia/Atendente some, e no lugar fica dito
   // por qual número a conversa chega.
   const canalHumano = detalhe?.channel?.provider === 'evolution'
+  // Exceção: o número com "Maia responde" (Configurações) — ela envia sozinha
+  // por ele, ainda sem ai_mode. A chave continua fora (não há o que trocar na
+  // conversa), mas o selo diz quem atende de verdade.
+  const maiaRespondeNoNumero = canalHumano && detalhe?.inbox?.maia_automatica === true
 
   // Fontes do painel que não vêm no detalhe da conversa (catálogo de tags,
   // usuários, agendamentos, tarefas). Fora do polling — ver o hook.
@@ -632,7 +636,15 @@ const ChatInterface: React.FC = () => {
               </div>
 
               <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-                {canalHumano ? (
+                {maiaRespondeNoNumero ? (
+                  <span
+                    className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-200"
+                    title="A Maia responde sozinha por este número (Configurações → números)"
+                  >
+                    <Bot className="w-3.5 h-3.5" />
+                    Maia responde · {detalhe?.channel?.name}
+                  </span>
+                ) : canalHumano ? (
                   <span
                     className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                     title="Número de atendimento humano — a Maia não responde por ele"

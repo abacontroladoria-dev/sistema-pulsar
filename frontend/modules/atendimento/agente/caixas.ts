@@ -40,6 +40,9 @@ export function classificarCaixa(
   // Já resolvido: saída de resolverModoEfetivo, não a coluna.
   modoEfetivo: string,
   assignedUserId: string | null,
+  // O número da conversa está com "Maia responde" (inboxes.maia_automatica)?
+  // Ali a Maia atende sem ai_mode — o trigger trava a coluna em 'off'.
+  maiaResponde: boolean,
 ): Caixa {
   // A ordem é a regra. `encerradas` vence tudo porque uma conversa arquivada com
   // ai_mode 'autonomous' (o caso comum — arquivar não mexe no ai_mode) não está
@@ -51,7 +54,7 @@ export function classificarCaixa(
   // redige e a mensagem fica como rascunho esperando um humano mandar — quem
   // responde ao paciente é gente. Somá-lo aqui faria a caixa "Maia" prometer uma
   // autonomia que não existe, e as conversas ficariam paradas dentro dela.
-  if (modoEfetivo === 'autonomous') return 'maia'
+  if (modoEfetivo === 'autonomous' || maiaResponde) return 'maia'
 
   // Resta o atendimento humano, e a distinção que mais importa numa central:
   // alguém assumiu, ou está largada? A conversa que a Maia escalou cai aqui com
@@ -82,6 +85,9 @@ export interface FiltroCaixa {
   // conversas apareceriam em duas caixas — a soma passaria do total e ninguém
   // desconfiaria, porque cada caixa isolada parece certa.
   responsavel?: 'nenhum' | 'qualquer'
+  // Números com "Maia responde": somados à caixa Maia ('ou' com o aiModeIn) e
+  // tirados das outras duas caixas vivas ('exceto').
+  inboxesMaia?: { modo: 'ou' | 'exceto'; ids: string[] }
 }
 
 // Os status vivos: tudo que não encerrou. Explícito em vez de "não encerrado"
@@ -93,7 +99,15 @@ const STATUS_ATIVOS: ConversationStatus[] = ['open', 'assigned', 'waiting']
 // org). É ele que decide se as conversas de coluna NULL entram ou não em cada
 // caixa: com o padrão em 'autonomous', toda conversa intocada está sendo
 // atendida pela Maia; com o padrão em 'off', nenhuma está.
-export function filtroDaCaixa(caixa: Caixa, modoPadrao: string): FiltroCaixa {
+//
+// `inboxesMaiaResponde`: as inboxes com "Maia responde". Entram na caixa Maia
+// por OU (qualquer ai_mode) e saem de humano/ninguém — senão a mesma conversa
+// cairia em duas caixas.
+export function filtroDaCaixa(
+  caixa: Caixa,
+  modoPadrao: string,
+  inboxesMaiaResponde: string[],
+): FiltroCaixa {
   if (caixa === 'encerradas') {
     // Sem recorte de modo nem de responsável: encerrada é encerrada.
     return { status: [...STATUS_ENCERRADOS] }
@@ -105,8 +119,9 @@ export function filtroDaCaixa(caixa: Caixa, modoPadrao: string): FiltroCaixa {
 
   if (caixa === 'maia') {
     return {
-      status:   STATUS_ATIVOS,
-      aiModeIn: herdadasSaoAutonomas ? ['autonomous', null] : ['autonomous'],
+      status:      STATUS_ATIVOS,
+      aiModeIn:    herdadasSaoAutonomas ? ['autonomous', null] : ['autonomous'],
+      inboxesMaia: { modo: 'ou', ids: inboxesMaiaResponde },
     }
   }
 
@@ -120,5 +135,6 @@ export function filtroDaCaixa(caixa: Caixa, modoPadrao: string): FiltroCaixa {
     status:      STATUS_ATIVOS,
     aiModeIn:    naoAutonomas,
     responsavel: caixa === 'humano' ? 'qualquer' : 'nenhum',
+    inboxesMaia: { modo: 'exceto', ids: inboxesMaiaResponde },
   }
 }

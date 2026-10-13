@@ -2,7 +2,10 @@ import type { NextRequest }  from 'next/server'
 import { extractUser }       from '@/lib/central/auth'
 import { mapCentralError }   from '@/lib/central/errors'
 import { ok }                from '@/lib/central/response'
-import { lerAgentSettingsDaOrg } from '@/modules/atendimento/agente/agent-settings'
+import {
+  lerAgentSettingsDaOrg,
+  lerInboxesMaiaResponde,
+} from '@/modules/atendimento/agente/agent-settings'
 import { CAIXAS, filtroDaCaixa, type Caixa } from '@/modules/atendimento/agente/caixas'
 import { createConversationService } from '@/modules/atendimento/services'
 
@@ -46,15 +49,22 @@ export async function GET(request: NextRequest) {
     // as conversas herdadas dela podem cair na caixa errada. Hoje não há inbox
     // com configuração própria; quando houver, o recorte tem que passar a ser
     // por inbox — e aí esta rota precisa de um `inboxId` na query.
-    const settings = await lerAgentSettingsDaOrg(supabase, user.orgId).catch(() => null)
+    //
+    // Junto, os números com "Maia responde": ali ela atende sem ai_mode. Falha
+    // fechada em [] — ninguém vai para a caixa Maia sem prova.
+    const [settings, inboxesMaiaResponde] = await Promise.all([
+      lerAgentSettingsDaOrg(supabase, user.orgId).catch(() => null),
+      lerInboxesMaiaResponde(supabase, user.orgId).catch(() => [] as string[]),
+    ])
     const modoPadrao = settings?.ai_mode ?? 'off'
 
     const paraFiltro = (c: Caixa) => {
-      const f = filtroDaCaixa(c, modoPadrao)
+      const f = filtroDaCaixa(c, modoPadrao, inboxesMaiaResponde)
       return {
         orgId:          user.orgId,
         status:         f.status,
         aiModeIn:       f.aiModeIn,
+        inboxesMaia:    f.inboxesMaia,
         assignedUserId: f.responsavel === 'nenhum' ? null : undefined,
         responsavel:    f.responsavel === 'qualquer' ? ('qualquer' as const) : undefined,
         // As três caixas vivas são FILA: no topo quem espera há mais tempo.
@@ -98,6 +108,7 @@ export async function GET(request: NextRequest) {
       // "Maia" só tem as conversas ligadas na mão — e quem olha a tela merece
       // saber que o número pequeno é isso, não falta de movimento.
       modoPadrao,
+      inboxesMaiaResponde,
       limit,
     })
   } catch (err) {

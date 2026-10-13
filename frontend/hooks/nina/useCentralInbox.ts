@@ -147,7 +147,9 @@ async function buscar<T>(url: string, signal: AbortSignal): Promise<T> {
 export interface DetalheConversa extends Conversation {
   contact:         Contact | null
   channel:         Pick<Channel, 'id' | 'name' | 'provider' | 'channel_type' | 'status'> | null
-  inbox:           { id: string; name: string; description: string | null } | null
+  // maia_automatica = "Maia responde" no número (Configurações): a Maia atende
+  // sem passar pelo ai_mode. Ver mapStatus.
+  inbox:           { id: string; name: string; description: string | null; maia_automatica: boolean } | null
   recentMessages:  Message[]
   // Herança já resolvida pelo servidor. `ai_mode` da conversa pode ser NULL
   // ("ninguém decidiu, vale o padrão da clínica") e só o backend enxerga o
@@ -354,6 +356,8 @@ export function useCentralInbox(): UseCentralInbox {
         // Vem ao lado de `data`. Sem ele a badge não sabe resolver a herança do
         // ai_mode; 'off' é a falha fechada, a mesma do servidor.
         const modoPadrao = (corpo.modoPadrao as string) ?? 'off'
+        // Números com "Maia responde": ela atende sem ai_mode. Ver mapStatus.
+        const maiaResponde = new Set((corpo.inboxesMaiaResponde as string[] | undefined) ?? [])
 
         const porId = new Map(contatos.map(c => [c.id, c]))
         if (!vivo) return
@@ -361,7 +365,8 @@ export function useCentralInbox(): UseCentralInbox {
         // Mensagens ficam vazias aqui de propósito: a lista mostra só o
         // cabeçalho. O histórico vem do detalhe, quando o operador abre.
         setConversations(lista.map(c =>
-          toUIConversation(c, porId.get(c.contact_id) ?? null, [], modoPadrao)))
+          toUIConversation(c, porId.get(c.contact_id) ?? null, [], modoPadrao,
+            maiaResponde.has(c.inbox_id))))
         setFiltroCarregado(chaveLista)
         setErro(null)
       } catch (e) {
@@ -422,7 +427,8 @@ export function useCentralInbox(): UseCentralInbox {
       // EFETIVO desta conversa. Passá-lo como "padrão" dá o mesmo resultado em
       // mapStatus — resolverModoEfetivo só consulta o padrão quando a coluna é
       // NULL, que é exatamente o caso em que aiModeEfetivo JÁ é o padrão.
-      chat: toUIConversation(d, d.contact ?? null, cronologicas, d.aiModeEfetivo),
+      chat: toUIConversation(d, d.contact ?? null, cronologicas, d.aiModeEfetivo,
+        d.inbox?.maia_automatica === true),
       // Fora do NinaConversation de propósito: são campos do `central` que a
       // tela do Nina não tem, e enfiá-los no tipo da UI misturaria os dois
       // vocabulários que o adapter existe para manter separados.

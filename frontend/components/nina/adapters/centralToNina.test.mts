@@ -135,28 +135,28 @@ eq(toUIMessage(msg({ body: null })).content, '', 'body null → string vazia')
 ok(toUIMessage(msg({ sent_at: null, created_at: '2026-09-01T10:05:00Z' })).timestamp !== '',
    'sent_at null usa created_at')
 
-const semNome = toUIConversation(conv(), contato({ name: null }), [], 'off')
+const semNome = toUIConversation(conv(), contato({ name: null }), [], 'off', false)
 eq(semNome.contactName, '5521999185733', 'name null cai no telefone')
 
-const semNada = toUIConversation(conv(), contato({ name: null, display_phone: null }), [], 'off')
+const semNada = toUIConversation(conv(), contato({ name: null, display_phone: null }), [], 'off', false)
 eq(semNada.contactName, 'Contato sem nome', 'sem nome e sem telefone → rótulo explícito')
 
-const semContato = toUIConversation(conv(), null, [], 'off')
+const semContato = toUIConversation(conv(), null, [], 'off', false)
 eq(semContato.contactName, 'Contato sem nome', 'contato ausente não quebra')
 eq(semContato.contactPhone, '', 'telefone ausente → string vazia')
 
-eq(toUIConversation(conv(), contato({ avatar_url: null }), [], 'off').contactAvatar, '',
+eq(toUIConversation(conv(), contato({ avatar_url: null }), [], 'off', false).contactAvatar, '',
    'avatar null → vazio (a UI decide desenhar iniciais)')
 
-eq(toUIConversation(conv({ last_message_at: null }), contato(), [], 'off').lastMessage, 'Sem mensagens',
+eq(toUIConversation(conv({ last_message_at: null }), contato(), [], 'off', false).lastMessage, 'Sem mensagens',
    'conversa sem mensagem não mostra "undefined"')
 // A lista não carrega histórico: a prévia vem da conversa. Antes disto toda
 // conversa da lista dizia "Sem mensagens", inclusive as que tinham conversa.
-eq(toUIConversation(conv({ last_message_preview: 'Resposta' }), contato(), [], 'off').lastMessage,
+eq(toUIConversation(conv({ last_message_preview: 'Resposta' }), contato(), [], 'off', false).lastMessage,
    'Resposta', 'lista sem histórico usa a prévia da conversa')
-eq(toUIConversation(conv({ last_message_preview: null }), contato(), [], 'off').lastMessage, '',
+eq(toUIConversation(conv({ last_message_preview: null }), contato(), [], 'off', false).lastMessage, '',
    'com mensagem mas sem prévia (só reação) não afirma "Sem mensagens"')
-eq(toUIConversation(conv({ last_message_preview: 'antiga' }), contato(), [msg({ body: 'nova' })], 'off').lastMessage,
+eq(toUIConversation(conv({ last_message_preview: 'antiga' }), contato(), [msg({ body: 'nova' })], 'off', false).lastMessage,
    'nova', 'com histórico em mãos, a última mensagem vence a prévia')
 
 // ---------------------------------------------------------------------------
@@ -219,17 +219,17 @@ eq(toUIMessage(msg({
 // ---------------------------------------------------------------------------
 console.log('\n5. Status por dois eixos')
 
-eq(mapStatus(conv({ status: 'open',     ai_mode: 'off' }), 'off'), 'human',  'open → human')
-eq(mapStatus(conv({ status: 'assigned', ai_mode: 'off' }), 'off'), 'human',  'assigned → human')
-eq(mapStatus(conv({ status: 'waiting',  ai_mode: 'off' }), 'off'), 'paused', 'waiting → paused')
-eq(mapStatus(conv({ status: 'resolved', ai_mode: 'off' }), 'off'), 'paused', 'resolved → paused')
-eq(mapStatus(conv({ status: 'archived', ai_mode: 'off' }), 'off'), 'paused', 'archived → paused')
+eq(mapStatus(conv({ status: 'open',     ai_mode: 'off' }), 'off', false), 'human',  'open → human')
+eq(mapStatus(conv({ status: 'assigned', ai_mode: 'off' }), 'off', false), 'human',  'assigned → human')
+eq(mapStatus(conv({ status: 'waiting',  ai_mode: 'off' }), 'off', false), 'paused', 'waiting → paused')
+eq(mapStatus(conv({ status: 'resolved', ai_mode: 'off' }), 'off', false), 'paused', 'resolved → paused')
+eq(mapStatus(conv({ status: 'archived', ai_mode: 'off' }), 'off', false), 'paused', 'archived → paused')
 
 // 'nina' sai de ai_mode, não de status — a badge violeta afirma que a IA está
 // conduzindo, e só ai_mode='autonomous' justifica essa afirmação.
-eq(mapStatus(conv({ status: 'open', ai_mode: 'autonomous' }), 'off'), 'nina',
+eq(mapStatus(conv({ status: 'open', ai_mode: 'autonomous' }), 'off', false), 'nina',
    'autonomous → nina, mesmo com status open')
-eq(mapStatus(conv({ status: 'open', ai_mode: 'assisted' }), 'off'), 'human',
+eq(mapStatus(conv({ status: 'open', ai_mode: 'assisted' }), 'off', false), 'human',
    'assisted NÃO é nina — a resposta ainda passa por humano')
 
 // ---------------------------------------------------------------------------
@@ -240,29 +240,39 @@ console.log('\n5b. Herança do ai_mode — o bug da Kelly')
 // A badge lia a coluna crua: NULL !== 'autonomous', então caía em 'human' e
 // contradizia a triagem, que resolve a herança no servidor. A mesma conversa
 // aparecia na coluna Maia de /atendimentos e com selo de humano no /inbox.
-eq(mapStatus(conv({ status: 'open', ai_mode: null }), 'autonomous'), 'nina',
+eq(mapStatus(conv({ status: 'open', ai_mode: null }), 'autonomous', false), 'nina',
    'coluna NULL + padrão autonomous → nina (era o bug: dava human)')
-eq(mapStatus(conv({ status: 'open', ai_mode: null }), 'off'), 'human',
+eq(mapStatus(conv({ status: 'open', ai_mode: null }), 'off', false), 'human',
    'coluna NULL + padrão off → human')
-eq(mapStatus(conv({ status: 'open', ai_mode: null }), 'assisted'), 'human',
+eq(mapStatus(conv({ status: 'open', ai_mode: null }), 'assisted', false), 'human',
    'coluna NULL + padrão assisted → human (assisted não é a Maia atendendo)')
 
 // A decisão da conversa VENCE o padrão, nas duas direções. É o que faz a chave
 // Maia/Atendente do inbox valer alguma coisa.
-eq(mapStatus(conv({ status: 'open', ai_mode: 'off' }), 'autonomous'), 'human',
+eq(mapStatus(conv({ status: 'open', ai_mode: 'off' }), 'autonomous', false), 'human',
    'desligar na conversa vence o padrão autonomous')
-eq(mapStatus(conv({ status: 'open', ai_mode: 'autonomous' }), 'off'), 'nina',
+eq(mapStatus(conv({ status: 'open', ai_mode: 'autonomous' }), 'off', false), 'nina',
    'ligar na conversa vence o padrão off')
 
 // A herança não ressuscita conversa encerrada: quem decide 'paused' é o status,
 // e ele é consultado depois do modo só quando o modo não é autonomous. Uma
 // arquivada com padrão autonomous continua sendo tratada como Maia pela badge —
 // a triagem resolve isso na caixa 'encerradas', que vence tudo (ver caixas.ts).
-eq(mapStatus(conv({ status: 'archived', ai_mode: null }), 'off'), 'paused',
+eq(mapStatus(conv({ status: 'archived', ai_mode: null }), 'off', false), 'paused',
    'arquivada com padrão off → paused')
 
+// "Maia responde" no número Evolution (Configurações): o trigger trava o
+// ai_mode em 'off' e mesmo assim é a Maia quem envia. Era o bug do número de
+// confirmação de consultas: configurado para a Maia, "Humano" no chat.
+eq(mapStatus(conv({ status: 'open', ai_mode: 'off' }), 'off', true), 'nina',
+   'Maia responde no número → nina, mesmo com ai_mode off')
+eq(mapStatus(conv({ status: 'assigned', ai_mode: 'off' }), 'off', true), 'nina',
+   'Maia responde vale também para conversa atribuída (worker envia em todas)')
+eq(toUIConversation(conv({ status: 'open', ai_mode: 'off' }), contato(), [], 'off', true).status,
+   'nina', 'toUIConversation repassa o Maia responde para a badge')
+
 // O adapter inteiro propaga a herança, não só mapStatus.
-eq(toUIConversation(conv({ status: 'open', ai_mode: null }), contato(), [], 'autonomous').status,
+eq(toUIConversation(conv({ status: 'open', ai_mode: null }), contato(), [], 'autonomous', false).status,
    'nina', 'toUIConversation repassa o padrão para a badge')
 
 // ---------------------------------------------------------------------------
@@ -279,7 +289,7 @@ console.log('\n7. Ordem e rótulo de tipo')
 const comHistorico = toUIConversation(conv(), contato(), [
   msg({ id: 'm1', body: 'primeira' }),
   msg({ id: 'm2', body: 'última' }),
-], 'off')
+], 'off', false)
 eq(comHistorico.messages.length, 2, 'duas mensagens')
 eq(comHistorico.lastMessage, 'última', 'lastMessage é a ÚLTIMA do array')
 
@@ -292,7 +302,7 @@ eq(rotuloTipoContato(contato({ is_provisional: true })), 'Responsável · não c
 eq(rotuloTipoContato(null), 'Contato', 'sem contato não quebra')
 
 // Campos sem origem no banco: zero e vazio, nunca inventados.
-const c = toUIConversation(conv(), contato(), [], 'off')
+const c = toUIConversation(conv(), contato(), [], 'off', false)
 // Na LISTA o histórico chega vazio de propósito — sem mensagens, não há o que
 // contar, e o número honesto é 0. Quem acende o ponto lá é `naoLida`, que sai
 // das colunas da conversa. Ver o bloco 8.
@@ -304,7 +314,7 @@ eq(c.tags.length, 0, 'tags vazio: a lista de conversas não desenha tags')
 // Prova de que é decisão, e não repasse: mesmo com tags nos dois lados, o
 // adapter não as propaga.
 eq(
-  toUIConversation(conv({ tags: ['urgente'] }), contato({ tags: ['convenio'] }), [], 'off').tags.length,
+  toUIConversation(conv({ tags: ['urgente'] }), contato({ tags: ['convenio'] }), [], 'off', false).tags.length,
   0,
   'não propaga tags nem da conversa nem do contato',
 )

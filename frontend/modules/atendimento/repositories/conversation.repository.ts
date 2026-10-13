@@ -43,6 +43,10 @@ export interface ListConversationsFilters {
   // pergunta para os valores concretos de coluna que a satisfazem; o
   // repositório não conhece agent_settings.
   aiModeIn?:       (AIMode | null)[]
+  // Inboxes com "Maia responde" (inboxes.maia_automatica): a Maia atende ali
+  // sem ai_mode. 'ou' SOMA essas inboxes ao recorte de aiModeIn (caixa Maia);
+  // 'exceto' as tira do resultado (caixas humano/ninguém). Lista vazia = nada.
+  inboxesMaia?:    { modo: 'ou' | 'exceto'; ids: string[] }
   // Ordem por `last_message_at`. O default 'recente' é o do inbox: a conversa
   // que acabou de se mexer no topo.
   //
@@ -72,11 +76,31 @@ export interface CreateConversationInput {
 // `is.null` e `in.()` no mesmo `.or()` é o único jeito de expressar "herdadas +
 // explícitas" numa query só; separá-las em duas consultas somaria linhas
 // repetidas na paginação.
-function aplicarAiMode(query: any, modos: (AIMode | null)[] | undefined): any {
+//
+// `inboxesMaia` mora aqui pelo mesmo motivo: na caixa Maia ele entra no MESMO
+// `.or()` do ai_mode ("modo autônomo OU número com Maia responde").
+function aplicarAiMode(
+  query: any,
+  modos: (AIMode | null)[] | undefined,
+  inboxesMaia?: ListConversationsFilters['inboxesMaia'],
+): any {
+  const ids = inboxesMaia?.ids ?? []
+  if (inboxesMaia?.modo === 'exceto' && ids.length > 0) {
+    query = query.not('inbox_id', 'in', `(${ids.join(',')})`)
+  }
+
   if (!modos || modos.length === 0) return query
 
   const explicitos = modos.filter((m): m is AIMode => m !== null)
   const aceitaNulo = modos.includes(null)
+
+  if (inboxesMaia?.modo === 'ou' && ids.length > 0) {
+    const ramos: string[] = []
+    if (aceitaNulo) ramos.push('ai_mode.is.null')
+    if (explicitos.length > 0) ramos.push(`ai_mode.in.(${explicitos.join(',')})`)
+    ramos.push(`inbox_id.in.(${ids.join(',')})`)
+    return query.or(ramos.join(','))
+  }
 
   if (aceitaNulo && explicitos.length === 0) return query.is('ai_mode', null)
   if (!aceitaNulo) return query.in('ai_mode', explicitos)
@@ -116,7 +140,7 @@ export class ConversationRepository {
       query = query.not('assigned_user_id', 'is', null)
     }
 
-    query = aplicarAiMode(query, filters.aiModeIn)
+    query = aplicarAiMode(query, filters.aiModeIn, filters.inboxesMaia)
 
     const { count, error } = await query
     if (error) throw error
@@ -208,7 +232,7 @@ export class ConversationRepository {
       query = query.eq('contact_id', filters.contactId)
     }
 
-    query = aplicarAiMode(query, filters.aiModeIn)
+    query = aplicarAiMode(query, filters.aiModeIn, filters.inboxesMaia)
 
     const { data, count, error } = await query
     if (error) throw error

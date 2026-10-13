@@ -50,7 +50,8 @@ export async function GET(_request: NextRequest, ctx: Ctx) {
       (supabase as any)
         .schema('central')
         .from('inboxes')
-        .select('id, name, description')
+        // maia_automatica: "Maia responde" do número — ela atende sem ai_mode.
+        .select('id, name, description, maia_automatica')
         .eq('id', conversation.inbox_id)
         .maybeSingle(),
 

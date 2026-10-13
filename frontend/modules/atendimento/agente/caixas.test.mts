@@ -35,31 +35,31 @@ console.log('\ncaixas da triagem — status > modo > responsável\n')
 
 // 1. Encerrada vence tudo.
 {
-  checar(classificarCaixa('resolved', 'autonomous', null) === 'encerradas',
+  checar(classificarCaixa('resolved', 'autonomous', null, false) === 'encerradas',
     'resolvida com a Maia ligada é encerrada, não da Maia')
-  checar(classificarCaixa('archived', 'autonomous', 'u1') === 'encerradas',
+  checar(classificarCaixa('archived', 'autonomous', 'u1', false) === 'encerradas',
     'arquivada com responsável é encerrada, não humano')
-  checar(classificarCaixa('archived', 'off', null) === 'encerradas',
+  checar(classificarCaixa('archived', 'off', null, false) === 'encerradas',
     'arquivada e desligada não vaza para a fila de ninguém')
 }
 
 // 2. A Maia é só 'autonomous', e vale para qualquer status ativo.
 {
   for (const s of ['open', 'assigned', 'waiting'] as const) {
-    checar(classificarCaixa(s, 'autonomous', null) === 'maia',
+    checar(classificarCaixa(s, 'autonomous', null, false) === 'maia',
       `${s} + autonomous = Maia`)
   }
   // Atribuída a alguém E com a Maia ligada: a Maia é quem responde. O
   // assigned_user_id sozinho não tira a conversa dela.
-  checar(classificarCaixa('assigned', 'autonomous', 'u1') === 'maia',
+  checar(classificarCaixa('assigned', 'autonomous', 'u1', false) === 'maia',
     'autonomous vence o responsável atribuído')
 }
 
 // 3. 'assisted' é atendimento humano — ela redige, o humano envia.
 {
-  checar(classificarCaixa('open', 'assisted', 'u1') === 'humano',
+  checar(classificarCaixa('open', 'assisted', 'u1', false) === 'humano',
     'assisted com responsável é humano, não Maia')
-  checar(classificarCaixa('open', 'assisted', null) === 'ninguem',
+  checar(classificarCaixa('open', 'assisted', null, false) === 'ninguem',
     'assisted sem responsável é rascunho parado, cai em ninguém')
 }
 
@@ -67,12 +67,22 @@ console.log('\ncaixas da triagem — status > modo > responsável\n')
 {
   // É exatamente o que escalarParaHumano deixa no banco: ai_mode 'off',
   // priority 'high', assigned_user_id intocado.
-  checar(classificarCaixa('open', 'off', null) === 'ninguem',
+  checar(classificarCaixa('open', 'off', null, false) === 'ninguem',
     'escalada pela Maia e não assumida cai em ninguém')
-  checar(classificarCaixa('assigned', 'off', 'u1') === 'humano',
+  checar(classificarCaixa('assigned', 'off', 'u1', false) === 'humano',
     'desligada e assumida por alguém é humano')
-  checar(classificarCaixa('waiting', 'off', null) === 'ninguem',
+  checar(classificarCaixa('waiting', 'off', null, false) === 'ninguem',
     'waiting sem responsável é largada, não "em espera saudável"')
+}
+
+// 4b. "Maia responde" no número: ai_mode travado em 'off' e é a Maia quem envia.
+{
+  checar(classificarCaixa('open', 'off', null, true) === 'maia',
+    'número com Maia responde é Maia, mesmo com ai_mode off')
+  checar(classificarCaixa('assigned', 'off', 'u1', true) === 'maia',
+    'Maia responde vence o responsável atribuído')
+  checar(classificarCaixa('resolved', 'off', null, true) === 'encerradas',
+    'encerrada continua vencendo o Maia responde')
 }
 
 // 5. As duas pontas da regra têm que fechar: toda combinação classificada numa
@@ -87,16 +97,27 @@ console.log('\ncaixas da triagem — status > modo > responsável\n')
   const MODOS = ['off', 'assisted', 'autonomous'] as const
   const COLUNA: (AIMode | null)[] = [null, 'off', 'assisted', 'autonomous']
 
+  // Espelha aplicarAiMode (conversation.repository.ts): 'exceto' tira as
+  // inboxes; 'ou' soma as inboxes ao recorte de ai_mode no mesmo `.or()`.
   function casa(f: ReturnType<typeof filtroDaCaixa>,
                 status: ConversationStatus,
                 coluna: AIMode | null,
-                responsavel: string | null): boolean {
+                responsavel: string | null,
+                inbox: string): boolean {
     if (f.status && !f.status.includes(status)) return false
-    if (f.aiModeIn && !f.aiModeIn.includes(coluna)) return false
+    const ids = f.inboxesMaia?.ids ?? []
+    if (f.inboxesMaia?.modo === 'exceto' && ids.includes(inbox)) return false
+    if (f.aiModeIn) {
+      const porInbox = f.inboxesMaia?.modo === 'ou' && ids.includes(inbox)
+      if (!f.aiModeIn.includes(coluna) && !porInbox) return false
+    }
     if (f.responsavel === 'nenhum'   && responsavel !== null) return false
     if (f.responsavel === 'qualquer' && responsavel === null) return false
     return true
   }
+
+  // 'i-maia' é um número com "Maia responde"; 'i-outro' não.
+  const INBOXES_MAIA = ['i-maia']
 
   // Percorre o produto cartesiano nos dois padrões possíveis da clínica.
   for (const modoPadrao of ['autonomous', 'off'] as const) {
@@ -104,18 +125,19 @@ console.log('\ncaixas da triagem — status > modo > responsável\n')
 
     for (const status of STATUS)
     for (const coluna of COLUNA)
-    for (const responsavel of [null, 'u1']) {
+    for (const responsavel of [null, 'u1'])
+    for (const inbox of ['i-maia', 'i-outro']) {
       // A herança, resolvida como resolverModoEfetivo faria.
       const efetivo = coluna ?? modoPadrao
-      const esperada = classificarCaixa(status, efetivo, responsavel)
+      const esperada = classificarCaixa(status, efetivo, responsavel, INBOXES_MAIA.includes(inbox))
 
       const encontraramEm = CAIXAS.filter(c =>
-        casa(filtroDaCaixa(c, modoPadrao), status, coluna, responsavel))
+        casa(filtroDaCaixa(c, modoPadrao, INBOXES_MAIA), status, coluna, responsavel, inbox))
 
       if (encontraramEm.length !== 1 || encontraramEm[0] !== esperada) {
         divergencias++
         console.log('        ', JSON.stringify({
-          modoPadrao, status, coluna, responsavel, esperada, encontraramEm,
+          modoPadrao, status, coluna, responsavel, inbox, esperada, encontraramEm,
         }))
       }
     }

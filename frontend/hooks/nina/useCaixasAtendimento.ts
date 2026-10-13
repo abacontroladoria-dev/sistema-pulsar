@@ -44,6 +44,7 @@ const FILAS_VAZIAS: Filas = {
 interface RespostaCaixas {
   caixas:     Record<Caixa, { conversas: Conversation[]; total: number }>
   modoPadrao: string
+  inboxesMaiaResponde?: string[]
   limit:      number
 }
 
@@ -95,6 +96,7 @@ export function useCaixasAtendimento(): UseCaixasAtendimento {
         // adapter para a badge DENTRO do card concordar com a coluna que o
         // contém: sem ele, um card na coluna "Maia" exibia badge de humano.
         const padrao = corpo.modoPadrao ?? 'off'
+        const maiaResponde = new Set(corpo.inboxesMaiaResponde ?? [])
 
         const montadas = {} as Filas
         for (const caixa of CAIXAS) {
@@ -105,7 +107,8 @@ export function useCaixasAtendimento(): UseCaixasAtendimento {
             // Mensagens vazias: a triagem mostra só o cabeçalho de cada conversa.
             // O histórico é do chat, que abre quando alguém clica.
             conversas: cruas.map(c =>
-              toUIConversation(c, porId.get(c.contact_id) ?? null, [], padrao)),
+              toUIConversation(c, porId.get(c.contact_id) ?? null, [], padrao,
+                maiaResponde.has(c.inbox_id))),
             total: bruta?.total ?? 0,
             // Lê `priority` do CRU, nunca do convertido. NinaConversation não tem
             // o campo — o adapter não o carrega — então tirar esta linha de dentro
