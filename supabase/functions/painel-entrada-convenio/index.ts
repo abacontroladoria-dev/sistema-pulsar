@@ -56,23 +56,45 @@ function chamadaDeServico(req: Request): boolean {
 // Leitura da página
 // ─────────────────────────────────────────────────────────────────────────────
 type Pagina = { conteudo: string; publicadoEm: string | null };
+type PaginaApi = { id?: string; content?: string; date_updated?: number | string; pages?: PaginaApi[] };
 
-async function lerPagina(workspaceId: string, docId: string, pageId: string): Promise<Pagina> {
-  const url =
-    `https://api.clickup.com/api/v3/workspaces/${encodeURIComponent(workspaceId)}` +
-    `/docs/${encodeURIComponent(docId)}/pages/${encodeURIComponent(pageId)}?content_format=text/md`;
+async function clickupGet(url: string): Promise<unknown> {
   const res = await fetch(url, { headers: { Authorization: CLICKUP_TOKEN_PAINEL! } });
   const texto = await res.text();
   if (!res.ok) {
     const prefixo = res.status === 429 ? "rate limit do ClickUp" : `ClickUp ${res.status}`;
     throw new Error(`${prefixo}: ${texto.slice(0, 300)}`);
   }
-  const pagina = JSON.parse(texto) as { content?: string; date_updated?: number | string };
-  const ms = Number(pagina.date_updated);
+  return JSON.parse(texto);
+}
+
+function paraPagina(p: PaginaApi): Pagina {
+  const ms = Number(p.date_updated);
   return {
-    conteudo: pagina.content ?? "",
+    conteudo: p.content ?? "",
     publicadoEm: Number.isFinite(ms) && ms > 0 ? new Date(ms).toISOString() : null,
   };
+}
+
+// Com page_id, lê aquela página. Sem page_id (o link de um Doc de uma página só
+// traz apenas o id do Doc), lista as páginas do Doc e usa a única que existe; se
+// houver mais de uma, recusa em vez de adivinhar qual é a certa.
+async function lerPagina(workspaceId: string, docId: string, pageId: string | null): Promise<Pagina> {
+  const base =
+    `https://api.clickup.com/api/v3/workspaces/${encodeURIComponent(workspaceId)}` +
+    `/docs/${encodeURIComponent(docId)}/pages`;
+
+  if (pageId) {
+    return paraPagina((await clickupGet(`${base}/${encodeURIComponent(pageId)}?content_format=text/md`)) as PaginaApi);
+  }
+
+  const lista = (await clickupGet(`${base}?content_format=text/md&max_page_depth=0`)) as PaginaApi | PaginaApi[];
+  const paginas = Array.isArray(lista) ? lista : (lista.pages ?? []);
+  if (paginas.length === 0) throw new Error("o Doc não tem nenhuma página");
+  if (paginas.length > 1) {
+    throw new Error(`o Doc tem ${paginas.length} páginas; deixe só uma ou preencha page_id em painel_entrada_convenio_config`);
+  }
+  return paraPagina(paginas[0]);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -120,7 +142,7 @@ serve(async (req) => {
       return json({ status: "ignorado", motivo });
     };
     if (!cfg.ativo) return await ignorar("leitura desligada em painel_entrada_convenio_config.ativo");
-    if (!cfg.doc_id || !cfg.page_id) return await ignorar("Doc do ClickUp ainda não configurado (doc_id/page_id)");
+    if (!cfg.doc_id) return await ignorar("Doc do ClickUp ainda não configurado (doc_id)");
     if (!CLICKUP_TOKEN_PAINEL) return json(await registrar(origem, null, null, "secret CLICKUP_TOKEN_PAINEL ausente"));
 
     let pagina: Pagina;

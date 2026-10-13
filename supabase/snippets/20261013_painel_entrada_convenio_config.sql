@@ -12,6 +12,9 @@
 --
 --   Ex.: .../v/dc/8cj47gd-12345/8cj47gd-67890 → doc_id 8cj47gd-12345,
 --   page_id 8cj47gd-67890.
+--   O link de um Doc de uma página só costuma vir só com o id do Doc
+--   (.../docs/8cj47gd-12345). Nesse caso deixe page_id NULL: a Edge Function
+--   lista as páginas e usa a única que existe (recusa se houver mais de uma).
 --
 -- PASSO 2: o token
 --   Na conta adm2: ClickUp → Settings → Apps → API Token → Generate (pk_...).
@@ -31,7 +34,7 @@ begin
 
   update public.painel_entrada_convenio_config
      set doc_id        = 'COLE_O_DOC_ID',
-         page_id       = 'COLE_O_PAGE_ID',
+         page_id       = null,  -- ou 'COLE_O_PAGE_ID' se o link trouxe os dois ids
          ativo         = true,
          atualizado_em = now()
    where id = 1;
