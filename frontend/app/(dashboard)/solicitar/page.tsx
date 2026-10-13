@@ -30,6 +30,7 @@ import { Lock, CheckCircle, Loader2, Megaphone, XCircle, CalendarX, Undo2, Chevr
 import ModalAutorizacoesDoDia from '@/components/central/ModalAutorizacoesDoDia'
 
 import { sondarRobo } from '@/lib/machine'
+import { rotuloTerapias } from '@/lib/central/rotuloTerapia'
 
 import {
   lerHeartbeatDaMinhaMaquina,
@@ -2724,7 +2725,7 @@ useEffect(() => {
 		  {/* TERAPIA — a única tag colorida da fileira: é o dado que muda o
 		      trabalho da recepção. Convênio e sala ficam neutros ao lado. */}
 		  <span className="shrink-0 text-[10.5px] font-medium px-2 py-[3px] rounded-md bg-blue-50 text-blue-700 border border-blue-100/80">
-		  	{p.terapias?.join(' + ') || 'Sem terapia'}
+		  	{rotuloTerapias(p.terapias) || 'Sem terapia'}
 		  </span>
 
 		{/* CONVENIO */}

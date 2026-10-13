@@ -559,6 +559,19 @@ type ConfigZapier = {
 async function enviarViaZapier(cfg: ConfigZapier, conteudo: string) {
   const token = await obterTokenZapier();
 
+  // Daqui para baixo o run pode existir — e, existindo, pode ter publicado.
+  // Qualquer erro a partir deste ponto sai marcado com `runDisparado`, para que
+  // `entregar()` confira o canal antes de cair no envio direto. Erro na troca do
+  // token (acima) não leva a marca: sem token não há run, e o fallback é seguro.
+  try {
+    await dispararEAcompanharRun(cfg, conteudo, token);
+  } catch (e) {
+    (e as Error & { runDisparado?: boolean }).runDisparado = true;
+    throw e;
+  }
+}
+
+async function dispararEAcompanharRun(cfg: ConfigZapier, conteudo: string, token: string) {
   const criacao = await fetch(ZAPIER_RUNS_URL, {
     method: "POST",
     headers: headersZapier(token),
@@ -595,12 +608,26 @@ async function enviarViaZapier(cfg: ConfigZapier, conteudo: string) {
   const limite = Date.now() + ZAPIER_POLL_TIMEOUT_MS;
   const urlRun = `${ZAPIER_RUNS_URL}/${encodeURIComponent(runId)}`;
 
+  // Erro HTTP no polling NÃO encerra a espera: é a CONSULTA que falhou, não o
+  // run, que segue rodando do lado do Zapier e pode publicar. Lançar aqui foi o
+  // que duplicou o aviso #16326 (09/10/2026): o ClickBot publicou e o fallback
+  // publicou de novo pela conta pessoal, na mesma rodada. Tenta de novo até o
+  // teto; se só houver erro até lá, cai no timeout (entrega incerta).
+  let ultimoErroPoll: string | null = null;
+
   while (Date.now() < limite) {
     await new Promise((r) => setTimeout(r, ZAPIER_POLL_INTERVAL_MS));
 
-    const res = await fetch(urlRun, { method: "GET", headers: headersZapier(token) });
+    let res: Response;
+    try {
+      res = await fetch(urlRun, { method: "GET", headers: headersZapier(token) });
+    } catch (e) {
+      ultimoErroPoll = e instanceof Error ? e.message : String(e);
+      continue;
+    }
     if (!res.ok) {
-      throw new Error(`Zapier poll ${res.status}: ${(await res.text()).slice(0, 300)}`);
+      ultimoErroPoll = `${res.status}: ${(await res.text()).slice(0, 200)}`;
+      continue;
     }
 
     const dados = (await res.json())?.data ?? {};
@@ -624,7 +651,8 @@ async function enviarViaZapier(cfg: ConfigZapier, conteudo: string) {
   // atraso de 5 min (o aviso volta na rodada seguinte se de fato não saiu), a
   // duplicata é o pior dos dois — ela chega a três pessoas marcadas.
   const incerto = new Error(
-    `Zapier poll: timeout de ${ZAPIER_POLL_TIMEOUT_MS}ms no run ${runId} — a mensagem PODE ter sido publicada`,
+    `Zapier poll: timeout de ${ZAPIER_POLL_TIMEOUT_MS}ms no run ${runId} — a mensagem PODE ter sido publicada` +
+      (ultimoErroPoll ? ` (último erro do polling: ${ultimoErroPoll})` : ""),
   );
   (incerto as Error & { entregaIncerta?: boolean }).entregaIncerta = true;
   throw incerto;
@@ -654,6 +682,41 @@ async function enviarClickUp(workspaceId: string, channelId: string, conteudo: s
 
   if (!res.ok) {
     throw new Error(`ClickUp ${res.status}: ${(await res.text()).slice(0, 500)}`);
+  }
+}
+
+/**
+ * O aviso já está no canal? Procura o carimbo `#<id>` nas mensagens recentes.
+ *
+ * É a única prova de entrega que temos: a action do Zapier não devolve o id da
+ * mensagem, então "o run falhou" não quer dizer "não publicou". O carimbo serve
+ * de chave porque é único por linha da outbox (ver `carimboOrigem`).
+ *
+ * Devolve `null` quando a própria consulta falha — "não sei" é diferente de
+ * "não está lá", e quem chama decide o que fazer com a dúvida.
+ */
+async function jaPublicadoNoCanal(
+  workspaceId: string,
+  channelId: string,
+  avisoId: number,
+): Promise<boolean | null> {
+  try {
+    const url = new URL(
+      `https://api.clickup.com/api/v3/workspaces/${workspaceId}/chat/channels/${channelId}/messages`,
+    );
+    url.searchParams.set("limit", "50");
+    const res = await fetch(url, { headers: { Authorization: CLICKUP_TOKEN! } });
+    if (!res.ok) {
+      console.warn(`⚠️ conferência do canal falhou: ${res.status} ${(await res.text()).slice(0, 200)}`);
+      return null;
+    }
+    const corpo = await res.json();
+    // `(?!\d)`: #1632 não pode casar com #16326.
+    const carimbo = new RegExp(`#${avisoId}(?!\\d)`);
+    return (corpo?.data ?? []).some((m: { content?: string }) => carimbo.test(m?.content ?? ""));
+  } catch (e) {
+    console.warn(`⚠️ conferência do canal falhou: ${e instanceof Error ? e.message : e}`);
+    return null;
   }
 }
 
@@ -751,7 +814,7 @@ serve(async () => {
      * contestação perdida. Por isso a falha do Zapier NÃO propaga — ela cai para
      * o envio direto e fica registrada no resumo.
      */
-    async function entregar(conteudo: string): Promise<"zapier" | "direto"> {
+    async function entregar(conteudo: string, avisoId: number): Promise<"zapier" | "direto"> {
       if (zapierConfigurado) {
         try {
           await enviarViaZapier(
@@ -786,6 +849,29 @@ serve(async () => {
             console.warn(`⚠️ ${msg}`);
             return "zapier";
           }
+
+          // O run chegou a ser disparado: ele pode ter publicado ANTES de o
+          // erro chegar aqui. Foi assim que o aviso #16326 saiu duas vezes
+          // (09/10/2026) — ClickBot e conta pessoal, com segundos de diferença.
+          // Conferir o canal antes de reenviar; a espera curta dá tempo ao
+          // conector de terminar o que já começou.
+          if ((e as { runDisparado?: boolean })?.runDisparado) {
+            await new Promise((r) => setTimeout(r, 5_000));
+            const publicado = await jaPublicadoNoCanal(
+              cfg.clickup_workspace_id,
+              cfg.clickup_channel_id,
+              avisoId,
+            );
+            if (publicado) {
+              resumo.zapier_erro_mas_publicado = msg.slice(0, 300);
+              console.warn(`⚠️ Zapier acusou erro mas o aviso #${avisoId} está no canal: ${msg}`);
+              return "zapier";
+            }
+            // `null` (não deu para conferir) segue para o fallback: entre
+            // arriscar uma duplicata e arriscar um aviso perdido, aqui fica
+            // a duplicata — a conferência falhar E o Zapier falhar é raro.
+          }
+
           console.warn(`⚠️ Zapier falhou, caindo para envio direto: ${msg}`);
           // O motivo também vai para a RESPOSTA, não só para o console: sem
           // isto, descobrir por que o autor saiu errado exige acesso aos logs
@@ -807,6 +893,7 @@ serve(async () => {
           mencoes
             ? `${montarMensagem(aviso, codigos)}\n\n${mencoes}`
             : montarMensagem(aviso, codigos),
+          aviso.id,
         );
 
         // Só o envio confirmado marca como enviado. Se este ponto não for
