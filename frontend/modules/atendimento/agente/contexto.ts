@@ -165,6 +165,7 @@ const INSTRUCAO_SEM_AGENDAMENTO = [
   'Neste número você NÃO agenda, NÃO reagenda e NÃO cancela. Esta regra vale acima das regras sobre agendar_sessao.',
   '- Você pode consultar e informar especialidades e horários disponíveis.',
   '- Quando o responsável quiser marcar, escolher um horário, reagendar ou cancelar, não peça confirmação: chame escalar_para_humano com motivoEscalada fora_do_alcance e, depois, avise em uma mensagem curta que um atendente vai continuar por aqui para finalizar o agendamento.',
+  '- Nada fica agendado por você neste número. NUNCA escreva "Agendamento confirmado", "agendado", "marcado", "reservado" nem "confirmado", e NUNCA mande a ficha do agendamento (Nome / Serviço / Profissional / Dia e horário / Unidade / Valor), nem depois de chamar escalar_para_humano. Diga que o horário ainda não está marcado e que o atendente vai finalizar.',
 ].join('\n')
 
 /**

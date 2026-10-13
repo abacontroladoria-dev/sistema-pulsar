@@ -16,7 +16,9 @@
 //   5. `aguardar` + escalada também recebe o texto — o caso que parece
 //      inofensivo ("volta pra fila") e é tão terminal quanto `escalar`.
 
-import { decidirEntrega, TEXTO_ESCALADA_FALLBACK } from './entrega.js'
+import {
+  decidirEntrega, prometeAgendamento, TEXTO_ESCALADA_FALLBACK, TEXTO_SEM_AGENDAMENTO_NO_NUMERO,
+} from './entrega.js'
 
 let falhas = 0
 function checar(condicao: boolean, oque: string, extra?: unknown) {
@@ -118,6 +120,36 @@ checar(!/\d+\s*(minuto|hora|dia|min)/i.test(TEXTO_ESCALADA_FALLBACK),
   'não promete prazo', TEXTO_ESCALADA_FALLBACK)
 checar(TEXTO_ESCALADA_FALLBACK.length <= 120,
   'é curto, como mensagem de WhatsApp', TEXTO_ESCALADA_FALLBACK.length)
+
+// ---------------------------------------------------------------------------
+console.log('\n6. número com "Maia responde" — texto que diz que agendou é barrado')
+
+// A mensagem real que saiu para a Ana em 13/10/2026, sem nada gravado.
+const FICHA_ANA = 'Agendamento confirmado.\nNome: Laura\nServiço: Avaliação Neuropsicológica\n' +
+  'Profissional: Crislaine Neves da Silva\nDia e horário: Segunda-feira, 19 de outubro, às 13h\n' +
+  'Unidade: Padre Miguel, Rua Estância, 25 — Padre Miguel\n\n' +
+  'Vou passar a conversa para a equipe agora, e alguém vai continuar o atendimento com você.'
+
+for (const t of [
+  FICHA_ANA,
+  'Pronto, está agendado para segunda às 13h!',
+  'Sua consulta foi marcada para quinta.',
+  'Já reservei o horário de 10h pra Laura.',
+  'Perfeito, o horário está confirmado. Até lá!',
+  'Já está agendada a avaliação.',
+]) checar(prometeAgendamento(t), `barra: ${t.split('\n')[0]}`)
+
+for (const t of [
+  TEXTO_SEM_AGENDAMENTO_NO_NUMERO,
+  TEXTO_ESCALADA_FALLBACK,
+  'Ainda não está agendado: um atendente vai finalizar com você por aqui.',
+  'Tenho segunda, 19 de outubro, às 13h, com a Crislaine, na unidade Padre Miguel. Qual prefere?',
+  'Quer que eu veja um horário disponível para a consulta?',
+  'Vou passar para um atendente finalizar o agendamento.',
+]) checar(!prometeAgendamento(t), `deixa passar: ${t}`)
+
+checar(!prometeAgendamento(TEXTO_SEM_AGENDAMENTO_NO_NUMERO) && TEXTO_SEM_AGENDAMENTO_NO_NUMERO.length <= 140,
+  'o aviso fixo não se barra e é curto', TEXTO_SEM_AGENDAMENTO_NO_NUMERO.length)
 
 // ---------------------------------------------------------------------------
 console.log(falhas === 0 ? '\nTudo certo.' : `\n${falhas} teste(s) FALHARAM.`)

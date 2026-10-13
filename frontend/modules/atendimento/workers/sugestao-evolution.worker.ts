@@ -12,7 +12,7 @@ import { FerramentasAgente } from '../agente/ferramentas'
 import { openAiProvider } from '../llm/openai.provider'
 import { lerAgentSettings } from '../agente/agent-settings'
 import { maiaTransferiu } from '../agente/caixas'
-import { TEXTO_ESCALADA_FALLBACK } from '../agente/entrega'
+import { TEXTO_ESCALADA_FALLBACK, TEXTO_SEM_AGENDAMENTO_NO_NUMERO, prometeAgendamento } from '../agente/entrega'
 
 // ============================================================================
 // Maia sugere — números Evolution com a chave ligada
@@ -40,14 +40,41 @@ import { TEXTO_ESCALADA_FALLBACK } from '../agente/entrega'
 // única ferramenta de escrita liberada, e grava a marca de transferida na
 // conversa (maiaTransferiu) — o worker deixa de responder ali. Turno que
 // termina sem texto também transfere, com o aviso fixo: antes ele só ia para o
-// log, e a reivindicação impedia nova tentativa — silêncio permanente.
+// log, e a reivindicação impedia nova tentativa — silêncio permanente. Texto
+// que diga que agendou (prometeAgendamento) também transfere e vira aviso fixo.
+//
+// Falha não é definitiva (13/10): erro de envio, da OpenAI ou limite de uso
+// agenda nova tentativa da mesma mensagem (1 min, depois 5 min); esgotadas,
+// a conversa vai para um atendente. Resposta da Maia com status 'failed' não
+// conta como resposta.
 // ============================================================================
 
 // Curto: divide o maxDuration de 60s do tique com agrupamento e envio.
 const ORCAMENTO_MS = 12_000
 const ESPERA_MS = 15_000           // a pessoa terminar de escrever
-const JANELA_MS = 30 * 60_000      // conversa parada há mais que isso não ganha sugestão
+// Conversa parada há mais que isso não ganha resposta. Era 30 min: worker fora
+// do ar por meia hora (deploy, Evolution reconectando) deixava quem escreveu
+// nesse intervalo sem resposta para sempre. 6 h cobre a queda e não ressuscita
+// conversa do dia anterior.
+const JANELA_MS = 6 * 3_600_000
+// Quantas conversas da janela olhar por tique. A maioria já foi respondida e só
+// custa a leitura; com 30 e a janela de 6 h, as novas ficavam de fora.
+const CONVERSAS_POR_TIQUE = 200
 const MAX_POR_TIQUE = 3
+// Falha (envio, OpenAI, limite de uso) não encerra a tentativa: a mesma
+// mensagem volta depois destas esperas. Esgotadas, a conversa vai para gente.
+const ESPERAS_RETENTATIVA_MS = [60_000, 5 * 60_000]
+const MAX_TENTATIVAS = ESPERAS_RETENTATIVA_MS.length + 1
+
+// A marca em `ai_context.sugestao`. `em` é o carimbo da reivindicação — único
+// por tentativa, é a condição do UPDATE que impede dois tiques no mesmo turno.
+interface MarcaSugestao {
+  ultima?: string
+  em?: string
+  tentativa?: number
+  // Presente só depois de falha com tentativa sobrando.
+  retentarApos?: string
+}
 
 export interface ResultadoSugestao {
   candidatas: number
@@ -90,7 +117,7 @@ export async function processarSugestoesEvolution(
     .in('inbox_id', inboxIds)
     .gte('last_message_at', new Date(agora - JANELA_MS).toISOString())
     .order('last_message_at', { ascending: true })
-    .limit(30)
+    .limit(CONVERSAS_POR_TIQUE)
   if (e2) throw e2
 
   const mensagens = new MessageRepository(supabase)
@@ -102,23 +129,34 @@ export async function processarSugestoesEvolution(
     // Transferida para um atendente: a conversa é de gente até ser encerrada.
     if (maiaTransferiu(conv.ai_context)) continue
     const automatica = automaticas.has(conv.inbox_id)
+    // A reivindicação deste turno; o catch precisa dela para agendar a retentativa.
+    let marca: MarcaSugestao | null = null
 
     try {
-      const historico = await mensagens.listByConversation({
+      // Resposta da Maia que não saiu (status 'failed') não conta como resposta:
+      // sem este filtro ela vira a "última mensagem" e a pessoa nunca mais é
+      // atendida. Continua na conversa, visível como falha.
+      const historico = (await mensagens.listByConversation({
         conversationId: conv.id, limit: LIMITE_HISTORICO,
-      })
+      })).filter(m => !(m.direction === 'outbound' && m.sent_by_ai && m.status === 'failed'))
       const ultima = historico[0]
       if (!ultima || ultima.direction !== 'inbound') continue
       if (Date.parse(ultima.created_at) > agora - ESPERA_MS) continue
 
-      const sugestao = (conv.ai_context?.sugestao ?? null) as { ultima?: string } | null
-      if (sugestao?.ultima === ultima.id) continue
+      const sugestao = (conv.ai_context?.sugestao ?? null) as MarcaSugestao | null
+      let tentativa = 1
+      if (sugestao?.ultima === ultima.id) {
+        // Já tentada: só volta se a falha deixou retentativa marcada e venceu.
+        if (!sugestao.retentarApos || Date.parse(sugestao.retentarApos) > Date.now()) continue
+        tentativa = (sugestao.tentativa ?? 1) + 1
+      }
       r.candidatas++
 
       // Reivindica ANTES do turno: dois tiques podem se cruzar, e o UPDATE
-      // condicional deixa só um passar. Gravado mesmo que o turno falhe — sem
-      // isso uma falha da OpenAI repetiria a cada 10s até a conversa esfriar.
-      if (!(await reivindicar(supabase, conv, sugestao?.ultima ?? null, ultima.id))) continue
+      // condicional deixa só um passar. Falha não libera na hora — agenda a
+      // retentativa com espera (sem ela, uma OpenAI fora repetiria a cada 10s).
+      marca = await reivindicar(supabase, conv, sugestao?.em ?? null, ultima.id, tentativa)
+      if (!marca) continue
 
       // As mensagens do paciente desde a última fala nossa viram o turno.
       const doTurno: string[] = []
@@ -183,8 +221,19 @@ export async function processarSugestoesEvolution(
         },
       )
 
+      // Limite de uso da OpenAI é passageiro: volta para a vez em vez de
+      // transferir na primeira. Na última tentativa segue o caminho de baixo.
+      if (resultado.tipo === 'aguardar' && !ferramentas.escaladaPedida() && tentativa < MAX_TENTATIVAS) {
+        await agendarRetentativa(supabase, conv.id, marca)
+        r.falhas++
+        console.warn('[sugestao evolution] turno adiado; nova tentativa agendada', {
+          conversationId: conv.id, tentativa, detalhe: resultado.detalhe ?? null,
+        })
+        continue
+      }
+
       // Falha de envio sobe para o catch: a mensagem fica como 'failed' na
-      // conversa (MessageService) e a reivindicação impede repetir.
+      // conversa (MessageService) e o catch agenda a retentativa.
       if (automatica) {
         let texto = resultado.tipo === 'responder' ? resultado.texto : null
         if (!texto) {
@@ -201,6 +250,16 @@ export async function processarSugestoesEvolution(
             conversationId: conv.id, tipo: resultado.tipo,
             detalhe: 'detalhe' in resultado ? resultado.detalhe : null,
           })
+        } else if (prometeAgendamento(texto)) {
+          // Ela não agenda aqui: texto que diz que agendou é falso (Ana, 13/10).
+          // Quem tentou marcar quer marcar — transfere e troca pelo aviso fixo.
+          if (!ferramentas.escaladaPedida()) {
+            await conversationService.transferirDoMaiaResponde(conv.id, 'fora_do_alcance', 'falha_tecnica')
+          }
+          console.warn('[sugestao evolution] texto prometia agendamento; trocado pelo aviso', {
+            conversationId: conv.id, texto,
+          })
+          texto = TEXTO_SEM_AGENDAMENTO_NO_NUMERO
         }
         await messageService.send({ conversationId: conv.id, body: texto, sentByAi: true })
         r.enviadas++
@@ -229,33 +288,73 @@ export async function processarSugestoesEvolution(
       r.sugeridas++
     } catch (err) {
       r.falhas++
+      const tentativa = marca?.tentativa ?? 1
       console.error('[sugestao evolution] falha', {
-        conversationId: conv.id,
+        conversationId: conv.id, tentativa,
         motivo: err instanceof Error ? err.message : String(err),
       })
+      // Sem marca a falha foi antes de reivindicar: o próximo tique tenta sozinho.
+      if (!marca) continue
+      try {
+        if (tentativa < MAX_TENTATIVAS) {
+          await agendarRetentativa(supabase, conv.id, marca)
+        } else if (automatica) {
+          // Esgotou: a pessoa não pode ficar sem ninguém. Vai para a caixa de
+          // gente; o aviso fixo não vai junto porque o envio é o que costuma
+          // estar falhando.
+          await conversationService.transferirDoMaiaResponde(conv.id, 'aguardar', 'falha_tecnica')
+        }
+      } catch (err2) {
+        console.error('[sugestao evolution] falha ao tratar a falha', {
+          conversationId: conv.id,
+          motivo: err2 instanceof Error ? err2.message : String(err2),
+        })
+      }
     }
   }
 
   return r
 }
 
+// Devolve a marca gravada, ou null se outro tique chegou antes. A condição é o
+// carimbo `em` da marca anterior (ou a ausência de marca).
 async function reivindicar(
   supabase: SupabaseClient,
   conv: ConversaCandidata,
-  anterior: string | null,
+  emAnterior: string | null,
   ultimaId: string,
-): Promise<boolean> {
-  const novo = {
-    ...(conv.ai_context ?? {}),
-    sugestao: { ultima: ultimaId, em: new Date().toISOString() },
-  }
+  tentativa: number,
+): Promise<MarcaSugestao | null> {
+  const marca: MarcaSugestao = { ultima: ultimaId, em: new Date().toISOString(), tentativa }
+  const novo = { ...(conv.ai_context ?? {}), sugestao: marca }
   let q = supabase.schema('central').from('conversations')
     .update({ ai_context: novo })
     .eq('id', conv.id)
-  q = anterior
-    ? q.eq('ai_context->sugestao->>ultima', anterior)
+  q = emAnterior
+    ? q.eq('ai_context->sugestao->>em', emAnterior)
     : q.is('ai_context->sugestao', null)
   const { data, error } = await q.select('id')
   if (error) throw error
-  return (data ?? []).length > 0
+  return (data ?? []).length > 0 ? marca : null
+}
+
+// Deixa a mesma mensagem voltar depois da espera da tentativa. Relê o
+// ai_context (o turno pode ter gravado a transferência nele) e só grava se a
+// marca ainda for a deste turno.
+async function agendarRetentativa(
+  supabase: SupabaseClient,
+  conversationId: string,
+  marca: MarcaSugestao,
+): Promise<void> {
+  const db = supabase.schema('central')
+  const { data, error } = await db.from('conversations')
+    .select('ai_context').eq('id', conversationId).maybeSingle()
+  if (error) throw error
+  const atual = ((data as { ai_context: Record<string, unknown> | null } | null)?.ai_context) ?? {}
+  const espera = ESPERAS_RETENTATIVA_MS[(marca.tentativa ?? 1) - 1] ?? ESPERAS_RETENTATIVA_MS.at(-1)!
+  const { error: e2 } = await db.from('conversations')
+    .update({ ai_context: { ...atual, sugestao: { ...marca, retentarApos: new Date(Date.now() + espera).toISOString() } } })
+    .eq('id', conversationId)
+    .eq('ai_context->sugestao->>em', marca.em!)
+  if (e2) throw e2
 }

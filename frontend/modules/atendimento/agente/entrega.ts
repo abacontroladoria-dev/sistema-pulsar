@@ -56,6 +56,33 @@ export type AcaoEntrega =
 export const TEXTO_ESCALADA_FALLBACK =
   'Vou chamar alguém da equipe para continuar seu atendimento por aqui.'
 
+// ----------------------------------------------------------------------------
+// Número Evolution com "Maia responde": ela não agenda (turno somenteLeitura),
+// então nenhum texto dela pode dizer que agendou. Em 13/10/2026 ela transferiu
+// a Ana para o atendente e, na mesma mensagem, mandou a ficha do prompt da
+// clínica começando por "Agendamento confirmado." — nada estava gravado, nem
+// no Pulsar nem no TiTa. A instrução do contexto proíbe isso; esta é a trava
+// que não depende do modelo obedecer.
+// ----------------------------------------------------------------------------
+
+export const TEXTO_SEM_AGENDAMENTO_NO_NUMERO =
+  'Ainda não está agendado. Vou passar a conversa para a equipe, e um atendente vai finalizar o agendamento com você por aqui.'
+
+// "Não está agendado" é o que ela DEVE dizer — sai antes da busca.
+const NEGADO = /\bnao (?:esta|foi|ficou|e) (?:ainda )?(?:agendad|marcad|reservad|confirmad)\w*/g
+const PROMETE = [
+  /\bagendamento (?:esta |foi |ficou )?confirmad/,
+  /\b(?:consulta|sessao|avaliacao|reserva|horario) (?:esta |foi |ficou )?(?:confirmad|agendad|marcad|reservad)/,
+  /\b(?:esta|foi|ficou|ja) (?:\w+ )?(?:agendad|marcad|reservad)[oa]s?\b/,
+  /\bja (?:agendei|marquei|reservei|confirmei)\b/,
+  /\bdia e horario:/,
+]
+
+export function prometeAgendamento(texto: string): boolean {
+  const t = texto.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(NEGADO, '')
+  return PROMETE.some(re => re.test(t))
+}
+
 export function decidirEntrega(
   turno:    ResumoDoTurno,
   // A escalada pedida pela ferramenta NESTE turno (FerramentasAgente.escaladaPedida()).

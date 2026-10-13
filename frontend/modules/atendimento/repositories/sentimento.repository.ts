@@ -102,8 +102,7 @@ export class SentimentoRepository {
       .eq('organization_id', orgId)
       .eq('conversations.contact_id', contactId)
       .eq('direction', 'inbound')
-      // Número Evolution é atendimento humano: a IA não lê essas conversas.
-      .or('provider.is.null,provider.neq.evolution')
+      .or(await this.filtroDeProvedor(orgId, contactId))
       .gte('sent_at', desdeISO)
       .is('deleted_at', null)
       .order('sent_at', { ascending: false })
@@ -129,13 +128,45 @@ export class SentimentoRepository {
       .eq('organization_id', orgId)
       .eq('conversations.contact_id', contactId)
       .eq('direction', 'inbound')
-      // Número Evolution é atendimento humano: a IA não lê essas conversas.
-      .or('provider.is.null,provider.neq.evolution')
+      .or(await this.filtroDeProvedor(orgId, contactId))
       .gt('sent_at', desdeISO)
       .is('deleted_at', null)
 
     if (error) throw error
     return count ?? 0
+  }
+
+  // ------------------------------------------------------------------------
+  // Quais mensagens a IA pode ler.
+  //
+  // Número Evolution é atendimento humano e fica de fora — exceto o número com
+  // "Maia responde" (inboxes.maia_automatica), onde é a Maia que atende: desde
+  // 08/10/2026 é por ele que os leads chegam, e o filtro só por provider deixava
+  // todos sem leitura. O recorte é por conversa do contato (poucas), porque o
+  // PostgREST não junta num `or` uma coluna de `messages` com uma da conversa.
+  // ------------------------------------------------------------------------
+  private async filtroDeProvedor(orgId: string, contactId: string): Promise<string> {
+    const base = 'provider.is.null,provider.neq.evolution'
+    const db = (this.supabase as any).schema('central')
+
+    const { data: inboxes, error: e1 } = await db
+      .from('inboxes')
+      .select('id')
+      .eq('organization_id', orgId)
+      .eq('maia_automatica', true)
+    if (e1) throw e1
+    const inboxIds = ((inboxes ?? []) as { id: string }[]).map(i => i.id)
+    if (inboxIds.length === 0) return base
+
+    const { data: conversas, error: e2 } = await db
+      .from('conversations')
+      .select('id')
+      .eq('organization_id', orgId)
+      .eq('contact_id', contactId)
+      .in('inbox_id', inboxIds)
+    if (e2) throw e2
+    const ids = ((conversas ?? []) as { id: string }[]).map(c => c.id)
+    return ids.length === 0 ? base : `${base},conversation_id.in.(${ids.join(',')})`
   }
 
   async inserir(input: InserirLeituraInput): Promise<ContactSentimentReading> {
