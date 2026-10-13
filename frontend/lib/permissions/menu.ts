@@ -130,6 +130,7 @@ export const MENU_ITENS: MenuItemDef[] = [
   { codigo: 'indicadores_previsao_receitas', label: 'Previsão de Receitas', grupo: G.indicadores.nome, path: '/cronograma/indicadores?tab=previsao-receitas', icon: Wallet },
   { codigo: 'indicadores_alimentar_bd', label: 'Preencher Receitas Faturadas', grupo: G.indicadores.nome, path: '/cronograma/indicadores?tab=alimentar-bd', icon: Database },
   { codigo: 'indicadores_comparativo_sessoes', label: 'Comparativo de Sessões', grupo: G.indicadores.nome, path: '/cronograma/indicadores?tab=comparativo-sessoes', icon: ArrowRightLeft },
+  { codigo: 'indicadores_entrada_convenio', label: 'Entrada de Pacientes (Convênio)', grupo: G.indicadores.nome, path: '/cronograma/indicadores?tab=entrada-convenio', icon: UserPlus },
 
   { codigo: 'cadastros_pacientes', label: 'Pacientes', grupo: G.cadastros.nome, path: '/cadastros/pacientes', icon: UserRound },
   { codigo: 'cadastros_profissionais', label: 'Profissionais', grupo: G.cadastros.nome, path: '/cadastros/profissionais', icon: Stethoscope },
