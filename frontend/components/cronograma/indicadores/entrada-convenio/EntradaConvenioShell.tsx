@@ -348,7 +348,7 @@ function ListaPacientes({ pacs, disp, filtro, setFiltro, onAbrir }: {
                 <button
                   type="button"
                   onClick={() => onAbrir(p)}
-                  className={`w-full rounded-2xl border border-border bg-card p-3 text-left shadow-sm ${p.atual.status === "atrasado" ? "border-l-4 border-l-rose-500" : ""}`}
+                  className={`w-full rounded-2xl border p-3 text-left shadow-sm ${p.atual.status === "atrasado" ? `border-rose-300 dark:border-rose-800 ${TONE_SOFT.red.bg}` : "border-border bg-card"}`}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <span className="font-semibold text-foreground">{p.paciente}</span>
