@@ -44,7 +44,7 @@ import {
   type PacienteEntrada,
   type PainelEntradaResposta,
 } from "@/lib/indicadores/entradaConvenio"
-import { BotaoCopiarMensagem, PilulaPrazo, SeloDisponibilidade } from "./comum"
+import { PilulaPrazo, SeloDisponibilidade } from "./comum"
 import { PacienteEntradaDrawer } from "./PacienteEntradaDrawer"
 
 // ─── Frescor ─────────────────────────────────────────────────────────────────
@@ -509,7 +509,6 @@ export function EntradaConvenioShell() {
   useEffect(() => {
     setRightContent(
       <div className="flex flex-wrap items-center gap-2">
-        <BotaoCopiarMensagem rotulo="Copiar link de disponibilidade" />
         {podeAtualizar && (
           <button
             type="button"
