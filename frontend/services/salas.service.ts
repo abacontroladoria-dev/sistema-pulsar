@@ -533,16 +533,7 @@ export async function buscarLinhasAgendaParaSalas(dataInicio: string, dataFim: s
   })
 
   return all
-    .map(r => ({
-      ...r,
-      paciente_nome: fixMojibake(r.paciente_nome),
-      convenio_nome: fixMojibake(r.convenio_nome),
-      unidade_nome: fixMojibake(r.unidade_nome),
-      sala_nome: fixMojibake(r.sala_nome),
-      profissional_nome: fixMojibake(r.profissional_nome),
-      terapia_nome: fixMojibake(r.terapia_nome),
-      terapia_exibicao_nome: fixMojibake(r.terapia_exibicao_nome),
-    }))
+    .map(repararTextoAgenda)
     // Pacientes fictícios/administrativos (Horário Administrativo, Notificação
     // Prévia, Supervisor(a), etc. — ver isFakePatient em
     // lib/remuneracao/pacientes.ts) não são atendimento real e não devem contar
@@ -566,6 +557,64 @@ export async function buscarLinhasAgendaParaSalas(dataInicio: string, dataFim: s
     // aqui não vaza slot aberto pra "Terapias mais frequentes" nem pra Previsão
     // de Receitas.
     .filter(r => r.status_agendamento === "Livre" || !isFakePatient(r.paciente_nome, r.paciente_id !== null ? String(r.paciente_id) : null))
+}
+
+function repararTextoAgenda(r: AgendaSalaRow): AgendaSalaRow {
+  return {
+    ...r,
+    paciente_nome: fixMojibake(r.paciente_nome),
+    convenio_nome: fixMojibake(r.convenio_nome),
+    unidade_nome: fixMojibake(r.unidade_nome),
+    sala_nome: fixMojibake(r.sala_nome),
+    profissional_nome: fixMojibake(r.profissional_nome),
+    terapia_nome: fixMojibake(r.terapia_nome),
+    terapia_exibicao_nome: fixMojibake(r.terapia_exibicao_nome),
+  }
+}
+
+/**
+ * Só as sessões agendadas do período — o recorte do Dashboard de Pacientes.
+ *
+ * Mesma fonte, mesmas colunas e mesmo reparo de texto de
+ * `buscarLinhasAgendaParaSalas`, mas sem os slots 'Livre': o dashboard os
+ * descarta de qualquer jeito (isAgendadoAtivo), e num mês inteiro eles são
+ * ~3 mil linhas a mais por mês só para serem jogadas fora. O filtro no banco
+ * é o mesmo `includes("agendado")` de isAgendadoAtivo, sem diferenciar
+ * maiúsculas, então o conjunto que chega ao cálculo é idêntico.
+ */
+export async function buscarLinhasPacientesPeriodo(dataInicio: string, dataFim: string): Promise<AgendaSalaRow[]> {
+  const all = await buscarGrade<AgendaSalaRow>({
+    campos: AGENDA_FIELDS,
+    fonte: "base",
+    de: dataInicio,
+    ate: dataFim,
+    refinar: q => q.ilike("status_agendamento", "%agendado%"),
+    ordem: [{ coluna: "data" }, { coluna: "hora_inicial" }, { coluna: "id" }],
+  })
+  return descartarImportacaoSobreposta(all)
+    .map(repararTextoAgenda)
+    .filter(r => !isFakePatient(r.paciente_nome, r.paciente_id !== null ? String(r.paciente_id) : null))
+}
+
+/**
+ * Sessão gravada duas vezes na virada da importação antiga para o sync atual.
+ *
+ * Medido em 13/10/2026: de 23/06 a 30/06/2026 a grade tem, para 3.878 sessões,
+ * uma linha da importação antiga (sem `tita_agendamento_id`) E a do sync
+ * (com id) — mesma data, hora, profissional e paciente. Junho somava ~27% de
+ * sessões a mais por isso. Fora desses dias, nenhuma sessão tem as duas origens
+ * (jan–jun só existe a antiga; de julho em diante, só a do sync), então este
+ * filtro não toca em mais nada. A linha com id é a que fica: é a mesma que os
+ * meses seguintes usam.
+ *
+ * Só o Dashboard de Pacientes passa por aqui — as outras telas que leem junho
+ * (Comparativo de Sessões etc.) não foram alteradas por este esforço.
+ */
+function descartarImportacaoSobreposta(rows: AgendaSalaRow[]): AgendaSalaRow[] {
+  const chave = (r: AgendaSalaRow) => `${r.data}|${r.hora_inicial}|${r.profissional_id}|${r.paciente_id}`
+  const comId = new Set(rows.filter(r => r.tita_agendamento_id != null).map(chave))
+  if (comId.size === 0) return rows
+  return rows.filter(r => r.tita_agendamento_id != null || !comId.has(chave(r)))
 }
 
 /**
