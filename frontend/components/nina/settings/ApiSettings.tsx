@@ -4,7 +4,6 @@ import {
   AlertTriangle, KeyRound, ExternalLink, Brain,
 } from 'lucide-react';
 import { Button } from '../Button';
-import { EvolutionSettings } from './EvolutionSettings';
 import { toast } from 'sonner';
 import * as Collapsible from '@radix-ui/react-collapsible';
 import {
@@ -266,15 +265,10 @@ const ApiSettings = forwardRef<ApiSettingsRef>((props, ref) => {
     );
   }
 
-  // Sem as credenciais, a lista de números continua: o membro de um número
-  // reconecta por aqui (QR) quando o celular cai.
   if (semPermissao) {
     return (
-      <div className="space-y-6">
-        <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-6 text-sm text-amber-700 dark:text-amber-200">
-          Apenas administradores da Central de Atendimento podem ver as credenciais do agente.
-        </div>
-        <EvolutionSettings />
+      <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-6 text-sm text-amber-700 dark:text-amber-200">
+        Apenas administradores da Central de Atendimento podem ver as credenciais do agente.
       </div>
     );
   }
@@ -744,10 +738,6 @@ const ApiSettings = forwardRef<ApiSettingsRef>((props, ref) => {
           </p>
         </div>
       </div>
-
-      {/* WhatsApp: o número da Maia (Meta, só leitura) e os números Evolution de
-          atendimento humano, criados e distribuídos por pessoa aqui. */}
-      <EvolutionSettings />
     </div>
   );
 });

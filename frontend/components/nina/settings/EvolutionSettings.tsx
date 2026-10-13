@@ -9,15 +9,19 @@ import { toast } from 'sonner'
 import { Button } from '../Button'
 
 // ============================================================================
-// Números WhatsApp — configurações do Connect (admin e diretoria)
+// Números WhatsApp — configurações do Connect
 //
 // A Maia atende pelo número oficial da Meta, que não se configura aqui (as
 // credenciais são variáveis de ambiente). Os números Evolution são de
 // atendimento humano: criados, conectados por QR e distribuídos por pessoa
 // nesta tela. Quem não é membro de um número não o vê na /connect/inbox.
 //
-// Quem não gerencia (operator) vê só os números de que é membro e só o botão
-// "Conectar" — para reescanear o QR quando o celular da área cai.
+// Duas visões, decididas pelo `gerencia` que a API devolve (nunca adivinhado
+// antes da resposta):
+// - admin e diretoria: todos os números e todas as ações;
+// - os demais: só os números de que são membros, com "Conectar"/"Reconectar"
+//   sempre à mão — o status gravado pode dizer Online com a sessão já morta
+//   (webhook perdido), e o modal do QR é que pergunta à Evolution de verdade.
 //
 // As rotas de escrita terminam com barra: `trailingSlash: true` transforma POST
 // sem barra em 308, e o corpo não sobrevive ao redirecionamento.
@@ -54,7 +58,8 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
 export function EvolutionSettings() {
   const [numeros, setNumeros] = useState<Numero[]>([])
   const [configurada, setConfigurada] = useState(true)
-  const [gerencia, setGerencia] = useState(false)
+  // null até a API responder: nenhuma das duas visões é montada no escuro.
+  const [gerencia, setGerencia] = useState<boolean | null>(null)
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
   const [nomeNovo, setNomeNovo] = useState('')
@@ -201,7 +206,8 @@ export function EvolutionSettings() {
   }
 
   // Quem não gerencia e não é membro de nenhum número não tem o que fazer aqui.
-  if (!carregando && !gerencia && numeros.length === 0) return null
+  // Com erro o card fica: o aviso vermelho é o que explica a ausência.
+  if (gerencia === false && numeros.length === 0 && !erro) return null
 
   return (
     <div className="rounded-xl border border-border bg-card p-6">
@@ -209,7 +215,7 @@ export function EvolutionSettings() {
         <MessageSquare className="w-5 h-5 text-cyan-500" />
         <h3 className="font-semibold text-foreground">Números WhatsApp</h3>
       </div>
-      {gerencia ? (
+      {gerencia === true && (
         <>
           <p className="text-sm text-muted-foreground mb-5">
             A Maia atende pelo número oficial. Os demais números são de atendimento humano e
@@ -229,10 +235,11 @@ export function EvolutionSettings() {
             </div>
           </div>
         </>
-      ) : (
+      )}
+      {gerencia === false && (
         <p className="text-sm text-muted-foreground mb-5">
-          Os números que você atende. Se algum estiver offline, use &quot;Conectar&quot; e escaneie
-          o QR com o celular do número.
+          Os números que você atende. Se algum parar de receber mensagens, use &quot;Conectar&quot;
+          (ou &quot;Reconectar&quot;) e escaneie o QR com o celular do número.
         </p>
       )}
 
@@ -270,9 +277,12 @@ export function EvolutionSettings() {
                 </div>
 
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  {n.status !== 'active' && (
+                  {/* Quem gerencia tem Reiniciar/Desconectar para o caso
+                      "Online" falso; o membro só tem este botão, então ele
+                      fica visível mesmo com o número marcado como Online. */}
+                  {(n.status !== 'active' || !gerencia) && (
                     <Button size="sm" variant="secondary" onClick={() => setQrDe(n)} disabled={travado}>
-                      <QrCode className="w-3.5 h-3.5 mr-1.5" /> Conectar
+                      <QrCode className="w-3.5 h-3.5 mr-1.5" /> {n.status === 'active' ? 'Reconectar' : 'Conectar'}
                     </Button>
                   )}
                   {gerencia && (
@@ -348,7 +358,7 @@ export function EvolutionSettings() {
             )
           })}
 
-          {numeros.length === 0 && (
+          {numeros.length === 0 && gerencia === true && (
             <p className="text-sm text-muted-foreground/70 py-2">Nenhum número de atendimento humano ainda.</p>
           )}
         </div>

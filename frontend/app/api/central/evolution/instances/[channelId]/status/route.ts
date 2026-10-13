@@ -3,7 +3,7 @@ import type { NextRequest } from 'next/server'
 import { extractUser } from '@/lib/central/auth'
 import { mapCentralError } from '@/lib/central/errors'
 import { ok, forbidden } from '@/lib/central/response'
-import { consultarStatus, podeConectarNumero, MENSAGEM_SEM_PERMISSAO_CONECTAR } from '@/modules/atendimento/evolution/instancias'
+import { consultarStatus, canalParaConectar, MENSAGEM_SEM_PERMISSAO_CONECTAR } from '@/modules/atendimento/evolution/instancias'
 
 type Ctx = { params: Promise<{ channelId: string }> }
 
@@ -13,11 +13,12 @@ type Ctx = { params: Promise<{ channelId: string }> }
 // portão do QR (admin, diretoria e membros do número).
 export async function GET(_request: NextRequest, ctx: Ctx) {
   try {
-    const { user } = await extractUser()
+    const { user, supabase } = await extractUser()
     const { channelId } = await ctx.params
-    if (!(await podeConectarNumero(user, channelId))) return forbidden(MENSAGEM_SEM_PERMISSAO_CONECTAR)
+    const canal = await canalParaConectar(user, supabase, channelId)
+    if (!canal) return forbidden(MENSAGEM_SEM_PERMISSAO_CONECTAR)
 
-    return ok({ estado: await consultarStatus(user.orgId, channelId) })
+    return ok({ estado: await consultarStatus(user.orgId, canal) })
   } catch (err) {
     return mapCentralError(err)
   }
