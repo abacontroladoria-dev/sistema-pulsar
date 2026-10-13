@@ -19,7 +19,7 @@
 //   npx tsx modules/atendimento/agente/caixas.test.mts
 
 import type { AIMode, ConversationStatus } from '../types/central.types'
-import { CAIXAS, classificarCaixa, filtroDaCaixa } from './caixas.js'
+import { CAIXAS, CHAVE_MAIA_TRANSFERIU, classificarCaixa, filtroDaCaixa, maiaTransferiu } from './caixas.js'
 
 let falhas = 0
 function checar(cond: boolean, desc: string, extra?: unknown) {
@@ -85,6 +85,13 @@ console.log('\ncaixas da triagem — status > modo > responsável\n')
     'encerrada continua vencendo o Maia responde')
 }
 
+// 4c. A Maia transferiu a conversa: a marca em ai_context tira o "Maia responde".
+{
+  checar(maiaTransferiu({ [CHAVE_MAIA_TRANSFERIU]: { em: 'x' } }), 'marca presente é transferida')
+  checar(!maiaTransferiu({ sugestao: { ultima: 'm1' } }), 'outras chaves não são transferência')
+  checar(!maiaTransferiu(null) && !maiaTransferiu([]) && !maiaTransferiu('x'), 'ai_context vazio ou torto não é transferência')
+}
+
 // 5. As duas pontas da regra têm que fechar: toda combinação classificada numa
 //    caixa precisa ser encontrada pelo filtro daquela caixa, e por nenhum outro.
 //
@@ -98,17 +105,19 @@ console.log('\ncaixas da triagem — status > modo > responsável\n')
   const COLUNA: (AIMode | null)[] = [null, 'off', 'assisted', 'autonomous']
 
   // Espelha aplicarAiMode (conversation.repository.ts): 'exceto' tira as
-  // inboxes; 'ou' soma as inboxes ao recorte de ai_mode no mesmo `.or()`.
+  // inboxes; 'ou' soma as inboxes ao recorte de ai_mode no mesmo `.or()`. Nos
+  // dois, a conversa transferida pela Maia não conta como da inbox.
   function casa(f: ReturnType<typeof filtroDaCaixa>,
                 status: ConversationStatus,
                 coluna: AIMode | null,
                 responsavel: string | null,
-                inbox: string): boolean {
+                inbox: string,
+                transferida: boolean): boolean {
     if (f.status && !f.status.includes(status)) return false
     const ids = f.inboxesMaia?.ids ?? []
-    if (f.inboxesMaia?.modo === 'exceto' && ids.includes(inbox)) return false
+    if (f.inboxesMaia?.modo === 'exceto' && ids.includes(inbox) && !transferida) return false
     if (f.aiModeIn) {
-      const porInbox = f.inboxesMaia?.modo === 'ou' && ids.includes(inbox)
+      const porInbox = f.inboxesMaia?.modo === 'ou' && ids.includes(inbox) && !transferida
       if (!f.aiModeIn.includes(coluna) && !porInbox) return false
     }
     if (f.responsavel === 'nenhum'   && responsavel !== null) return false
@@ -126,18 +135,20 @@ console.log('\ncaixas da triagem — status > modo > responsável\n')
     for (const status of STATUS)
     for (const coluna of COLUNA)
     for (const responsavel of [null, 'u1'])
-    for (const inbox of ['i-maia', 'i-outro']) {
+    for (const inbox of ['i-maia', 'i-outro'])
+    for (const transferida of [false, true]) {
       // A herança, resolvida como resolverModoEfetivo faria.
       const efetivo = coluna ?? modoPadrao
-      const esperada = classificarCaixa(status, efetivo, responsavel, INBOXES_MAIA.includes(inbox))
+      const esperada = classificarCaixa(status, efetivo, responsavel,
+        INBOXES_MAIA.includes(inbox) && !transferida)
 
       const encontraramEm = CAIXAS.filter(c =>
-        casa(filtroDaCaixa(c, modoPadrao, INBOXES_MAIA), status, coluna, responsavel, inbox))
+        casa(filtroDaCaixa(c, modoPadrao, INBOXES_MAIA), status, coluna, responsavel, inbox, transferida))
 
       if (encontraramEm.length !== 1 || encontraramEm[0] !== esperada) {
         divergencias++
         console.log('        ', JSON.stringify({
-          modoPadrao, status, coluna, responsavel, inbox, esperada, encontraramEm,
+          modoPadrao, status, coluna, responsavel, inbox, transferida, esperada, encontraramEm,
         }))
       }
     }

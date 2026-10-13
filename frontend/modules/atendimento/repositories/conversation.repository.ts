@@ -5,6 +5,7 @@ import type {
   ConversationStatus,
   PaginatedResult,
 } from '../types/central.types'
+import { CHAVE_MAIA_TRANSFERIU } from '../agente/caixas'
 
 // ============================================================================
 // ConversationRepository
@@ -78,28 +79,42 @@ export interface CreateConversationInput {
 // repetidas na paginação.
 //
 // `inboxesMaia` mora aqui pelo mesmo motivo: na caixa Maia ele entra no MESMO
-// `.or()` do ai_mode ("modo autônomo OU número com Maia responde").
+// `.or()` do ai_mode ("modo autônomo OU número com Maia responde"). A conversa
+// que a Maia transferiu (marca em ai_context, ver maiaTransferiu) não conta
+// como dela, mesmo no número com Maia responde.
+//
+// Um `.or()` só por consulta: o caso 'exceto' com modos é um E de dois OU, e
+// vai como `or(and(or(..),or(..)))` em vez de duas chaves `or` na URL.
+const MARCA_TRANSFERIDA = `ai_context->${CHAVE_MAIA_TRANSFERIU}`
+
 function aplicarAiMode(
   query: any,
   modos: (AIMode | null)[] | undefined,
   inboxesMaia?: ListConversationsFilters['inboxesMaia'],
 ): any {
   const ids = inboxesMaia?.ids ?? []
+  const lista = `(${ids.join(',')})`
+  const temModos = !!modos && modos.length > 0
+
+  const explicitos = (modos ?? []).filter((m): m is AIMode => m !== null)
+  const aceitaNulo = (modos ?? []).includes(null)
+  const ramosModo: string[] = []
+  if (aceitaNulo) ramosModo.push('ai_mode.is.null')
+  if (explicitos.length > 0) ramosModo.push(`ai_mode.in.(${explicitos.join(',')})`)
+
   if (inboxesMaia?.modo === 'exceto' && ids.length > 0) {
-    query = query.not('inbox_id', 'in', `(${ids.join(',')})`)
+    const foraDaMaia = `inbox_id.not.in.${lista},${MARCA_TRANSFERIDA}.not.is.null`
+    if (!temModos) return query.or(foraDaMaia)
+    return query.or(`and(or(${foraDaMaia}),or(${ramosModo.join(',')}))`)
   }
 
   if (!modos || modos.length === 0) return query
 
-  const explicitos = modos.filter((m): m is AIMode => m !== null)
-  const aceitaNulo = modos.includes(null)
-
   if (inboxesMaia?.modo === 'ou' && ids.length > 0) {
-    const ramos: string[] = []
-    if (aceitaNulo) ramos.push('ai_mode.is.null')
-    if (explicitos.length > 0) ramos.push(`ai_mode.in.(${explicitos.join(',')})`)
-    ramos.push(`inbox_id.in.(${ids.join(',')})`)
-    return query.or(ramos.join(','))
+    return query.or([
+      ...ramosModo,
+      `and(inbox_id.in.${lista},${MARCA_TRANSFERIDA}.is.null)`,
+    ].join(','))
   }
 
   if (aceitaNulo && explicitos.length === 0) return query.is('ai_mode', null)

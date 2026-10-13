@@ -358,6 +358,43 @@ const nomesEnviados = (req: { ferramentas?: unknown } | undefined): string[] =>
     'desligado: sobram só escalar_para_humano e atualizar_funil', nomes)
 }
 
+// Turno só de consulta (número Evolution). Com "Maia responde", a única de
+// escrita que passa é a de chamar gente — é a saída quando a pessoa quer agendar.
+{
+  const { provider, requisicoes } = providerDe([resposta({ conteudo: 'oi' })])
+  await executarTurno(ENTRADA, deps({ provider, somenteLeitura: true }))
+  const nomes = nomesEnviados(requisicoes[0])
+  checar(nomes.length === 3 && !nomes.includes('escalar_para_humano'),
+    'só leitura: as 3 de consulta, sem escalar', nomes)
+}
+
+{
+  const { provider, requisicoes } = providerDe([resposta({ conteudo: 'oi' })])
+  await executarTurno(ENTRADA, deps({ provider, somenteLeitura: true, permitirEscalada: true }))
+  const nomes = nomesEnviados(requisicoes[0])
+  checar(nomes.length === 4 && nomes.includes('escalar_para_humano') && !nomes.includes('agendar_sessao'),
+    'só leitura com escalada: consultas + escalar_para_humano, nada de agenda', nomes)
+}
+
+{
+  // O executor recusa por conta própria o que não foi liberado, mesmo que o
+  // modelo invente a chamada.
+  const { provider } = providerDe([
+    resposta({
+      motivoParada: 'tool_calls',
+      chamadas: [
+        { id: 'c1', nome: 'agendar_sessao', argumentosJson: '{}' },
+        { id: 'c2', nome: 'escalar_para_humano', argumentosJson: '{"motivoEscalada":"fora_do_alcance"}' },
+      ],
+    }),
+    resposta({ conteudo: 'Um atendente vai continuar por aqui.' }),
+  ])
+  const { ferramentas, executadas } = ferramentasDe({ ok: true, escalada: true })
+  await executarTurno(ENTRADA, deps({ provider, ferramentas, somenteLeitura: true, permitirEscalada: true }))
+  checar(executadas.length === 1 && executadas[0]?.nome === 'escalar_para_humano',
+    'só leitura com escalada: executa escalar, recusa agendar', executadas)
+}
+
 // ----------------------------------------------------------------------------
 console.log('\n9. rastro das tool calls')
 

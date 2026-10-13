@@ -18,6 +18,7 @@ import {
   CanalSemIaError,
 } from '../types/errors.types'
 import { isUniqueViolation } from '../utils/pg-errors'
+import { CHAVE_MAIA_TRANSFERIU, maiaTransferiu } from '../agente/caixas'
 
 // ============================================================================
 // ConversationService
@@ -398,6 +399,56 @@ export class ConversationService {
         // convenção que events.types.ts:34 descreve.
         event_type:      'conversation.ai_mode_changed',
         payload:         { de: conv.ai_mode, para: 'off', motivoEscalada, origem },
+      })
+    }
+
+    return { jaEstavaEscalada }
+  }
+
+  // -------------------------------------------------------------------------
+  // transferirDoMaiaResponde
+  //
+  // A mesma escalada, num número Evolution com "Maia responde". Ali o ai_mode
+  // já é 'off' (trg_evolution_sem_ia) e o worker responde mesmo assim, então
+  // gravar 'off' não tiraria a Maia de nada. A marca é a chave
+  // CHAVE_MAIA_TRANSFERIU em `ai_context`: o worker pula a conversa, e a
+  // triagem e a badge passam a tratá-la como de gente (ver maiaTransferiu).
+  //
+  // Mesmas regras de escalarParaAtendimentoHumano: não mexe no responsável nem
+  // no status, só sobe a prioridade, e é idempotente.
+  //
+  // `ai_context` relido aqui, não recebido do chamador: o worker reivindica a
+  // mensagem nessa coluna antes do turno, e mesclar sobre uma cópia velha
+  // apagaria a reivindicação.
+  // -------------------------------------------------------------------------
+  async transferirDoMaiaResponde(
+    conversationId: string,
+    motivoEscalada: string,
+    origem: 'ferramenta_agente' | 'falha_tecnica',
+  ): Promise<{ jaEstavaEscalada: boolean }> {
+    const conv = await this.getById(conversationId)
+    const jaEstavaEscalada = maiaTransferiu(conv.ai_context)
+
+    if (!jaEstavaEscalada) {
+      const base = conv.ai_context && typeof conv.ai_context === 'object' && !Array.isArray(conv.ai_context)
+        ? conv.ai_context as Record<string, unknown>
+        : {}
+      await this.conv.updateAiContext(conversationId, {
+        ...base,
+        [CHAVE_MAIA_TRANSFERIU]: { em: new Date().toISOString(), motivoEscalada, origem },
+      })
+    }
+
+    if (conv.priority !== 'high' && conv.priority !== 'urgent') {
+      await this.conv.updatePriority(conversationId, 'high')
+    }
+
+    if (!jaEstavaEscalada) {
+      void this.audit.insert({
+        organization_id: conv.organization_id,
+        conversation_id: conversationId,
+        event_type:      'conversation.ai_mode_changed',
+        payload:         { de: conv.ai_mode, para: conv.ai_mode, maiaResponde: false, motivoEscalada, origem },
       })
     }
 

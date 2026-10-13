@@ -22,6 +22,7 @@ import { ModalDesignarTarefa } from './detalhamento/ModalDesignarTarefa'
 import { ModalApagarMensagem } from './ModalApagarMensagem'
 import { ModalEditarMensagem, ModalTransferir } from './ModaisConversa'
 import { MessageDirection } from '@/types/nina'
+import { maiaTransferiu } from '@/modules/atendimento/agente/caixas'
 import { toast } from 'sonner'
 
 const ChatInterface: React.FC = () => {
@@ -53,8 +54,10 @@ const ChatInterface: React.FC = () => {
   const canalHumano = detalhe?.channel?.provider === 'evolution'
   // Exceção: o número com "Maia responde" (Configurações) — ela envia sozinha
   // por ele, ainda sem ai_mode. A chave continua fora (não há o que trocar na
-  // conversa), mas o selo diz quem atende de verdade.
+  // conversa), mas o selo diz quem atende de verdade. Conversa que a Maia
+  // transferiu volta a ser de gente, e o selo passa a "Atendimento humano".
   const maiaRespondeNoNumero = canalHumano && detalhe?.inbox?.maia_automatica === true
+    && !maiaTransferiu(detalhe?.ai_context)
 
   // Fontes do painel que não vêm no detalhe da conversa (catálogo de tags,
   // usuários, agendamentos, tarefas). Fora do polling — ver o hook.

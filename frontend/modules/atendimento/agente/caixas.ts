@@ -35,13 +35,32 @@ export function isCaixa(valor: unknown): valor is Caixa {
 // cópia para o guard de "conversa já fechada", que é outra pergunta.
 export const STATUS_ENCERRADOS: readonly ConversationStatus[] = ['resolved', 'archived']
 
+// ----------------------------------------------------------------------------
+// A Maia saiu DESTA conversa num número com "Maia responde"
+//
+// Ali o ai_mode fica travado em 'off' (trg_evolution_sem_ia), então a escalada
+// da Meta — gravar 'off' — não tem efeito: a conversa já está em 'off' e o
+// worker responde mesmo assim. A marca por conversa é esta chave em
+// `ai_context`, gravada por ConversationService.escalarParaAtendimentoHumano.
+//
+// Morre com a conversa: resolvida, a próxima mensagem do contato abre conversa
+// NOVA (findActiveByContactAndChannel), com ai_context vazio e a Maia de volta.
+// ----------------------------------------------------------------------------
+export const CHAVE_MAIA_TRANSFERIU = 'transferida_humano'
+
+export function maiaTransferiu(aiContext: unknown): boolean {
+  return !!aiContext && typeof aiContext === 'object' && !Array.isArray(aiContext)
+    && (aiContext as Record<string, unknown>)[CHAVE_MAIA_TRANSFERIU] != null
+}
+
 export function classificarCaixa(
   status: ConversationStatus,
   // Já resolvido: saída de resolverModoEfetivo, não a coluna.
   modoEfetivo: string,
   assignedUserId: string | null,
-  // O número da conversa está com "Maia responde" (inboxes.maia_automatica)?
-  // Ali a Maia atende sem ai_mode — o trigger trava a coluna em 'off'.
+  // O número da conversa está com "Maia responde" (inboxes.maia_automatica) e
+  // a Maia não transferiu esta conversa (maiaTransferiu)? Ali ela atende sem
+  // ai_mode — o trigger trava a coluna em 'off'.
   maiaResponde: boolean,
 ): Caixa {
   // A ordem é a regra. `encerradas` vence tudo porque uma conversa arquivada com
@@ -86,7 +105,8 @@ export interface FiltroCaixa {
   // desconfiaria, porque cada caixa isolada parece certa.
   responsavel?: 'nenhum' | 'qualquer'
   // Números com "Maia responde": somados à caixa Maia ('ou' com o aiModeIn) e
-  // tirados das outras duas caixas vivas ('exceto').
+  // tirados das outras duas caixas vivas ('exceto') — menos as conversas que a
+  // Maia transferiu (maiaTransferiu), que vão para humano/ninguém.
   inboxesMaia?: { modo: 'ou' | 'exceto'; ids: string[] }
 }
 

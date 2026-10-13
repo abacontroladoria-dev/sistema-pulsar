@@ -11,6 +11,8 @@ import { executarTurno } from '../agente/orquestrador'
 import { FerramentasAgente } from '../agente/ferramentas'
 import { openAiProvider } from '../llm/openai.provider'
 import { lerAgentSettings } from '../agente/agent-settings'
+import { maiaTransferiu } from '../agente/caixas'
+import { TEXTO_ESCALADA_FALLBACK } from '../agente/entrega'
 
 // ============================================================================
 // Maia sugere — números Evolution com a chave ligada
@@ -32,6 +34,13 @@ import { lerAgentSettings } from '../agente/agent-settings'
 // pelo envio normal em vez de virar rascunho, em TODAS as conversas do número
 // (atribuída ou não — pedido do usuário em 08/10). Continua somenteLeitura e
 // continua sem ai_mode.
+//
+// Agendar ela não pode. Quando a pessoa quer marcar, a Maia avisa e transfere
+// para um atendente (pedido do usuário em 13/10): `escalar_para_humano` é a
+// única ferramenta de escrita liberada, e grava a marca de transferida na
+// conversa (maiaTransferiu) — o worker deixa de responder ali. Turno que
+// termina sem texto também transfere, com o aviso fixo: antes ele só ia para o
+// log, e a reivindicação impedia nova tentativa — silêncio permanente.
 // ============================================================================
 
 // Curto: divide o maxDuration de 60s do tique com agrupamento e envio.
@@ -86,9 +95,13 @@ export async function processarSugestoesEvolution(
 
   const mensagens = new MessageRepository(supabase)
   const auditoria = new AuditRepository(supabase)
+  const { conversationService, messageService } = createSystemServices()
 
   for (const conv of (conversas ?? []) as ConversaCandidata[]) {
     if (r.sugeridas + r.enviadas + r.falhas >= MAX_POR_TIQUE || Date.now() > limite) break
+    // Transferida para um atendente: a conversa é de gente até ser encerrada.
+    if (maiaTransferiu(conv.ai_context)) continue
+    const automatica = automaticas.has(conv.inbox_id)
 
     try {
       const historico = await mensagens.listByConversation({
@@ -134,12 +147,16 @@ export async function processarSugestoesEvolution(
         historico: historico.slice(qtdInbound),
         agoraISO: new Date().toISOString(),
         vagasOferecidas: null,
+        semAgendamento: automatica,
       })
 
       const ferramentas = new FerramentasAgente(
         createAppointmentSystemService(),
         new AppointmentRepository(supabase),
-        { orgId, contactId: conv.contact_id, conversationId: conv.id },
+        { orgId, contactId: conv.contact_id, conversationId: conv.id, maiaRespondeNoNumero: automatica },
+        // Para `escalar_para_humano`, só onde ela envia. No rascunho quem
+        // responde já é gente — não há de quem transferir.
+        automatica ? conversationService : null,
       )
 
       const resultado = await executarTurno(
@@ -150,6 +167,7 @@ export async function processarSugestoesEvolution(
           contexto,
           agendamentoHabilitado: settings.ai_scheduling_enabled,
           somenteLeitura: true,
+          permitirEscalada: automatica,
           // O mesmo rastro do worker da Meta. Sem ele, desde 30/09 nenhuma
           // consulta da Maia ficava registrada: em 13/10 ela respondeu "houve um
           // erro ao buscar os horários" e não havia como saber o que a
@@ -165,23 +183,35 @@ export async function processarSugestoesEvolution(
         },
       )
 
+      // Falha de envio sobe para o catch: a mensagem fica como 'failed' na
+      // conversa (MessageService) e a reivindicação impede repetir.
+      if (automatica) {
+        let texto = resultado.tipo === 'responder' ? resultado.texto : null
+        if (!texto) {
+          // A reivindicação já impede outra tentativa: sem isto a pessoa fica
+          // sem resposta para sempre. Transfere (se a ferramenta ainda não o
+          // fez) e manda o aviso fixo — o modelo é que falhou aqui.
+          if (!ferramentas.escaladaPedida()) {
+            await conversationService.transferirDoMaiaResponde(
+              conv.id, resultado.tipo === 'escalar' ? resultado.motivo : 'aguardar', 'falha_tecnica',
+            )
+          }
+          texto = TEXTO_ESCALADA_FALLBACK
+          console.warn('[sugestao evolution] turno sem resposta; transferida para atendente', {
+            conversationId: conv.id, tipo: resultado.tipo,
+            detalhe: 'detalhe' in resultado ? resultado.detalhe : null,
+          })
+        }
+        await messageService.send({ conversationId: conv.id, body: texto, sentByAi: true })
+        r.enviadas++
+        continue
+      }
+
       if (resultado.tipo !== 'responder') {
         console.warn('[sugestao evolution] turno sem sugestão', {
           conversationId: conv.id, tipo: resultado.tipo,
           detalhe: 'detalhe' in resultado ? resultado.detalhe : null,
         })
-        continue
-      }
-
-      // Falha de envio sobe para o catch: a mensagem fica como 'failed' na
-      // conversa (MessageService) e a reivindicação impede repetir.
-      if (automaticas.has(conv.inbox_id)) {
-        await createSystemServices().messageService.send({
-          conversationId: conv.id,
-          body: resultado.texto,
-          sentByAi: true,
-        })
-        r.enviadas++
         continue
       }
 

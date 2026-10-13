@@ -154,7 +154,18 @@ export interface DadosContexto {
   // por `lerVagasGuardadas`. Ausente/null quando não há lista, quando venceu ou
   // quando a agenda pela IA está desligada (o worker decide).
   vagasOferecidas?: VagasGuardadas | null
+  // Número Evolution com "Maia responde": ela envia, mas o turno é só de
+  // consulta (sugestao-evolution.worker.ts). Sem este aviso as regras de cima
+  // a levam até "Está correto?" e, no "isso", não há agendar_sessao para
+  // chamar — o turno morria sem resposta (Ana, 13/10/2026).
+  semAgendamento?: boolean
 }
+
+const INSTRUCAO_SEM_AGENDAMENTO = [
+  'Neste número você NÃO agenda, NÃO reagenda e NÃO cancela. Esta regra vale acima das regras sobre agendar_sessao.',
+  '- Você pode consultar e informar especialidades e horários disponíveis.',
+  '- Quando o responsável quiser marcar, escolher um horário, reagendar ou cancelar, não peça confirmação: chame escalar_para_humano com motivoEscalada fora_do_alcance e, depois, avise em uma mensagem curta que um atendente vai continuar por aqui para finalizar o agendamento.',
+].join('\n')
 
 /**
  * Monta as mensagens de contexto que precedem a fala do usuário no turno.
@@ -168,6 +179,10 @@ export function montarContexto(dados: DadosContexto): LlmMensagem[] {
   if (dados.systemPrompt?.trim()) {
     partes.push('', 'Instruções específicas desta clínica:', dados.systemPrompt.trim())
   }
+
+  // Depois do prompt da clínica, que também manda agendar: o limite do número
+  // é o que vale, e por último é onde o modelo menos o perde.
+  if (dados.semAgendamento) partes.push('', INSTRUCAO_SEM_AGENDAMENTO)
 
   partes.push('', `Data e hora de agora: ${formatarAgora(dados.agoraISO)}.`)
 

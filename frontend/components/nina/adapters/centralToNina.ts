@@ -5,6 +5,7 @@ import type {
   Contact,
 } from '@/modules/atendimento/types/central.types'
 import { resolverModoEfetivo } from '@/modules/atendimento/agente/modo-efetivo'
+import { maiaTransferiu } from '@/modules/atendimento/agente/caixas'
 import { apagaParaTodos, podeEditar } from '@/modules/atendimento/utils/apagar-mensagem'
 import {
   MessageDirection,
@@ -221,8 +222,11 @@ export type NinaConversation = Omit<UIConversation, 'messages' | 'clientMemory'>
 // PERDA CONHECIDA: open e assigned viram ambos 'human'. A badge não distingue
 // "ninguém assumiu" de "alguém assumiu" — que é a distinção mais importante
 // numa central de verdade. Fica como dívida; resolver exige uma badge nova.
+//
+// A conversa que a Maia transferiu (maiaTransferiu) sai do "Maia responde":
+// o número continua com a chave ligada, mas esta conversa é de gente.
 export function mapStatus(c: Conversation, modoPadrao: string, maiaResponde: boolean): ConversationStatus {
-  if (maiaResponde) return 'nina'
+  if (maiaResponde && !maiaTransferiu(c.ai_context)) return 'nina'
   const { modo } = resolverModoEfetivo(c.ai_mode, modoPadrao)
   if (modo === 'autonomous') return 'nina'
   if (c.status === 'open' || c.status === 'assigned') return 'human'

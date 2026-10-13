@@ -110,6 +110,11 @@ export interface DepsTurno {
   // funil ou gravado cadastro. Retirar a capacidade, não instruir contenção —
   // e o executor recusa também, caso o modelo invente uma chamada fora da lista.
   somenteLeitura?: boolean
+  // Com `somenteLeitura`: libera também `escalar_para_humano`. É o número com
+  // "Maia responde", onde ela ENVIA — e quando a pessoa quer agendar, que ela
+  // não pode, a saída é passar para a equipe. Sem isto o turno terminava sem
+  // ferramenta para o pedido e a pessoa ficava sem resposta (Ana, 13/10/2026).
+  permitirEscalada?: boolean
 }
 
 export const FERRAMENTAS_SO_LEITURA = new Set([
@@ -117,6 +122,12 @@ export const FERRAMENTAS_SO_LEITURA = new Set([
   'consultar_horarios_disponiveis',
   'consultar_agendamentos_do_contato',
 ])
+
+function liberadaNoTurno(nome: string, deps: DepsTurno): boolean {
+  if (!deps.somenteLeitura) return true
+  return FERRAMENTAS_SO_LEITURA.has(nome)
+    || (deps.permitirEscalada === true && nome === 'escalar_para_humano')
+}
 
 const FERRAMENTA_BLOQUEADA = JSON.stringify({
   ok: false,
@@ -284,7 +295,7 @@ export async function executarTurno(
     // quem já é paciente — e ele não sabe. Retirar a capacidade é a única forma
     // confiável de retirar o comportamento.
     (f.function.name !== 'registrar_dados_do_paciente' || deps.coletaDeCadastro === true)
-    && (!deps.somenteLeitura || FERRAMENTAS_SO_LEITURA.has(f.function.name))
+    && liberadaNoTurno(f.function.name, deps)
   ))
 
   const jaChamadas = new Set<string>()
@@ -370,7 +381,7 @@ export async function executarTurno(
           return { chamada, conteudo: ARGUMENTOS_INVALIDOS }
         }
 
-        if (deps.somenteLeitura && !FERRAMENTAS_SO_LEITURA.has(chamada.nome)) {
+        if (!liberadaNoTurno(chamada.nome, deps)) {
           return { chamada, conteudo: FERRAMENTA_BLOQUEADA }
         }
 

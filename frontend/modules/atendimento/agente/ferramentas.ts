@@ -49,6 +49,9 @@ export interface ContextoAgente {
   conversationId?: string | null
   // Paciente do TiTa, quando já identificado na conversa.
   titaPacienteId?: number | null
+  // Turno de um número Evolution com "Maia responde": ali o ai_mode já é 'off'
+  // e escalar é marcar a conversa (transferirDoMaiaResponde), não desligá-lo.
+  maiaRespondeNoNumero?: boolean
 }
 
 export type ResultadoFerramenta =
@@ -1132,11 +1135,9 @@ export class FerramentasAgente {
       )
     }
 
-    const { jaEstavaEscalada } = await this.conversas.escalarParaAtendimentoHumano(
-      conversationId,
-      motivoEscalada,
-      'ferramenta_agente',
-    )
+    const { jaEstavaEscalada } = this.contexto.maiaRespondeNoNumero
+      ? await this.conversas.transferirDoMaiaResponde(conversationId, motivoEscalada, 'ferramenta_agente')
+      : await this.conversas.escalarParaAtendimentoHumano(conversationId, motivoEscalada, 'ferramenta_agente')
 
     // Só DEPOIS da escrita bem-sucedida. Se `escalarParaAtendimentoHumano`
     // lançar, o catch de `executar()` devolve a recusa e este flag continua null
