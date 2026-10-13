@@ -16,6 +16,9 @@ import { Button } from '../Button'
 // atendimento humano: criados, conectados por QR e distribuídos por pessoa
 // nesta tela. Quem não é membro de um número não o vê na /connect/inbox.
 //
+// Quem não gerencia (operator) vê só os números de que é membro e só o botão
+// "Conectar" — para reescanear o QR quando o celular da área cai.
+//
 // As rotas de escrita terminam com barra: `trailingSlash: true` transforma POST
 // sem barra em 308, e o corpo não sobrevive ao redirecionamento.
 // ============================================================================
@@ -35,8 +38,8 @@ interface Usuario { id: string; nome: string; central_role: string }
 const BASE = '/api/central/evolution/instances'
 
 const STATUS: Record<string, { rotulo: string; cor: string }> = {
-  active:       { rotulo: 'Online',        cor: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30' },
-  connecting:   { rotulo: 'Aguardando QR', cor: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30' },
+  active:       { rotulo: 'Online',        cor: 'bg-emerald-500/10 text-[var(--status-ok)] border-emerald-500/30' },
+  connecting:   { rotulo: 'Aguardando QR', cor: 'bg-amber-500/10 text-[var(--status-atencao)] border-amber-500/30' },
   disconnected: { rotulo: 'Offline',       cor: 'bg-slate-500/10 text-muted-foreground border-border' },
   error:        { rotulo: 'Erro',          cor: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30' },
 }
@@ -51,6 +54,7 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
 export function EvolutionSettings() {
   const [numeros, setNumeros] = useState<Numero[]>([])
   const [configurada, setConfigurada] = useState(true)
+  const [gerencia, setGerencia] = useState(false)
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
   const [nomeNovo, setNomeNovo] = useState('')
@@ -62,9 +66,10 @@ export function EvolutionSettings() {
 
   const carregar = useCallback(async () => {
     try {
-      const d = await api<{ configurada: boolean; numeros: Numero[] }>(BASE)
+      const d = await api<{ configurada: boolean; gerencia: boolean; numeros: Numero[] }>(BASE)
       setNumeros(d.numeros)
       setConfigurada(d.configurada)
+      setGerencia(d.gerencia)
       setErro(null)
     } catch (e) {
       setErro((e as Error).message)
@@ -195,32 +200,44 @@ export function EvolutionSettings() {
     }
   }
 
+  // Quem não gerencia e não é membro de nenhum número não tem o que fazer aqui.
+  if (!carregando && !gerencia && numeros.length === 0) return null
+
   return (
     <div className="rounded-xl border border-border bg-card p-6">
       <div className="flex items-center gap-3 mb-1">
         <MessageSquare className="w-5 h-5 text-cyan-500" />
         <h3 className="font-semibold text-foreground">Números WhatsApp</h3>
       </div>
-      <p className="text-sm text-muted-foreground mb-5">
-        A Maia atende pelo número oficial. Os demais números são de atendimento humano e
-        aparecem na caixa de entrada só para quem for membro deles. Com &quot;Maia sugere&quot;
-        ligado, ela deixa uma sugestão de resposta na conversa para a atendente enviar. Com
-        &quot;Maia responde&quot;, ela envia sozinha em todas as conversas do número.
-      </p>
+      {gerencia ? (
+        <>
+          <p className="text-sm text-muted-foreground mb-5">
+            A Maia atende pelo número oficial. Os demais números são de atendimento humano e
+            aparecem na caixa de entrada só para quem for membro deles. Com &quot;Maia sugere&quot;
+            ligado, ela deixa uma sugestão de resposta na conversa para a atendente enviar. Com
+            &quot;Maia responde&quot;, ela envia sozinha em todas as conversas do número.
+          </p>
 
-      {/* O número da Maia — só leitura */}
-      <div className="flex items-center gap-3 p-3 rounded-xl border border-border bg-background mb-3">
-        <div className="w-9 h-9 rounded-lg bg-violet-500/10 flex items-center justify-center shrink-0">
-          <Bot className="w-4 h-4 text-violet-500" />
-        </div>
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-foreground">Maia · número oficial (Meta)</p>
-          <p className="text-xs text-muted-foreground/70">Configurado no servidor. Não é gerenciado por esta tela.</p>
-        </div>
-      </div>
+          {/* O número da Maia — só leitura */}
+          <div className="flex items-center gap-3 p-3 rounded-xl border border-border bg-background mb-3">
+            <div className="w-9 h-9 rounded-lg bg-violet-500/10 flex items-center justify-center shrink-0">
+              <Bot className="w-4 h-4 text-violet-500" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-foreground">Maia · número oficial (Meta)</p>
+              <p className="text-xs text-muted-foreground/70">Configurado no servidor. Não é gerenciado por esta tela.</p>
+            </div>
+          </div>
+        </>
+      ) : (
+        <p className="text-sm text-muted-foreground mb-5">
+          Os números que você atende. Se algum estiver offline, use &quot;Conectar&quot; e escaneie
+          o QR com o celular do número.
+        </p>
+      )}
 
       {!configurada && (
-        <p className="text-xs text-amber-600 dark:text-amber-400 mb-3">
+        <p className="text-xs text-[var(--status-atencao)] mb-3">
           A Evolution API ainda não está configurada no servidor (EVOLUTION_API_URL e EVOLUTION_API_KEY).
         </p>
       )}
@@ -258,70 +275,74 @@ export function EvolutionSettings() {
                       <QrCode className="w-3.5 h-3.5 mr-1.5" /> Conectar
                     </Button>
                   )}
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={n.maiaSugere}
-                    onClick={() => alternarMaia(n)}
-                    disabled={travado}
-                    title={n.maiaSugere
-                      ? 'A Maia escreve uma sugestão em cada conversa; a atendente revisa e envia. Clique para desligar.'
-                      : 'Ligar: a Maia passa a sugerir respostas (nunca envia sozinha).'}
-                    className={`h-8 px-2.5 rounded-lg border text-xs font-medium flex items-center gap-2 transition-colors disabled:opacity-60 ${
-                      n.maiaSugere
-                        ? 'border-violet-500/40 bg-violet-500/10 text-violet-700 dark:text-violet-300'
-                        : 'border-border text-muted-foreground hover:bg-muted'
-                    }`}
-                  >
-                    <Bot className="w-3.5 h-3.5" />
-                    Maia sugere
-                    <span className={`relative w-7 h-4 rounded-full transition-colors ${n.maiaSugere ? 'bg-violet-500' : 'bg-muted-foreground/30'}`}>
-                      <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${n.maiaSugere ? 'left-3.5' : 'left-0.5'}`} />
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={n.maiaResponde}
-                    onClick={() => alternarMaiaResponde(n)}
-                    disabled={travado}
-                    title={n.maiaResponde
-                      ? 'A Maia responde sozinha em todas as conversas deste número. Clique para voltar a só sugerir.'
-                      : 'Ligar: a Maia passa a enviar as respostas sozinha em todas as conversas deste número.'}
-                    className={`h-8 px-2.5 rounded-lg border text-xs font-medium flex items-center gap-2 transition-colors disabled:opacity-60 ${
-                      n.maiaResponde
-                        ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
-                        : 'border-border text-muted-foreground hover:bg-muted'
-                    }`}
-                  >
-                    <Bot className="w-3.5 h-3.5" />
-                    Maia responde
-                    <span className={`relative w-7 h-4 rounded-full transition-colors ${n.maiaResponde ? 'bg-emerald-500' : 'bg-muted-foreground/30'}`}>
-                      <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${n.maiaResponde ? 'left-3.5' : 'left-0.5'}`} />
-                    </span>
-                  </button>
-                  <Button size="sm" variant="outline" onClick={() => setMembrosDe(n)} disabled={travado}>
-                    <Users className="w-3.5 h-3.5 mr-1.5" /> Membros
-                  </Button>
-                  {n.status === 'active' && (
-                    <Button size="sm" variant="outline" onClick={() => importar(n)} disabled={travado}>
-                      <Download className="w-3.5 h-3.5 mr-1.5" /> Importar contatos
-                    </Button>
+                  {gerencia && (
+                    <>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={n.maiaSugere}
+                        onClick={() => alternarMaia(n)}
+                        disabled={travado}
+                        title={n.maiaSugere
+                          ? 'A Maia escreve uma sugestão em cada conversa; a atendente revisa e envia. Clique para desligar.'
+                          : 'Ligar: a Maia passa a sugerir respostas (nunca envia sozinha).'}
+                        className={`h-8 px-2.5 rounded-lg border text-xs font-medium flex items-center gap-2 transition-colors disabled:opacity-60 ${
+                          n.maiaSugere
+                            ? 'border-violet-500/40 bg-violet-500/10 text-violet-700 dark:text-violet-300'
+                            : 'border-border text-muted-foreground hover:bg-muted'
+                        }`}
+                      >
+                        <Bot className="w-3.5 h-3.5" />
+                        Maia sugere
+                        <span className={`relative w-7 h-4 rounded-full transition-colors ${n.maiaSugere ? 'bg-violet-500' : 'bg-muted-foreground/30'}`}>
+                          <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${n.maiaSugere ? 'left-3.5' : 'left-0.5'}`} />
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={n.maiaResponde}
+                        onClick={() => alternarMaiaResponde(n)}
+                        disabled={travado}
+                        title={n.maiaResponde
+                          ? 'A Maia responde sozinha em todas as conversas deste número. Clique para voltar a só sugerir.'
+                          : 'Ligar: a Maia passa a enviar as respostas sozinha em todas as conversas deste número.'}
+                        className={`h-8 px-2.5 rounded-lg border text-xs font-medium flex items-center gap-2 transition-colors disabled:opacity-60 ${
+                          n.maiaResponde
+                            ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                            : 'border-border text-muted-foreground hover:bg-muted'
+                        }`}
+                      >
+                        <Bot className="w-3.5 h-3.5" />
+                        Maia responde
+                        <span className={`relative w-7 h-4 rounded-full transition-colors ${n.maiaResponde ? 'bg-emerald-500' : 'bg-muted-foreground/30'}`}>
+                          <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${n.maiaResponde ? 'left-3.5' : 'left-0.5'}`} />
+                        </span>
+                      </button>
+                      <Button size="sm" variant="outline" onClick={() => setMembrosDe(n)} disabled={travado}>
+                        <Users className="w-3.5 h-3.5 mr-1.5" /> Membros
+                      </Button>
+                      {n.status === 'active' && (
+                        <Button size="sm" variant="outline" onClick={() => importar(n)} disabled={travado}>
+                          <Download className="w-3.5 h-3.5 mr-1.5" /> Importar contatos
+                        </Button>
+                      )}
+                      <Button size="sm" variant="ghost" title="Reiniciar" aria-label={`Reiniciar ${n.nome}`}
+                        onClick={() => acao(n, 'restart')} disabled={travado}>
+                        {travado ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCw className="w-3.5 h-3.5" />}
+                      </Button>
+                      {n.status === 'active' && (
+                        <Button size="sm" variant="ghost" title="Desconectar" aria-label={`Desconectar ${n.nome}`}
+                          onClick={() => acao(n, 'logout')} disabled={travado}>
+                          <Unplug className="w-3.5 h-3.5" />
+                        </Button>
+                      )}
+                      <Button size="sm" variant="ghost" title="Remover" aria-label={`Remover ${n.nome}`}
+                        onClick={() => setRemovendo(n)} disabled={travado}>
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </>
                   )}
-                  <Button size="sm" variant="ghost" title="Reiniciar" aria-label={`Reiniciar ${n.nome}`}
-                    onClick={() => acao(n, 'restart')} disabled={travado}>
-                    {travado ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCw className="w-3.5 h-3.5" />}
-                  </Button>
-                  {n.status === 'active' && (
-                    <Button size="sm" variant="ghost" title="Desconectar" aria-label={`Desconectar ${n.nome}`}
-                      onClick={() => acao(n, 'logout')} disabled={travado}>
-                      <Unplug className="w-3.5 h-3.5" />
-                    </Button>
-                  )}
-                  <Button size="sm" variant="ghost" title="Remover" aria-label={`Remover ${n.nome}`}
-                    onClick={() => setRemovendo(n)} disabled={travado}>
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </Button>
                 </div>
               </div>
             )
@@ -333,20 +354,22 @@ export function EvolutionSettings() {
         </div>
       )}
 
-      <form onSubmit={criar} className="flex flex-col sm:flex-row gap-2 mt-4">
-        <input
-          value={nomeNovo}
-          onChange={e => setNomeNovo(e.target.value)}
-          placeholder="Nome do número (ex.: Marketing)"
-          maxLength={60}
-          disabled={!configurada || criando}
-          className="flex-1 px-3 py-2 rounded-xl bg-background border border-border text-sm text-foreground placeholder:text-muted-foreground/70 outline-none focus:border-cyan-500/60 focus:ring-2 focus:ring-cyan-500/20"
-        />
-        <Button type="submit" size="md" disabled={!configurada || criando || nomeNovo.trim().length < 2}>
-          {criando ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
-          Adicionar número
-        </Button>
-      </form>
+      {gerencia && (
+        <form onSubmit={criar} className="flex flex-col sm:flex-row gap-2 mt-4">
+          <input
+            value={nomeNovo}
+            onChange={e => setNomeNovo(e.target.value)}
+            placeholder="Nome do número (ex.: Marketing)"
+            maxLength={60}
+            disabled={!configurada || criando}
+            className="flex-1 px-3 py-2 rounded-xl bg-background border border-border text-sm text-foreground placeholder:text-muted-foreground/70 outline-none focus:border-cyan-500/60 focus:ring-2 focus:ring-cyan-500/20"
+          />
+          <Button type="submit" size="md" disabled={!configurada || criando || nomeNovo.trim().length < 2}>
+            {criando ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
+            Adicionar número
+          </Button>
+        </form>
+      )}
 
       {qrDe && (
         <ModalQr
@@ -466,7 +489,7 @@ function ModalQr({ numero, aoFechar }: { numero: Numero; aoFechar: () => void })
     <Modal titulo={`Conectar ${numero.nome}`} subtitulo="WhatsApp › Aparelhos conectados › Conectar aparelho" aoFechar={aoFechar}>
       <div className="flex flex-col items-center gap-3">
         {conectado ? (
-          <div className="flex flex-col items-center gap-2 py-10 text-emerald-600 dark:text-emerald-400">
+          <div className="flex flex-col items-center gap-2 py-10 text-[var(--status-ok)]">
             <Check className="w-10 h-10" />
             <p className="text-sm font-medium">Conectado</p>
           </div>

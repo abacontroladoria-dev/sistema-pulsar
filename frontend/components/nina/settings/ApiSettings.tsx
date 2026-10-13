@@ -266,10 +266,15 @@ const ApiSettings = forwardRef<ApiSettingsRef>((props, ref) => {
     );
   }
 
+  // Sem as credenciais, a lista de números continua: o membro de um número
+  // reconecta por aqui (QR) quando o celular cai.
   if (semPermissao) {
     return (
-      <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-6 text-sm text-amber-700 dark:text-amber-200">
-        Apenas administradores da Central de Atendimento podem ver as credenciais do agente.
+      <div className="space-y-6">
+        <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-6 text-sm text-amber-700 dark:text-amber-200">
+          Apenas administradores da Central de Atendimento podem ver as credenciais do agente.
+        </div>
+        <EvolutionSettings />
       </div>
     );
   }

@@ -19,15 +19,38 @@ import { digitosDoJid, variantesBr } from '../utils/telefone-br'
 
 const EVENTOS_WEBHOOK = ['MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'CONNECTION_UPDATE', 'SEND_MESSAGE']
 
-// Quem cria, conecta (QR), reinicia, remove e distribui os números. É o ÚNICO
-// portão: tudo abaixo roda com service role e a RPC criar_canal_evolution não
-// confere papel. A diretoria entrou em 02/10/2026 a pedido — antes ela abria
+// Quem cria, reinicia, remove e distribui os números (conectar por QR também,
+// além dos membros — ver podeConectarNumero). É o ÚNICO portão: tudo abaixo
+// roda com service role e a RPC criar_canal_evolution não confere papel. A diretoria entrou em 02/10/2026 a pedido — antes ela abria
 // /connect/settings inteira e tomava 403 só neste bloco.
 export function podeGerenciarNumeros(centralRole: string): boolean {
   return centralRole === 'admin' || centralRole === 'director'
 }
 
 export const MENSAGEM_SEM_PERMISSAO_NUMEROS = 'Apenas administradores e diretoria gerenciam os números'
+
+// Reconectar (QR + status) também vale para quem é membro do número: quando o
+// celular da área cai, a atendente escaneia de novo sem depender de um admin.
+// Só isso — criar, remover, membros, Maia, reiniciar e desconectar seguem em
+// podeGerenciarNumeros. Liberado em 13/10/2026 (caso Pamela, número Autorização).
+export async function podeConectarNumero(
+  user: { id: string; orgId: string; centralRole: string },
+  channelId: string,
+): Promise<boolean> {
+  if (podeGerenciarNumeros(user.centralRole)) return true
+  const { inboxId } = await instanciaDoCanal(user.orgId, channelId)
+  const { data, error } = await supabaseService
+    .schema('central')
+    .from('inbox_members')
+    .select('user_id')
+    .eq('inbox_id', inboxId)
+    .eq('user_id', user.id)
+    .maybeSingle()
+  if (error) throw error
+  return data !== null
+}
+
+export const MENSAGEM_SEM_PERMISSAO_CONECTAR = 'Só membros deste número, administradores e diretoria podem conectá-lo'
 
 export interface NumeroEvolution {
   channelId: string
@@ -57,7 +80,9 @@ function primeiraConexao(c: CanalDoBanco['channel_connections']) {
   return Array.isArray(c) ? c[0] ?? null : c
 }
 
-export async function listarNumeros(orgId: string): Promise<NumeroEvolution[]> {
+// `soDoMembro`: recorta aos números de que esse usuário é membro (visão de quem
+// não gerencia, que só reconecta os próprios números).
+export async function listarNumeros(orgId: string, soDoMembro?: string): Promise<NumeroEvolution[]> {
   const { data, error } = await supabaseService
     .schema('central')
     .from('channels')
@@ -68,7 +93,17 @@ export async function listarNumeros(orgId: string): Promise<NumeroEvolution[]> {
     .order('name')
   if (error) throw error
 
-  const canais = (data ?? []) as CanalDoBanco[]
+  let canais = (data ?? []) as CanalDoBanco[]
+  if (soDoMembro) {
+    const { data: meus, error: eM } = await supabaseService
+      .schema('central')
+      .from('inbox_members')
+      .select('inbox_id')
+      .eq('user_id', soDoMembro)
+    if (eM) throw eM
+    const permitidos = new Set(((meus ?? []) as { inbox_id: string }[]).map(m => m.inbox_id))
+    canais = canais.filter(c => permitidos.has(c.inbox_id))
+  }
   const inboxIds = canais.map(c => c.inbox_id)
 
   const contagem = new Map<string, number>()

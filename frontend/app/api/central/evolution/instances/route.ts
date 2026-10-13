@@ -11,15 +11,19 @@ import { listarNumeros, criarNumero, podeGerenciarNumeros, MENSAGEM_SEM_PERMISSA
 //
 // Admin e diretoria da Central (podeGerenciarNumeros). Números novos entram com ai_mode travado em 'off'
 // (atendimento humano) e o criador como primeiro membro.
+//
+// O GET também responde a quem não gerencia, mas só com os números de que a
+// pessoa é membro — é a lista de onde ela reconecta pelo QR.
 
 export async function GET() {
   try {
     const { user } = await extractUser()
-    if (!podeGerenciarNumeros(user.centralRole)) return forbidden(MENSAGEM_SEM_PERMISSAO_NUMEROS)
+    const gerencia = podeGerenciarNumeros(user.centralRole)
 
     return ok({
       configurada: evolutionConfigurada(),
-      numeros: await listarNumeros(user.orgId),
+      gerencia,
+      numeros: await listarNumeros(user.orgId, gerencia ? undefined : user.id),
     })
   } catch (err) {
     return mapCentralError(err)
