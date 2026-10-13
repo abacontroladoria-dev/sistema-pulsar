@@ -12,6 +12,12 @@ import { DOW_PT } from "./ocupacaoConst"
 import { convenioDaLinha, type FonteConvenio, type MapaConvenioCadastro } from "./convenioCadastro"
 import type { AgendaSalaRow, ResumoPacientesSalas, ResumoPacientesGrupo, ResumoPacientesDia, DashboardPacientesGeral, PacienteDoGrupo } from "./salasTypes"
 
+/** Período consultado, "AAAA-MM-DD" inclusivo nas duas pontas. */
+export interface PeriodoPacientes {
+  inicio: string
+  fim: string
+}
+
 export function chDaLinha(r: AgendaSalaRow): number {
   const ini = pm(r.hora_inicial)
   const fim = pm(r.hora_final)
@@ -59,6 +65,32 @@ export function isTerapiaDiagnostico(r: AgendaSalaRow): boolean {
   const acao = cleanTxt(r.terapia_nome)
   if (acao) return PROCESSO_DIAGNOSTICO_NAMES.has(acao)
   return PROCESSO_DIAGNOSTICO_NAMES.has(cleanTxt(r.terapia_exibicao_nome))
+}
+
+/**
+ * Semanas do período ESCOLHIDO — base das médias semanais quando a tela
+ * consulta um mês ou intervalo. Não usa as datas das sessões (ver
+ * `semanasNoPeriodo`): num mês, a 1ª e a última sessão raramente caem no dia 1
+ * e no último dia, e o divisor encolheria sem motivo.
+ *
+ * Conta DIAS ÚTEIS (seg–sex) ÷ 5, mínimo 1, e não dias corridos ÷ 7: a agenda
+ * é de segunda a sexta, e um mês com 23 dias úteis tem mais sessões que um com
+ * 20 sem ter "mais semana" — com dias corridos, 07–31/01/2026 (19 dias úteis em
+ * 25 corridos) inflava a média em ~6%.
+ *
+ * Na semana de referência (seg–sáb) dá 1, o mesmo que `semanasNoPeriodo`
+ * sempre deu ali — os números da visão padrão não mudam.
+ */
+export function semanasDoPeriodo(periodo: PeriodoPacientes): number {
+  const dia = new Date(`${periodo.inicio}T12:00:00`)
+  const fim = new Date(`${periodo.fim}T12:00:00`)
+  let uteis = 0
+  while (dia <= fim) {
+    const dow = dia.getDay()
+    if (dow !== 0 && dow !== 6) uteis++
+    dia.setDate(dia.getDate() + 1)
+  }
+  return Math.max(1, uteis / 5)
 }
 
 export function semanasNoPeriodo(datas: string[]): number {
@@ -115,6 +147,7 @@ function resumoPorDia(agendamentos: AgendamentoNormalizado[], semanas: number): 
       pacientesUnicos: g?.pacientes.size ?? 0,
       sessoesTotal: g?.sessoes ?? 0,
       chSemanalTotal: (g?.ch ?? 0) / semanas,
+      sessoesPorSemana: (g?.sessoes ?? 0) / semanas,
     }
   })
 }
@@ -143,9 +176,9 @@ function normalizarLinha(r: AgendaSalaRow, mapa: MapaConvenioCadastro | null | u
   }
 }
 
-function montarResumo(agendamentos: AgendamentoNormalizado[]): ResumoPacientesSalas {
+function montarResumo(agendamentos: AgendamentoNormalizado[], periodo: PeriodoPacientes | undefined): ResumoPacientesSalas {
   const pacientesUnicos = new Set(agendamentos.map(a => a.pacienteKey)).size
-  const semanas = semanasNoPeriodo(agendamentos.map(a => a.data).filter(Boolean))
+  const semanas = periodo ? semanasDoPeriodo(periodo) : semanasNoPeriodo(agendamentos.map(a => a.data).filter(Boolean))
   const chTotal = agendamentos.reduce((sum, a) => sum + a.ch, 0)
   const chSemanalTotal = chTotal / semanas
 
@@ -161,7 +194,10 @@ function montarResumo(agendamentos: AgendamentoNormalizado[]): ResumoPacientesSa
   return {
     pacientesUnicos,
     sessoesTotal: agendamentos.length,
+    sessoesPorSemana: agendamentos.length / semanas,
+    semanas,
     chSemanalTotal,
+    chTotalPeriodo: chTotal,
     chMediaMensalTotal: chSemanalTotal * 4.33,
     mediaSessoesPorPaciente: pacientesUnicos ? agendamentos.length / pacientesUnicos : 0,
     porConvenio: resumoGrupo(agendamentos, "convenio", semanas),
@@ -189,11 +225,11 @@ function montarResumo(agendamentos: AgendamentoNormalizado[]): ResumoPacientesSa
  *     quem também aparece no dashboard multidisciplinar por causa de outras
  *     terapias (a sessão diagnóstica dele conta aqui, nunca lá).
  */
-export function calcularDashboardPacientes(rows: AgendaSalaRow[], mapa?: MapaConvenioCadastro | null): DashboardPacientesGeral {
+export function calcularDashboardPacientes(rows: AgendaSalaRow[], mapa?: MapaConvenioCadastro | null, periodo?: PeriodoPacientes): DashboardPacientesGeral {
   const { multidisciplinar, processoDiagnostico } = normalizarPorSegmento(rows, mapa)
   return {
-    multidisciplinar: montarResumo(multidisciplinar),
-    processoDiagnostico: montarResumo(processoDiagnostico),
+    multidisciplinar: montarResumo(multidisciplinar, periodo),
+    processoDiagnostico: montarResumo(processoDiagnostico, periodo),
   }
 }
 
@@ -212,7 +248,7 @@ export type SegmentoPacientes = keyof DashboardPacientesGeral
  * "Ver pacientes"). Mesmo pipeline e mesma chave de `calcularDashboardPacientes`
  * — filtro, segmento por sessão, `pacienteKey` por nome normalizado — para a
  * lista ter exatamente o número da coluna "Pacientes" daquela linha. CH semanal
- * usa as semanas do BLOCO inteiro, como a tabela.
+ * usa as semanas do BLOCO inteiro (ou do período, quando informado), como a tabela.
  */
 export function listarPacientesDoGrupo(
   rows: AgendaSalaRow[],
@@ -220,9 +256,10 @@ export function listarPacientesDoGrupo(
   segmento: SegmentoPacientes,
   campo: "convenio" | "unidade",
   chave: string,
+  periodo?: PeriodoPacientes,
 ): PacienteDoGrupo[] {
   const doSegmento = normalizarPorSegmento(rows, mapa)[segmento]
-  const semanas = semanasNoPeriodo(doSegmento.map(a => a.data).filter(Boolean))
+  const semanas = periodo ? semanasDoPeriodo(periodo) : semanasNoPeriodo(doSegmento.map(a => a.data).filter(Boolean))
 
   const porPaciente = new Map<string, {
     ids: Set<number>; nome: string; sessoes: number; ch: number

@@ -35,12 +35,14 @@ export interface ExportarPacientesOpts {
   linhas: AgendaSalaRow[]
   dashboard: DashboardPacientesGeral
   periodo: { inicio: string; fim: string }
+  /** Como a tela chama a medida ("Semana" ou "Mês completo: Outubro de 2026"). */
+  periodoRotulo?: string
   /** Convênio pelo cadastro do TiTa — o mesmo mapa que a tela usou. null = TiTa indisponível (tudo pela agenda). */
   mapaConvenio: MapaConvenioCadastro | null
 }
 
 export function exportarDashboardPacientesXlsx(opts: ExportarPacientesOpts): void {
-  const { linhas, dashboard, periodo, mapaConvenio } = opts
+  const { linhas, dashboard, periodo, periodoRotulo, mapaConvenio } = opts
   const ativos = (linhas || []).filter(isAgendadoAtivo)
   if (!ativos.length) {
     toast.error("Nenhuma sessão ativa no período para exportar.")
@@ -54,6 +56,11 @@ export function exportarDashboardPacientesXlsx(opts: ExportarPacientesOpts): voi
   const parametros = [
     { Parametro: "Periodo_Inicio", Valor: periodo.inicio },
     { Parametro: "Periodo_Fim", Valor: periodo.fim },
+    ...(periodoRotulo ? [{ Parametro: "Periodo_Tipo", Valor: periodoRotulo }] : []),
+    { Parametro: "Semanas_No_Periodo", Valor: +dashboard.multidisciplinar.semanas.toFixed(2) },
+    { Parametro: "Base_Medias_Semanais", Valor: "Dias uteis (seg-sex) do periodo / 5 (minimo 1). Sessoes_Total e CH_Total_Periodo sao a soma do periodo inteiro" },
+    { Parametro: "Sessoes_Contadas", Valor: "Todas as sessoes AGENDADAS no periodo, inclusive as que depois terminaram canceladas (falta do paciente, do profissional etc.)" },
+    { Parametro: "Convenio_Em_Periodo_Passado", Valor: "O convenio vem do cadastro ATUAL do TiTa: quem mudou de convenio aparece no convenio de hoje" },
     { Parametro: "Gerado_Em", Valor: geradoEm.toISOString() },
     { Parametro: "Segmentacao", Valor: "Por SESSAO (nao por paciente) — ver Tratamento Multidisciplinar vs Processo Diagnostico" },
     { Parametro: "Fonte_Convenio", Valor: "Plano de Saude do cadastro TiTa (csv_situacao_favorecidos) por Paciente_ID; sem cadastro, o convenio da agenda (csv_grades_profissionais). Ver colunas Convenio_Agenda/Fonte_Convenio" },
@@ -71,7 +78,9 @@ export function exportarDashboardPacientesXlsx(opts: ExportarPacientesOpts): voi
       Segmento: SEGMENTO_LABEL[seg],
       Pacientes_Unicos: d.pacientesUnicos,
       Sessoes_Total: d.sessoesTotal,
+      Sessoes_Por_Semana: +d.sessoesPorSemana.toFixed(2),
       CH_Semanal: +d.chSemanalTotal.toFixed(2),
+      CH_Total_Periodo: +d.chTotalPeriodo.toFixed(2),
       CH_Media_Mensal: +d.chMediaMensalTotal.toFixed(2),
       Sessoes_Por_Paciente: +d.mediaSessoesPorPaciente.toFixed(2),
     }
@@ -114,6 +123,7 @@ export function exportarDashboardPacientesXlsx(opts: ExportarPacientesOpts): voi
         Dia: linha.dia,
         Pacientes_Unicos: linha.pacientesUnicos,
         Sessoes_Total: linha.sessoesTotal,
+        Sessoes_Por_Semana: +linha.sessoesPorSemana.toFixed(2),
         CH_Semanal: +linha.chSemanalTotal.toFixed(2),
       })
     })

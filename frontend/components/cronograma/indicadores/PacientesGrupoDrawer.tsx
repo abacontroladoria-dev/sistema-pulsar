@@ -18,6 +18,10 @@ export interface GrupoSelecionado {
   segmentoLabel: string
   campo: "convenio" | "unidade"
   chave: string
+  /** Período consultado, já por extenso (ex.: "Mês completo: Outubro de 2026 · 01/10/2026 a 31/10/2026"). */
+  periodoRotulo?: string
+  /** Mês completo: "Sessões" passa a ser o total do período e o CH semanal, a média. */
+  periodoLongo?: boolean
 }
 
 type ChaveOrdem = "nome" | "sessoes" | "chSemanal"
@@ -30,6 +34,8 @@ export function PacientesGrupoDrawer({ grupo, pacientes, onClose }: {
   const [busca, setBusca] = useState("")
   const [sort, setSort] = useState<{ key: ChaveOrdem; dir: SortDir }>({ key: "nome", dir: "asc" })
   const outraColuna = grupo.campo === "convenio" ? "Unidade" : "Convênio"
+  const rotuloSessoes = grupo.periodoLongo ? "Sessões no mês" : "Sessões"
+  const rotuloCh = grupo.periodoLongo ? "CH semanal (média)" : "CH semanal"
 
   const visiveis = useMemo(() => {
     const q = normTxt(busca)
@@ -48,10 +54,11 @@ export function PacientesGrupoDrawer({ grupo, pacientes, onClose }: {
   function exportar() {
     const linhas = pacientes.map(p => ({
       Segmento: grupo.segmentoLabel,
+      ...(grupo.periodoRotulo ? { Periodo: grupo.periodoRotulo } : {}),
       [grupo.campo === "convenio" ? "Convenio" : "Unidade"]: grupo.chave,
       Paciente_ID: p.ids.join(", "),
       Paciente_Nome: p.nome,
-      Sessoes: p.sessoes,
+      [grupo.periodoLongo ? "Sessoes_No_Mes" : "Sessoes"]: p.sessoes,
       CH_Semanal: +p.chSemanal.toFixed(2),
       Terapias: p.terapias.join(", "),
       [outraColuna === "Unidade" ? "Unidades" : "Convenios"]: p.outraDimensao.join(", "),
@@ -67,7 +74,7 @@ export function PacientesGrupoDrawer({ grupo, pacientes, onClose }: {
   return (
     <Drawer
       title={grupo.chave}
-      subtitle={`${pacientes.length} ${pacientes.length === 1 ? "paciente" : "pacientes"} · ${grupo.segmentoLabel}${atualizados ? ` · ${atualizados} com convênio atualizado pelo cadastro` : ""}`}
+      subtitle={`${pacientes.length} ${pacientes.length === 1 ? "paciente" : "pacientes"} · ${grupo.segmentoLabel}${grupo.periodoRotulo ? ` · ${grupo.periodoRotulo}` : ""}${atualizados ? ` · ${atualizados} com convênio atualizado pelo cadastro` : ""}`}
       width="min(820px, 100vw)"
       onClose={onClose}
       footer={
@@ -101,12 +108,12 @@ export function PacientesGrupoDrawer({ grupo, pacientes, onClose }: {
         <div className="max-h-[calc(100vh-15rem)] overflow-auto rounded-lg border border-border">
           <table className="w-full text-xs">
             <thead className="sticky top-0 bg-card">
-              <tr className="border-b border-border text-left text-muted-foreground">
+              <tr className="whitespace-nowrap border-b border-border text-left text-muted-foreground">
                 <th className="py-1.5 pl-3 pr-1 font-semibold tabular-nums">#</th>
                 <SortableTh label="Paciente" sortKey="nome" activeKey={sort.key} dir={sort.dir} onClick={onSortClick} />
-                <SortableTh label="Sessões" sortKey="sessoes" activeKey={sort.key} dir={sort.dir} align="right" onClick={onSortClick} />
+                <SortableTh label={rotuloSessoes} sortKey="sessoes" activeKey={sort.key} dir={sort.dir} align="right" onClick={onSortClick} />
                 {/* Espaço inseparável: o rótulo não quebra em duas linhas (SortableTh é compartilhado, não muda). */}
-                <SortableTh label={"CH semanal"} sortKey="chSemanal" activeKey={sort.key} dir={sort.dir} align="right" onClick={onSortClick} />
+                <SortableTh label={rotuloCh} sortKey="chSemanal" activeKey={sort.key} dir={sort.dir} align="right" onClick={onSortClick} />
                 <th className="py-1.5 px-2 font-semibold">Terapias</th>
                 <th className="py-1.5 pl-2 pr-3 font-semibold">{outraColuna}</th>
               </tr>

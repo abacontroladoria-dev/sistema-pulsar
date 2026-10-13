@@ -343,8 +343,15 @@ export interface AgendaSalaRow {
 
 export interface ResumoPacientesSalas {
   pacientesUnicos: number
+  /** Sessões no período inteiro — numa semana, é o mesmo que por semana. */
   sessoesTotal: number
+  /** `sessoesTotal` ÷ `semanas`. */
+  sessoesPorSemana: number
+  /** Semanas do período (mínimo 1) — divisor de todas as médias semanais. */
+  semanas: number
   chSemanalTotal: number
+  /** CH somada no período, sem média nem estimativa. */
+  chTotalPeriodo: number
   chMediaMensalTotal: number
   mediaSessoesPorPaciente: number
   porConvenio: ResumoPacientesGrupo[]
@@ -385,6 +392,8 @@ export interface ResumoPacientesDia {
   pacientesUnicos: number
   sessoesTotal: number
   chSemanalTotal: number
+  /** `sessoesTotal` ÷ semanas do período — a barra usa isto para não crescer com o tamanho do período. */
+  sessoesPorSemana: number
 }
 
 /**
