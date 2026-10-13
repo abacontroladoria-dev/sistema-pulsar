@@ -19,6 +19,7 @@ import { useEffect, useState } from 'react'
 import { X, CalendarDays, Info, Loader2 } from 'lucide-react'
 import { getSupabaseClient } from '@/lib/supabase/client'
 import { horaDoTimestamp, minutosDesde } from '@/lib/central/intervaloAssim'
+import { rotuloTerapias } from '@/lib/central/rotuloTerapia'
 
 export type LinhaAutorizacaoDoDia = {
   id: string
@@ -309,7 +310,7 @@ export default function ModalAutorizacoesDoDia({
               {[
                 ['Horário', horarioSessao || '—'],
                 ['Sessão', sessaoInfo ? `${sessaoInfo.index}/${sessaoInfo.total}` : '—'],
-                ['Terapia', sessao.terapias?.join(' + ') || '—'],
+                ['Terapia', rotuloTerapias(sessao.terapias) || '—'],
                 ['Convênio', sessao.convenio_nome || '—'],
                 ['Sala', sessao.sala_nome || '—'],
                 ['Terapeuta', sessao.profissionais?.join(' + ') || '—'],
