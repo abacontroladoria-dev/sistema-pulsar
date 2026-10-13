@@ -5,6 +5,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAppointmentSystemService, createSystemServices } from '../services'
 import { MessageRepository } from '../repositories/message.repository'
 import { AppointmentRepository } from '../repositories/appointment.repository'
+import { AuditRepository } from '../repositories/audit.repository'
 import { montarContexto, LIMITE_HISTORICO } from '../agente/contexto'
 import { executarTurno } from '../agente/orquestrador'
 import { FerramentasAgente } from '../agente/ferramentas'
@@ -84,6 +85,7 @@ export async function processarSugestoesEvolution(
   if (e2) throw e2
 
   const mensagens = new MessageRepository(supabase)
+  const auditoria = new AuditRepository(supabase)
 
   for (const conv of (conversas ?? []) as ConversaCandidata[]) {
     if (r.sugeridas + r.enviadas + r.falhas >= MAX_POR_TIQUE || Date.now() > limite) break
@@ -148,6 +150,18 @@ export async function processarSugestoesEvolution(
           contexto,
           agendamentoHabilitado: settings.ai_scheduling_enabled,
           somenteLeitura: true,
+          // O mesmo rastro do worker da Meta. Sem ele, desde 30/09 nenhuma
+          // consulta da Maia ficava registrada: em 13/10 ela respondeu "houve um
+          // erro ao buscar os horários" e não havia como saber o que a
+          // ferramenta devolveu. Fire-and-forget: insert nunca rejeita.
+          aoChamarFerramenta: (registro) => {
+            void auditoria.insert({
+              organization_id: orgId,
+              conversation_id: conv.id,
+              event_type:      'ai.tool_call',
+              payload:         { ...registro },
+            })
+          },
         },
       )
 

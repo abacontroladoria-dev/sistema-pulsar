@@ -599,9 +599,20 @@ comment on function public.contratos_registrar_evento_externo(bigint, text, text
 -- (nenhum upload chegou a ser concluído), então o DELETE abaixo é seguro.
 drop function if exists public.contratos_registrar_arquivo(bigint, text, text, text, uuid, text);
 
-delete from storage.buckets
- where id = 'contratos-pacientes'
-   and not exists (select 1 from storage.objects where bucket_id = 'contratos-pacientes');
+--
+-- O Supabase de produção RECUSA DELETE direto em storage.buckets (trigger
+-- storage.protect_delete, 42501 "Use the Storage API instead") — descoberto no
+-- ensaio de 09/10/2026, com o bucket lá e vazio. Sem o bloco abaixo, a
+-- migration inteira morria nesta linha. Agora: tenta; recusado, segue e avisa
+-- (o bucket vazio e privado não expõe nada; apagar pelo painel em Storage).
+do $$
+begin
+  delete from storage.buckets
+   where id = 'contratos-pacientes'
+     and not exists (select 1 from storage.objects where bucket_id = 'contratos-pacientes');
+exception when insufficient_privilege then
+  raise notice 'Bucket contratos-pacientes não removido por SQL (o Supabase exige a Storage API): apague pelo painel, em Storage.';
+end $$;
 
 -- ═════════════════════════════════════════════════════════════════════════════
 -- RLS e GRANTs

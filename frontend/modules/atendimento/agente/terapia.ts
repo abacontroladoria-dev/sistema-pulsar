@@ -96,6 +96,16 @@ export const ESPECIALIDADES: readonly EspecialidadeOfertavel[] = [
   { nome: 'Equoterapia',          casaCom: ['Equoterapia'] },
   { nome: 'Arteterapia',          casaCom: ['Arteterapia'] },
   { nome: 'Avaliação Neuropsicológica', casaCom: ['Avaliação Neuropsicológica'], sinonimos: ['neuropsicologica', 'avaliacao neuropsicologica'] },
+  // O prompt vende a "consulta médica" (particular, Padre Miguel, quartas) e o
+  // TiTa a grava como 'Psiquiatra/Neurologista'. Sem esta linha a ferramenta
+  // recusava o nome e a Maia respondia "houve um erro ao buscar os horários"
+  // (13/10/2026) com 10 vagas livres na agenda. O `nome` é o que o agente fala:
+  // o protocolo do prompt proíbe dizer "psiquiatra" ou "neurologista".
+  {
+    nome:      'Consulta Médica',
+    casaCom:   ['Psiquiatra/Neurologista'],
+    sinonimos: ['consulta medica', 'medico', 'consulta com o medico', 'consulta com medico'],
+  },
   { nome: 'Triagem',              casaCom: ['Triagem'],              sinonimos: ['primeira consulta', 'avaliacao inicial'] },
   { nome: 'Visita Guiada',        casaCom: ['Visita Guiada'],        sinonimos: ['visita', 'conhecer a clinica'] },
 ]

@@ -51,6 +51,10 @@ const ChatInterface: React.FC = () => {
   // trg_evolution_sem_ia). A chave Maia/Atendente some, e no lugar fica dito
   // por qual número a conversa chega.
   const canalHumano = detalhe?.channel?.provider === 'evolution'
+  // Exceção: o número com "Maia responde" (Configurações) — ela envia sozinha
+  // por ele, ainda sem ai_mode. A chave continua fora (não há o que trocar na
+  // conversa), mas o selo diz quem atende de verdade.
+  const maiaRespondeNoNumero = canalHumano && detalhe?.inbox?.maia_automatica === true
 
   // Fontes do painel que não vêm no detalhe da conversa (catálogo de tags,
   // usuários, agendamentos, tarefas). Fora do polling — ver o hook.
@@ -82,6 +86,37 @@ const ChatInterface: React.FC = () => {
   // Trocar de conversa descarta a resposta em andamento: citar a mensagem de
   // outra pessoa seria pior que perder a citação.
   useEffect(() => { setRespondendo(null) }, [selectedId])
+
+  // Esc fecha a conversa, como no WhatsApp Web. O que estiver aberto POR CIMA
+  // tem prioridade: modal, seletor de emoji, popover, foto ampliada — e a
+  // resposta citada, que o primeiro Esc cancela. Campo de texto com conteúdo
+  // também segura o Esc: perder o que se digitou por reflexo é pior que
+  // apertar duas vezes.
+  //
+  // Na CAPTURA da window, antes de qualquer outro ouvinte: assim o DOM ainda
+  // mostra o que estava aberto quando a tecla desceu. Ouvindo depois, o modal
+  // que fecha com o mesmo Esc já teria sumido e a conversa fecharia junto.
+  const sobreposto = !!(apagando || editando || transferindo || agendando || designando)
+  const citando = respondendo !== null
+
+  useEffect(() => {
+    if (!selectedId) return
+    const esc = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.isComposing) return
+      if (sobreposto) return
+      if (document.querySelector('[role="dialog"], [aria-modal="true"], [data-radix-popper-content-wrapper]')) return
+
+      const alvo = e.target as HTMLElement | null
+      const tag = alvo?.tagName
+      if (tag === 'INPUT' || tag === 'SELECT' || alvo?.isContentEditable) return
+      if (tag === 'TEXTAREA' && (alvo as HTMLTextAreaElement).value.trim() !== '') return
+
+      if (citando) { setRespondendo(null); return }
+      select(null)
+    }
+    window.addEventListener('keydown', esc, true)
+    return () => window.removeEventListener('keydown', esc, true)
+  }, [selectedId, select, sobreposto, citando])
 
   // Rola para o fim quando chega mensagem NOVA (a última mudou). Pelo id, e não
   // pelo comprimento: carregar as antigas também aumenta o comprimento, e
@@ -609,7 +644,7 @@ const ChatInterface: React.FC = () => {
                 </button>
                 <div className="relative shrink-0">
                   <div className="w-9 h-9 rounded-full ring-2 ring-border overflow-hidden">
-                    <Avatar url={activeChat.contactAvatar} nome={activeChat.contactName} />
+                    <Avatar url={activeChat.contactAvatar} nome={activeChat.contactName} ampliavel />
                   </div>
                 </div>
                 <div className="ml-3 min-w-0">
@@ -632,7 +667,15 @@ const ChatInterface: React.FC = () => {
               </div>
 
               <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-                {canalHumano ? (
+                {maiaRespondeNoNumero ? (
+                  <span
+                    className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-200"
+                    title="A Maia responde sozinha por este número (Configurações → números)"
+                  >
+                    <Bot className="w-3.5 h-3.5" />
+                    Maia responde · {detalhe?.channel?.name}
+                  </span>
+                ) : canalHumano ? (
                   <span
                     className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                     title="Número de atendimento humano — a Maia não responde por ele"
@@ -739,6 +782,17 @@ const ChatInterface: React.FC = () => {
             <div
               ref={rolagemRef}
               onScroll={e => { if (e.currentTarget.scrollTop < 80) pedirAntigas() }}
+              // As imagens abrem sozinhas e chegam DEPOIS da rolagem até o fim:
+              // cada uma empurrava a conversa para cima. Se quem lê estava no
+              // fim antes dela crescer, volta ao fim. `load` não borbulha — por
+              // isso a captura.
+              onLoadCapture={e => {
+                const el = e.currentTarget
+                const alvo = e.target as HTMLElement
+                if (alvo.tagName !== 'IMG') return
+                const antes = el.scrollHeight - alvo.offsetHeight - el.scrollTop - el.clientHeight
+                if (antes < 150) el.scrollTop = el.scrollHeight
+              }}
               className="flex-1 overflow-y-auto px-3 py-4 sm:p-6 custom-scrollbar relative z-0"
             >
               {activeChat.messages.length === 0 ? (
@@ -767,6 +821,14 @@ const ChatInterface: React.FC = () => {
                     const anterior = activeChat.messages[i - 1]
                     const novoDia = !anterior || !mesmoDia(anterior.quandoIso, msg.quandoIso)
                     const primeiraDoGrupo = novoDia || anterior.autorId !== msg.autorId
+                    // Um número tem várias atendentes: a primeira bolha de cada
+                    // rajada nossa diz quem escreveu. É o mesmo nome que vai
+                    // assinado no WhatsApp do contato (utils/assinatura.ts).
+                    const nomeAutor = !primeiraDoGrupo || msg.direction !== MessageDirection.OUTGOING || msg.isAiDraft
+                      ? null
+                      : msg.fromType === 'nina'
+                        ? 'Maia'
+                        : painel.usuarios.find(u => u.id === msg.autorId)?.nome ?? null
                     return (
                       <React.Fragment key={msg.id}>
                         {novoDia && (
@@ -779,6 +841,7 @@ const ChatInterface: React.FC = () => {
                         <BolhaMensagem
                           msg={msg}
                           primeiraDoGrupo={primeiraDoGrupo}
+                          nomeAutor={nomeAutor}
                           destacada={destacada === msg.id}
                           aoResponder={setRespondendo}
                           aoEditar={setEditando}

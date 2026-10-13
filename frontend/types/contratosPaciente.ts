@@ -1,15 +1,19 @@
 import type { StatusContrato, TipoContrato, Vigencia } from "@/lib/contratos/status"
+import type { AutorizacoesImagem } from "@/lib/contratos/documento/montarDados"
 import type { OrigemCadastroPaciente } from "@/types/paciente"
 
 // Contratos do PACIENTE (aba Contratos + Status Contratos). Não confundir com
 // types/contratos* de prestador (remuneracao_contratos).
 //
-// Espelha public.pacientes_contratos* (supabase/migrations/20261008160000).
+// Espelha public.pacientes_contratos* (supabase/migrations/20261008160000 e
+// 20261009160000).
 
 export type ContratoPaciente = {
   id: number
   paciente_id: number
   tipo: TipoContrato
+  /** Número impresso no documento (sequência única, ex.: ABA-TMP-03-00012). */
+  numero: string
   /** "AAAA-MM-DD" */
   data_inicio: string
   /** "AAAA-MM-DD" */
@@ -20,6 +24,13 @@ export type ContratoPaciente = {
   d4sign_documento_uuid: string | null
   link_expira_em: string | null
   observacao: string | null
+  /** Valores que o documento imprime (Avaliação Neuropsicológica). numeric chega como número ou texto. */
+  valor_total: number | string | null
+  sessoes_max: number | null
+  valor_sessao_avulsa: number | string | null
+  /** Só no Termo de Uso de Imagem: o contrato de Terapias a que ele se vincula. */
+  contrato_vinculado_id: number | null
+  autorizacoes_imagem: AutorizacoesImagem | null
   criado_por_nome: string | null
   criado_em: string
   atualizado_em: string

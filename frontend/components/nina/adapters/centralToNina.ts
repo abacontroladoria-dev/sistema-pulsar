@@ -212,10 +212,17 @@ export type NinaConversation = Omit<UIConversation, 'messages' | 'clientMemory'>
 // esquecesse de passá-lo voltaria a errar em silêncio, que é exatamente o modo
 // como este bug passou despercebido.
 //
+// `maiaResponde` é o outro caminho por onde a Maia atende: o "Maia responde" do
+// número Evolution (`inboxes.maia_automatica`, Configurações). Ali o ai_mode fica
+// travado em 'off' (trg_evolution_sem_ia) e o worker envia em TODAS as conversas
+// do número — então, sem este parâmetro, a badge dizia "Humano" num número que a
+// Maia atende sozinha. Obrigatório pelo mesmo motivo do `modoPadrao`.
+//
 // PERDA CONHECIDA: open e assigned viram ambos 'human'. A badge não distingue
 // "ninguém assumiu" de "alguém assumiu" — que é a distinção mais importante
 // numa central de verdade. Fica como dívida; resolver exige uma badge nova.
-export function mapStatus(c: Conversation, modoPadrao: string): ConversationStatus {
+export function mapStatus(c: Conversation, modoPadrao: string, maiaResponde: boolean): ConversationStatus {
+  if (maiaResponde) return 'nina'
   const { modo } = resolverModoEfetivo(c.ai_mode, modoPadrao)
   if (modo === 'autonomous') return 'nina'
   if (c.status === 'open' || c.status === 'assigned') return 'human'
@@ -355,6 +362,8 @@ export function toUIConversation(
   mensagens: Message[],
   // O ai_mode da clínica, para resolver a herança da badge. Ver mapStatus.
   modoPadrao: string,
+  // O número da conversa está com "Maia responde"? Ver mapStatus.
+  maiaResponde: boolean,
 ): NinaConversation {
   const nome = contato?.name?.trim()
     || contato?.display_phone
@@ -374,7 +383,7 @@ export function toUIConversation(
     // Nullable no banco. A UI decide entre <img> e iniciais — por isso string
     // vazia em vez de um caminho de imagem que pode não existir.
     contactAvatar: contato?.avatar_url ?? '',
-    status:        mapStatus(c, modoPadrao),
+    status:        mapStatus(c, modoPadrao, maiaResponde),
     // Agora tem lastro: `last_read_at` existe desde 20260921140000 e o número
     // é contado sobre as mensagens em mãos. Na LISTA, `mensagens` vem vazio de
     // propósito e isto dá 0 — quem acende o ponto lá é `temNaoLidas`, que não

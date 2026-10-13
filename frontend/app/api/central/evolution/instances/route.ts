@@ -9,17 +9,22 @@ import { listarNumeros, criarNumero, podeGerenciarNumeros, MENSAGEM_SEM_PERMISSA
 // GET  /api/central/evolution/instances — números Evolution da organização
 // POST /api/central/evolution/instances — cria um número { nome }
 //
-// Admin e diretoria da Central (podeGerenciarNumeros). Números novos entram com ai_mode travado em 'off'
-// (atendimento humano) e o criador como primeiro membro.
+// POST: só admin e diretoria (podeGerenciarNumeros). Números novos entram com
+// ai_mode travado em 'off' (atendimento humano) e o criador como primeiro membro.
+//
+// GET: admin e diretoria recebem todos; os demais, só os números que o RLS
+// deixa a sessão ver (os de que são membros) — a lista de onde reconectam
+// pelo QR. `gerencia` diz à tela qual das duas visões montar.
 
 export async function GET() {
   try {
-    const { user } = await extractUser()
-    if (!podeGerenciarNumeros(user.centralRole)) return forbidden(MENSAGEM_SEM_PERMISSAO_NUMEROS)
+    const { user, supabase } = await extractUser()
+    const gerencia = podeGerenciarNumeros(user.centralRole)
 
     return ok({
       configurada: evolutionConfigurada(),
-      numeros: await listarNumeros(user.orgId),
+      gerencia,
+      numeros: await listarNumeros(user.orgId, gerencia ? undefined : supabase),
     })
   } catch (err) {
     return mapCentralError(err)

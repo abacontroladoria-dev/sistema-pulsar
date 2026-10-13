@@ -2,6 +2,9 @@ import 'server-only'
 
 import { randomBytes } from 'node:crypto'
 
+import type { SupabaseClient } from '@supabase/supabase-js'
+
+import type { CentralUser } from '@/lib/central/auth'
 import { supabaseService } from '@/lib/supabase/service'
 import { chamarEvolution } from '../providers/evolution.api'
 import { processarConexao } from './ingestao'
@@ -9,25 +12,68 @@ import { ChannelNotFoundError, ProviderError } from '../types/errors.types'
 import { digitosDoJid, variantesBr } from '../utils/telefone-br'
 
 // ============================================================================
-// Gestão dos números Evolution (admin e diretoria — a rota confere o papel)
+// Gestão dos números Evolution
 //
-// Service role em tudo: a connection guarda o segredo do webhook, que
+// Dois portões, conferidos pelas rotas:
+// - podeGerenciarNumeros (admin e diretoria): criar, remover, membros, Maia,
+//   reiniciar, desconectar, importar contatos.
+// - canalParaConectar (os mesmos + membros do número): QR e status.
+//
+// Service role nas operações: a connection guarda o segredo do webhook, que
 // `authenticated` não lê, e criar inbox/canal exige a RPC security definer.
 // O recorte por organização é responsabilidade DESTE módulo: toda função recebe
-// o `orgId` da sessão e confere que o canal pertence a ela.
+// o `orgId` da sessão e confere que o canal pertence a ela. A regra de quem é
+// membro NÃO é refeita aqui: vem do RLS (channels_select_membro →
+// central.ca_minhas_inboxes), lido com o cliente da sessão.
 // ============================================================================
 
 const EVENTOS_WEBHOOK = ['MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'CONNECTION_UPDATE', 'SEND_MESSAGE']
 
-// Quem cria, conecta (QR), reinicia, remove e distribui os números. É o ÚNICO
-// portão: tudo abaixo roda com service role e a RPC criar_canal_evolution não
-// confere papel. A diretoria entrou em 02/10/2026 a pedido — antes ela abria
+// Quem cria, reinicia, remove e distribui os números. Tudo abaixo roda com
+// service role e a RPC criar_canal_evolution não confere papel, então este é o
+// portão. A diretoria entrou em 02/10/2026 a pedido — antes ela abria
 // /connect/settings inteira e tomava 403 só neste bloco.
 export function podeGerenciarNumeros(centralRole: string): boolean {
   return centralRole === 'admin' || centralRole === 'director'
 }
 
 export const MENSAGEM_SEM_PERMISSAO_NUMEROS = 'Apenas administradores e diretoria gerenciam os números'
+
+export interface CanalEvolution {
+  channelId: string
+  instancia: string
+  inboxId: string
+}
+
+// Reconectar (QR + status) vale também para quem é membro do número: quando o
+// celular da área cai, a atendente escaneia de novo sem depender de um admin.
+// Liberado em 13/10/2026 (caso Pamela, número Autorização).
+//
+// Devolve null = sem permissão. Para quem não gerencia, a pergunta vai PRIMEIRO
+// ao RLS com o cliente da sessão: canal inexistente, inativo ou de número
+// alheio dão o mesmo null (403), sem revelar qual é o caso.
+export async function canalParaConectar(
+  user: CentralUser,
+  supabaseDaSessao: SupabaseClient,
+  channelId: string,
+): Promise<CanalEvolution | null> {
+  if (!podeGerenciarNumeros(user.centralRole)) {
+    const { data, error } = await supabaseDaSessao
+      .schema('central')
+      .from('channels')
+      .select('id')
+      .eq('id', channelId)
+      .eq('organization_id', user.orgId)
+      .eq('provider', 'evolution')
+      .eq('active', true)
+      .maybeSingle()
+    if (error) throw error
+    if (!data) return null
+  }
+  return { channelId, ...(await instanciaDoCanal(user.orgId, channelId)) }
+}
+
+export const MENSAGEM_SEM_PERMISSAO_CONECTAR = 'Só membros deste número, administradores e diretoria podem conectá-lo'
 
 export interface NumeroEvolution {
   channelId: string
@@ -57,18 +103,37 @@ function primeiraConexao(c: CanalDoBanco['channel_connections']) {
   return Array.isArray(c) ? c[0] ?? null : c
 }
 
-export async function listarNumeros(orgId: string): Promise<NumeroEvolution[]> {
-  const { data, error } = await supabaseService
-    .schema('central')
-    .from('channels')
-    .select('id, inbox_id, name, status, organization_id, channel_connections(provider_instance_id, last_sync_at)')
-    .eq('organization_id', orgId)
-    .eq('provider', 'evolution')
-    .eq('active', true)
-    .order('name')
-  if (error) throw error
+// `soOsDaSessao`: visão de quem não gerencia — só os números que o RLS deixa a
+// sessão ver (os de que ela é membro). A leitura pelo RLS corre em paralelo com
+// a do service role, que traz os campos que `authenticated` não lê.
+export async function listarNumeros(orgId: string, soOsDaSessao?: SupabaseClient): Promise<NumeroEvolution[]> {
+  const [todos, visiveis] = await Promise.all([
+    supabaseService
+      .schema('central')
+      .from('channels')
+      .select('id, inbox_id, name, status, organization_id, channel_connections(provider_instance_id, last_sync_at)')
+      .eq('organization_id', orgId)
+      .eq('provider', 'evolution')
+      .eq('active', true)
+      .order('name'),
+    soOsDaSessao
+      ? soOsDaSessao
+        .schema('central')
+        .from('channels')
+        .select('id')
+        .eq('organization_id', orgId)
+        .eq('provider', 'evolution')
+        .eq('active', true)
+      : null,
+  ])
+  if (todos.error) throw todos.error
+  if (visiveis?.error) throw visiveis.error
 
-  const canais = (data ?? []) as CanalDoBanco[]
+  let canais = (todos.data ?? []) as CanalDoBanco[]
+  if (visiveis) {
+    const permitidos = new Set(((visiveis.data ?? []) as { id: string }[]).map(c => c.id))
+    canais = canais.filter(c => permitidos.has(c.id))
+  }
   const inboxIds = canais.map(c => c.inbox_id)
 
   const contagem = new Map<string, number>()
@@ -196,12 +261,16 @@ export async function criarNumero(input: {
   }
 }
 
+// Só canal ATIVO: um número removido (removerNumero só desativa, e às vezes a
+// Evolution recusa o delete) não pode ser reconectado nem ter o status
+// reescrito por um channelId antigo.
 async function instanciaDoCanal(orgId: string, channelId: string): Promise<{ instancia: string; inboxId: string }> {
   const { data, error } = await supabaseService
     .schema('central')
     .from('channels')
     .select('id, inbox_id, provider, organization_id, channel_connections(provider_instance_id)')
     .eq('id', channelId)
+    .eq('active', true)
     .maybeSingle()
   if (error) throw error
 
@@ -215,16 +284,16 @@ async function instanciaDoCanal(orgId: string, channelId: string): Promise<{ ins
 }
 
 // QR novo a cada chamada — o do WhatsApp expira em ~20s. Nunca é gravado.
-export async function pedirQr(orgId: string, channelId: string): Promise<{ qrBase64: string | null; conectado: boolean }> {
-  const { instancia } = await instanciaDoCanal(orgId, channelId)
+// Recebe o canal já resolvido por canalParaConectar: o modal chama isto (e o
+// status) em polling, e cada leitura a mais no banco pesa no pool pequeno.
+export async function pedirQr({ instancia }: CanalEvolution): Promise<{ qrBase64: string | null; conectado: boolean }> {
   const json = await chamarEvolution<{ base64?: string; instance?: { state?: string } }>(
     'GET', `/instance/connect/${encodeURIComponent(instancia)}`,
   )
   return { qrBase64: json.base64 ?? null, conectado: json.instance?.state === 'open' }
 }
 
-export async function consultarStatus(orgId: string, channelId: string): Promise<string> {
-  const { instancia, inboxId } = await instanciaDoCanal(orgId, channelId)
+export async function consultarStatus(orgId: string, { channelId, instancia, inboxId }: CanalEvolution): Promise<string> {
   const json = await chamarEvolution<{ instance?: { state?: string } }>(
     'GET', `/instance/connectionState/${encodeURIComponent(instancia)}`,
   )

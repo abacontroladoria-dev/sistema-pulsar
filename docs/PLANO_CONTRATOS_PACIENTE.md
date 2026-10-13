@@ -10,6 +10,32 @@
 | 3 — D4Sign | **Colega** — ganchos prontos (abaixo) |
 | 4 — WhatsApp | **Colega** |
 | 5 — Segurança | PGlite feito (`supabase/tests/pacientes_contratos.pglite.mjs`, 50+ checagens); falta anon REST + Security Advisor **depois de aplicar** |
+| 6 — Documento preenchido | Feita (09/10): `20261009160000_pacientes_contratos_documento.sql` (**não aplicada**; aplicar DEPOIS da 160000) + modelos + rota. Ver abaixo |
+
+### Fase 6 — documento preenchido a partir dos modelos do jurídico (09/10/2026)
+
+- Modelos originais em `contratos-pacientes/` (amarelo = campo, verde = instrução a apagar).
+  `node scripts/contratos/preparar-modelos.mjs` (em `frontend/`) aceita revisões, tira
+  comentários e instruções e troca cada campo por etiqueta única, conferindo a ORDEM dos
+  campos — versão nova do modelo com campo fora de lugar faz o script parar. Saída:
+  `frontend/lib/contratos/modelos/*.docx` (lidos do disco; `outputFileTracingIncludes`).
+- Etiquetas e pendências: `lib/contratos/documento/montarDados.ts` (puro, testado em
+  `documento.test.ts` contra os modelos reais). Preenchimento: docxtemplater.
+- `GET /api/contratos/{id}/documento/` (só `cadastros_pacientes`) gera o .docx na hora —
+  nada é guardado. Cadastro incompleto → 422 com a lista do que falta.
+- Banco: `numero` (sequência única, formato em `sp_contratos_formatar_numero`), valores
+  do Neuro, tipo novo `termo_uso_imagem` vinculado a um contrato de Terapias (vence com
+  ele) e `autorizacoes_imagem` (marcadas ANTES do envio — a D4Sign não deixa marcar caixa).
+- Tela: "Gerar contrato de Avaliação Neuropsicológica" / "Gerar Termo de uso de imagem"
+  na aba; Visualizar (prévia via mammoth) e Baixar .docx no detalhe.
+- O que é padrão não se digita (decisão do usuário, 09/10): valor = pacote Particular à
+  vista, avulsa = valor por sessão Particular (`cronograma_convenio_valores`), 10 sessões,
+  início hoje, vencimento +3 meses (Neuro) — num resumo, com "Alterar" para exceção. O
+  formulário fica com Uso de imagem e Observação.
+- A fase 3 (D4Sign) envia este mesmo .docx — a D4Sign aceita .docx, sem conversor no servidor.
+- A 160000 tinha `delete from storage.buckets`, que o Supabase de produção RECUSA (42501,
+  trigger `storage.protect_delete`): agora vai num bloco que tolera a recusa. O bucket
+  `contratos-pacientes` (vazio) existe em produção — apagar pelo painel, em Storage.
 
 Decisões da seção 12 adotadas como sugerido (renovação = vários por tipo, o atual é o mais
 recente não cancelado; A vencer = 30 dias; "Sem contrato" = na grade do TiTa sem Terapias

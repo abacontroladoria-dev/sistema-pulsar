@@ -27,11 +27,14 @@ import {
   transicaoPermitida,
   vigencia,
 } from "@/lib/contratos/status"
+import { temModelo } from "@/lib/contratos/documento/montarDados"
+import { reais } from "@/lib/contratos/documento/extenso"
 import { cancelarContrato, marcarAssinadoManual } from "@/services/pacienteContratos.service"
 import { getVinculosDoPaciente } from "@/services/responsaveis.service"
 import type { ContratoPaciente, EventoContrato, SignatarioContrato } from "@/types/contratosPaciente"
 import type { VinculoResponsavel } from "@/types/responsavel"
 import { campo, rotulo } from "../../ui/campos"
+import { DocumentoContrato } from "./DocumentoContrato"
 import { LinhaDoTempo } from "./LinhaDoTempo"
 import { SelosContrato } from "./Selos"
 
@@ -42,14 +45,27 @@ import { SelosContrato } from "./Selos"
 // nem troca arquivo nenhum por aqui — nada de anexar, nada de baixar. O
 // documento em si vive na D4Sign (fase 3, integração do colega).
 //
+// Documento: os tipos com modelo (Avaliação Neuropsicológica, Termo de Uso de
+// Imagem) visualizam e baixam o .docx preenchido NA HORA — gerado, nunca
+// guardado (DocumentoContrato.tsx).
+//
 // Ações da fase 1 (modo manual): marcar como assinado, cancelar. As da
 // integração D4Sign/WhatsApp (fases 3 e 4) aparecem desligadas com "em breve" —
 // o lugar delas já existe, para a tela não mudar de forma quando forem ligadas.
 
 type Acao = null | "assinar" | "cancelar"
 
+const ROTULO_CANAL: Record<string, string> = {
+  site: "website",
+  redes: "redes sociais",
+  impressos: "impressos",
+  ensino: "ensino/EAD",
+  primeiro_nome: "primeiro nome",
+}
+
 export function DetalheContratoPainel({
   contrato: c,
+  contratos,
   eventos,
   signatarios,
   pacienteId,
@@ -58,6 +74,8 @@ export function DetalheContratoPainel({
   onMudou,
 }: {
   contrato: ContratoPaciente
+  /** Todos os contratos do paciente — para mostrar o número do contrato vinculado ao Termo. */
+  contratos: ContratoPaciente[]
   eventos: EventoContrato[]
   signatarios: SignatarioContrato[]
   pacienteId: number
@@ -136,7 +154,7 @@ export function DetalheContratoPainel({
 
   return (
     <Drawer
-      title={ROTULO_TIPO[c.tipo]}
+      title={`${ROTULO_TIPO[c.tipo]} · ${c.numero}`}
       subtitle={`${dataBR(c.data_inicio)} → ${dataBR(c.data_vencimento)}`}
       width={520}
       onClose={() => !ocupado && onFechar()}
@@ -167,9 +185,31 @@ export function DetalheContratoPainel({
               {dataBRDeTimestamp(c.criado_em)}
               {c.criado_por_nome && ` por ${c.criado_por_nome}`}
             </Item>
+            {c.valor_total != null && (
+              <Item rotulo="Valor">
+                {reais(Number(c.valor_total))}
+                {c.sessoes_max != null && ` · até ${c.sessoes_max} sessões`}
+                {c.valor_sessao_avulsa != null && ` · avulsa ${reais(Number(c.valor_sessao_avulsa))}`}
+              </Item>
+            )}
+            {c.contrato_vinculado_id != null && (
+              <Item rotulo="Vinculado ao contrato">
+                {contratos.find((x) => x.id === c.contrato_vinculado_id)?.numero ?? `#${c.contrato_vinculado_id}`} (Terapias)
+              </Item>
+            )}
+            {c.autorizacoes_imagem && (
+              <Item rotulo="Uso de imagem">
+                {Object.entries(c.autorizacoes_imagem)
+                  .filter(([, v]) => v)
+                  .map(([k]) => ROTULO_CANAL[k] ?? k)
+                  .join(", ") || "não autoriza"}
+              </Item>
+            )}
             {c.observacao && <Item rotulo="Observação">{c.observacao}</Item>}
           </dl>
         </section>
+
+        {temModelo(c.tipo) && status !== "cancelado" && <DocumentoContrato contrato={c} />}
 
         {/* ── Assinatura ── */}
         <section>
@@ -196,7 +236,7 @@ export function DetalheContratoPainel({
                 ))}
               </ul>
             ) : (
-              <QuemVaiAssinar pacienteId={pacienteId} />
+              <QuemVaiAssinar pacienteId={pacienteId} termo={c.tipo === "termo_uso_imagem"} />
             )}
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
@@ -331,8 +371,8 @@ function EmBreve({ Icone, children }: { Icone: typeof Send; children: ReactNode 
  * responsaveis/pacientes_responsaveis, nunca das colunas legadas
  * pacientes.responsavel_*. CPF não aparece: não é preciso para conferir.
  */
-function QuemVaiAssinar({ pacienteId }: { pacienteId: number }) {
-  const [vinculo, setVinculo] = useState<VinculoResponsavel | null | undefined>(undefined)
+function QuemVaiAssinar({ pacienteId, termo }: { pacienteId: number; termo: boolean }) {
+  const [vinculos, setVinculos] = useState<VinculoResponsavel[] | undefined>(undefined)
   const [erro, setErro] = useState(false)
 
   useEffect(() => {
@@ -340,16 +380,21 @@ function QuemVaiAssinar({ pacienteId }: { pacienteId: number }) {
     void getVinculosDoPaciente(pacienteId).then(({ data, error }) => {
       if (cancelado) return
       if (error) return setErro(true)
-      setVinculo(data.find((d) => d.tipo === "financeiro") ?? data.find((d) => d.tipo === "filiacao_1") ?? null)
+      // Termo de imagem: assinam os responsáveis legais (filiação 1 e, havendo,
+      // a 2). Os contratos: o financeiro, ou a filiação 1 sem ele.
+      const escolhidos = termo
+        ? [data.find((d) => d.tipo === "filiacao_1"), data.find((d) => d.tipo === "filiacao_2")]
+        : [data.find((d) => d.tipo === "financeiro") ?? data.find((d) => d.tipo === "filiacao_1")]
+      setVinculos(escolhidos.filter((v): v is VinculoResponsavel => !!v))
     })
     return () => {
       cancelado = true
     }
-  }, [pacienteId])
+  }, [pacienteId, termo])
 
   if (erro) return <p className="text-sm text-muted-foreground">Não foi possível ler os responsáveis.</p>
-  if (vinculo === undefined) return <div className="h-5 w-48 animate-pulse rounded bg-muted" />
-  if (vinculo === null) {
+  if (vinculos === undefined) return <div className="h-5 w-48 animate-pulse rounded bg-muted" />
+  if (vinculos.length === 0) {
     return (
       <p className="flex items-start gap-1.5 text-sm text-amber-700 dark:text-amber-400">
         <Users className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
@@ -357,20 +402,28 @@ function QuemVaiAssinar({ pacienteId }: { pacienteId: number }) {
       </p>
     )
   }
-  const r = vinculo.responsavel
+  const ROTULO_VINCULO: Record<string, string> = {
+    financeiro: "responsável financeiro",
+    filiacao_1: "filiação 1",
+    filiacao_2: "filiação 2",
+  }
   return (
-    <div className="text-sm">
-      <p className="flex items-center gap-1.5 text-foreground">
-        <UserRound className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-        <span className="truncate">{r.nome}</span>
-        <span className="text-xs text-muted-foreground">
-          · {vinculo.tipo === "financeiro" ? "responsável financeiro" : "filiação 1"}
-          {vinculo.parentesco && ` (${vinculo.parentesco})`}
-        </span>
-      </p>
-      {!r.celular && (
-        <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">Sem celular no cadastro — o link de assinatura vai pelo WhatsApp.</p>
-      )}
-    </div>
+    <ul className="space-y-2 text-sm">
+      {vinculos.map((vinculo) => (
+        <li key={vinculo.tipo}>
+          <p className="flex items-center gap-1.5 text-foreground">
+            <UserRound className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+            <span className="truncate">{vinculo.responsavel.nome}</span>
+            <span className="text-xs text-muted-foreground">
+              · {ROTULO_VINCULO[vinculo.tipo] ?? vinculo.tipo}
+              {vinculo.parentesco && ` (${vinculo.parentesco})`}
+            </span>
+          </p>
+          {!vinculo.responsavel.celular && (
+            <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">Sem celular no cadastro — o link de assinatura vai pelo WhatsApp.</p>
+          )}
+        </li>
+      ))}
+    </ul>
   )
 }

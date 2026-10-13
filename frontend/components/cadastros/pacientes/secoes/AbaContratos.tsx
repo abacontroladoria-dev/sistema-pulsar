@@ -1,8 +1,8 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { AlertCircle, AlertTriangle, FileSignature, Plus } from "lucide-react"
-import { hojeBrasilia } from "@/lib/contratos/status"
+import { AlertCircle, AlertTriangle, FilePlus2, FileSignature, Plus } from "lucide-react"
+import { hojeBrasilia, type TipoContrato } from "@/lib/contratos/status"
 import {
   buscarContratosDoPaciente,
   ErroContratos,
@@ -14,8 +14,13 @@ import { DetalheContratoPainel } from "./contratos/DetalheContratoPainel"
 import { ListaContratos } from "./contratos/ListaContratos"
 import { NovoContratoPainel } from "./contratos/NovoContratoPainel"
 
-// Aba "Contratos": Avaliação Neuropsicológica, Terapias e Técnico Terapêutico
-// Particular — início, vencimento e se foi assinado.
+// Aba "Contratos": Avaliação Neuropsicológica, Terapias, Técnico Terapêutico
+// Particular e Termo de Uso de Imagem — início, vencimento e se foi assinado.
+//
+// Os tipos que têm MODELO de documento (lib/contratos/documento/montarDados.ts,
+// MODELOS) ganham um botão "Gerar …" próprio: cria o registro já no tipo certo,
+// e o detalhe dele visualiza e baixa o documento preenchido. "Outro contrato"
+// registra os tipos que ainda não têm modelo.
 //
 // Fica FORA do fluxo Editar/Salvar do cadastro (como Escola e Disponibilidade):
 // cada ação grava na hora por RPC e vira um evento na linha do tempo do
@@ -33,7 +38,8 @@ export function AbaContratos({ pacienteId }: { pacienteId: number }) {
   const [dados, setDados] = useState<ContratosDoPaciente | null>(null)
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState<{ mensagem: string; migracao: boolean } | null>(null)
-  const [novo, setNovo] = useState(false)
+  /** Formulário aberto: o tipo escolhido pelo botão, ou null = "Outro contrato" (escolhe no formulário). */
+  const [novo, setNovo] = useState<{ tipo: TipoContrato | null } | null>(null)
   const [editando, setEditando] = useState<ContratoPaciente | null>(null)
   const [abertoId, setAbertoId] = useState<number | null>(null)
 
@@ -113,32 +119,58 @@ export function AbaContratos({ pacienteId }: { pacienteId: number }) {
     )
   }
 
+  const gerar = (tipo: TipoContrato | null) => {
+    setAbertoId(null)
+    setEditando(null)
+    setNovo({ tipo })
+  }
+  const botaoGerar = "inline-flex min-h-11 items-center gap-1.5 rounded-md px-4 py-2 text-sm font-semibold sm:min-h-0"
   const botaoNovo = (
-    <button
-      type="button"
-      onClick={() => setNovo(true)}
-      className={`inline-flex min-h-11 items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 sm:min-h-0 ${foco}`}
-    >
-      <Plus className="h-4 w-4" aria-hidden="true" />
-      Novo contrato
-    </button>
+    <div className="flex flex-wrap gap-2">
+      <button
+        type="button"
+        onClick={() => gerar("avaliacao_neuropsicologica")}
+        className={`${botaoGerar} bg-primary text-primary-foreground hover:bg-primary/90 ${foco}`}
+      >
+        <FilePlus2 className="h-4 w-4" aria-hidden="true" />
+        Gerar contrato de Avaliação Neuropsicológica
+      </button>
+      <button
+        type="button"
+        onClick={() => gerar("termo_uso_imagem")}
+        className={`${botaoGerar} bg-primary text-primary-foreground hover:bg-primary/90 ${foco}`}
+      >
+        <FilePlus2 className="h-4 w-4" aria-hidden="true" />
+        Gerar Termo de uso de imagem
+      </button>
+      <button
+        type="button"
+        onClick={() => gerar(null)}
+        className={`${botaoGerar} border border-border text-foreground hover:bg-muted ${foco}`}
+      >
+        <Plus className="h-4 w-4" aria-hidden="true" />
+        Outro contrato
+      </button>
+    </div>
   )
 
-  const formAberto = novo || !!editando
+  const formAberto = !!novo || !!editando
 
   return (
     <div className="min-w-0 flex-1 space-y-4">
       {formAberto && (
         <NovoContratoPainel
-          key={editando?.id ?? "novo"}
+          key={editando?.id ?? `novo-${novo?.tipo ?? "outro"}`}
           pacienteId={pacienteId}
+          contratos={dados.contratos}
+          tipoInicial={novo?.tipo ?? undefined}
           editando={editando ?? undefined}
           onFechar={() => {
-            setNovo(false)
+            setNovo(null)
             setEditando(null)
           }}
           onSalvo={(c) => {
-            setNovo(false)
+            setNovo(null)
             setEditando(null)
             setAbertoId(c.id)
             void carregar()
@@ -152,9 +184,9 @@ export function AbaContratos({ pacienteId }: { pacienteId: number }) {
           <FileSignature className="mx-auto h-8 w-8 text-muted-foreground" strokeWidth={1.5} aria-hidden="true" />
           <p className="mt-3 text-sm font-medium text-foreground">Nenhum contrato registrado</p>
           <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
-            Registre o contrato de Avaliação Neuropsicológica, Terapias ou Técnico Terapêutico Particular, com início, vencimento e assinatura.
+            Gere o contrato de Avaliação Neuropsicológica ou o Termo de uso de imagem preenchidos com o cadastro, ou registre outro contrato (Terapias, Técnico Terapêutico Particular).
           </p>
-          <div className="mt-4">{botaoNovo}</div>
+          <div className="mt-4 flex justify-center">{botaoNovo}</div>
         </div>
         )
       ) : (
@@ -176,6 +208,7 @@ export function AbaContratos({ pacienteId }: { pacienteId: number }) {
         <DetalheContratoPainel
           key={aberto.id}
           contrato={aberto}
+          contratos={dados.contratos}
           eventos={dados.eventos.get(aberto.id) ?? []}
           signatarios={dados.signatarios.get(aberto.id) ?? []}
           pacienteId={pacienteId}

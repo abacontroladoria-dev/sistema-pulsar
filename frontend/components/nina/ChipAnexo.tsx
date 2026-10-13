@@ -1,8 +1,9 @@
 'use client'
 
-import React, { useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { FileText, Image as Icone, Mic, Video, Paperclip, Download, Loader2, AlertCircle } from 'lucide-react'
 import type { AnexoUI } from './adapters/centralToNina'
+import { VisualizadorImagem } from './VisualizadorImagem'
 
 // ============================================================================
 // O que veio anexado
@@ -29,6 +30,11 @@ import type { AnexoUI } from './adapters/centralToNina'
 // É também o que mantém a promessa do painel: o bloco não guarda cópia do
 // estado do servidor. A URL vive no componente e morre com ele — ela expira em
 // cinco minutos de qualquer forma.
+//
+// EXCEÇÃO: IMAGEM ABRE SOZINHA. Foto é lida de relance, e um chip "Imagem"
+// pedindo clique em cada uma travava o atendimento. Ainda sob demanda, mas a
+// demanda é a bolha APARECER na tela (IntersectionObserver): o histórico que
+// ninguém rolou até ver continua sem custar ida nenhuma à Graph.
 // ============================================================================
 
 const ICONE: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -47,7 +53,13 @@ type Estado =
 
 export const ChipAnexo: React.FC<{ anexo: AnexoUI; claro: boolean }> = ({ anexo, claro }) => {
   const [estado, setEstado] = useState<Estado>({ fase: 'fechado' })
+  const [ampliada, setAmpliada] = useState(false)
+  // A URL assinada vence em 5 min; se a <img> remontar depois disso, uma nova
+  // busca resolve. Uma só — arquivo quebrado de verdade não pode virar laço.
+  const [renovou, setRenovou] = useState(false)
+  const chipRef = useRef<HTMLButtonElement>(null)
   const Icon = ICONE[anexo.rotulo] ?? Paperclip
+  const ehImagem = anexo.rotulo === 'Imagem' || anexo.rotulo === 'Figurinha'
 
   // A bolha de saída é o gradiente cyan/teal com texto branco; a de entrada é
   // `bg-muted` com texto do tema. O chip vive DENTRO da bolha, então herda o
@@ -76,6 +88,26 @@ export const ChipAnexo: React.FC<{ anexo: AnexoUI; claro: boolean }> = ({ anexo,
     }
   }
 
+  // Imagem: abre quando o chip entra na tela. Só a partir de 'fechado' — erro
+  // fica no chip (o clique tenta de novo), senão uma mídia expirada na Meta
+  // seria pedida de novo a cada rolagem.
+  const fechado = estado.fase === 'fechado'
+  useEffect(() => {
+    if (!ehImagem || !fechado) return
+    const el = chipRef.current
+    if (!el) return
+    const obs = new IntersectionObserver(entradas => {
+      if (entradas.some(e => e.isIntersecting)) {
+        obs.disconnect()
+        void abrir()
+      }
+    }, { rootMargin: '200px' })
+    obs.observe(el)
+    return () => obs.disconnect()
+    // `abrir` é recriada a cada render; o que importa é a fase e o anexo.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ehImagem, fechado, anexo.id])
+
   // Nome quando há; senão o rótulo vira o título. Documento quase sempre traz
   // nome, imagem e áudio quase nunca — e "Áudio · 12s" é um título perfeitamente
   // bom, melhor que um nome inventado.
@@ -88,14 +120,36 @@ export const ChipAnexo: React.FC<{ anexo: AnexoUI; claro: boolean }> = ({ anexo,
   // tem prévia — vira link de download, que é o que dá para fazer com um PDF
   // numa coluna de 400px.
   if (estado.fase === 'aberto') {
-    if (anexo.rotulo === 'Imagem' || anexo.rotulo === 'Figurinha') {
+    if (ehImagem) {
+      const url = estado.url
       return (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={estado.url}
-          alt={titulo}
-          className="rounded-lg max-h-72 w-auto object-contain bg-black/10"
-        />
+        <>
+          <button
+            type="button"
+            onClick={() => setAmpliada(true)}
+            title="Ampliar"
+            aria-label={`Ampliar ${titulo}`}
+            className="block rounded-lg cursor-zoom-in"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={url}
+              alt={titulo}
+              onError={() => {
+                if (renovou) {
+                  setEstado({ fase: 'erro', mensagem: 'Não foi possível exibir a imagem.' })
+                  return
+                }
+                setRenovou(true)
+                setEstado({ fase: 'fechado' })
+              }}
+              className="rounded-lg max-h-72 w-auto object-contain bg-black/10"
+            />
+          </button>
+          {ampliada && (
+            <VisualizadorImagem url={url} titulo={titulo} aoFechar={() => setAmpliada(false)} />
+          )}
+        </>
       )
     }
     if (anexo.rotulo === 'Áudio') {
@@ -127,6 +181,7 @@ export const ChipAnexo: React.FC<{ anexo: AnexoUI; claro: boolean }> = ({ anexo,
 
   return (
     <button
+      ref={chipRef}
       type="button"
       onClick={abrir}
       disabled={estado.fase === 'buscando'}

@@ -76,6 +76,7 @@ const GRADE_REAL = [
   { terapia_id: 2259, terapia_nome: 'Psicologia', vagas: 61 },
   { terapia_id: 2253, terapia_nome: 'Psicomotricidade', vagas: 110 },
   { terapia_id: 2254, terapia_nome: 'Psicopedagogia', vagas: 208 },
+  { terapia_id: 2269, terapia_nome: 'Psiquiatra/Neurologista', vagas: 10 },
   { terapia_id: 2353, terapia_nome: 'Supervisão ABA', vagas: 319 },
   { terapia_id: 2274, terapia_nome: 'Terapia Alimentar', vagas: 90 },
   { terapia_id: 2255, terapia_nome: 'Terapia Ocupacional', vagas: 111 },
@@ -199,11 +200,11 @@ const NAO_OFERTAVEIS = [
   'Especialista Técnico de Área',
 ]
 
-// O catálogo tem exatamente 15 nomes. O número está aqui para que ACRESCENTAR
+// O catálogo tem exatamente 16 nomes. O número está aqui para que ACRESCENTAR
 // uma especialidade seja um ato consciente: quem adicionar uma linha vê este
 // teste falhar e precisa decidir se ela é mesmo ofertável ao responsável.
-checar(ESPECIALIDADES.length === 15,
-  'o catálogo tem 15 especialidades ofertáveis (mudou? confirme com a clínica)',
+checar(ESPECIALIDADES.length === 16,
+  'o catálogo tem 16 especialidades ofertáveis (mudou? confirme com a clínica)',
   ESPECIALIDADES.map(e => e.nome))
 
 for (const nome of NAO_OFERTAVEIS) {
@@ -277,7 +278,17 @@ const CASOS: [string, string][] = [
   // Sinônimos do ABA.
   ['aba',                        'Psicologia ABA'],
   ['psicologia comportamental',  'Psicologia ABA'],
+  // A consulta médica do prompt, gravada no TiTa como 'Psiquiatra/Neurologista'.
+  ['consulta médica',            'Consulta Médica'],
+  ['consulta medica',            'Consulta Médica'],
+  ['médico',                     'Consulta Médica'],
+  ['consulta com o medico',      'Consulta Médica'],
 ]
+
+// O nome de escala do médico nunca chega ao responsável: o protocolo do prompt
+// proíbe "psiquiatra" e "neurologista".
+checar(JSON.stringify(especialidadesNaGrade([{ terapia_nome: 'Psiquiatra/Neurologista' }])) === JSON.stringify(['Consulta Médica']),
+  "'Psiquiatra/Neurologista' é oferecida como 'Consulta Médica'")
 
 for (const [entrada, esperado] of CASOS) {
   const r = resolverTerapia(entrada, NA_GRADE)

@@ -4,7 +4,6 @@ import {
   AlertTriangle, KeyRound, ExternalLink, Brain,
 } from 'lucide-react';
 import { Button } from '../Button';
-import { EvolutionSettings } from './EvolutionSettings';
 import { toast } from 'sonner';
 import * as Collapsible from '@radix-ui/react-collapsible';
 import {
@@ -739,10 +738,6 @@ const ApiSettings = forwardRef<ApiSettingsRef>((props, ref) => {
           </p>
         </div>
       </div>
-
-      {/* WhatsApp: o número da Maia (Meta, só leitura) e os números Evolution de
-          atendimento humano, criados e distribuídos por pessoa aqui. */}
-      <EvolutionSettings />
     </div>
   );
 });

@@ -98,7 +98,7 @@ export const PainelDetalhamento: React.FC<{
           <header className="flex flex-col items-center text-center">
             <div className="w-20 h-20 rounded-full p-1 bg-gradient-to-tr from-cyan-500 to-teal-600 shadow-xl mb-3">
               <div className="w-full h-full rounded-full overflow-hidden border-2 border-border">
-                <Avatar url={contato?.avatar_url ?? ''} nome={nome} />
+                <Avatar url={contato?.avatar_url ?? ''} nome={nome} ampliavel />
               </div>
             </div>
             <h3 className="text-base font-bold text-foreground leading-tight">{nome}</h3>

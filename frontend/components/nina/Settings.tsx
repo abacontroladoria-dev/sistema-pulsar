@@ -3,6 +3,7 @@ import { Shield, Bot, Plug, Loader2, Save, Lock, Check } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import AgentSettings, { AgentSettingsRef } from './settings/AgentSettings';
 import ApiSettings, { ApiSettingsRef } from './settings/ApiSettings';
+import { EvolutionSettings } from './settings/EvolutionSettings';
 import { useCompanySettings } from '@/hooks/nina/useCompanySettings';
 import { Button } from './Button';
 
@@ -167,8 +168,13 @@ const Settings: React.FC = () => {
           <AgentSettings ref={agentRef} />
         </TabsContent>
 
-        <TabsContent value="apis">
+        {/* Números WhatsApp ficam FORA de ApiSettings: aquele bloco para em
+            "sem permissão" ou "configuração indisponível" (credenciais de voz),
+            e o membro de um número precisa da lista para reconectar pelo QR
+            mesmo assim. EvolutionSettings tem o próprio portão. */}
+        <TabsContent value="apis" className="space-y-6">
           <ApiSettings ref={apiRef} />
+          <EvolutionSettings />
         </TabsContent>
       </Tabs>
     </div>

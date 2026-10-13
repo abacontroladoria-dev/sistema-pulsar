@@ -44,6 +44,26 @@ export async function lerAgentSettingsDaOrg(
   return data as AgentSettings
 }
 
+// As inboxes com "Maia responde" (`inboxes.maia_automatica`, Configurações →
+// números Evolution). Ali a Maia envia sozinha SEM passar pelo ai_mode — o
+// trg_evolution_sem_ia trava a coluna em 'off' —, então quem responde "quem
+// atende esta conversa?" só pelo ai_mode marca como humano justamente o número
+// que a Maia está atendendo. Ver sugestao-evolution.worker.ts.
+export async function lerInboxesMaiaResponde(
+  supabase: SupabaseClient,
+  orgId: string,
+): Promise<string[]> {
+  const { data, error } = await supabase
+    .schema('central')
+    .from('inboxes')
+    .select('id')
+    .eq('organization_id', orgId)
+    .eq('maia_automatica', true)
+
+  if (error) throw error
+  return ((data ?? []) as { id: string }[]).map(i => i.id)
+}
+
 export async function lerAgentSettings(
   supabase: SupabaseClient,
   orgId: string,

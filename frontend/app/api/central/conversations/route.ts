@@ -9,7 +9,10 @@ import {
 import {
   createConversationService,
 } from '@/modules/atendimento/services'
-import { lerAgentSettingsDaOrg } from '@/modules/atendimento/agente/agent-settings'
+import {
+  lerAgentSettingsDaOrg,
+  lerInboxesMaiaResponde,
+} from '@/modules/atendimento/agente/agent-settings'
 
 // GET /api/central/conversations
 // Lista conversas com filtros opcionais. Paginação por cursor em last_message_at.
@@ -37,9 +40,14 @@ export async function GET(request: NextRequest) {
     //
     // As duas consultas em paralelo: uma não depende da outra, e esta rota roda
     // a cada 5s por atendente com a inbox aberta.
+    //
+    // `inboxesMaiaResponde` pelo mesmo motivo: nos números com "Maia responde"
+    // ela atende sem ai_mode nenhum. Falha fechada em [] (ninguém é declarado
+    // "Maia" sem prova).
     const service = createConversationService(supabase)
-    const [settings, result] = await Promise.all([
+    const [settings, inboxesMaiaResponde, result] = await Promise.all([
       lerAgentSettingsDaOrg(supabase, user.orgId).catch(() => null),
+      lerInboxesMaiaResponde(supabase, user.orgId).catch(() => [] as string[]),
       service.list({
         orgId:          user.orgId,
         inboxId,
@@ -65,7 +73,7 @@ export async function GET(request: NextRequest) {
       limit,
       hasMore:    result.data.length === limit,
       nextCursor: nextCursor ?? undefined,
-    }, { modoPadrao })
+    }, { modoPadrao, inboxesMaiaResponde })
   } catch (err) {
     return mapCentralError(err)
   }

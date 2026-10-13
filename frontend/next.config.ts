@@ -33,6 +33,13 @@ function origensSupabase(): string[] {
 
 const nextConfig: NextConfig = {
   output: 'standalone',
+  // Os modelos .docx dos contratos do paciente são lidos do disco pela rota
+  // (services/contratos/documento.ts). O build standalone só copia o que o
+  // rastreio de imports enxerga — arquivo lido por fs.readFile não entra
+  // sozinho, e a rota morreria com ENOENT só em produção.
+  outputFileTracingIncludes: {
+    '/api/contratos/[id]/documento': ['./lib/contratos/modelos/*.docx'],
+  },
   trailingSlash: true,
   // 127.0.0.1 é tratado como origem distinta de localhost pelo Next 16: sem isso
   // os recursos de dev são bloqueados e a página nunca hidrata (o form cai para

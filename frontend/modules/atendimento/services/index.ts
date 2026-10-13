@@ -147,6 +147,10 @@ export function createMessageService(userClient: SupabaseClient): MessageService
     // O path sai de linhas que só service role grava (message_attachments não
     // tem INSERT/UPDATE para `authenticated`), nunca da requisição.
     new AnexoStorageRepository(supabaseService),
+    // Assinatura no WhatsApp (utils/assinatura.ts). Service role pela mesma
+    // razão de createCentralUserService: numa edição o autor pode ser outra
+    // pessoa, e a RLS de public.usuarios só mostra o próprio perfil.
+    id => new CentralUserRepository(supabaseService).nomeDe(id),
   )
 }
 

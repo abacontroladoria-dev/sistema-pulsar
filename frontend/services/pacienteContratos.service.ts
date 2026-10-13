@@ -1,5 +1,6 @@
 import { getSupabaseClient } from "@/lib/supabase/client"
 import type { TipoContrato } from "@/lib/contratos/status"
+import type { AutorizacoesImagem } from "@/lib/contratos/documento/montarDados"
 import type { ContratoPaciente, EventoContrato, SignatarioContrato } from "@/types/contratosPaciente"
 
 // Contratos do paciente — aba "Contratos" da ficha.
@@ -18,7 +19,7 @@ import type { ContratoPaciente, EventoContrato, SignatarioContrato } from "@/typ
 const supabase = getSupabaseClient()
 
 export const MSG_MIGRACAO_PENDENTE =
-  "Os contratos do paciente ainda não estão ativos no banco (migração pendente). Peça a aplicação de 20261008160000_pacientes_contratos.sql."
+  "Os contratos do paciente ainda não estão ativos no banco (migração pendente). Peça a aplicação de 20261008160000_pacientes_contratos.sql e 20261009160000_pacientes_contratos_documento.sql."
 
 /**
  * Tabela/função inexistente. O localhost aponta para o banco de PRODUÇÃO: a
@@ -26,7 +27,9 @@ export const MSG_MIGRACAO_PENDENTE =
  * mostrando um aviso, sem quebrar a ficha.
  */
 function ehMigracaoPendente(erro: { code?: string } | null): boolean {
-  return !!erro && ["42P01", "42883", "PGRST202", "PGRST205"].includes(erro.code ?? "")
+  // 42703: coluna inexistente — a tabela é de 20261008160000, mas as colunas
+  // do documento (numero, valores…) só chegam com 20261009160000.
+  return !!erro && ["42P01", "42703", "42883", "PGRST202", "PGRST205"].includes(erro.code ?? "")
 }
 
 function mensagemDeErro(erro: { code?: string; message?: string }, padrao: string): string {
@@ -35,6 +38,7 @@ function mensagemDeErro(erro: { code?: string; message?: string }, padrao: strin
   if ((erro.code === "42501" || erro.code === "22023" || erro.code === "P0002") && erro.message) return erro.message
   if (erro.code === "23514") {
     if (erro.message?.includes("datas")) return "A data de vencimento precisa ser igual ou depois da data de início."
+    if (erro.message?.includes("valores")) return "Valor e sessão avulsa precisam ser maiores que zero, e o limite de sessões entre 1 e 100."
     return "Algum campo está fora do permitido."
   }
   return padrao
@@ -54,8 +58,9 @@ function falhar(erro: { code?: string; message?: string }, padrao: string): neve
 }
 
 const COLUNAS_CONTRATO =
-  "id, paciente_id, tipo, data_inicio, data_vencimento, status, assinado_em, origem_assinatura, " +
-  "d4sign_documento_uuid, link_expira_em, observacao, criado_por_nome, criado_em, atualizado_em"
+  "id, paciente_id, tipo, numero, data_inicio, data_vencimento, status, assinado_em, origem_assinatura, " +
+  "d4sign_documento_uuid, link_expira_em, observacao, valor_total, sessoes_max, valor_sessao_avulsa, " +
+  "contrato_vinculado_id, autorizacoes_imagem, criado_por_nome, criado_em, atualizado_em"
 
 export type ContratosDoPaciente = {
   /** Mais recentes primeiro (início desc, id desc). Só `ativo = true`. */
@@ -150,30 +155,38 @@ function linhaOuFalha(data: unknown, acao: string): ContratoPaciente {
 export type DadosContrato = {
   tipo: TipoContrato
   dataInicio: string
+  /** No Termo de Uso de Imagem o banco troca pelo vencimento do contrato vinculado. */
   dataVencimento: string
   observacao: string | null
+  valorTotal: number | null
+  sessoesMax: number | null
+  valorSessaoAvulsa: number | null
+  contratoVinculadoId: number | null
+  autorizacoesImagem: AutorizacoesImagem | null
 }
 
-export async function criarContrato(pacienteId: number, d: DadosContrato): Promise<ContratoPaciente> {
-  const { data, error } = await supabase.rpc("contratos_criar", {
-    p_paciente_id: pacienteId,
+function parametrosRpc(d: DadosContrato) {
+  return {
     p_tipo: d.tipo,
     p_data_inicio: d.dataInicio,
     p_data_vencimento: d.dataVencimento,
     p_observacao: d.observacao,
-  })
+    p_valor_total: d.valorTotal,
+    p_sessoes_max: d.sessoesMax,
+    p_valor_sessao_avulsa: d.valorSessaoAvulsa,
+    p_contrato_vinculado_id: d.contratoVinculadoId,
+    p_autorizacoes_imagem: d.autorizacoesImagem,
+  }
+}
+
+export async function criarContrato(pacienteId: number, d: DadosContrato): Promise<ContratoPaciente> {
+  const { data, error } = await supabase.rpc("contratos_criar", { p_paciente_id: pacienteId, ...parametrosRpc(d) })
   if (error) falhar(error, "Não foi possível criar o contrato.")
   return linhaOuFalha(data, "a criação")
 }
 
 export async function editarRascunho(id: number, d: DadosContrato): Promise<ContratoPaciente> {
-  const { data, error } = await supabase.rpc("contratos_editar_rascunho", {
-    p_id: id,
-    p_tipo: d.tipo,
-    p_data_inicio: d.dataInicio,
-    p_data_vencimento: d.dataVencimento,
-    p_observacao: d.observacao,
-  })
+  const { data, error } = await supabase.rpc("contratos_editar_rascunho", { p_id: id, ...parametrosRpc(d) })
   if (error) falhar(error, "Não foi possível salvar o contrato.")
   return linhaOuFalha(data, "a edição")
 }
@@ -195,4 +208,52 @@ export async function cancelarContrato(id: number, motivo: string): Promise<Cont
   const linha = linhaOuFalha(data, "o cancelamento")
   if (linha.status !== "cancelado") throw new ErroContratos("O banco não confirmou o cancelamento. Recarregue e confira.")
   return linha
+}
+
+// ─── Documento (rotas /api/contratos/*) ──────────────────────────────────────
+
+export type DocumentoContrato =
+  | { ok: true; arquivo: Blob; nomeArquivo: string }
+  | { ok: false; mensagem: string; pendencias: string[] }
+
+/** O .docx preenchido com o cadastro de agora. Cadastro incompleto devolve as pendências. */
+export async function buscarDocumentoContrato(id: number): Promise<DocumentoContrato> {
+  let r: Response
+  try {
+    r = await fetch(`/api/contratos/${id}/documento/`, { cache: "no-store" })
+  } catch {
+    return { ok: false, mensagem: "Sem conexão com o servidor.", pendencias: [] }
+  }
+  if (!r.ok) {
+    const corpo = (await r.json().catch(() => null)) as { mensagem?: string; pendencias?: string[] } | null
+    return {
+      ok: false,
+      mensagem: corpo?.mensagem ?? "Não foi possível gerar o documento.",
+      pendencias: corpo?.pendencias ?? [],
+    }
+  }
+  const disposicao = r.headers.get("Content-Disposition") ?? ""
+  const nome = /filename\*=UTF-8''([^;]+)/.exec(disposicao)?.[1]
+  return { ok: true, arquivo: await r.blob(), nomeArquivo: nome ? decodeURIComponent(nome) : `contrato-${id}.docx` }
+}
+
+export type ValoresPadraoNeuro = {
+  /** Pacote Particular, à vista. */
+  valor: number | null
+  /** Valor por sessão Particular (sessão avulsa excedente). */
+  avulsa: number | null
+}
+
+/** Valores padrão do contrato de Avaliação Neuropsicológica, pelas tabelas do Cronograma. Falha = tudo null. */
+export async function buscarValoresPadraoNeuro(): Promise<ValoresPadraoNeuro> {
+  const vazio = { valor: null, avulsa: null }
+  try {
+    const r = await fetch("/api/contratos/valor-sugerido/", { cache: "no-store" })
+    if (!r.ok) return vazio
+    const corpo = (await r.json()) as { valor?: number | null; avulsa?: number | null }
+    const n = (v: unknown) => (typeof v === "number" && v > 0 ? v : null)
+    return { valor: n(corpo.valor), avulsa: n(corpo.avulsa) }
+  } catch {
+    return vazio
+  }
 }
