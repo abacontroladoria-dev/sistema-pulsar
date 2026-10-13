@@ -7,6 +7,7 @@ import { ContactRepository } from '../repositories/contact.repository'
 import type { EventoEvolution } from '../providers/evolution.normalizar'
 import { statusDoEstado } from '../providers/evolution.provider'
 import { variantesBr } from '../utils/telefone-br'
+import { semAssinatura } from '../utils/assinatura'
 
 // ============================================================================
 // Ingestão dos eventos da Evolution
@@ -97,10 +98,10 @@ async function processarMensagem(
   if (existente) return
 
   const desde = new Date(Date.now() - JANELA_ECO_MS).toISOString()
-  const { data: pendente, error: erroPendente } = await supabase
+  const { data: candidatas, error: erroPendente } = await supabase
     .schema('central')
     .from('messages')
-    .select('id')
+    .select('id, body')
     .eq('conversation_id', conversation.id)
     .eq('direction', 'outbound')
     .eq('status', 'pending')
@@ -108,12 +109,18 @@ async function processarMensagem(
     // o mesmo texto, o eco é DELA — casar com o rascunho o marcaria como enviado.
     .eq('sent_by_ai', false)
     .is('external_message_id', null)
-    .eq('body', m.body ?? '')
     .gte('created_at', desde)
     .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
+    .limit(20)
   if (erroPendente) throw erroPendente
+
+  // O eco chega ASSINADO e a linha pendente guarda o texto sem assinatura
+  // (utils/assinatura.ts), então o corpo casa nas duas formas — a crua cobre o
+  // envio sem nome. Comparado aqui e não num `.in('body', …)`: texto livre com
+  // aspas e vírgula quebra o filtro do PostgREST.
+  const corpo = m.body ?? ''
+  const pendente = ((candidatas ?? []) as { id: string; body: string | null }[])
+    .find(c => (c.body ?? '') === corpo || (c.body ?? '') === semAssinatura(corpo))
 
   if (pendente) {
     // O envio pela tela ainda vai chamar confirmarEnvio com o mesmo id. Gravar
@@ -122,7 +129,7 @@ async function processarMensagem(
       .schema('central')
       .from('messages')
       .update({ external_message_id: m.externalMessageId, status: 'sent', sent_at: m.sentAt ?? new Date().toISOString() })
-      .eq('id', (pendente as { id: string }).id)
+      .eq('id', pendente.id)
       .is('external_message_id', null)
     if (error && (error as { code?: string }).code !== '23505') throw error
     return

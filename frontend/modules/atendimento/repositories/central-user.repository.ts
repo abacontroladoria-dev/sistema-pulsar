@@ -61,4 +61,20 @@ export class CentralUserRepository {
         central_role: u.central_role,
       }))
   }
+
+  // O nome que assina a mensagem no WhatsApp (ver utils/assinatura.ts). Sem
+  // filtro de ativo/central_role: quem acabou de enviar passou pelo
+  // extractUser, e numa edição o autor pode ter saído depois — a assinatura
+  // continua sendo dele. Null quando não há nome: a mensagem sai sem assinatura
+  // em vez de assinada por "Usuário 3f2a…".
+  async nomeDe(userId: string): Promise<string | null> {
+    const { data, error } = await this.supabase
+      .from('usuarios')
+      .select('nome')
+      .eq('id', userId)
+      .maybeSingle()
+
+    if (error) throw error
+    return (data as { nome: string | null } | null)?.nome?.trim() || null
+  }
 }

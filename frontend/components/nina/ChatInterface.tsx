@@ -779,6 +779,14 @@ const ChatInterface: React.FC = () => {
                     const anterior = activeChat.messages[i - 1]
                     const novoDia = !anterior || !mesmoDia(anterior.quandoIso, msg.quandoIso)
                     const primeiraDoGrupo = novoDia || anterior.autorId !== msg.autorId
+                    // Um número tem várias atendentes: a primeira bolha de cada
+                    // rajada nossa diz quem escreveu. É o mesmo nome que vai
+                    // assinado no WhatsApp do contato (utils/assinatura.ts).
+                    const nomeAutor = !primeiraDoGrupo || msg.direction !== MessageDirection.OUTGOING || msg.isAiDraft
+                      ? null
+                      : msg.fromType === 'nina'
+                        ? 'Maia'
+                        : painel.usuarios.find(u => u.id === msg.autorId)?.nome ?? null
                     return (
                       <React.Fragment key={msg.id}>
                         {novoDia && (
@@ -791,6 +799,7 @@ const ChatInterface: React.FC = () => {
                         <BolhaMensagem
                           msg={msg}
                           primeiraDoGrupo={primeiraDoGrupo}
+                          nomeAutor={nomeAutor}
                           destacada={destacada === msg.id}
                           aoResponder={setRespondendo}
                           aoEditar={setEditando}

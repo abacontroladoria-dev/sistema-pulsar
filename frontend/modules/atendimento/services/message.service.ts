@@ -29,6 +29,7 @@ import {
 import { mapProviderStatus } from '../utils/provider-status'
 import { isUniqueViolation } from '../utils/pg-errors'
 import { apagaParaTodos, podeEditar } from '../utils/apagar-mensagem'
+import { assinar } from '../utils/assinatura'
 
 // ============================================================================
 // MessageService
@@ -122,7 +123,25 @@ export class MessageService {
     // mídia lançam dizendo o que falta, em vez de falharem com
     // "cannot read property of undefined".
     private readonly anexos?: AnexoStorageRepository,
+    // Nome de quem enviou, para assinar a mensagem no WhatsApp. Opcional pela
+    // mesma razão dos anteriores; sem ele a mensagem sai sem assinatura.
+    private readonly nomeDoUsuario?: (userId: string) => Promise<string | null>,
   ) {}
+
+  // O texto como o contato vai lê-lo: assinado quando foi uma pessoa logada
+  // que escreveu. A Maia e o envio de sistema não assinam. Falha ao buscar o
+  // nome não derruba o envio — a mensagem sai sem assinatura.
+  private async assinado(texto: string, userId: string | null | undefined, ai?: boolean): Promise<string> {
+    if (!userId || ai || !this.nomeDoUsuario) return texto
+    const nome = await this.nomeDoUsuario(userId).catch(err => {
+      console.error('[MessageService] falha ao buscar o nome para assinar', {
+        userId,
+        erro: err instanceof Error ? err.message : String(err),
+      })
+      return null
+    })
+    return assinar(nome, texto)
+  }
 
   private get storage(): AnexoStorageRepository {
     if (!this.anexos) {
@@ -194,12 +213,13 @@ export class MessageService {
       status:              'pending',
     })
 
-    // 4. Enviar
+    // 4. Enviar — assinado só no WhatsApp; o body gravado fica sem assinatura.
+    const corpo = await this.assinado(input.body, input.sentByUserId, input.sentByAi)
     let result
     try {
       result = await provider.sendMessage(channel, {
         to:          contact.display_phone,  // validado acima — nunca null
-        body:        input.body,
+        body:        corpo,
         messageType: input.messageType ?? 'text',
         replyToId:   citada?.external_message_id ?? undefined,
         replyTo:     citada?.external_message_id
@@ -344,6 +364,12 @@ export class MessageService {
       return falhar(err)
     }
 
+    // A assinatura vai na legenda — inclusive sem legenda digitada, para o
+    // contato saber quem mandou o arquivo. Áudio não tem legenda na Meta.
+    const legenda = input.messageType === 'audio'
+      ? input.caption
+      : (await this.assinado(input.caption ?? '', input.sentByUserId)) || undefined
+
     // 3 e 4. Meta: bytes viram media ID, media ID vira mensagem entregue.
     // Evolution: sem upload separado, os bytes vão no próprio envio.
     let result
@@ -360,7 +386,7 @@ export class MessageService {
         to:          contact.display_phone,
         messageType: input.messageType,
         mediaId,
-        caption:     input.caption,
+        caption:     legenda,
         fileName:    input.fileName,
         arquivo,
       })
@@ -748,11 +774,14 @@ export class MessageService {
     const contact = await this.contact.findById(conversation.contact_id)
     if (!contact?.display_phone) throw new MissingContactPhoneError(conversation.contact_id)
 
+    // A edição substitui o texto inteiro no WhatsApp: sem reassinar, a
+    // mensagem editada perderia o nome. Assina quem ENVIOU, não quem editou.
+    const corpo = await this.assinado(texto, message.sent_by_user_id, message.sent_by_ai)
     try {
       await provider.editarTexto(channel, {
         externalId: message.external_message_id!,
         telefone:   contact.display_phone,
-        texto,
+        texto:      corpo,
       })
     } catch (err) {
       throw err instanceof ProviderError ? err : new ProviderError(channel.provider, err)

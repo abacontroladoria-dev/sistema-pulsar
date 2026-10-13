@@ -23,6 +23,9 @@ import { textoWhatsApp } from './textoWhatsApp'
 interface Props {
   msg:             NinaMessage
   primeiraDoGrupo: boolean
+  // Quem da equipe escreveu — só na primeira bolha da rajada, como num grupo
+  // do WhatsApp. Null nas demais e nas mensagens do contato.
+  nomeAutor?:      string | null
   destacada:       boolean
   aoResponder:     (m: NinaMessage) => void
   aoEditar:        (m: NinaMessage) => void
@@ -36,7 +39,7 @@ interface Props {
 const acao = 'p-0.5 rounded text-muted-foreground/70 transition-colors opacity-0 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100'
 
 export const BolhaMensagem: React.FC<Props> = ({
-  msg, primeiraDoGrupo, destacada, aoResponder, aoEditar, aoApagar, aoIrPara,
+  msg, primeiraDoGrupo, nomeAutor, destacada, aoResponder, aoEditar, aoApagar, aoIrPara,
   aoEnviarSugestao, enviandoSugestao = false,
 }) => {
   const isOutgoing = msg.direction === MessageDirection.OUTGOING
@@ -62,6 +65,12 @@ export const BolhaMensagem: React.FC<Props> = ({
                 : 'bg-muted text-foreground border border-border'
           }`}
         >
+          {nomeAutor && (
+            <span className={`block font-semibold mb-0.5 ${claro ? 'text-white' : 'text-foreground'}`}>
+              {nomeAutor}
+            </span>
+          )}
+
           {msg.citacao && (
             <button
               type="button"
