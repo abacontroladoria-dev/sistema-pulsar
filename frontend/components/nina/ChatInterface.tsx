@@ -633,7 +633,7 @@ const ChatInterface: React.FC = () => {
         <div className="flex-1 flex overflow-hidden bg-muted dark:bg-[#0B0E14]">
           <div className="flex-1 flex flex-col min-w-0 relative">
             <div className="h-16 px-2 sm:px-6 flex items-center justify-between gap-2 bg-card backdrop-blur-md border-b border-border z-10 shrink-0">
-              <div className="flex items-center min-w-0 p-1.5 -ml-1.5 rounded-lg pr-3">
+              <div className="flex flex-1 items-center min-w-0 p-1.5 -ml-1.5 rounded-lg pr-3">
                 <button
                   type="button"
                   onClick={() => select(null)}
@@ -662,7 +662,19 @@ const ChatInterface: React.FC = () => {
                         numa conversa que segue o padrão da clínica. */}
                     {!canalHumano && modoIa?.origem === 'conversa' && renderStatusBadge(activeChat.status)}
                   </h2>
-                  <p className="text-xs text-cyan-500 font-medium">{activeChat.contactPhone}</p>
+                  {/* O nome do número saiu da pílula da direita para cá: lá ele
+                      espremia o nome do contato até sobrar uma letra. */}
+                  <p className="text-xs font-medium flex items-center gap-1.5 min-w-0">
+                    <span className="text-cyan-500 tabular-nums shrink-0">{activeChat.contactPhone}</span>
+                    {(maiaRespondeNoNumero || canalHumano) && detalhe?.channel?.name && (
+                      <>
+                        <span aria-hidden className="text-muted-foreground/50">|</span>
+                        <span className="truncate text-muted-foreground" title={`Número: ${detalhe.channel.name}`}>
+                          {detalhe.channel.name}
+                        </span>
+                      </>
+                    )}
+                  </p>
                 </div>
               </div>
 
@@ -673,15 +685,15 @@ const ChatInterface: React.FC = () => {
                     title="A Maia responde sozinha por este número (Configurações → números)"
                   >
                     <Bot className="w-3.5 h-3.5" />
-                    Maia responde · {detalhe?.channel?.name}
+                    Maia responde
                   </span>
                 ) : canalHumano ? (
                   <span
-                    className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                    className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border border-emerald-500/30 bg-emerald-500/10 text-[var(--status-ok)]"
                     title="Número de atendimento humano — a Maia não responde por ele"
                   >
                     <Smartphone className="w-3.5 h-3.5" />
-                    Atendimento humano · {detalhe?.channel?.name}
+                    Atendimento humano
                   </span>
                 ) : (
                   <ChaveAtendimento
