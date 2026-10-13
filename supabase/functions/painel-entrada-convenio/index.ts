@@ -13,9 +13,13 @@
 //
 // ── REGRAS ───────────────────────────────────────────────────────────────────
 // - Só GET no ClickUp. Nunca escreve lá.
-// - Token PRÓPRIO (CLICKUP_TOKEN_PAINEL, conta adm2). O CLICKUP_TOKEN das irmãs
-//   (glosa, healthcheck, inclusão de terapia) não é tocado: o rate limit de
-//   100 req/min é por token, e esta função gasta 1 GET por rodada.
+// - Token: CLICKUP_TOKEN_PAINEL se existir; senão o CLICKUP_TOKEN que já serve
+//   glosa, healthcheck e inclusão de terapia (decisão de 13/10/2026, com o dono
+//   do token dando acesso ao Doc). Aqui só se LÊ; o token nunca é alterado. Duas
+//   consequências de dividir o token: o rate limit de 100 req/min é dele (esta
+//   função gasta 1 GET por rodada) e, se o dono o regenerar, o painel para junto
+//   (o alerta "sem dado novo" avisa). Criar CLICKUP_TOKEN_PAINEL separa os dois
+//   sem mudar código.
 // - Token pessoal vai CRU no Authorization, sem "Bearer".
 // - JSON fora da forma não grava nada: o painel fica com a rodada anterior e o
 //   registrar abre alerta. Dado pela metade é pior que dado de ontem.
@@ -27,7 +31,7 @@ import { extrairJson, validarDados } from "./forma.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const CLICKUP_TOKEN_PAINEL = Deno.env.get("CLICKUP_TOKEN_PAINEL");
+const CLICKUP_TOKEN_PAINEL = Deno.env.get("CLICKUP_TOKEN_PAINEL") ?? Deno.env.get("CLICKUP_TOKEN");
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
@@ -143,7 +147,7 @@ serve(async (req) => {
     };
     if (!cfg.ativo) return await ignorar("leitura desligada em painel_entrada_convenio_config.ativo");
     if (!cfg.doc_id) return await ignorar("Doc do ClickUp ainda não configurado (doc_id)");
-    if (!CLICKUP_TOKEN_PAINEL) return json(await registrar(origem, null, null, "secret CLICKUP_TOKEN_PAINEL ausente"));
+    if (!CLICKUP_TOKEN_PAINEL) return json(await registrar(origem, null, null, "nenhum token do ClickUp nos secrets (CLICKUP_TOKEN_PAINEL ou CLICKUP_TOKEN)"));
 
     let pagina: Pagina;
     let dados: Record<string, unknown>;
