@@ -87,6 +87,37 @@ const ChatInterface: React.FC = () => {
   // outra pessoa seria pior que perder a citação.
   useEffect(() => { setRespondendo(null) }, [selectedId])
 
+  // Esc fecha a conversa, como no WhatsApp Web. O que estiver aberto POR CIMA
+  // tem prioridade: modal, seletor de emoji, popover, foto ampliada — e a
+  // resposta citada, que o primeiro Esc cancela. Campo de texto com conteúdo
+  // também segura o Esc: perder o que se digitou por reflexo é pior que
+  // apertar duas vezes.
+  //
+  // Na CAPTURA da window, antes de qualquer outro ouvinte: assim o DOM ainda
+  // mostra o que estava aberto quando a tecla desceu. Ouvindo depois, o modal
+  // que fecha com o mesmo Esc já teria sumido e a conversa fecharia junto.
+  const sobreposto = !!(apagando || editando || transferindo || agendando || designando)
+  const citando = respondendo !== null
+
+  useEffect(() => {
+    if (!selectedId) return
+    const esc = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.isComposing) return
+      if (sobreposto) return
+      if (document.querySelector('[role="dialog"], [aria-modal="true"], [data-radix-popper-content-wrapper]')) return
+
+      const alvo = e.target as HTMLElement | null
+      const tag = alvo?.tagName
+      if (tag === 'INPUT' || tag === 'SELECT' || alvo?.isContentEditable) return
+      if (tag === 'TEXTAREA' && (alvo as HTMLTextAreaElement).value.trim() !== '') return
+
+      if (citando) { setRespondendo(null); return }
+      select(null)
+    }
+    window.addEventListener('keydown', esc, true)
+    return () => window.removeEventListener('keydown', esc, true)
+  }, [selectedId, select, sobreposto, citando])
+
   // Rola para o fim quando chega mensagem NOVA (a última mudou). Pelo id, e não
   // pelo comprimento: carregar as antigas também aumenta o comprimento, e
   // descer ali jogaria fora o histórico que a pessoa acabou de pedir.
@@ -613,7 +644,7 @@ const ChatInterface: React.FC = () => {
                 </button>
                 <div className="relative shrink-0">
                   <div className="w-9 h-9 rounded-full ring-2 ring-border overflow-hidden">
-                    <Avatar url={activeChat.contactAvatar} nome={activeChat.contactName} />
+                    <Avatar url={activeChat.contactAvatar} nome={activeChat.contactName} ampliavel />
                   </div>
                 </div>
                 <div className="ml-3 min-w-0">
@@ -751,6 +782,17 @@ const ChatInterface: React.FC = () => {
             <div
               ref={rolagemRef}
               onScroll={e => { if (e.currentTarget.scrollTop < 80) pedirAntigas() }}
+              // As imagens abrem sozinhas e chegam DEPOIS da rolagem até o fim:
+              // cada uma empurrava a conversa para cima. Se quem lê estava no
+              // fim antes dela crescer, volta ao fim. `load` não borbulha — por
+              // isso a captura.
+              onLoadCapture={e => {
+                const el = e.currentTarget
+                const alvo = e.target as HTMLElement
+                if (alvo.tagName !== 'IMG') return
+                const antes = el.scrollHeight - alvo.offsetHeight - el.scrollTop - el.clientHeight
+                if (antes < 150) el.scrollTop = el.scrollHeight
+              }}
               className="flex-1 overflow-y-auto px-3 py-4 sm:p-6 custom-scrollbar relative z-0"
             >
               {activeChat.messages.length === 0 ? (
