@@ -91,6 +91,7 @@ export const CODIGO_PARA_ROTAS: Record<string, string[]> = {
   indicadores_previsao_receitas: ['/cronograma/indicadores?tab=previsao-receitas'],
   indicadores_alimentar_bd: ['/cronograma/indicadores?tab=alimentar-bd'],
   indicadores_comparativo_sessoes: ['/cronograma/indicadores?tab=comparativo-sessoes'],
+  indicadores_entrada_convenio: ['/cronograma/indicadores?tab=entrada-convenio'],
   reposicao_faltas: ['/cronograma/reposicao'],
   cronograma_ocupacao_salas: ['/relacionamento-prestador/ocupacao-salas'],
   cronograma_valores_convenio: ['/cadastros/cadastro-valores'],

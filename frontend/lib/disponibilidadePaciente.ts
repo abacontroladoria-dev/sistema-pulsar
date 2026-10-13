@@ -12,6 +12,24 @@
 // As colunas sab_* continuam na tabela (a migration já estava aplicada), mas a
 // aplicação não lê nem grava mais nelas.
 
+// ─── Link do formulário ──────────────────────────────────────────────────────
+// Um link só para todas as famílias: quem abre se identifica pelo CPF da
+// criança. Usado pela aba Disponibilidade do cadastro e pelo Painel de Entrada
+// de Pacientes (Comercial manda o link ao agendar a entrevista).
+
+export const CAMINHO_FORMULARIO = "/disponibilidade-paciente/"
+
+export function linkFormularioDisponibilidade(origem: string): string {
+  return `${origem}${CAMINHO_FORMULARIO}`
+}
+
+/** Mensagem de WhatsApp. Sem nome, sai genérica ("de terapia"). */
+export function mensagemFormularioDisponibilidade(origem: string, pacienteNome?: string | null): string {
+  const primeiro = (pacienteNome ?? "").trim().split(/\s+/)[0] ?? ""
+  const de = primeiro ? ` de ${primeiro}` : ""
+  return `Olá! Para organizarmos os horários de terapia${de}, preencha a disponibilidade neste link: ${linkFormularioDisponibilidade(origem)} — use o CPF da criança para entrar.`
+}
+
 // ─── Dias ─────────────────────────────────────────────────────────────────────
 
 export const DIAS = [

@@ -9,8 +9,9 @@ import { PacientesDashboardShell } from "@/components/cronograma/indicadores/Pac
 import { PrevisaoReceitasShell } from "@/components/cronograma/indicadores/PrevisaoReceitasShell"
 import { AlimentarBdReceitasShell } from "@/components/cronograma/indicadores/AlimentarBdReceitasShell"
 import { ComparativoSessoesShell } from "@/components/cronograma/indicadores/ComparativoSessoesShell"
+import { EntradaConvenioShell } from "@/components/cronograma/indicadores/entrada-convenio/EntradaConvenioShell"
 
-const TABS = ["profissionais", "unidades", "pacientes", "previsao-receitas", "alimentar-bd", "comparativo-sessoes"] as const
+const TABS = ["profissionais", "unidades", "pacientes", "previsao-receitas", "alimentar-bd", "comparativo-sessoes", "entrada-convenio"] as const
 type TabKey = (typeof TABS)[number]
 
 const TAB_LABELS: Record<TabKey, string> = {
@@ -20,6 +21,7 @@ const TAB_LABELS: Record<TabKey, string> = {
   "previsao-receitas": "Previsão de Receitas",
   "alimentar-bd": "Preencher Receitas Faturadas",
   "comparativo-sessoes": "Comparativo de Sessões",
+  "entrada-convenio": "Entrada de Pacientes (Convênio)",
 }
 
 const TAB_SUBTITLES: Record<TabKey, string> = {
@@ -29,6 +31,7 @@ const TAB_SUBTITLES: Record<TabKey, string> = {
   "previsao-receitas": "Receita mensal projetada, cruzando sessões com valores cadastrados por convênio",
   "alimentar-bd": "Lançamento manual de NF e pagamentos recebidos, por paciente e mês",
   "comparativo-sessoes": "Compara sessões agendadas entre dois períodos: total geral, por unidade e por paciente",
+  "entrada-convenio": "Leve, ASSIM e FUSEx: do pedido à 1ª sessão, meta de 19 dias úteis",
 }
 
 function IndicadoresContent() {
@@ -58,6 +61,7 @@ function IndicadoresContent() {
       {activeTab === "previsao-receitas" && <PrevisaoReceitasShell />}
       {activeTab === "alimentar-bd" && <AlimentarBdReceitasShell />}
       {activeTab === "comparativo-sessoes" && <ComparativoSessoesShell />}
+      {activeTab === "entrada-convenio" && <EntradaConvenioShell />}
     </div>
   )
 }

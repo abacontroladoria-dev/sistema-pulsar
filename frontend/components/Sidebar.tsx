@@ -680,7 +680,8 @@ export default function Sidebar() {
             canAccess("/cronograma/indicadores?tab=pacientes") ||
             canAccess("/cronograma/indicadores?tab=previsao-receitas") ||
             canAccess("/cronograma/indicadores?tab=alimentar-bd") ||
-            canAccess("/cronograma/indicadores?tab=comparativo-sessoes")) && (
+            canAccess("/cronograma/indicadores?tab=comparativo-sessoes") ||
+            canAccess("/cronograma/indicadores?tab=entrada-convenio")) && (
             <SidebarGroup title={GRUPO.indicadores.nome} icon={GRUPO.indicadores.icon} defaultOpen={pathname === "/cronograma/indicadores"}>
               {canAccess("/cronograma/indicadores?tab=profissionais") && (
                 <Item codigo="ocupacao_profissionais" />
@@ -699,6 +700,9 @@ export default function Sidebar() {
               )}
               {canAccess("/cronograma/indicadores?tab=comparativo-sessoes") && (
                 <Item codigo="indicadores_comparativo_sessoes" />
+              )}
+              {canAccess("/cronograma/indicadores?tab=entrada-convenio") && (
+                <Item codigo="indicadores_entrada_convenio" />
               )}
             </SidebarGroup>
           )}

@@ -27,6 +27,8 @@ import {
   deColunas,
   diferencas,
   disponibilidadeVazia,
+  linkFormularioDisponibilidade,
+  mensagemFormularioDisponibilidade,
   paraColunas,
 } from "@/lib/disponibilidadePaciente"
 import {
@@ -59,7 +61,6 @@ import { COR_ORIGEM, ROTULO_ORIGEM, declarante, formatarData, formatarDataHora, 
 // A falha de leitura tem estado próprio e nunca se parece com "a preencher":
 // confundir os dois faria a recepção cobrar da família um formulário já enviado.
 
-export const CAMINHO_FORMULARIO = "/disponibilidade-paciente/"
 
 export function AbaDisponibilidade({
   pacienteId,
@@ -468,12 +469,11 @@ function BotoesLink({ pacienteNome, pacienteCpf }: { pacienteNome: string; pacie
   const semCpf = !pacienteCpf || pacienteCpf.replace(/\D/g, "").length !== 11
 
   function link() {
-    return `${window.location.origin}${CAMINHO_FORMULARIO}`
+    return linkFormularioDisponibilidade(window.location.origin)
   }
 
   function mensagem() {
-    const primeiro = pacienteNome.trim().split(/\s+/)[0] ?? ""
-    return `Olá! Para organizarmos os horários de terapia de ${primeiro}, preencha a disponibilidade neste link: ${link()} — use o CPF da criança para entrar.`
+    return mensagemFormularioDisponibilidade(window.location.origin, pacienteNome)
   }
 
   async function copiar(texto: string, sucesso: string) {
