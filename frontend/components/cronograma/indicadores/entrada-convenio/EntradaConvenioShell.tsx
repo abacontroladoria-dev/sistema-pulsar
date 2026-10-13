@@ -34,7 +34,6 @@ import {
   fmtDiaMes,
   filtrarPacientes,
   mapaDisponibilidade,
-  nomeCurto,
   opcoesFiltro,
   porSetor,
   raias,
@@ -217,10 +216,10 @@ function OndeEstaParado({ pacs, onAbrir }: { pacs: PacienteEntrada[]; onAbrir: (
               </div>
               {g.atrasados.length > 0 && (
                 <ul className="flex flex-col gap-1 text-xs">
-                  {g.atrasados.slice(0, 4).map(p => (
-                    <li key={p.paciente}>
+                  {g.atrasados.slice(0, 4).map((p, i) => (
+                    <li key={`${p.paciente}-${i}`}>
                       <button type="button" onClick={() => onAbrir(p)} className="text-left hover:underline">
-                        {nomeCurto(p.paciente, 2)} · <span className="tabular-nums">{p.atual.dias} d.u.</span> em {p.atual.nome.toLowerCase()}
+                        {p.paciente} · <span className="tabular-nums">{p.atual.dias} d.u.</span> em {p.atual.nome.toLowerCase()}
                       </button>
                     </li>
                   ))}
@@ -237,10 +236,10 @@ function OndeEstaParado({ pacs, onAbrir }: { pacs: PacienteEntrada[]; onAbrir: (
 function Raias({ pacs, onAbrir }: { pacs: PacienteEntrada[]; onAbrir: (p: PacienteEntrada) => void }) {
   const r = raias(pacs)
   const vazio = <li className="text-muted-foreground">Ninguém nesta etapa.</li>
-  const item = (p: PacienteEntrada, direita: React.ReactNode) => (
-    <li key={p.paciente} className="flex items-center justify-between gap-2 border-t border-border/60 pt-1.5 first:border-0 first:pt-0">
-      <button type="button" onClick={() => onAbrir(p)} className="min-w-0 truncate text-left hover:underline">
-        {nomeCurto(p.paciente)} <span className="text-muted-foreground">· {p.convenio}</span>
+  const item = (p: PacienteEntrada, direita: React.ReactNode, i: number) => (
+    <li key={`${p.paciente}-${i}`} className="flex items-center justify-between gap-2 border-t border-border/60 pt-1.5 first:border-0 first:pt-0">
+      <button type="button" onClick={() => onAbrir(p)} className="min-w-0 text-left hover:underline">
+        {p.paciente} <span className="text-muted-foreground">· {p.convenio}</span>
       </button>
       {direita}
     </li>
@@ -254,18 +253,18 @@ function Raias({ pacs, onAbrir }: { pacs: PacienteEntrada[]; onAbrir: (p: Pacien
       <div className="grid gap-3 md:grid-cols-3">
         <Cartao titulo={<>Para apresentar <span className="tabular-nums">{r.paraApresentar.length}</span></>} apoio="Etapa 5 · Cronograma · até 1 d.u.">
           <ul className="flex flex-col gap-1.5 text-xs">
-            {r.paraApresentar.length ? r.paraApresentar.map(p => item(p, <PilulaPrazo status={p.atual.status} />)) : vazio}
+            {r.paraApresentar.length ? r.paraApresentar.map((p, i) => item(p, <PilulaPrazo status={p.atual.status} />, i)) : vazio}
           </ul>
         </Cartao>
         <Cartao titulo={<>Aguardando início <span className="tabular-nums">{r.aguardandoInicio.length}</span></>} apoio="Etapa 7 · Terapêutico confirma a 1ª sessão · até 5 d.u.">
           <ul className="flex flex-col gap-1.5 text-xs">
-            {r.aguardandoInicio.length ? r.aguardandoInicio.map(p => item(p, <PilulaPrazo status={p.atual.status} />)) : vazio}
+            {r.aguardandoInicio.length ? r.aguardandoInicio.map((p, i) => item(p, <PilulaPrazo status={p.atual.status} />, i)) : vazio}
           </ul>
         </Cartao>
         <Cartao titulo={<>Já iniciaram <span className="tabular-nums">{r.iniciados.length}</span></>} apoio='Subtarefa "Cronograma iniciado" marcada'>
           <ul className="flex max-h-64 flex-col gap-1.5 overflow-y-auto text-xs">
             {r.iniciados.length
-              ? r.iniciados.map(p => item(p, <span className="shrink-0 tabular-nums text-muted-foreground">início {fmtDiaMes(p.inicio)}</span>))
+              ? r.iniciados.map((p, i) => item(p, <span className="shrink-0 tabular-nums text-muted-foreground">início {fmtDiaMes(p.inicio)}</span>, i))
               : vazio}
           </ul>
         </Cartao>
@@ -343,8 +342,8 @@ function ListaPacientes({ pacs, disp, filtro, setFiltro, onAbrir }: {
         <>
           {/* Celular: cartões */}
           <ul className="flex flex-col gap-2 md:hidden">
-            {lista.map(p => (
-              <li key={p.paciente}>
+            {lista.map((p, i) => (
+              <li key={`${p.paciente}-${i}`}>
                 <button
                   type="button"
                   onClick={() => onAbrir(p)}
@@ -380,9 +379,9 @@ function ListaPacientes({ pacs, disp, filtro, setFiltro, onAbrir }: {
                 </tr>
               </thead>
               <tbody>
-                {lista.map(p => (
+                {lista.map((p, i) => (
                   <tr
-                    key={p.paciente}
+                    key={`${p.paciente}-${i}`}
                     role="button"
                     tabIndex={0}
                     aria-label={`${p.paciente}: ver detalhes`}
@@ -459,8 +458,8 @@ function ConcluidosEEncerrados({ pacs, onAbrir }: { pacs: PacienteEntrada[]; onA
         <p className="text-sm text-muted-foreground">Nenhum ainda.</p>
       ) : (
         <ul className="flex flex-col gap-1.5 text-xs">
-          {lista.map(p => (
-            <li key={p.paciente} className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 pb-1.5 last:border-0">
+          {lista.map((p, i) => (
+            <li key={`${p.paciente}-${i}`} className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 pb-1.5 last:border-0">
               <button type="button" onClick={() => onAbrir(p)} className="text-left font-semibold hover:underline">
                 {p.paciente} <span className="font-normal text-muted-foreground">· {p.convenio} · entrada {fmtDiaMes(p.entrada)}</span>
               </button>
