@@ -101,7 +101,7 @@ export function ResponsavelPainel({
                 {responsavel.nome}
               </h2>
               {!responsavel.ativo && (
-                <span className="text-xs font-medium text-amber-600 dark:text-amber-400">
+                <span className="text-xs font-medium text-[var(--status-atencao)]">
                   Inativo
                 </span>
               )}

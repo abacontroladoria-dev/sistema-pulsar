@@ -245,7 +245,7 @@ function ControleTerapeutaMobileCard({
                     )
                   }
                   aria-label={`Confirmar sessões pendentes de ${grupo.terapeuta}`}
-                  className="w-full h-11 px-4 rounded-lg border border-emerald-300 bg-white text-emerald-600 text-xs font-semibold disabled:opacity-50 transition hover:bg-emerald-50"
+                  className="w-full h-11 px-4 rounded-lg border border-emerald-300 bg-white text-[var(--status-ok)] text-xs font-semibold disabled:opacity-50 transition hover:bg-emerald-50"
                 >
                   Confirmar pendentes
                 </button>
@@ -269,7 +269,7 @@ function ControleTerapeutaMobileCard({
                 disabled={salvando}
                 onClick={() => abrirModalStatus(grupo, 'disponivel')}
                 aria-label={`Marcar ${grupo.terapeuta} como disponível agora`}
-                className="w-full h-11 px-4 rounded-lg border border-emerald-300 bg-white text-emerald-600 text-xs font-semibold disabled:opacity-50 transition hover:bg-emerald-50"
+                className="w-full h-11 px-4 rounded-lg border border-emerald-300 bg-white text-[var(--status-ok)] text-xs font-semibold disabled:opacity-50 transition hover:bg-emerald-50"
               >
                 Disponível agora
               </button>

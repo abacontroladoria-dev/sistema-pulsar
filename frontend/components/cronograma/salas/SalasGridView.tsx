@@ -334,9 +334,9 @@ function SlotCell({
           const ratioCor = card.semCruzamentoCsv
             ? "text-muted-foreground"
             : card.pctOcupacao !== null && card.pctOcupacao >= 0.8
-              ? "text-emerald-600 dark:text-emerald-400"
+              ? "text-[var(--status-ok)]"
               : card.pctOcupacao && card.pctOcupacao > 0
-                ? "text-amber-600 dark:text-amber-400"
+                ? "text-[var(--status-atencao)]"
                 : "text-muted-foreground"
           const bate = buscaAtiva && profissionalBateComBusca(card.profissionalNome, buscaProfissional)
           const violacao = card.violacaoExclusividade

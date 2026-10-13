@@ -841,7 +841,7 @@ export default function Sidebar() {
               <div className="flex-1 text-left min-w-0">
                 <p className="text-sm font-semibold text-sidebar-foreground truncate leading-tight">{nome}</p>
                 {gruposRotulo && (
-                  <p className={`text-xs leading-tight truncate ${isImpersonating ? 'text-amber-600 dark:text-amber-400 font-semibold' : 'text-sidebar-foreground/50'}`}>
+                  <p className={`text-xs leading-tight truncate ${isImpersonating ? 'text-[var(--status-atencao)] font-semibold' : 'text-sidebar-foreground/50'}`}>
                     {isImpersonating ? '👁️ ' : ''}
                     {gruposRotulo}
                   </p>

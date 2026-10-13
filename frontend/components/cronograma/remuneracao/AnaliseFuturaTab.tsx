@@ -360,7 +360,7 @@ function PresencaCard({
       </div>
 
       {delta !== null && (
-        <div className={`flex items-center gap-1 text-xs font-semibold mt-auto pt-3 ${delta >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
+        <div className={`flex items-center gap-1 text-xs font-semibold mt-auto pt-3 ${delta >= 0 ? "text-[var(--status-ok)]" : "text-rose-600 dark:text-rose-400"}`}>
           {delta >= 0 ? <TrendingUp size={13} /> : <TrendingDown size={13} />}
           {fmtPct(delta)} vs contrato antigo
         </div>
@@ -422,7 +422,7 @@ function TerapiaDiasBloco({ td, presenca, ccPA, ccPE, etaBonus }: {
                   <span className="inline-flex items-center justify-center gap-1">
                     {b.occ}
                     {b.feriados.length > 0 && (
-                      <span className="text-amber-600 dark:text-amber-400" title={b.feriados.map(f => f.nome).join(", ")}>
+                      <span className="text-[var(--status-atencao)]" title={b.feriados.map(f => f.nome).join(", ")}>
                         −{b.feriados.length}
                       </span>
                     )}
@@ -460,7 +460,7 @@ function TerapiaDiasBloco({ td, presenca, ccPA, ccPE, etaBonus }: {
                   <td className="text-center text-foreground tabular-nums">
                     <span className="inline-flex items-center justify-center gap-1">
                       {dd.occ}
-                      {dd.feriados.length > 0 && <span className="text-amber-600 dark:text-amber-400">−{dd.feriados.length}</span>}
+                      {dd.feriados.length > 0 && <span className="text-[var(--status-atencao)]">−{dd.feriados.length}</span>}
                     </span>
                   </td>
                   <td colSpan={3} className="text-right font-semibold text-orange-700 dark:text-orange-400 tabular-nums">{fmt(dd.valor)}</td>

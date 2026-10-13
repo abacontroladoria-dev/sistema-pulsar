@@ -141,7 +141,7 @@ const SessaoRow = memo(function SessaoRow({ s, chave, selecionada, valorPacote, 
         )}
       </td>
       <td className="py-1 px-2 text-muted-foreground">{s.diaLabel} · {fmtData(s.data)}</td>
-      <td className={`py-1 px-2 text-right tabular-nums font-semibold ${valorExibido === null ? "text-amber-600 dark:text-amber-400" : ""}`}>
+      <td className={`py-1 px-2 text-right tabular-nums font-semibold ${valorExibido === null ? "text-[var(--status-atencao)]" : ""}`}>
         {valorExibido !== null ? fmtReal(valorExibido) : "sem valor"}
       </td>
       <td className="py-1 pl-2 text-left text-muted-foreground">{origemLabel}</td>
@@ -179,12 +179,12 @@ function PacienteRow({ p, convenio, aberto, onToggle, sessaoSelecionada, onSelec
         <td className={`py-1 px-2 text-right tabular-nums ${p.faltasCount > 0 ? "font-semibold text-rose-600 dark:text-rose-400" : ""}`}>
           {p.faltasCount > 0 ? p.faltasCount : "—"}
         </td>
-        <td className="py-1 px-2 text-right tabular-nums font-semibold text-amber-600 dark:text-amber-400">{fmtReal(p.valorSemDeducao)}</td>
+        <td className="py-1 px-2 text-right tabular-nums font-semibold text-[var(--status-atencao)]">{fmtReal(p.valorSemDeducao)}</td>
         <td className={`py-1 px-2 text-right tabular-nums ${p.deducaoFalta > 0 ? "font-semibold text-rose-600 dark:text-rose-400" : ""}`}>
           {p.deducaoFalta > 0 ? `-${fmtReal(p.deducaoFalta)}` : "—"}
         </td>
-        <td className="py-1 px-2 text-right tabular-nums font-semibold text-emerald-600 dark:text-emerald-400">{fmtReal(p.efetivado)}</td>
-        <td className={`py-1 pl-2 text-right tabular-nums ${p.indefinido > 0 ? "font-semibold text-amber-600 dark:text-amber-400" : ""}`}>
+        <td className="py-1 px-2 text-right tabular-nums font-semibold text-[var(--status-ok)]">{fmtReal(p.efetivado)}</td>
+        <td className={`py-1 pl-2 text-right tabular-nums ${p.indefinido > 0 ? "font-semibold text-[var(--status-atencao)]" : ""}`}>
           {p.indefinido > 0 ? fmtReal(p.indefinido) : "—"}
         </td>
       </tr>
@@ -306,11 +306,11 @@ function ConvenioRow({ c, mesReferenciaLabel, sessaoSelecionada, onSelectSessao,
         </td>
         <td className="py-1.5 px-2 text-right tabular-nums">{c.pacientesUnicos}</td>
         <td className="py-1.5 px-2 text-right tabular-nums">{fmtNum(c.sessoesMesProjetadas)}</td>
-        <td className={`py-1.5 px-2 text-right tabular-nums ${c.sessoesSemValor > 0 ? "font-semibold text-amber-600 dark:text-amber-400" : ""}`}>
+        <td className={`py-1.5 px-2 text-right tabular-nums ${c.sessoesSemValor > 0 ? "font-semibold text-[var(--status-atencao)]" : ""}`}>
           {c.sessoesSemValor > 0 ? c.sessoesSemValor : "—"}
         </td>
         <td className="py-1.5 px-2 text-right tabular-nums">{fmtReal(c.receitaSemanal)}</td>
-        <td className="py-1.5 px-2 text-right tabular-nums font-semibold text-amber-600 dark:text-amber-400">{fmtReal(c.receitaMensalProjetada)}</td>
+        <td className="py-1.5 px-2 text-right tabular-nums font-semibold text-[var(--status-atencao)]">{fmtReal(c.receitaMensalProjetada)}</td>
         <td className={`py-1.5 pl-2 text-right tabular-nums ${c.deducaoFalta > 0 ? "font-semibold text-rose-600 dark:text-rose-400" : ""}`}>
           {c.deducaoFalta > 0 ? `-${fmtReal(c.deducaoFalta)}` : "—"}
         </td>
@@ -407,7 +407,7 @@ function ConvenioRow({ c, mesReferenciaLabel, sessaoSelecionada, onSelectSessao,
                               {totalSessoesSemana > 0 ? fmtNum((t.sessoesSemana / totalSessoesSemana) * 100) : "—"}%
                             </td>
                             <td className="py-1 px-2 text-right tabular-nums">{fmtNum(t.sessoesSemana)}</td>
-                            <td className={`py-1 px-2 text-right tabular-nums ${t.sessoesSemValor > 0 ? "font-semibold text-amber-600 dark:text-amber-400" : ""}`}>
+                            <td className={`py-1 px-2 text-right tabular-nums ${t.sessoesSemValor > 0 ? "font-semibold text-[var(--status-atencao)]" : ""}`}>
                               {t.sessoesSemValor > 0 ? t.sessoesSemValor : "—"}
                             </td>
                             <td className="py-1 px-2 text-right tabular-nums font-semibold">

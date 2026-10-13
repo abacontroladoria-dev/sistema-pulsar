@@ -31,7 +31,7 @@ import { ESPECIALISTAS_PDI, type ItemPdi } from "@/lib/pdi/filtros"
 
 const STATUS_COR: Record<ItemPdi["status"], { texto: string; contorno: string }> = {
   "Dentro do prazo": {
-    texto: "text-emerald-600 dark:text-emerald-400",
+    texto: "text-[var(--status-ok)]",
     contorno: "border-emerald-500/40 bg-emerald-500/5",
   },
   "Aguardando Implementação": {
@@ -43,7 +43,7 @@ const STATUS_COR: Record<ItemPdi["status"], { texto: string; contorno: string }>
     contorno: "border-rose-500/40 bg-rose-500/5",
   },
   "Próximo do prazo": {
-    texto: "text-amber-600 dark:text-amber-400",
+    texto: "text-[var(--status-atencao)]",
     contorno: "border-amber-500/40 bg-amber-500/5",
   },
 }

@@ -1519,7 +1519,7 @@ export default function PermissoesPageShell() {
                   <h3 className="text-sm font-semibold text-slate-800">Modelo de permissões do grupo</h3>
                   <div className="flex items-center gap-2">
                     {driftedMemberIds.size > 0 && (
-                      <span className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-600">
+                      <span className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-[var(--status-atencao)]">
                         <AlertTriangle size={12} />
                         {driftedMemberIds.size} fora do modelo
                       </span>
@@ -1765,7 +1765,7 @@ export default function PermissoesPageShell() {
                           </div>
                           <span
                             className={`shrink-0 w-24 text-center px-2.5 py-1 rounded-lg text-xs font-semibold ${
-                              granted ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'
+                              granted ? 'bg-emerald-50 text-[var(--status-ok)]' : 'bg-slate-100 text-slate-500'
                             }`}
                           >
                             {granted ? 'Liberado' : 'Sem acesso'}
@@ -1886,7 +1886,7 @@ export default function PermissoesPageShell() {
                           <span
                             className={`shrink-0 w-24 text-center px-2.5 py-1 rounded-lg text-xs font-semibold ${
                               granted
-                                ? 'bg-emerald-50 text-emerald-600'
+                                ? 'bg-emerald-50 text-[var(--status-ok)]'
                                 : 'bg-slate-100 text-slate-500'
                             }`}
                           >

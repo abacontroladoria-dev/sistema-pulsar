@@ -106,7 +106,7 @@ export function NovoCadastroProfissionalModal({
           <label htmlFor="novo-prof-nome" className={rotulo}>Nome completo *</label>
           <input id="novo-prof-nome" autoFocus maxLength={200} value={nome} onChange={e => setNome(e.target.value)} className={`${campo} mt-1`} />
           {duplicadoNome && !duplicadoCpf && (
-            <p className="mt-1 text-xs font-medium text-amber-600 dark:text-amber-400">
+            <p className="mt-1 text-xs font-medium text-[var(--status-atencao)]">
               Já existe um cadastro com esse nome (ID {idExibicaoProfissional(duplicadoNome)}). Confira antes de criar outro.
             </p>
           )}

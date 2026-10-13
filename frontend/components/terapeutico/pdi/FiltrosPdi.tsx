@@ -102,7 +102,7 @@ const GRUPO_VISAO_GERAL: CardKpiInfo[] = [
   {
     recorte: "em_andamento",
     icone: PlayCircle,
-    tom: "text-emerald-600 dark:text-emerald-400",
+    tom: "text-[var(--status-ok)]",
     base: "border-emerald-100 bg-emerald-50 dark:border-emerald-900/60 dark:bg-emerald-950/30",
     ativo: "border-emerald-400 bg-emerald-100 dark:border-emerald-700 dark:bg-emerald-900/40 ring-1 ring-emerald-400/30",
   },
@@ -126,7 +126,7 @@ const GRUPO_ATENCAO: CardKpiInfo[] = [
   {
     recorte: "proximo_prazo",
     icone: ClockAlert,
-    tom: "text-amber-600 dark:text-amber-400",
+    tom: "text-[var(--status-atencao)]",
     base: "border-border bg-card",
     ativo: "border-amber-500 bg-amber-500/5",
   },
@@ -138,7 +138,7 @@ const GRUPO_ATENCAO: CardKpiInfo[] = [
     // diferenciado pelo ícone.
     recorte: "coordenador_irregular",
     icone: UserX,
-    tom: "text-amber-600 dark:text-amber-400",
+    tom: "text-[var(--status-atencao)]",
     base: "border-border bg-card",
     ativo: "border-amber-500 bg-amber-500/5",
   },

@@ -53,7 +53,7 @@ export function RegularizacoesView({ alocacoes, linhas, turnosBloqueioAdmin = []
               <td className="px-3 py-2.5 align-top">
                 <div className="font-medium text-foreground">{r.profissionalNome}</div>
                 {r.profissionalId == null && (
-                  <div className="mt-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400">sem profissional_id — revisar cadastro</div>
+                  <div className="mt-0.5 text-[10px] font-semibold text-[var(--status-atencao)]">sem profissional_id — revisar cadastro</div>
                 )}
               </td>
               <td className="px-3 py-2.5 align-top text-xs text-muted-foreground">

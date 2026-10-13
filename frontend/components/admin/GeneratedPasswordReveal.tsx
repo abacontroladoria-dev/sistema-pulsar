@@ -101,7 +101,7 @@ export default function GeneratedPasswordReveal({
         </div>
       </div>
 
-      <p className="mt-3 text-xs text-amber-600">
+      <p className="mt-3 text-xs text-[var(--status-atencao)]">
         Esta senha não será exibida novamente. Copie-a agora.
       </p>
 

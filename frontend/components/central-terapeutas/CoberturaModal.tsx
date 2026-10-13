@@ -708,7 +708,7 @@ export default function CoberturaModal({ grupo, data, onClose, onSuccess }: Prop
             >
               <div className="flex items-center gap-1.5 mb-1">
                 <Clock size={14} className={semCobertura === 0 ? 'text-emerald-500' : 'text-rose-500'} />
-                <span className={`text-xs font-semibold ${semCobertura === 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                <span className={`text-xs font-semibold ${semCobertura === 0 ? 'text-[var(--status-ok)]' : 'text-rose-600'}`}>
                   Status da cobertura
                 </span>
               </div>
@@ -820,7 +820,7 @@ export default function CoberturaModal({ grupo, data, onClose, onSuccess }: Prop
                 <span className="font-semibold">Sem substituição</span>.
               </span>
             ) : (
-              <span className="text-emerald-600 font-semibold">
+              <span className="text-[var(--status-ok)] font-semibold">
                 Todas as sessões com cobertura definida.
               </span>
             )}
@@ -1270,7 +1270,7 @@ const ProfMiniCard = memo(function ProfMiniCard({
         {label}
       </span>
       {recomendado && !selecionado && (
-        <span className="text-[10px] font-semibold text-amber-600 whitespace-nowrap">
+        <span className="text-[10px] font-semibold text-[var(--status-atencao)] whitespace-nowrap">
           Recomendado
         </span>
       )}

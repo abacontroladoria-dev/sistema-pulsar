@@ -677,7 +677,7 @@ function Endpoint({ url }: { url: string }) {
 function Linha({ ok, children }: { ok?: boolean; children: React.ReactNode }) {
   return (
     <div className="flex items-baseline gap-2.5">
-      <span className={`shrink-0 font-bold ${ok ? 'text-emerald-600' : 'text-rose-600'}`}>
+      <span className={`shrink-0 font-bold ${ok ? 'text-[var(--status-ok)]' : 'text-rose-600'}`}>
         {ok ? '✓' : '✗'}
       </span>
       <span className={ok ? 'text-slate-700' : 'text-slate-500'}>{children}</span>

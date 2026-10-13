@@ -39,7 +39,7 @@ interface Props {
 }
 
 const ESTADO: Record<string, { rotulo: string; ponto: string; texto: string }> = {
-  active:       { rotulo: 'Conectado',    ponto: 'bg-emerald-500', texto: 'text-emerald-600 dark:text-emerald-400' },
+  active:       { rotulo: 'Conectado',    ponto: 'bg-emerald-500', texto: 'text-[var(--status-ok)]' },
   connecting:   { rotulo: 'Conectando',   ponto: 'bg-amber-500',   texto: 'text-amber-700 dark:text-amber-400' },
   disconnected: { rotulo: 'Desconectado', ponto: 'bg-rose-500',    texto: 'text-rose-600 dark:text-rose-400' },
   error:        { rotulo: 'Com erro',     ponto: 'bg-rose-500',    texto: 'text-rose-600 dark:text-rose-400' },

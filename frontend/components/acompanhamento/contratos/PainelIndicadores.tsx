@@ -25,9 +25,9 @@ type Card = { recorte: RecorteContratos; Icone: LucideIcon; tom: string; ativo: 
 const CARDS: Card[] = [
   { recorte: "todos", Icone: Layers, tom: "text-slate-600 dark:text-slate-300", ativo: "border-slate-400 bg-slate-100 dark:border-slate-600 dark:bg-slate-800/60" },
   { recorte: "sem_contrato", Icone: FileQuestion, tom: "text-rose-600 dark:text-rose-400", ativo: "border-rose-400 bg-rose-50 dark:border-rose-700 dark:bg-rose-950/40" },
-  { recorte: "aguardando", Icone: Hourglass, tom: "text-amber-600 dark:text-amber-400", ativo: "border-amber-400 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/40" },
-  { recorte: "assinado_vigente", Icone: FileCheck2, tom: "text-emerald-600 dark:text-emerald-400", ativo: "border-emerald-400 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-950/40" },
-  { recorte: "a_vencer", Icone: CalendarClock, tom: "text-amber-600 dark:text-amber-400", ativo: "border-amber-400 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/40" },
+  { recorte: "aguardando", Icone: Hourglass, tom: "text-[var(--status-atencao)]", ativo: "border-amber-400 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/40" },
+  { recorte: "assinado_vigente", Icone: FileCheck2, tom: "text-[var(--status-ok)]", ativo: "border-emerald-400 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-950/40" },
+  { recorte: "a_vencer", Icone: CalendarClock, tom: "text-[var(--status-atencao)]", ativo: "border-amber-400 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/40" },
   { recorte: "vencido", Icone: CalendarX, tom: "text-rose-600 dark:text-rose-400", ativo: "border-rose-400 bg-rose-50 dark:border-rose-700 dark:bg-rose-950/40" },
   { recorte: "recusado_expirado", Icone: FileX, tom: "text-violet-600 dark:text-violet-400", ativo: "border-violet-400 bg-violet-50 dark:border-violet-700 dark:bg-violet-950/40" },
 ]

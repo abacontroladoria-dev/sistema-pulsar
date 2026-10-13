@@ -70,7 +70,7 @@ function AttendanceCard({ item, rowId, ativo, onSelect }: any) {
 
         {subbed && (
           <span
-            className="inline-flex items-center gap-1 shrink-0 text-amber-600"
+            className="inline-flex items-center gap-1 shrink-0 text-[var(--status-atencao)]"
             title="Realizado por substituto"
           >
             <Repeat2 className="w-3 h-3" />

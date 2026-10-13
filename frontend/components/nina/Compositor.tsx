@@ -208,7 +208,7 @@ export const Compositor: React.FC<Props> = ({
     <div className="p-3 sm:p-4 bg-card border-t border-border backdrop-blur-sm z-10">
       <div className="max-w-4xl mx-auto">
         {bloqueado && (
-          <p className="mb-2 text-xs text-amber-600 dark:text-amber-400">{bloqueado}</p>
+          <p className="mb-2 text-xs text-[var(--status-atencao)]">{bloqueado}</p>
         )}
 
         {respondendo && (

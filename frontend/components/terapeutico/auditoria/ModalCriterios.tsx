@@ -271,7 +271,7 @@ export function ModalCriterios({
               </p>
             )}
             {pendente && (
-              <p className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+              <p className="flex items-center gap-1.5 text-xs text-[var(--status-atencao)]">
                 <FileText className="h-3 w-3 shrink-0" />
                 {pendente.nomeArquivo} — ainda não publicado.
               </p>

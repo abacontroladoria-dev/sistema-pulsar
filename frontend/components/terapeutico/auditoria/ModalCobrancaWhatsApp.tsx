@@ -124,7 +124,7 @@ ${apontamentosTexto}
             </div>
             <div>
               <span className="text-zinc-500 block">Risco Relevante</span>
-              <span className="font-bold text-amber-600 dark:text-amber-400 text-sm">
+              <span className="font-bold text-[var(--status-atencao)] text-sm">
                 {profissional.risco_relevante}
               </span>
             </div>

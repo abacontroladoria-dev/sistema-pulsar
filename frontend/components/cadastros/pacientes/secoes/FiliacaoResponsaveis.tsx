@@ -323,7 +323,7 @@ export function FiliacaoResponsaveis({
                       <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
                         {r.cpf && maskCpfCnpj(r.cpf)}
                         {!r.ativo && (
-                          <span className="rounded-full bg-amber-500/10 px-1.5 py-0.5 font-medium text-amber-600 dark:text-amber-400">
+                          <span className="rounded-full bg-amber-500/10 px-1.5 py-0.5 font-medium text-[var(--status-atencao)]">
                             Inativo
                           </span>
                         )}

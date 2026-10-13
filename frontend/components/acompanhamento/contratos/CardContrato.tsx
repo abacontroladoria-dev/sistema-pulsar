@@ -137,7 +137,7 @@ export const CardContrato = memo(function CardContrato({ item }: { item: ItemSta
                       proximo.vigencia === "vencido"
                         ? "text-rose-600 dark:text-rose-400"
                         : proximo.vigencia === "a_vencer"
-                          ? "text-amber-600 dark:text-amber-400"
+                          ? "text-[var(--status-atencao)]"
                           : "text-foreground"
                     }`}
                   >

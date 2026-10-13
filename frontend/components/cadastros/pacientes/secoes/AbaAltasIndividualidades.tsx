@@ -982,7 +982,7 @@ function AltaFormModal({
               {form.arquivo_alta_path ? "Substituir arquivo selecionado" : "Selecionar arquivo"}
             </button>
             {form.arquivo_alta_path && (
-              <span className="text-xs font-medium text-emerald-600">Arquivo anexado</span>
+              <span className="text-xs font-medium text-[var(--status-ok)]">Arquivo anexado</span>
             )}
           </div>
           <input
@@ -1164,7 +1164,7 @@ function SuspensaoFormModal({
               {form.arquivo_suspensao_path ? "Substituir arquivo selecionado" : "Selecionar arquivo"}
             </button>
             {form.arquivo_suspensao_path && (
-              <span className="text-xs font-medium text-emerald-600">Arquivo anexado</span>
+              <span className="text-xs font-medium text-[var(--status-ok)]">Arquivo anexado</span>
             )}
           </div>
           <input
@@ -1278,7 +1278,7 @@ function AltaClinicaConfirmModal({
               {arquivoPath ? "Substituir arquivo selecionado" : "Selecionar arquivo"}
             </button>
             {arquivoPath && (
-              <span className="text-xs font-medium text-emerald-600">Arquivo anexado</span>
+              <span className="text-xs font-medium text-[var(--status-ok)]">Arquivo anexado</span>
             )}
           </div>
           <input
@@ -1476,7 +1476,7 @@ function DetalheCardModal({
                 type="button"
                 onClick={onReativar}
                 disabled={reativando}
-                className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-2 text-sm text-emerald-600 hover:bg-emerald-500/10 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-2 text-sm text-[var(--status-ok)] hover:bg-emerald-500/10 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 {reativando ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
                 Reativar

@@ -261,7 +261,7 @@ function CardSugestao({
           </div>
         )}
         {!!sugestao.projecaoRemuneracao?.sessoesSemValor && (
-          <div className="text-[11px] text-amber-600 dark:text-amber-400">
+          <div className="text-[11px] text-[var(--status-atencao)]">
             {sugestao.projecaoRemuneracao.sessoesSemValor} sessão(ões) sem valor cadastrado
           </div>
         )}

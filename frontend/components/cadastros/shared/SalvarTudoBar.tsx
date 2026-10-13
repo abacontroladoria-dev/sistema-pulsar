@@ -12,7 +12,7 @@ export function SalvarTudoBar({ dirtyCount, saving, onSave }: SalvarTudoBarProps
   return (
     <div className="flex items-center gap-3 shrink-0">
       {dirtyCount > 0 && (
-        <span className="text-xs font-semibold text-amber-600 dark:text-amber-400 whitespace-nowrap">
+        <span className="text-xs font-semibold text-[var(--status-atencao)] whitespace-nowrap">
           {dirtyCount} {dirtyCount === 1 ? "alteração não salva" : "alterações não salvas"}
         </span>
       )}

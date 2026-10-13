@@ -110,7 +110,7 @@ function DiffEvidencias({ antes, depois }: { antes: unknown; depois: unknown }) 
       ))}
       {adicionadas.map(e => (
         <li key={`+${e.caminho}`} className="flex min-w-0 gap-1.5">
-          <span className="shrink-0 font-bold text-emerald-600 dark:text-emerald-400" aria-label="Adicionado">+</span>
+          <span className="shrink-0 font-bold text-[var(--status-ok)]" aria-label="Adicionado">+</span>
           <LinkEvidencia evidencia={e} />
         </li>
       ))}

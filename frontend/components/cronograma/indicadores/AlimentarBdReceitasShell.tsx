@@ -253,7 +253,7 @@ export function AlimentarBdReceitasShell() {
                     <td className="py-1.5 px-2">{competenciaLabelCurto(r.competencia)}</td>
                     <td className="py-1.5 px-2">{r.numero_nf || "—"}</td>
                     <td className="py-1.5 px-2">{r.data_pagamento ? new Date(r.data_pagamento + "T00:00").toLocaleDateString("pt-BR") : "—"}</td>
-                    <td className="py-1.5 px-2 text-right tabular-nums font-semibold text-emerald-600 dark:text-emerald-400">{fmtReal(Number(r.valor_pago))}</td>
+                    <td className="py-1.5 px-2 text-right tabular-nums font-semibold text-[var(--status-ok)]">{fmtReal(Number(r.valor_pago))}</td>
                     <td className="py-1.5 pr-3 pl-2 text-[11px] text-muted-foreground">
                       {r.atualizado_por_nome ?? "—"}{r.atualizado_em_brasilia ? ` · ${r.atualizado_em_brasilia}` : ""}
                     </td>

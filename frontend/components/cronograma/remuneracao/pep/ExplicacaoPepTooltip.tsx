@@ -77,7 +77,7 @@ export function ExplicacaoPepTooltip({ apuracao, catalogo, semanasCalendario }: 
           ))}
           {devolucoes.map((l, i) => (
             <Linha key={`v${i}`} rotulo={l.nome} nota={nota(l)}
-              valor={`+ ${money(l.valor)}`} tom="text-emerald-600 dark:text-emerald-400" />
+              valor={`+ ${money(l.valor)}`} tom="text-[var(--status-ok)]" />
           ))}
           <div className="border-t border-border pt-2">
             <Linha rotulo="PEP apurada" valor={money(e.liquido)} forte />
@@ -105,9 +105,9 @@ export function ExplicacaoPepTooltip({ apuracao, catalogo, semanasCalendario }: 
             <Linha rotulo="Falta para 100%" valor={money(e.faltaPara100)} forte />
             {e.recuperavelComEntregas > 0.005 && (porItemExato
               ? recuperaveis.map((l, i) => (
-                  <Linha key={`a${i}`} rotulo={acao(l)} valor={`+ ${money(l.valor)}`} tom="text-emerald-600 dark:text-emerald-400" suave />
+                  <Linha key={`a${i}`} rotulo={acao(l)} valor={`+ ${money(l.valor)}`} tom="text-[var(--status-ok)]" suave />
                 ))
-              : <Linha rotulo="Entregando todos os itens" valor={`+ ${money(e.recuperavelComEntregas)}`} tom="text-emerald-600 dark:text-emerald-400" suave />
+              : <Linha rotulo="Entregando todos os itens" valor={`+ ${money(e.recuperavelComEntregas)}`} tom="text-[var(--status-ok)]" suave />
             )}
             {naoRecuperavel > 0.005 && (
               <Linha rotulo="Saldo de meses anteriores" nota="não volta com entregas deste mês" valor={money(naoRecuperavel)} suave />

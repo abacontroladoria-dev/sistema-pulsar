@@ -652,7 +652,7 @@ function CartaoFaixa({
             </div>
             <div>
               <CampoSelect label="Local" value={f.localId} onChange={v => onMudar({ localId: v })} disabled={false} opcoes={opcoesLocal} vazio="Escolha o local" />
-              {localSumiu && <p className="mt-1 text-xs font-semibold text-amber-600 dark:text-amber-400">O local gravado ({f.localNome}) não existe mais em Ocupação de Salas.</p>}
+              {localSumiu && <p className="mt-1 text-xs font-semibold text-[var(--status-atencao)]">O local gravado ({f.localNome}) não existe mais em Ocupação de Salas.</p>}
             </div>
           </div>
 
@@ -671,7 +671,7 @@ function CartaoFaixa({
       {(erros.length > 0 || avisos.length > 0 || conflito || exclusiva) && (
         <ul className="space-y-1 px-4 pb-3 text-[12px] font-bold">
           {erros.map(e => <li key={e} className="flex items-start gap-1.5 text-rose-600 dark:text-rose-400"><AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden />{e}</li>)}
-          {avisos.map(a => <li key={a} className="flex items-start gap-1.5 text-amber-600 dark:text-amber-400"><Info className="mt-0.5 h-3 w-3 shrink-0" aria-hidden />{a}</li>)}
+          {avisos.map(a => <li key={a} className="flex items-start gap-1.5 text-[var(--status-atencao)]"><Info className="mt-0.5 h-3 w-3 shrink-0" aria-hidden />{a}</li>)}
           {conflito && (
             <li className={`flex items-start gap-1.5 ${conflito.excedeu ? "text-rose-600 dark:text-rose-400" : "text-[var(--pp-ink-muted)]"}`}>
               {conflito.excedeu ? <MapPin className="mt-0.5 h-3 w-3 shrink-0" aria-hidden /> : <Users className="mt-0.5 h-3 w-3 shrink-0" aria-hidden />}
@@ -681,7 +681,7 @@ function CartaoFaixa({
             </li>
           )}
           {exclusiva && (
-            <li className="flex items-start gap-1.5 text-amber-600 dark:text-amber-400">
+            <li className="flex items-start gap-1.5 text-[var(--status-atencao)]">
               <Info className="mt-0.5 h-3 w-3 shrink-0" aria-hidden />
               {local?.nome_exibicao} é exclusiva de {exclusiva.join(", ")} (Ocupação de Salas).
             </li>

@@ -136,7 +136,7 @@ export const CardLaudo = memo(function CardLaudo({
             <dd
               className={`whitespace-nowrap text-sm font-bold tabular-nums ${
                 item.mensagemEnviadaEm
-                  ? "text-emerald-600 dark:text-emerald-400"
+                  ? "text-[var(--status-ok)]"
                   : item.situacao === "vencido"
                     ? "text-rose-600 dark:text-rose-400"
                     : "text-muted-foreground"
@@ -281,7 +281,7 @@ function estadoDoLaudo(
   if (item.situacao === "vigente") {
     return {
       estado: "Vigente",
-      cor: "text-emerald-600 dark:text-emerald-400",
+      cor: "text-[var(--status-ok)]",
       contorno: "border-emerald-500/40 bg-emerald-500/5",
     }
   }

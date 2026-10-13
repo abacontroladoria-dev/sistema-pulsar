@@ -6,7 +6,7 @@ import type { SaveStatus } from "@/hooks/useDraftRow"
 export function SaveStatusBadge({ status, errorMessage }: { status: SaveStatus; errorMessage?: string | null }) {
   if (status === "idle") return <span className="inline-block w-16" />
   if (status === "dirty") {
-    return <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 w-16 inline-block">não salvo</span>
+    return <span className="text-[10px] font-semibold text-[var(--status-atencao)] w-16 inline-block">não salvo</span>
   }
   if (status === "saving") {
     return (
@@ -17,7 +17,7 @@ export function SaveStatusBadge({ status, errorMessage }: { status: SaveStatus; 
   }
   if (status === "saved") {
     return (
-      <span className="inline-flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 w-16 animate-in fade-in duration-200">
+      <span className="inline-flex items-center gap-1 text-[10px] text-[var(--status-ok)] w-16 animate-in fade-in duration-200">
         <Check size={10} /> salvo
       </span>
     )

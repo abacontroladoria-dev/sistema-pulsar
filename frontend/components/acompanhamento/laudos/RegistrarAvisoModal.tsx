@@ -130,7 +130,7 @@ export function RegistrarAvisoModal({
               className={
                 item.situacao === "vencido"
                   ? "font-bold text-rose-600 dark:text-rose-400"
-                  : "font-bold text-emerald-600 dark:text-emerald-400"
+                  : "font-bold text-[var(--status-ok)]"
               }
             >
               {SITUACAO_LAUDO_LABEL[item.situacao]}

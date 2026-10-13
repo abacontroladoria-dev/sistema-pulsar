@@ -310,7 +310,7 @@ function MetricButton({ label, qtd, sessoes, sign, tone, active, onClick, unidad
           <div className="text-[10px] text-muted-foreground">{unidade}</div>
         </div>
         <div>
-          <div className={`text-xl font-black ${sign === "pos" ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
+          <div className={`text-xl font-black ${sign === "pos" ? "text-[var(--status-ok)]" : "text-rose-600 dark:text-rose-400"}`}>
             {sign === "pos" ? "+" : "-"}{sessoes}
           </div>
           <div className="text-[10px] text-muted-foreground">sessões</div>
@@ -1215,7 +1215,7 @@ export function ComparativoSessoesShell() {
                           </td>
                           <td className="py-1.5 px-2 text-right tabular-nums">{u.p1}</td>
                           <td className="py-1.5 px-2 text-right tabular-nums">{u.p2}</td>
-                          <td className="py-1.5 px-2 text-right tabular-nums text-emerald-600 dark:text-emerald-400">{u.sessoesAumentadas > 0 ? `+${u.sessoesAumentadas}` : "—"}</td>
+                          <td className="py-1.5 px-2 text-right tabular-nums text-[var(--status-ok)]">{u.sessoesAumentadas > 0 ? `+${u.sessoesAumentadas}` : "—"}</td>
                           <td className="py-1.5 px-2 text-right tabular-nums">{u.pacientesComAumento > 0 ? u.pacientesComAumento : "—"}</td>
                           <td className="py-1.5 px-2 text-right tabular-nums text-rose-600 dark:text-rose-400">{u.sessoesReduzidas > 0 ? `-${u.sessoesReduzidas}` : "—"}</td>
                           <td className="py-1.5 px-2 text-right tabular-nums">{u.pacientesComReducao > 0 ? u.pacientesComReducao : "—"}</td>
@@ -1262,7 +1262,7 @@ export function ComparativoSessoesShell() {
                     <td className="py-1.5 pr-2">TOTAL</td>
                     <td className="py-1.5 px-2 text-right tabular-nums">{resultado.totalP1}</td>
                     <td className="py-1.5 px-2 text-right tabular-nums">{resultado.totalP2}</td>
-                    <td className="py-1.5 px-2 text-right tabular-nums text-emerald-600 dark:text-emerald-400">+{resultado.resumo.sessoesAumentadas}</td>
+                    <td className="py-1.5 px-2 text-right tabular-nums text-[var(--status-ok)]">+{resultado.resumo.sessoesAumentadas}</td>
                     <td className="py-1.5 px-2 text-right tabular-nums">{resultado.resumo.pacientesAumentaram}</td>
                     <td className="py-1.5 px-2 text-right tabular-nums text-rose-600 dark:text-rose-400">-{resultado.resumo.sessoesReduzidas}</td>
                     <td className="py-1.5 px-2 text-right tabular-nums">{resultado.resumo.pacientesReduziram}</td>
@@ -2052,7 +2052,7 @@ function TurnoverProfissionaisSection({
                   </td>
                   <td className="py-1.5 px-2 text-right tabular-nums">
                     {t.entrada.length > 0
-                      ? <span className="font-bold text-emerald-600 dark:text-emerald-400">{t.entrada.length}</span>
+                      ? <span className="font-bold text-[var(--status-ok)]">{t.entrada.length}</span>
                       : <span className="text-muted-foreground/40">—</span>}
                   </td>
                   <td className="py-1.5 px-2 text-right tabular-nums text-muted-foreground">
@@ -2190,7 +2190,7 @@ interface ListaProfissionaisTurnoverProps {
 function ListaProfissionaisTurnover({ titulo, icone: Icone, tom, lado, lista, aberto, onAbrir }: ListaProfissionaisTurnoverProps) {
   const cor = tom === "rose"
     ? "text-rose-600 dark:text-rose-400"
-    : "text-emerald-600 dark:text-emerald-400"
+    : "text-[var(--status-ok)]"
 
   // "Ainda ativo" só existe do lado "saida" (ver ProfissionalTurnover.aindaAtivo)
   // — filtro só faz sentido, e só aparece, quando há pelo menos 1 caso.

@@ -96,7 +96,7 @@ export default function StatusActionButtons({
             onClick={() =>
               abrirModalStatus(grupo)
             }
-            className="flex-1 h-11 rounded-xl border border-emerald-300 bg-white text-emerald-600 text-sm font-semibold transition hover:bg-emerald-50"
+            className="flex-1 h-11 rounded-xl border border-emerald-300 bg-white text-[var(--status-ok)] text-sm font-semibold transition hover:bg-emerald-50"
           >
             Disponível agora
           </button>

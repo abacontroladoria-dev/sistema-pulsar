@@ -181,7 +181,7 @@ export default function DisponibilidadeTerapeutaCard({
                     'disponivel'
                   )
                 }
-                className="flex-1 h-11 rounded-xl border border-emerald-300 bg-white text-emerald-600 text-sm font-semibold disabled:opacity-50 transition hover:bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-2"
+                className="flex-1 h-11 rounded-xl border border-emerald-300 bg-white text-[var(--status-ok)] text-sm font-semibold disabled:opacity-50 transition hover:bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-2"
               >
                 Confirmar pendentes
               </button>
@@ -203,7 +203,7 @@ export default function DisponibilidadeTerapeutaCard({
               type="button"
               disabled={salvando}
               onClick={() => abrirModalStatus(grupo, 'disponivel')}
-              className="flex-1 h-11 rounded-xl border border-emerald-300 bg-white text-emerald-600 text-sm font-semibold disabled:opacity-50 transition hover:bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-2"
+              className="flex-1 h-11 rounded-xl border border-emerald-300 bg-white text-[var(--status-ok)] text-sm font-semibold disabled:opacity-50 transition hover:bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-2"
             >
               Disponível agora
             </button>

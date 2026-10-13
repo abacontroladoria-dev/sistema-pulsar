@@ -342,7 +342,7 @@ function SidePanel({ atendimento, onReverterFalta }: Props) {
                   <span className="inline-flex items-center gap-1.5">
                     {realizou}
                     {subbed && (
-                      <span className="inline-flex items-center gap-1 text-amber-600 text-xs">
+                      <span className="inline-flex items-center gap-1 text-[var(--status-atencao)] text-xs">
                         <Repeat2 className="w-3 h-3" /> substituto
                       </span>
                     )}

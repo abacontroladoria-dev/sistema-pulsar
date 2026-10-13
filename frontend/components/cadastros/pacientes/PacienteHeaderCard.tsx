@@ -89,7 +89,7 @@ export function PacienteHeaderCard({
               </span>
             )}
             {!paciente.falecido && paciente.ativo && (
-              <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+              <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-[var(--status-ok)]">
                 Ativo
               </span>
             )}
@@ -99,7 +99,7 @@ export function PacienteHeaderCard({
               </span>
             )}
             {paciente.ficticio && (
-              <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-600 dark:text-amber-400">
+              <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-[var(--status-atencao)]">
                 Fictício
               </span>
             )}
@@ -122,7 +122,7 @@ export function PacienteHeaderCard({
             type="button"
             onClick={onAlterarSituacao}
             className={`inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-2 text-sm font-semibold hover:bg-muted ${foco} ${
-              paciente.ativo ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"
+              paciente.ativo ? "text-rose-600 dark:text-rose-400" : "text-[var(--status-ok)]"
             }`}
           >
             {paciente.ativo ? (

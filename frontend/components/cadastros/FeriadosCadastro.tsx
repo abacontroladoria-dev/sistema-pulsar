@@ -136,7 +136,7 @@ export function FeriadosCadastro() {
 
         <div className="flex items-center gap-3 shrink-0">
           {isDirty && (
-            <span className="text-xs font-semibold text-amber-600 dark:text-amber-400 whitespace-nowrap">
+            <span className="text-xs font-semibold text-[var(--status-atencao)] whitespace-nowrap">
               alterações não salvas
             </span>
           )}

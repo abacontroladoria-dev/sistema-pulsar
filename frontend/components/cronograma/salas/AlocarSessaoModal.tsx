@@ -454,7 +454,7 @@ export function AlocarSessaoModal({
             <span className="text-[11px] font-semibold text-rose-600 dark:text-rose-400">{verificacaoExclusividade.motivo}</span>
           )}
           {verificacaoExclusividade.status === "aviso" && (
-            <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400">{verificacaoExclusividade.motivo}</span>
+            <span className="text-[11px] font-semibold text-[var(--status-atencao)]">{verificacaoExclusividade.motivo}</span>
           )}
         </label>
 

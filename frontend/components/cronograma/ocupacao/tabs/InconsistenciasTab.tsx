@@ -557,7 +557,7 @@ export function InconsistenciasTab({ items, cRows }: Props) {
                           <div className="mt-0.5 text-[11px]">
                             <span className="text-rose-600 dark:text-rose-400">Atual: &quot;{item.terapiaExibAtual}&quot;</span>
                             {" → "}
-                            <span className="text-emerald-600 dark:text-emerald-400">Esperado: &quot;{item.terapiaExibEsperada}&quot;</span>
+                            <span className="text-[var(--status-ok)]">Esperado: &quot;{item.terapiaExibEsperada}&quot;</span>
                           </div>
                         )}
                       </div>
