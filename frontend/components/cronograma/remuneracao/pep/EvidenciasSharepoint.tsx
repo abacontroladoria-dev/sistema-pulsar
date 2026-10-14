@@ -1,8 +1,8 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { Bot, Check, ExternalLink, FileX2, Hourglass, Loader2, RotateCcw, Undo2, User, X } from "lucide-react"
-import { nomeEsperado, porQueEsperando } from "@/lib/roboSharepoint/rotulos"
+import { Bot, Check, ExternalLink, FilePenLine, FileX2, Hourglass, Loader2, RotateCcw, Undo2, User, X } from "lucide-react"
+import { MOTIVOS_PADRAO, nomeEsperado, porQueEsperando } from "@/lib/roboSharepoint/rotulos"
 import type { PepCatalogoItem } from "@/types/pep"
 import type { SpItem } from "@/types/roboSharepoint"
 import { ORIGEM, SeloUnidade } from "./origem"
@@ -16,12 +16,15 @@ import { ORIGEM, SeloUnidade } from "./origem"
 //     com o motivo, o nome que o arquivo deveria ter e "Marcar como entrega";
 //   • o que alguém já desfez, com quem e por quê;
 //   • as entregas que saíram junto com a evidência apagada do SharePoint
-//     (20261003100000: a entrega acompanha a pasta, do robô ou de pessoa).
+//     (20261003100000: a entrega acompanha a pasta, do robô ou de pessoa);
+//   • as entregas que valem mas cujo arquivo precisa ser renomeado ("Ajustar
+//     nomenclatura", 14/10/2026): marcadas por pessoa com o nome fora do
+//     padrão, ou renomeadas fora do padrão depois de entregues.
 // Roxo = robô, azul = pessoa (./origem).
 
 export type AvaliacaoSugestao = { pode: true } | { pode: false; motivo: string }
 
-type Aba = "robo" | "esperando" | "desfeitas" | "sairam"
+type Aba = "robo" | "esperando" | "ajustar" | "desfeitas" | "sairam"
 
 const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
 
@@ -74,13 +77,18 @@ export function EvidenciasSharepoint({ itens, catalogo, avaliar, onConfirmar, on
   const desfeitas = useMemo(() => itens.filter(i => i.status === "revertido"), [itens])
   // Entregues e depois apagados do SharePoint: a unidade saiu (o robô retirou).
   const sairam = useMemo(() => itens.filter(i => i.status === "removido" && !!i.entregue_por), [itens])
+  // Entregue (robô ou pessoa), ainda na pasta, com o nome fora do padrão.
+  const ajustar = useMemo(
+    () => itens.filter(i => i.status === "confirmado" && !i.removido_em && (i.padrao === "fora" || i.padrao === "duplicado")),
+    [itens]
+  )
   const [escolhida, setEscolhida] = useState<Aba | null>(null)
   const aba: Aba = escolhida ?? (esperando.length > 0 ? "esperando" : "robo")
   const [ocupado, setOcupado] = useState<string | null>(null)
   const [desfazendo, setDesfazendo] = useState<string | null>(null)
   const [motivo, setMotivo] = useState("")
 
-  if (doRobo.length + esperando.length + desfeitas.length + sairam.length === 0) return null
+  if (doRobo.length + esperando.length + ajustar.length + desfeitas.length + sairam.length === 0) return null
 
   const aprovadas = doRobo.length + desfeitas.length
   const acerto = aprovadas > 0 ? Math.round((doRobo.length / aprovadas) * 100) : null
@@ -96,6 +104,7 @@ export function EvidenciasSharepoint({ itens, catalogo, avaliar, onConfirmar, on
   const ABAS: { id: Aba; rotulo: string; n: number; icone: typeof Bot }[] = [
     { id: "robo", rotulo: "Robô entregou", n: doRobo.length, icone: Bot },
     { id: "esperando", rotulo: "Esperando você", n: esperando.length, icone: Hourglass },
+    ...(ajustar.length ? [{ id: "ajustar" as const, rotulo: "Ajustar nomenclatura", n: ajustar.length, icone: FilePenLine }] : []),
     { id: "desfeitas", rotulo: "Desfeitas", n: desfeitas.length, icone: Undo2 },
     ...(sairam.length ? [{ id: "sairam" as const, rotulo: "Saíram da pasta", n: sairam.length, icone: FileX2 }] : []),
   ]
@@ -213,7 +222,10 @@ export function EvidenciasSharepoint({ itens, catalogo, avaliar, onConfirmar, on
                         {porQueEsperando(i)}
                       </span>
                       {esperado && (
-                        <p className="mt-1 text-xs text-muted-foreground">Nome esperado: <code className="rounded bg-muted px-1 py-0.5 font-semibold text-foreground">{esperado}</code></p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Nome esperado: <code className="rounded bg-muted px-1 py-0.5 font-semibold text-foreground">{esperado}</code>.
+                          {" "}Pode marcar como entrega: ela vale e fica com o aviso “Ajustar nomenclatura” até o arquivo ser renomeado.
+                        </p>
                       )}
                     </div>
                   </div>
@@ -232,6 +244,31 @@ export function EvidenciasSharepoint({ itens, catalogo, avaliar, onConfirmar, on
                   </div>
                 </div>
                 {!av.pode && <p className="text-xs text-amber-800 dark:text-amber-300">{av.motivo}</p>}
+              </li>
+            )
+          })}
+
+          {aba === "ajustar" && ajustar.map(i => {
+            const quem = i.entregue_por === "robo" ? "robo" : "humano"
+            const esperado = nomeEsperado(sigla(i), i.paciente_nome, i.competencia, Number(i.nome_padrao?.seq ?? 1) || 1)
+            return (
+              <li key={i.sp_id} className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex min-w-0 items-start gap-3">
+                  <SeloUnidade origem={quem} tamanho={22} />
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-foreground">{titulo(i)}</p>
+                    <p className="truncate text-xs text-muted-foreground" title={i.nome}>{i.nome}</p>
+                    <span className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-900 ring-1 ring-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-900">
+                      <FilePenLine size={12} aria-hidden />
+                      {i.padrao === "duplicado" ? MOTIVOS_PADRAO.repetido : MOTIVOS_PADRAO[i.padrao_motivo ?? ""] ?? "Nome fora do padrão"}
+                    </span>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      A entrega vale ({quem === "robo" ? "robô" : "pessoa"}{i.resolvido_em ? `, ${dataBR(i.resolvido_em)}` : ""}). Renomeie no SharePoint
+                      {esperado ? <>: <code className="rounded bg-muted px-1 py-0.5 font-semibold text-foreground">{esperado}</code></> : null}
+                    </p>
+                  </div>
+                </div>
+                <BotaoArquivo url={i.web_url} />
               </li>
             )
           })}

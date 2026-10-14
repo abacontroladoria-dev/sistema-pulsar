@@ -29,6 +29,8 @@ import { conferirMes, listarConferencias } from "@/services/pepSituacao.service"
 import type { ConferenciaMes } from "@/lib/remuneracao/situacaoEntregasPep"
 import type { SpItem } from "@/types/roboSharepoint"
 import { AnelProgresso, tom } from "@/components/ui/pastel/pecas"
+import { ajusteDaEvidencia, type AjusteNome } from "@/lib/roboSharepoint/ajusteNome"
+import { AjusteNomeContexto, AvisoAjustarNome, SeloAjustarNome, useAjusteNome, useContarAjustes, type ConferirAjuste } from "./pep/ajusteNome"
 
 // Motivo gravado na trilha de auditoria quando a entrega vem de uma sugestão
 // do robô SharePoint (a pessoa que clicou em "Confirmar" é quem fica como autora).
@@ -272,6 +274,18 @@ export function PepEntregasTab() {
     prestador, competencia, pacientesApuracao, valorMensalPorPaciente
   )
   const { itens: spItens, carregando: spCarregando, recarregar: recarregarSp } = usePepSharepoint(prestador, competencia)
+
+  // Selo "Ajustar nomenclatura" (14/10/2026): a entrega vale mesmo com o nome
+  // fora do padrão, mas a unidade carrega o aviso até o arquivo ser renomeado.
+  // Arquivo lido pelo robô: vale o padrão gravado no banco; caminho digitado:
+  // a mesma regra em TS (lib/roboSharepoint/ajusteNome.ts).
+  const spPorId = useMemo(() => new Map(spItens.map(i => [i.sp_id, i])), [spItens])
+  const conferirAjuste = useCallback<ConferirAjuste>(
+    (ev, indice, pacienteNome, item) => ajusteDaEvidencia(ev, {
+      sigla: item.sigla, tipoRegistro: item.tipo_registro, pacienteNome, competencia, spPorId,
+    }, indice),
+    [spPorId, competencia]
+  )
 
   // "Conferido" (20261003110000): uma pessoa conferiu as entregas do analista no
   // mês. Vale até uma entrega dele mudar depois — a visão geral usa a mesma regra.
@@ -621,6 +635,7 @@ export function PepEntregasTab() {
   }
 
   return (
+    <AjusteNomeContexto.Provider value={conferirAjuste}>
     <div ref={topoRef} className="space-y-6">
       {!analistaVisivel && (
         <div className="flex min-h-[40vh] items-center justify-center" role="status" aria-live="polite">
@@ -739,6 +754,7 @@ export function PepEntregasTab() {
                     <td key={item.id} className={`px-3 py-3 text-center ${i === 0 ? "border-l border-border" : ""}`}>
                       <CelulaRecorrente
                         item={item}
+                        pacienteNome={null}
                         semanasCalendario={semanasCalendario}
                         registro={registroDe(null, item.id)}
                         onClick={() => setCelulaAtiva({ pacienteNome: null, item })}
@@ -796,6 +812,7 @@ export function PepEntregasTab() {
                       <td key={item.id} className={`px-3 py-3 text-center ${i === 0 ? "border-l border-border" : ""}`}>
                         <CelulaRecorrente
                           item={item}
+                          pacienteNome={paciente}
                           semanasCalendario={semanasCalendario}
                           registro={registroDe(paciente, item.id)}
                           onClick={() => setCelulaAtiva({ pacienteNome: paciente, item })}
@@ -957,6 +974,7 @@ export function PepEntregasTab() {
       )}
       </div>
     </div>
+    </AjusteNomeContexto.Provider>
   )
 }
 
@@ -1171,8 +1189,9 @@ function temEvidencia(registro: RegistroResumo): boolean {
   return !!registro?.evidencias?.some(e => e.caminho)
 }
 
-function CelulaRecorrente({ item, semanasCalendario, registro, onClick, disabled }: {
+function CelulaRecorrente({ item, pacienteNome, semanasCalendario, registro, onClick, disabled }: {
   item: PepCatalogoItem
+  pacienteNome: string | null
   semanasCalendario: number
   registro: RegistroResumo
   onClick: () => void
@@ -1184,6 +1203,7 @@ function CelulaRecorrente({ item, semanasCalendario, registro, onClick, disabled
   const unidades = Array.from({ length: esperado }, (_, i) => (i < entregue ? origemDaUnidade(registro?.evidencias, i) : null))
   const { robo, humano } = contarOrigem(registro)
   const quem = [robo ? `${robo} do robô` : "", humano ? `${humano} de pessoa` : ""].filter(Boolean).join(", ")
+  const ajustes = useContarAjustes(registro?.evidencias, pacienteNome, item)
   return (
     <button
       type="button"
@@ -1202,6 +1222,7 @@ function CelulaRecorrente({ item, semanasCalendario, registro, onClick, disabled
         {unidades.map((o, i) => <SeloUnidade key={i} origem={o} tamanho={14} />)}
       </span>
       {temEvidencia(registro) && <Paperclip size={11} aria-hidden />}
+      <SeloAjustarNome quantidade={ajustes} />
     </button>
   )
 }
@@ -1218,6 +1239,7 @@ function CelulaSemestral({ paciente, item, plano, registro, hoje, onClick, disab
   disabled?: boolean
 }) {
   const { statusLabel, entregue, icone } = statusSemestral(item, plano, registro, hoje)
+  const ajustes = useContarAjustes(registro?.evidencias, paciente, item)
   const reiterada = statusLabel === "Pendência reiterada"
   const vencido = statusLabel === "Vencido"
   const reprogramado = statusLabel === "Reprogramado (REP-)"
@@ -1259,6 +1281,7 @@ function CelulaSemestral({ paciente, item, plano, registro, hoje, onClick, disab
       {statusLabel}
       {origem && <span className="sr-only"> por {ORIGEM[origem].rotulo}</span>}
       {temEvidencia(registro) && <Paperclip size={11} aria-hidden />}
+      <SeloAjustarNome quantidade={ajustes} />
     </button>
   )
 }
@@ -1344,9 +1367,11 @@ function CabecalhoPainel({ item, pacienteNome, competencia, onFechar }: {
 // Uma unidade de referência de evidência — o caminho é a informação que
 // realmente importa (é o que torna a unidade faturável, PRD Seção 2.3/12.3);
 // o nome do arquivo é só apoio visual, por isso pesa menos na hierarquia.
-function CampoEvidenciaUnidade({ evidencia, rotulo, onChange }: {
+function CampoEvidenciaUnidade({ evidencia, rotulo, ajuste, onChange }: {
   evidencia: PepEvidencia
   rotulo: string
+  /** Nome fora do padrão: a entrega vale, com o aviso "Ajustar nomenclatura". */
+  ajuste?: AjusteNome | null
   onChange: (campo: keyof PepEvidencia, valor: string) => void
 }) {
   // Evidência confirmada a partir do robô do SharePoint chega com o endereço
@@ -1378,17 +1403,21 @@ function CampoEvidenciaUnidade({ evidencia, rotulo, onChange }: {
         onChange={e => onChange("caminho", e.target.value)}
         className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm"
       />
+      {ajuste && <AvisoAjustarNome ajuste={ajuste} />}
     </div>
   )
 }
 
 // Uma referência de evidência por unidade entregue (ex.: 2 de TAP = 2 campos
 // — PRD Seção 13.6 usa nomenclatura sequencial: TAP-01-..., TAP-02-...).
-function CamposEvidencia({ evidencias, onChange, rotulo }: {
+function CamposEvidencia({ evidencias, onChange, rotulo, conferirNome }: {
   evidencias: PepEvidencia[]
   onChange: (evidencias: PepEvidencia[]) => void
   rotulo: (indice: number) => string
+  /** Item e paciente da célula: liga o aviso "Ajustar nomenclatura" (sem isso, nada é conferido). */
+  conferirNome?: { item: PepCatalogoItem; pacienteNome: string | null }
 }) {
+  const conferir = useAjusteNome()
   function atualizar(indice: number, campo: keyof PepEvidencia, valor: string) {
     // Trocar o caminho de uma unidade do robô a torna da pessoa (o gatilho do
     // banco registra a entrega do robô como desfeita).
@@ -1407,6 +1436,7 @@ function CamposEvidencia({ evidencias, onChange, rotulo }: {
           key={i}
           evidencia={ev}
           rotulo={rotulo(i)}
+          ajuste={conferirNome && ev.caminho.trim() ? conferir(ev, i, conferirNome.pacienteNome, conferirNome.item) : null}
           onChange={(campo, valor) => atualizar(i, campo, valor)}
         />
       ))}
@@ -1606,6 +1636,7 @@ function PainelQuantidade({ pacienteNome, item, competencia, semanasCalendario, 
           <CamposEvidencia
             evidencias={evidencias}
             onChange={setEvidencias}
+            conferirNome={{ item, pacienteNome }}
             rotulo={i => esperado > 1 ? `Referência da evidência — unidade ${i + 1} de ${quantidade}` : "Referência da evidência"}
           />
         )}
@@ -1809,7 +1840,7 @@ function PainelSemestral({ pacienteNome, item, registro, planejamento, erro, onF
           )}
         </div>
 
-        <CamposEvidencia evidencias={evidencias} onChange={setEvidencias} rotulo={() => "Referência da evidência"} />
+        <CamposEvidencia evidencias={evidencias} onChange={setEvidencias} conferirNome={{ item, pacienteNome }} rotulo={() => "Referência da evidência"} />
 
         <div className="space-y-2">
           <label htmlFor="pep-observacao" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider">
