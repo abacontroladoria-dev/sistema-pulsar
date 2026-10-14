@@ -23,7 +23,12 @@ export type ItemDoDocumento = {
   web_url: string | null
   status: string
   motivo: string | null
+  /** Etapa 1 (nome): ok | fora | duplicado | rep | null. */
   padrao: string | null
+  padrao_motivo?: string | null
+  /** Número lido do nome (TAP, STC, ETC). */
+  nome_seq?: string | null
+  paciente_pasta_nome?: string | null
 }
 
 /** A pasta do prestador: nome e se o robô a reconheceu. */

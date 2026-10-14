@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
-import { AlertTriangle, Building2, CalendarDays, ChevronRight, Copy, FileSearch, Loader2, RefreshCw, ScrollText, Search, ShieldCheck } from "lucide-react"
+import { AlertTriangle, Building2, CalendarDays, ChevronRight, Copy, FileSearch, FileText, Loader2, RefreshCw, ScrollText, Search, ShieldCheck } from "lucide-react"
 import toast from "react-hot-toast"
 import { DatePicker } from "@/components/ui/date-picker"
 import { StatusChip, TONE_CHIP, TONE_PANEL } from "@/components/ui/tones"
@@ -11,7 +11,8 @@ import { KpiFiltro } from "@/components/terapeutico/auditoria/KpiFiltro"
 import { Paginacao, usePaginacao } from "@/components/terapeutico/auditoria/Paginacao"
 import { BOTAO_PRIMARIO, BOTAO_SECUNDARIO, CARTAO, FOCO, ROTULO } from "@/components/terapeutico/auditoria/vocabulario"
 import { useToneColor } from "@/hooks/useToneColor"
-import { ORDEM_SITUACAO, RELACAO, SIGLAS_PEP, SITUACAO, TOM_SITUACAO } from "@/lib/pepDocumentos/rotulos"
+import { ORDEM_NOME, ORDEM_SITUACAO, RELACAO, SIGLAS_PEP, SITUACAO, SITUACAO_NOME, TOM_SITUACAO } from "@/lib/pepDocumentos/rotulos"
+import { situacaoNome, type EstadoNome, type SituacaoNome } from "@/lib/pepDocumentos/nome"
 import { desatualizado, precisaAuditar, situacaoDoDocumento, type SituacaoAuditoria } from "@/lib/pepDocumentos/situacao"
 import type { SemelhancaPep } from "@/lib/pepDocumentos/tipos"
 import { mesBR, nomeCurtoPrestador } from "@/lib/roboSharepoint/rotulos"
@@ -21,6 +22,7 @@ import {
 } from "@/services/pepAuditoriaDocumentos.service"
 import { DetalheDocumento, SeloSituacao, type OutroLado } from "./DetalheDocumento"
 import { ModalReguas } from "./ModalReguas"
+import { ModelosNome } from "./ModelosNome"
 
 // Auditoria de Documentos PEP (15/10/2026). Molde: Auditoria de Evoluções
 // (components/terapeutico/auditoria/AuditoriaEvolucoesShell.tsx) — cartões que
@@ -32,7 +34,7 @@ import { ModalReguas } from "./ModalReguas"
 // PEP não alcança (ela organiza por analista reconhecido).
 
 type Aba = "prestadores" | "documentos" | "duplicados"
-type Recorte = { mes: string; prest: string[]; sigla: string; sit: SituacaoAuditoria | "desatualizado" | ""; q: string; aba: Aba }
+type Recorte = { mes: string; prest: string[]; sigla: string; nome: EstadoNome | ""; sit: SituacaoAuditoria | "desatualizado" | ""; q: string; aba: Aba }
 
 const SEM_PRESTADOR = "sem"
 const POR_PAGINA = 50
@@ -45,6 +47,7 @@ function lerRecorte(p: URLSearchParams): Recorte {
     mes: /^\d{4}-\d{2}$/.test(p.get("mes") ?? "") ? p.get("mes")! : "",
     prest: (p.get("prest") ?? "").split(",").filter(Boolean),
     sigla: (SIGLAS_PEP as readonly string[]).includes(sigla) ? sigla : "",
+    nome: (ORDEM_NOME as string[]).includes(p.get("nome") ?? "") ? (p.get("nome") as EstadoNome) : "",
     sit: ([...ORDEM_SITUACAO, "desatualizado"] as string[]).includes(sit) ? (sit as Recorte["sit"]) : "",
     q: p.get("q") ?? "",
     aba: aba === "documentos" || aba === "duplicados" ? aba : "prestadores",
@@ -56,6 +59,7 @@ function escreverRecorte(r: Recorte): string {
   if (r.mes) p.set("mes", r.mes)
   if (r.prest.length) p.set("prest", r.prest.join(","))
   if (r.sigla) p.set("sigla", r.sigla)
+  if (r.nome) p.set("nome", r.nome)
   if (r.sit) p.set("sit", r.sit)
   if (r.q) p.set("q", r.q)
   if (r.aba !== "prestadores") p.set("aba", r.aba)
@@ -67,6 +71,9 @@ const normal = (s: string | null | undefined) => (s ?? "").normalize("NFD").repl
 
 type Linha = {
   d: DocAuditoria
+  /** Etapa 1: o nome do arquivo. */
+  nome: SituacaoNome
+  /** Etapa 2: o conteúdo. */
   sit: SituacaoAuditoria
   desat: boolean
   precisa: boolean
@@ -90,6 +97,7 @@ export function AuditoriaDocumentosShell() {
   const [podeEscrever, setPodeEscrever] = useState(false)
   const [aberto, setAberto] = useState<string | null>(null)
   const [reguasAbertas, setReguasAbertas] = useState(false)
+  const [modelosAbertos, setModelosAbertos] = useState(false)
   const [busca, setBusca] = useState(recorte.q)
   const [lote, setLote] = useState<string | null>(null)
   const [progresso, setProgresso] = useState<Progresso | null>(null)
@@ -151,6 +159,7 @@ export function AuditoriaDocumentosShell() {
       const pasta = d.item.prestador_pasta_id
       return {
         d,
+        nome: situacaoNome(d.item),
         sit: situacaoDoDocumento(d),
         desat: desatualizado(d, rv),
         precisa: precisaAuditar(d, rv),
@@ -162,8 +171,11 @@ export function AuditoriaDocumentosShell() {
     })
   }, [dados, reguaVigente])
 
-  // Recorte SEM o filtro de situação: é sobre ele que os cartões contam.
-  const noRecorte = useMemo(() => {
+  // Recorte base (mês, prestador, documento, busca). As duas etapas se cruzam:
+  // os cartões do NOME contam dentro do filtro de conteúdo, e os do CONTEÚDO
+  // dentro do filtro de nome — clicar em "Nome fora do padrão" mostra como
+  // aqueles documentos ficaram no conteúdo, e vice-versa.
+  const base = useMemo(() => {
     const prest = new Set(recorte.prest)
     const q = normal(recorte.q)
     return todas.filter(l =>
@@ -173,17 +185,22 @@ export function AuditoriaDocumentosShell() {
       (!q || normal(`${l.d.item.nome} ${l.d.item.paciente_nome ?? ""} ${l.prestNome}`).includes(q)))
   }, [todas, recorte])
 
-  const visiveis = useMemo(() => {
-    if (!recorte.sit) return noRecorte
-    if (recorte.sit === "desatualizado") return noRecorte.filter(l => l.desat)
-    return noRecorte.filter(l => l.sit === recorte.sit)
-  }, [noRecorte, recorte.sit])
+  const passaSit = useCallback((l: Linha) => !recorte.sit || (recorte.sit === "desatualizado" ? l.desat : l.sit === recorte.sit), [recorte.sit])
+  const passaNome = useCallback((l: Linha) => !recorte.nome || l.nome.estado === recorte.nome, [recorte.nome])
+  const paraNome = useMemo(() => base.filter(passaSit), [base, passaSit])
+  const noRecorte = useMemo(() => base.filter(passaNome), [base, passaNome])
+  const visiveis = useMemo(() => base.filter(l => passaSit(l) && passaNome(l)), [base, passaSit, passaNome])
 
   const conta = useMemo(() => {
     const c = Object.fromEntries(ORDEM_SITUACAO.map(s => [s, 0])) as Record<SituacaoAuditoria, number>
     for (const l of noRecorte) c[l.sit]++
     return c
   }, [noRecorte])
+  const contaNome = useMemo(() => {
+    const c = Object.fromEntries(ORDEM_NOME.map(s => [s, 0])) as Record<EstadoNome, number>
+    for (const l of paraNome) c[l.nome.estado]++
+    return c
+  }, [paraNome])
 
   const paresNoRecorte = useMemo(() => {
     const ids = new Set(noRecorte.map(l => l.d.sp_id))
@@ -251,6 +268,7 @@ export function AuditoriaDocumentosShell() {
   const linhaAberta = aberto ? docPorId.get(aberto) ?? null : null
   const feitoPct = progresso && progresso.total > 0 ? Math.round(((progresso.total - progresso.pendentes) / progresso.total) * 100) : 0
   const sitCartao = (s: Recorte["sit"]) => () => aplicar({ sit: recorte.sit === s ? "" : s, aba: recorte.aba === "duplicados" ? "documentos" : recorte.aba })
+  const nomeCartao = (n: EstadoNome) => () => aplicar({ nome: recorte.nome === n ? "" : n, aba: recorte.aba === "duplicados" ? "documentos" : recorte.aba })
 
   return (
     <div className="space-y-4">
@@ -258,30 +276,56 @@ export function AuditoriaDocumentosShell() {
         <p className={`rounded-lg px-3 py-2 text-xs ring-1 ${TONE_PANEL.red.bg} ${TONE_PANEL.red.ring} ${TONE_CHIP.red.text}`}>{erro}</p>
       )}
 
-      {/* Cartões que filtram (como em evoluções). */}
+      {/* Cartões que filtram (como em evoluções), em duas etapas. */}
       {!dados ? (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
           {Array.from({ length: 7 }).map((_, k) => <div key={k} className="h-[104px] rounded-2xl border-2 border-border bg-card motion-safe:animate-pulse" />)}
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
-          <KpiFiltro rotulo="Lidos" valor={noRecorte.length} nota={`${noRecorte.filter(l => l.sit !== "ilegivel").length} com texto`}
-            ativo={!recorte.sit} onClick={() => aplicar({ sit: "" })} rotuloFiltro="Mostrar tudo" />
-          <KpiFiltro rotulo="Não auditados" valor={conta.nao_auditado}
-            nota={[conta.na_fila ? `${conta.na_fila} na fila` : "", conta.falhou ? `${conta.falhou} com falha` : ""].filter(Boolean).join(" · ") || "Esperando o Auditar"} tom="gray"
-            ativo={recorte.sit === "nao_auditado"} onClick={sitCartao("nao_auditado")} desabilitado={conta.nao_auditado === 0} rotuloFiltro="Ver os não auditados" />
-          <KpiFiltro rotulo="Está bom" valor={conta.bom} nota="Passou nas conferências" tom="green" cor={conta.bom ? toneColor("green") : undefined}
-            ativo={recorte.sit === "bom"} onClick={sitCartao("bom")} desabilitado={conta.bom === 0} rotuloFiltro="Ver os que estão bons" />
-          <KpiFiltro rotulo="Pode conter erros" valor={conta.pode_conter_erros} nota="Precisa de olho humano" tom="amber" cor={conta.pode_conter_erros ? toneColor("amber") : undefined}
-            ativo={recorte.sit === "pode_conter_erros"} onClick={sitCartao("pode_conter_erros")} desabilitado={conta.pode_conter_erros === 0} rotuloFiltro="Ver os que podem conter erros" />
-          <KpiFiltro rotulo="Está errado" valor={conta.errado} nota="Provado pelo trecho" tom="red" cor={conta.errado ? toneColor("red") : undefined}
-            ativo={recorte.sit === "errado"} onClick={sitCartao("errado")} desabilitado={conta.errado === 0} rotuloFiltro="Ver os errados" />
-          <KpiFiltro rotulo="Não foi possível ler" valor={conta.ilegivel} nota="Escaneado, foto, senha" tom="gray"
-            ativo={recorte.sit === "ilegivel"} onClick={sitCartao("ilegivel")} desabilitado={conta.ilegivel === 0} rotuloFiltro="Ver os ilegíveis" />
-          <KpiFiltro rotulo="Cópias" valor={paresNoRecorte.length} nota="Pares de documentos parecidos" tom="purple" cor={paresNoRecorte.length ? toneColor("purple") : undefined}
-            ativo={recorte.aba === "duplicados"} onClick={() => aplicar({ aba: "duplicados" })} desabilitado={paresNoRecorte.length === 0}
-            rotuloFiltro="Ver as cópias" className="col-span-2 md:col-span-1" />
-        </div>
+        <>
+          <section aria-labelledby="etapa-nome" className="space-y-2">
+            <h2 id="etapa-nome" className="flex flex-wrap items-baseline gap-x-2 text-sm font-bold">
+              <span className="text-brand-fg">Etapa 1</span> Nome do arquivo
+              <span className="text-xs font-normal text-muted-foreground">segue o modelo de nome?</span>
+              <button type="button" onClick={() => setModelosAbertos(true)} className={`text-xs font-semibold text-brand-fg underline-offset-2 hover:underline ${FOCO}`}>Ver os modelos</button>
+            </h2>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              <KpiFiltro rotulo="Nome no padrão" valor={contaNome.ok} nota="O robô entrega sozinho" tom="green" cor={contaNome.ok ? toneColor("green") : undefined}
+                ativo={recorte.nome === "ok"} onClick={nomeCartao("ok")} desabilitado={contaNome.ok === 0} rotuloFiltro="Ver os de nome no padrão" />
+              <KpiFiltro rotulo="Nome fora do padrão" valor={contaNome.fora} nota={contaNome.sem ? `${contaNome.sem} ainda não conferidos` : "Precisa renomear"} tom="red" cor={contaNome.fora ? toneColor("red") : undefined}
+                ativo={recorte.nome === "fora"} onClick={nomeCartao("fora")} desabilitado={contaNome.fora === 0} rotuloFiltro="Ver os de nome fora do padrão" />
+              <KpiFiltro rotulo="Nome repetido" valor={contaNome.repetido} nota="Outro arquivo já tem o mesmo nome" tom="amber" cor={contaNome.repetido ? toneColor("amber") : undefined}
+                ativo={recorte.nome === "repetido"} onClick={nomeCartao("repetido")} desabilitado={contaNome.repetido === 0} rotuloFiltro="Ver os repetidos" />
+              <KpiFiltro rotulo="Reprogramação" valor={contaNome.rep} nota="REP-SIGLA-PACIENTE-MMAAAA" tom="blue" cor={contaNome.rep ? toneColor("blue") : undefined}
+                ativo={recorte.nome === "rep"} onClick={nomeCartao("rep")} desabilitado={contaNome.rep === 0} rotuloFiltro="Ver as reprogramações" />
+            </div>
+          </section>
+
+          <section aria-labelledby="etapa-conteudo" className="space-y-2">
+            <h2 id="etapa-conteudo" className="flex flex-wrap items-baseline gap-x-2 text-sm font-bold">
+              <span className="text-brand-fg">Etapa 2</span> Conteúdo do documento
+              <span className="text-xs font-normal text-muted-foreground">o que está escrito, conferido quando alguém audita</span>
+            </h2>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
+              <KpiFiltro rotulo="Lidos" valor={noRecorte.length} nota={`${noRecorte.filter(l => l.sit !== "ilegivel").length} com texto`}
+                ativo={!recorte.sit && !recorte.nome} onClick={() => aplicar({ sit: "", nome: "" })} rotuloFiltro="Mostrar tudo" />
+              <KpiFiltro rotulo="Não auditados" valor={conta.nao_auditado}
+                nota={[conta.na_fila ? `${conta.na_fila} na fila` : "", conta.falhou ? `${conta.falhou} com falha` : ""].filter(Boolean).join(" · ") || "Esperando o Auditar"} tom="gray"
+                ativo={recorte.sit === "nao_auditado"} onClick={sitCartao("nao_auditado")} desabilitado={conta.nao_auditado === 0} rotuloFiltro="Ver os não auditados" />
+              <KpiFiltro rotulo="Está bom" valor={conta.bom} nota="Passou nas conferências" tom="green" cor={conta.bom ? toneColor("green") : undefined}
+                ativo={recorte.sit === "bom"} onClick={sitCartao("bom")} desabilitado={conta.bom === 0} rotuloFiltro="Ver os que estão bons" />
+              <KpiFiltro rotulo="Pode conter erros" valor={conta.pode_conter_erros} nota="Precisa de olho humano" tom="amber" cor={conta.pode_conter_erros ? toneColor("amber") : undefined}
+                ativo={recorte.sit === "pode_conter_erros"} onClick={sitCartao("pode_conter_erros")} desabilitado={conta.pode_conter_erros === 0} rotuloFiltro="Ver os que podem conter erros" />
+              <KpiFiltro rotulo="Está errado" valor={conta.errado} nota="Provado pelo trecho" tom="red" cor={conta.errado ? toneColor("red") : undefined}
+                ativo={recorte.sit === "errado"} onClick={sitCartao("errado")} desabilitado={conta.errado === 0} rotuloFiltro="Ver os errados" />
+              <KpiFiltro rotulo="Não foi possível ler" valor={conta.ilegivel} nota="Escaneado, foto, senha" tom="gray"
+                ativo={recorte.sit === "ilegivel"} onClick={sitCartao("ilegivel")} desabilitado={conta.ilegivel === 0} rotuloFiltro="Ver os ilegíveis" />
+              <KpiFiltro rotulo="Cópias" valor={paresNoRecorte.length} nota="Pares de documentos parecidos" tom="purple" cor={paresNoRecorte.length ? toneColor("purple") : undefined}
+                ativo={recorte.aba === "duplicados"} onClick={() => aplicar({ aba: "duplicados" })} desabilitado={paresNoRecorte.length === 0}
+                rotuloFiltro="Ver as cópias" className="col-span-2 md:col-span-1" />
+            </div>
+          </section>
+        </>
       )}
 
       {/* Abas */}
@@ -337,6 +381,9 @@ export function AuditoriaDocumentosShell() {
             className="h-9 w-full rounded-lg bg-muted/50 pl-8 pr-2.5 text-xs placeholder:text-muted-foreground/70 focus:bg-background focus:outline-none focus:ring-2 focus:ring-ring" />
         </label>
         <div className="ml-auto flex flex-wrap gap-2">
+          <button type="button" onClick={() => setModelosAbertos(true)} className={BOTAO_SECUNDARIO}>
+            <FileText className="h-3.5 w-3.5" aria-hidden /> Modelos de nome
+          </button>
           <button type="button" onClick={() => setReguasAbertas(true)} className={BOTAO_SECUNDARIO}>
             <ScrollText className="h-3.5 w-3.5" aria-hidden /> Réguas
           </button>
@@ -392,6 +439,7 @@ export function AuditoriaDocumentosShell() {
           onAuditar={auditar}
         />
       )}
+      {modelosAbertos && <ModelosNome onFechar={() => setModelosAbertos(false)} />}
       {reguasAbertas && dados && (
         <ModalReguas
           reguas={dados.reguas}
@@ -425,6 +473,7 @@ function PorPrestador({ linhas, onAbrir }: { linhas: Linha[]; onAbrir: (key: str
     <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
       {grupos.map(([key, g]) => {
         const c = (s: SituacaoAuditoria) => g.linhas.filter(l => l.sit === s).length
+        const cn = (n: EstadoNome) => g.linhas.filter(l => l.nome.estado === n).length
         return (
           <button key={key} type="button" onClick={() => onAbrir(key)}
             className={`${CARTAO} flex flex-col gap-3 p-4 text-left transition hover:-translate-y-px hover:shadow-md ${FOCO}`}>
@@ -436,10 +485,19 @@ function PorPrestador({ linhas, onAbrir }: { linhas: Linha[]; onAbrir: (key: str
               <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
             </span>
             {g.semPlanilha && <StatusChip tone="amber" dense>Pasta sem planilha: prestador não reconhecido</StatusChip>}
-            <span className="flex flex-wrap gap-1.5">
-              {ORDEM_SITUACAO.filter(s => c(s) > 0).map(s => (
-                <StatusChip key={s} tone={TOM_SITUACAO[s]} dense>{SITUACAO[s].rotulo} {c(s)}</StatusChip>
-              ))}
+            <span className="space-y-1.5">
+              <span className="flex flex-wrap items-center gap-1.5">
+                <span className={`${ROTULO} w-20`}>1 · Nome</span>
+                {ORDEM_NOME.filter(n => cn(n) > 0).map(n => (
+                  <StatusChip key={n} tone={SITUACAO_NOME[n].tom} dense>{SITUACAO_NOME[n].rotulo} {cn(n)}</StatusChip>
+                ))}
+              </span>
+              <span className="flex flex-wrap items-center gap-1.5">
+                <span className={`${ROTULO} w-20`}>2 · Conteúdo</span>
+                {ORDEM_SITUACAO.filter(s => c(s) > 0).map(s => (
+                  <StatusChip key={s} tone={TOM_SITUACAO[s]} dense>{SITUACAO[s].rotulo} {c(s)}</StatusChip>
+                ))}
+              </span>
             </span>
           </button>
         )
@@ -463,13 +521,17 @@ function ListaDocumentos({ linhas, onAbrir }: { linhas: Linha[]; onAbrir: (spId:
             <li key={l.d.sp_id}>
               <button type="button" onClick={() => onAbrir(l.d.sp_id)}
                 className={`flex min-h-14 w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-muted/40 ${FOCO}`}>
-                <SeloSituacao situacao={l.sit} dense />
+                <span className="flex w-36 shrink-0 flex-col items-start gap-1">
+                  <SeloNome estado={l.nome.estado} />
+                  <SeloSituacao situacao={l.sit} dense />
+                </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-semibold">
                     {l.d.item.sigla ?? "—"} · {l.d.item.paciente_nome ?? (l.d.item.sigla === "STC" || l.d.item.sigla === "ETC" ? "Geral" : "Paciente não identificado")}
                     <span className="font-normal text-muted-foreground"> · {mesBR(l.d.item.competencia)} · {l.prestNome}</span>
                   </span>
                   <span className="block truncate text-xs text-muted-foreground" title={l.d.item.nome}>{l.d.item.nome}</span>
+                  {l.nome.esperado && <span className="block truncate text-[11px] text-muted-foreground">Nome certo: <code className="font-semibold text-foreground">{l.nome.esperado}</code></span>}
                 </span>
                 <span className="hidden shrink-0 text-right text-[11px] text-muted-foreground sm:block">
                   {erros > 0 && <span className={`block font-bold ${TONE_CHIP.red.text}`}>{erros} erro(s)</span>}
@@ -519,3 +581,6 @@ function ListaCopias({ pares, outroLado, onAbrir }: {
   )
 }
 
+function SeloNome({ estado }: { estado: EstadoNome }) {
+  return <StatusChip tone={SITUACAO_NOME[estado].tom} dense>{SITUACAO_NOME[estado].rotulo}</StatusChip>
+}

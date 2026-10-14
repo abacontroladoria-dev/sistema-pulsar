@@ -121,6 +121,10 @@ await db.exec(`
 
 const mig = readFileSync(join(dir, '20261015100000_pep_auditoria_documentos.sql'), 'utf8')
 await db.exec(mig)
+// Etapa 1 (nome) na lista da tela: 20261015110000.
+await db.exec(`alter table public.sp_pep_itens add column if not exists nome_padrao jsonb, add column if not exists padrao_motivo text`)
+await db.exec(`update public.sp_pep_itens set padrao = 'fora', padrao_motivo = 'formato_desconhecido' where sp_id = 'B'`)
+await db.exec(readFileSync(join(dir, '20261015110000_pep_auditoria_lista_nome.sql'), 'utf8'))
 
 console.log('Tudo volta a "Lido, não auditado"')
 let docs = Object.fromEntries((await db.query(`select sp_id, analise_status, veredito, achados, ia_regua from sp_pep_documentos`)).rows.map(r => [r.sp_id, r]))
@@ -133,6 +137,7 @@ ok((await db.query(`select count(*)::int n from sp_pep_documentos_texto`)).rows[
 console.log('Reaplicar não apaga auditoria feita depois')
 await db.exec(`update sp_pep_documentos set analise_status = 'concluida', veredito = 'bom', auditoria_lote = gen_random_uuid() where sp_id = 'A'`)
 await db.exec(mig)
+await db.exec(readFileSync(join(dir, '20261015110000_pep_auditoria_lista_nome.sql'), 'utf8'))
 ok((await db.query(`select veredito from sp_pep_documentos where sp_id = 'A'`)).rows[0].veredito === 'bom', 'auditoria de A sobrevive à reaplicação')
 
 console.log('Robô')
@@ -174,6 +179,7 @@ ok(lista.length === 4 && lista.every(d => d.item && d.prestador), `a tela recebe
 const textoLista = JSON.stringify(lista)
 ok(!/cpf|52998224725|11144477735/i.test(textoLista) && !('texto' in lista[0]) && !('assinatura' in lista[0]), 'a lista não traz CPF, texto nem impressão digital')
 ok(lista.find(d => d.sp_id === 'B')?.prestador?.nome_pasta === 'Prestador de Serviço - Fulana (X LTDA)', 'pasta do prestador vem junto, com o motivo')
+ok(lista.find(d => d.sp_id === 'B')?.item?.padrao_motivo === 'formato_desconhecido', 'Etapa 1: a lista traz o motivo do nome')
 ok(!!(await como('authenticated', SEM, () => erro(`select public.sp_pep_auditoria_lista()`))), 'sem permissão: a função recusa (42501)')
 ok(!!(await como('anon', null, () => erro(`select public.sp_pep_auditoria_lista()`))), 'anon não executa a função')
 ok(!!(await como('authenticated', AUD, () => erro(`select * from sp_pep_documentos_texto`))), 'permissão da tela NÃO lê o texto')

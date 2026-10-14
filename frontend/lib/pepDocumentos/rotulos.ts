@@ -1,4 +1,5 @@
 import type { Tone } from '@/hooks/useToneColor'
+import type { EstadoNome } from './nome'
 import type { SituacaoAuditoria } from './situacao'
 import type { RelacaoSemelhanca, RevisaoStatus, Veredito } from './tipos'
 
@@ -82,3 +83,13 @@ export const NOMES_DOCUMENTO_PEP: Record<string, string> = {
   RT: 'Relatório de Fechamento Técnico (RT)',
   OE: 'Orientação Escolar (OE)',
 }
+
+/** Etapa 1 — nome do arquivo (nome.ts). */
+export const SITUACAO_NOME: Record<EstadoNome, { rotulo: string; tom: Tone }> = {
+  ok: { rotulo: 'Nome no padrão', tom: 'green' },
+  fora: { rotulo: 'Nome fora do padrão', tom: 'red' },
+  repetido: { rotulo: 'Nome repetido', tom: 'amber' },
+  rep: { rotulo: 'Reprogramação', tom: 'blue' },
+  sem: { rotulo: 'Nome não conferido', tom: 'gray' },
+}
+export const ORDEM_NOME: EstadoNome[] = ['fora', 'repetido', 'rep', 'sem', 'ok']

@@ -8,7 +8,8 @@ import { Z_MODAL_EMPILHADO } from "@/components/cronograma/ui/useModalLayer"
 import { StatusChip, TONE_CHIP, TONE_PANEL } from "@/components/ui/tones"
 import { BOTAO_PRIMARIO, BOTAO_SECUNDARIO, CAMPO, ROTULO } from "@/components/terapeutico/auditoria/vocabulario"
 import type { Tone } from "@/hooks/useToneColor"
-import { EXTRACAO_STATUS, RELACAO, REVISAO, SITUACAO, TOM_SITUACAO } from "@/lib/pepDocumentos/rotulos"
+import { EXTRACAO_STATUS, RELACAO, REVISAO, SITUACAO, SITUACAO_NOME, TOM_SITUACAO } from "@/lib/pepDocumentos/rotulos"
+import { situacaoNome } from "@/lib/pepDocumentos/nome"
 import type { SituacaoAuditoria } from "@/lib/pepDocumentos/situacao"
 import type { Achado, RevisaoStatus, SemelhancaPep } from "@/lib/pepDocumentos/tipos"
 import { mesBR } from "@/lib/roboSharepoint/rotulos"
@@ -138,6 +139,7 @@ export function DetalheDocumento({ doc, situacao, desatualizado, pares, outroLad
   const [salvando, setSalvando] = useState(false)
   const [comparando, setComparando] = useState<SemelhancaPep | null>(null)
   const i = doc.item
+  const nome = situacaoNome(i)
   const errados = doc.achados.filter(a => a.nivel === "errado")
   const atencao = [...doc.achados.filter(a => a.nivel === "atencao"), ...doc.ia_achados]
   const ativos = pares.filter(p => p.revisao_status !== "falso_positivo")
@@ -190,6 +192,19 @@ export function DetalheDocumento({ doc, situacao, desatualizado, pares, outroLad
           <div><dt className={ROTULO}>Lido pelo robô</dt><dd>{dataBR(doc.extraido_em)}</dd></div>
           <div><dt className={ROTULO}>Auditado</dt><dd>{auditado ? `${dataBR(doc.analisado_em)}${doc.auditoria_pedida_por_nome ? ` · pedido por ${doc.auditoria_pedida_por_nome}` : ""}` : "—"}</dd></div>
         </dl>
+
+        {/* Etapa 1 — o nome do arquivo segue o modelo? */}
+        <section aria-labelledby="etapa1" className="space-y-2">
+          <h4 id="etapa1" className="text-sm font-bold"><span className="text-brand-fg">Etapa 1</span> · Nome do arquivo</h4>
+          <Bloco tom={SITUACAO_NOME[nome.estado].tom}>
+            <p className={`text-sm font-bold ${TONE_CHIP[SITUACAO_NOME[nome.estado].tom].text}`}>{SITUACAO_NOME[nome.estado].rotulo}</p>
+            {nome.estado !== "ok" && <p className="mt-0.5 text-[13px]">{nome.texto}</p>}
+            <p className="mt-2 text-[12px] text-muted-foreground">Nome atual: <code className="font-semibold text-foreground">{i.nome}</code></p>
+            {nome.esperado && <p className="text-[12px] text-muted-foreground">Nome certo: <code className="font-semibold text-foreground">{nome.esperado}</code></p>}
+          </Bloco>
+        </section>
+
+        <h4 className="text-sm font-bold"><span className="text-brand-fg">Etapa 2</span> · Conteúdo do documento</h4>
 
         {situacao === "ilegivel" && (
           <Bloco tom="gray">
