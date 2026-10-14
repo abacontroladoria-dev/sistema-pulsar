@@ -115,6 +115,11 @@ export interface DepsTurno {
   // não pode, a saída é passar para a equipe. Sem isto o turno terminava sem
   // ferramenta para o pedido e a pessoa ficava sem resposta (Ana, 13/10/2026).
   permitirEscalada?: boolean
+  // Com `somenteLeitura`: libera também `registrar_tags`. Mesmo número com
+  // "Maia responde" — ela conduz a conversa sozinha, e sem isto nenhuma
+  // conversa do número ganhava classificação (Mateus, 13/10/2026). No rascunho
+  // continua fora: lá quem atende e classifica é a atendente.
+  permitirTags?: boolean
 }
 
 export const FERRAMENTAS_SO_LEITURA = new Set([
@@ -127,6 +132,7 @@ function liberadaNoTurno(nome: string, deps: DepsTurno): boolean {
   if (!deps.somenteLeitura) return true
   return FERRAMENTAS_SO_LEITURA.has(nome)
     || (deps.permitirEscalada === true && nome === 'escalar_para_humano')
+    || (deps.permitirTags === true && nome === 'registrar_tags')
 }
 
 const FERRAMENTA_BLOQUEADA = JSON.stringify({

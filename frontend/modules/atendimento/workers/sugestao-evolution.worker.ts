@@ -6,13 +6,16 @@ import { createAppointmentSystemService, createSystemServices } from '../service
 import { MessageRepository } from '../repositories/message.repository'
 import { AppointmentRepository } from '../repositories/appointment.repository'
 import { AuditRepository } from '../repositories/audit.repository'
+import { TagDefinitionRepository } from '../repositories/tag-definition.repository'
 import { montarContexto, LIMITE_HISTORICO } from '../agente/contexto'
+import { montarFerramentaRegistrarTags } from '../agente/tags'
 import { executarTurno } from '../agente/orquestrador'
 import { FerramentasAgente } from '../agente/ferramentas'
 import { openAiProvider } from '../llm/openai.provider'
 import { lerAgentSettings } from '../agente/agent-settings'
 import { CHAVE_MAIA_TRANSFERIU, maiaTransferiu } from '../agente/caixas'
 import { TEXTO_ESCALADA_FALLBACK, TEXTO_SEM_AGENDAMENTO_NO_NUMERO, prometeAgendamento } from '../agente/entrega'
+import type { TagDefinition } from '../types/central.types'
 
 // ============================================================================
 // Maia sugere — números Evolution com a chave ligada
@@ -42,12 +45,16 @@ import { TEXTO_ESCALADA_FALLBACK, TEXTO_SEM_AGENDAMENTO_NO_NUMERO, prometeAgenda
 // (sugestaoParaAtendente), e cada sugestão nova substitui a anterior.
 //
 // Agendar ela não pode. Quando a pessoa quer marcar, a Maia avisa e transfere
-// para um atendente (pedido do usuário em 13/10): `escalar_para_humano` é a
-// única ferramenta de escrita liberada, e grava a marca de transferida na
-// conversa (maiaTransferiu) — o worker deixa de responder ali. Turno que
-// termina sem texto também transfere, com o aviso fixo: antes ele só ia para o
-// log, e a reivindicação impedia nova tentativa — silêncio permanente. Texto
-// que diga que agendou (prometeAgendamento) também transfere e vira aviso fixo.
+// para um atendente (pedido do usuário em 13/10): `escalar_para_humano` grava
+// a marca de transferida na conversa (maiaTransferiu) — o worker deixa de
+// responder ali. Turno que termina sem texto também transfere, com o aviso
+// fixo: antes ele só ia para o log, e a reivindicação impedia nova tentativa —
+// silêncio permanente. Texto que diga que agendou (prometeAgendamento) também
+// transfere e vira aviso fixo.
+//
+// As únicas ferramentas de escrita liberadas onde ela envia são essa e
+// `registrar_tags` (14/10): sem a de tags, nenhuma conversa do número ganhava
+// classificação (Mateus, 13/10). No rascunho, nenhuma das duas.
 //
 // Falha não é definitiva (13/10): erro de envio, da OpenAI ou limite de uso
 // agenda nova tentativa da mesma mensagem (1 min, depois 5 min); esgotadas,
@@ -130,6 +137,18 @@ export async function processarSugestoesEvolution(
   const auditoria = new AuditRepository(supabase)
   const { conversationService, messageService } = createSystemServices()
 
+  // Catálogo para `registrar_tags`, só onde ela envia. Lido uma vez por tique.
+  // Falha isolada, como no worker da Meta: sem catálogo o turno sai sem a
+  // ferramenta de classificação, não sem resposta.
+  let porGrupoTags: Map<string, TagDefinition[]> | null = null
+  if (automaticas.size > 0) {
+    try {
+      porGrupoTags = await new TagDefinitionRepository(supabase).porGrupo(orgId)
+    } catch (err) {
+      console.warn('[sugestao evolution] catálogo de tags indisponível; turnos sem classificação', err)
+    }
+  }
+
   for (const conv of (conversas ?? []) as ConversaCandidata[]) {
     if (r.sugeridas + r.enviadas + r.falhas >= MAX_POR_TIQUE || Date.now() > limite) break
     // Transferida para um atendente (chave em Humano): a conversa é de gente,
@@ -204,6 +223,9 @@ export async function processarSugestoesEvolution(
         sugestaoParaAtendente: !automatica,
       })
 
+      // Classificação só onde ela envia: no rascunho quem atende é a atendente.
+      const catalogoTags = automatica ? porGrupoTags : null
+
       const ferramentas = new FerramentasAgente(
         createAppointmentSystemService(),
         new AppointmentRepository(supabase),
@@ -211,6 +233,10 @@ export async function processarSugestoesEvolution(
         // Para `escalar_para_humano`, só onde ela envia. No rascunho quem
         // responde já é gente — não há de quem transferir.
         automatica ? conversationService : null,
+        null,
+        // Para `registrar_tags` — validação e merge por grupo usam o mesmo
+        // catálogo que monta o schema abaixo.
+        catalogoTags,
       )
 
       const resultado = await executarTurno(
@@ -222,6 +248,8 @@ export async function processarSugestoesEvolution(
           agendamentoHabilitado: settings.ai_scheduling_enabled,
           somenteLeitura: true,
           permitirEscalada: automatica,
+          ferramentaTags: catalogoTags ? montarFerramentaRegistrarTags(catalogoTags) : undefined,
+          permitirTags: catalogoTags !== null,
           // O mesmo rastro do worker da Meta. Sem ele, desde 30/09 nenhuma
           // consulta da Maia ficava registrada: em 13/10 ela respondeu "houve um
           // erro ao buscar os horários" e não havia como saber o que a

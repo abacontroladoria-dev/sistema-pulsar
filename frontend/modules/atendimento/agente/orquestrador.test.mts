@@ -377,6 +377,25 @@ const nomesEnviados = (req: { ferramentas?: unknown } | undefined): string[] =>
 }
 
 {
+  // `registrar_tags` só passa no só-leitura com a liberação explícita (Maia
+  // responde). Sem ela, a ferramenta fica de fora mesmo que tenha sido montada.
+  const ferramentaTags = {
+    type: 'function',
+    function: { name: 'registrar_tags', description: '', strict: true, parameters: { type: 'object', properties: {} } },
+  } as any
+  const sem = providerDe([resposta({ conteudo: 'oi' })])
+  await executarTurno(ENTRADA, deps({ provider: sem.provider, somenteLeitura: true, permitirEscalada: true, ferramentaTags }))
+  checar(!nomesEnviados(sem.requisicoes[0]).includes('registrar_tags'),
+    'só leitura sem permitirTags: registrar_tags fica fora', nomesEnviados(sem.requisicoes[0]))
+
+  const com = providerDe([resposta({ conteudo: 'oi' })])
+  await executarTurno(ENTRADA, deps({ provider: com.provider, somenteLeitura: true, permitirEscalada: true, permitirTags: true, ferramentaTags }))
+  const nomes = nomesEnviados(com.requisicoes[0])
+  checar(nomes.length === 5 && nomes.includes('registrar_tags') && !nomes.includes('agendar_sessao'),
+    'só leitura com permitirTags: consultas + escalar + registrar_tags, nada de agenda', nomes)
+}
+
+{
   // O executor recusa por conta própria o que não foi liberado, mesmo que o
   // modelo invente a chamada.
   const { provider } = providerDe([
