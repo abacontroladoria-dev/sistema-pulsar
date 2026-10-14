@@ -1,3 +1,5 @@
+import type { Tone } from '@/hooks/useToneColor'
+import type { SituacaoAuditoria } from './situacao'
 import type { RelacaoSemelhanca, RevisaoStatus, Veredito } from './tipos'
 
 // Texto humano da conferência do conteúdo. Um lugar só: tela PEP, painel do
@@ -40,3 +42,43 @@ export const REVISAO: Record<RevisaoStatus, string> = {
 
 /** Siglas com régua de conteúdo para a IA (recebidas em 14/10/2026). */
 export const SIGLAS_COM_REGUA = ['OE', 'ETC', 'PIC'] as const
+
+// ── Auditoria de Documentos PEP (15/10/2026) ──────────────────────────────────
+
+/** Situação na tela de auditoria (situacao.ts), em palavras. */
+export const SITUACAO: Record<SituacaoAuditoria, { rotulo: string; explica: string }> = {
+  nao_auditado: { rotulo: 'Lido, não auditado', explica: 'O robô leu o texto; ninguém pediu a auditoria ainda' },
+  na_fila: { rotulo: 'Na fila', explica: 'Auditoria pedida: aparece em alguns minutos' },
+  falhou: { rotulo: 'Auditoria falhou', explica: 'Algo deu errado ao auditar: peça de novo' },
+  ilegivel: { rotulo: 'Não foi possível ler', explica: 'O robô não conseguiu ler o texto: confira à mão' },
+  bom: { rotulo: 'Está bom', explica: 'Passou em todas as conferências' },
+  pode_conter_erros: { rotulo: 'Pode conter erros', explica: 'Algo suspeito: precisa de olho humano' },
+  errado: { rotulo: 'Está errado', explica: 'Erro comprovado pelo trecho do documento' },
+}
+
+/** Um tom = um significado (padrão da Auditoria de Evoluções, vocabulario.tsx). */
+export const TOM_SITUACAO: Record<SituacaoAuditoria, Tone> = {
+  nao_auditado: 'gray',
+  na_fila: 'blue',
+  falhou: 'purple',
+  ilegivel: 'gray',
+  bom: 'green',
+  pode_conter_erros: 'amber',
+  errado: 'red',
+}
+
+/** Ordem de leitura: o que pede ação primeiro. */
+export const ORDEM_SITUACAO: SituacaoAuditoria[] = ['errado', 'pode_conter_erros', 'falhou', 'na_fila', 'nao_auditado', 'ilegivel', 'bom']
+
+export const SIGLAS_PEP = ['STC', 'ETC', 'TAP', 'TOP', 'PIC', 'RT', 'OE'] as const
+
+/** Nome de cada documento do PEP. */
+export const NOMES_DOCUMENTO_PEP: Record<string, string> = {
+  STC: 'Supervisão Técnica ABA do Caso (STC)',
+  ETC: 'Estudo Técnico de Caso (ETC)',
+  TAP: 'Treinamento de Aplicadores ABA (TAP)',
+  TOP: 'Treinamento e Orientação Parental (TOP)',
+  PIC: 'Plano Individualizado Comportamental (PIC)',
+  RT: 'Relatório de Fechamento Técnico (RT)',
+  OE: 'Orientação Escolar (OE)',
+}

@@ -7,9 +7,12 @@ import 'server-only'
 //
 // Roda com a service_role (é ela que lê sp_pep_documentos_texto). Quem chama:
 //   • o tique do worker (pg_cron a cada minuto, rota da auditoria);
-//   • a rota /api/relacionamento-prestador/pep/documentos/analisar, que a tela
-//     PEP chama ao abrir um analista com documentos esperando — depois de
-//     conferir a permissão de quem pediu.
+//   • o botão "Auditar" da tela Auditoria de Documentos PEP (rota
+//     /api/relacionamento-prestador/auditoria-documentos/auditar + despacho.ts),
+//     depois de conferir a permissão de quem pediu.
+//
+// Só analisa o que alguém pôs na fila ('pendente'); documento recém-lido fica
+// 'aguardando' (lido, não auditado) — decisão de 14/10/2026.
 //
 // O texto nunca sai daqui para log: só contagens e códigos.
 

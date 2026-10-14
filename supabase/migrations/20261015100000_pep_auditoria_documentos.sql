@@ -156,9 +156,9 @@ GRANT EXECUTE ON FUNCTION public.robo_pep_registrar_documentos(text, uuid, jsonb
 -- ═════════════════════════════════════════════════════════════════════════════
 -- 3. Quem lê: a permissão da tela nova se soma às do PEP
 -- ═════════════════════════════════════════════════════════════════════════════
--- Quem tem só a Auditoria de Documentos precisa ler o documento, a pasta e o
--- prestador para a tela funcionar. O texto (sp_pep_documentos_texto) continua
--- sem policy: só o servidor lê, depois de conferir a permissão.
+-- Quem tem só a Auditoria de Documentos lê os documentos, os pares de cópia e
+-- as réguas. O texto (sp_pep_documentos_texto) continua sem policy: só o
+-- servidor lê, depois de conferir a permissão.
 
 CREATE OR REPLACE FUNCTION public.sp_pep_pode_ler_documentos()
 RETURNS boolean
@@ -182,21 +182,42 @@ DROP POLICY IF EXISTS sp_pep_documentos_semelhancas_select ON public.sp_pep_docu
 CREATE POLICY sp_pep_documentos_semelhancas_select ON public.sp_pep_documentos_semelhancas
   FOR SELECT TO authenticated USING (public.sp_pep_pode_ler_documentos());
 
-DROP POLICY IF EXISTS sp_pep_itens_select ON public.sp_pep_itens;
-CREATE POLICY sp_pep_itens_select ON public.sp_pep_itens
-  FOR SELECT TO authenticated USING (public.sp_pep_pode_ler_documentos());
+-- As tabelas do robô (sp_pep_itens, sp_pep_pastas, sp_pep_prestadores,
+-- sp_pep_pacientes) NÃO ganham a permissão nova: guardam CPF de paciente (e a
+-- planilha do prestador, CPFs em lista). A tela recebe só o que precisa, sem
+-- CPF, pela função abaixo.
 
-DROP POLICY IF EXISTS sp_pep_pastas_select ON public.sp_pep_pastas;
-CREATE POLICY sp_pep_pastas_select ON public.sp_pep_pastas
-  FOR SELECT TO authenticated USING (public.sp_pep_pode_ler_documentos());
-
-DROP POLICY IF EXISTS sp_pep_prestadores_select ON public.sp_pep_prestadores;
-CREATE POLICY sp_pep_prestadores_select ON public.sp_pep_prestadores
-  FOR SELECT TO authenticated USING (public.sp_pep_pode_ler_documentos());
-
-DROP POLICY IF EXISTS sp_pep_pacientes_select ON public.sp_pep_pacientes;
-CREATE POLICY sp_pep_pacientes_select ON public.sp_pep_pacientes
-  FOR SELECT TO authenticated USING (public.sp_pep_pode_ler_documentos());
+CREATE OR REPLACE FUNCTION public.sp_pep_auditoria_lista()
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF NOT public.sp_pep_pode_ler_documentos() THEN
+    RAISE EXCEPTION 'sem permissao para a auditoria de documentos' USING ERRCODE = '42501';
+  END IF;
+  RETURN COALESCE((
+    SELECT jsonb_agg(
+             (to_jsonb(d) - 'assinatura' - 'revisao_por' - 'analise_reservada_em')
+             || jsonb_build_object(
+                  'item', jsonb_build_object(
+                    'nome', i.nome, 'sigla', i.sigla, 'competencia', i.competencia,
+                    'prestador_nome', i.prestador_nome, 'prestador_pasta_id', i.prestador_pasta_id,
+                    'paciente_nome', i.paciente_nome, 'paciente_pasta_id', i.paciente_pasta_id,
+                    'web_url', i.web_url, 'status', i.status, 'motivo', i.motivo, 'padrao', i.padrao),
+                  'prestador', jsonb_build_object('nome_pasta', pa.nome, 'status', pr.status, 'motivo', pr.motivo))
+             ORDER BY d.sp_id)
+      FROM sp_pep_documentos d
+      JOIN sp_pep_itens i ON i.sp_id = d.sp_id
+      LEFT JOIN sp_pep_pastas pa ON pa.id = i.prestador_pasta_id
+      LEFT JOIN sp_pep_prestadores pr ON pr.pasta_id = i.prestador_pasta_id
+     WHERE i.removido_em IS NULL), '[]'::jsonb);
+END;
+$$;
+REVOKE ALL ON FUNCTION public.sp_pep_auditoria_lista() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.sp_pep_auditoria_lista() TO authenticated;
 
 -- ═════════════════════════════════════════════════════════════════════════════
 -- 4. Réguas versionadas (append-only)

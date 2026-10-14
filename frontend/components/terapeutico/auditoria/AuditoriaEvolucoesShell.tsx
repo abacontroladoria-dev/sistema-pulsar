@@ -13,7 +13,6 @@ import {
   Copy
 } from 'lucide-react'
 import { useToneColor } from '@/hooks/useToneColor'
-import type { Tone } from '@/hooks/useToneColor'
 import { TONE_CHIP, TONE_PANEL } from '@/components/ui/tones'
 import { DateRangePicker } from '@/components/ui/date-range-picker'
 import type { AtalhoPeriodo } from '@/components/ui/date-range-picker'

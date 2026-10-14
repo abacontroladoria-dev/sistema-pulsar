@@ -12,6 +12,7 @@ import 'server-only'
 // se existir de verdade no documento (a IA às vezes "cita" o que não está lá).
 
 import { anonimizarDocumento } from './anonimizar'
+import { NOMES_DOCUMENTO_PEP } from './rotulos'
 import { normalizar } from './texto'
 import type { Achado } from './tipos'
 
@@ -19,16 +20,8 @@ import type { Achado } from './tipos'
 export type Regua = { sigla: string; versao: number; conteudo: string }
 export const rotuloRegua = (r: Pick<Regua, 'sigla' | 'versao'>) => `${r.sigla.toUpperCase()}@v${r.versao}`
 
-/** Nome de cada documento, para o prompt e para a tela. */
-export const NOMES_DOCUMENTO: Record<string, string> = {
-  STC: 'Supervisão Técnica ABA do Caso (STC)',
-  ETC: 'Estudo Técnico de Caso (ETC)',
-  TAP: 'Treinamento de Aplicadores ABA (TAP)',
-  TOP: 'Treinamento e Orientação Parental (TOP)',
-  PIC: 'Plano Individualizado Comportamental (PIC)',
-  RT: 'Relatório de Fechamento Técnico (RT)',
-  OE: 'Orientação Escolar (OE)',
-}
+/** Nome de cada documento, para o prompt. */
+export const NOMES_DOCUMENTO = NOMES_DOCUMENTO_PEP
 
 const TEXTO_MAX = 60000
 const MAX_ACHADOS = 12

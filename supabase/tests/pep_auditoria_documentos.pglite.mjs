@@ -8,8 +8,9 @@
 //   • o robô grava conteúdo novo como "aguardando";
 //   • réguas: v1 de OE/ETC/PIC; append-only; publicar só rp/admin (versão
 //     sobe sozinha); nota obrigatória; anon e login sem permissão não leem;
-//   • a permissão nova da tela lê documentos, itens, pastas e réguas — e
-//     continua SEM ler o texto.
+//   • a permissão nova da tela lê documentos, cópias e réguas, e recebe a
+//     lista (arquivo + pasta) por função SEM CPF; não lê as tabelas do robô
+//     (que guardam CPF) nem o texto.
 //
 // Rodar FORA do repo:
 //   mkdir /tmp/pg && cd /tmp/pg && npm i @electric-sql/pglite
@@ -75,7 +76,9 @@ end $$;
 
 -- Pré-existentes (shape mínimo) e as policies antigas que a migration troca.
 create table public.sp_pep_itens(sp_id text primary key, nome text not null, tipo text not null, status text not null default 'sugerido',
-  e_tag text, tamanho bigint, criado_em_sp timestamptz default now(), removido_em timestamptz, sigla text);
+  e_tag text, tamanho bigint, criado_em_sp timestamptz default now(), removido_em timestamptz, sigla text,
+  competencia text, prestador_nome text, prestador_pasta_id text, paciente_nome text, paciente_pasta_id text,
+  paciente_cpf text, web_url text, motivo text, padrao text);
 create table public.sp_pep_pastas(id text primary key, nome text, papel text, prestador_pasta_id text);
 create table public.sp_pep_prestadores(pasta_id text primary key, prestador_nome text, status text, motivo text);
 create table public.sp_pep_pacientes(pasta_id text primary key, paciente_nome text);
@@ -95,9 +98,10 @@ create table public.auditoria_reauditoria_fila(id bigint, status text, disponive
 
 insert into public.usuarios values ('${AUD}', 'Auditora', 'terapeutico', true), ('${SEM}', 'Sem', 'terapeutico', true), ('${RP}', 'Rita RP', 'rp', true);
 insert into public.usuarios_permissoes values ('${AUD}', 'relacionamento_prestador_auditoria_documentos', true);
-insert into public.sp_pep_itens(sp_id, nome, tipo, e_tag, sigla) values
-  ('A', 'PIC-JOAO-092026.docx', 'evidencia', 'ea1', 'PIC'), ('B', 'PIC-LUCAS-092026.docx', 'evidencia', 'eb1', 'PIC'),
-  ('C', 'foto.heic', 'evidencia', 'ec1', 'PIC');
+insert into public.sp_pep_itens(sp_id, nome, tipo, e_tag, sigla, prestador_pasta_id, paciente_nome, paciente_cpf) values
+  ('A', 'PIC-JOAO-092026.docx', 'evidencia', 'ea1', 'PIC', 'P1', 'João Silva', '52998224725'),
+  ('B', 'PIC-LUCAS-092026.docx', 'evidencia', 'eb1', 'PIC', 'P1', 'Lucas Rocha', '11144477735'),
+  ('C', 'foto.heic', 'evidencia', 'ec1', 'PIC', 'P1', null, null);
 insert into public.sp_pep_pastas values ('P1', 'Prestador de Serviço - Fulana (X LTDA)', 'prestador', null);
 insert into public.sp_pep_prestadores values ('P1', null, 'nao_reconhecido', 'planilha_ausente');
 insert into public.sp_pep_execucoes values ('${EXEC}', '0.5.0');
@@ -161,9 +165,17 @@ ok(!!(await como('anon', null, () => erro(`select * from pep_reguas_versoes`))),
 ok((await como('authenticated', SEM, () => db.query(`select * from pep_reguas_versoes`))).rows.length === 0, 'sem permissão não vê régua')
 ok((await como('authenticated', AUD, () => db.query(`select * from pep_reguas_versoes`))).rows.length >= 4, 'permissão da tela vê as réguas')
 ok((await como('authenticated', AUD, () => db.query(`select * from sp_pep_documentos`))).rows.length === 4, 'permissão da tela vê os documentos')
-ok((await como('authenticated', AUD, () => db.query(`select * from sp_pep_itens`))).rows.length === 4, 'permissão da tela vê os itens')
-ok((await como('authenticated', AUD, () => db.query(`select * from sp_pep_pastas`))).rows.length === 1, 'permissão da tela vê as pastas')
-ok((await como('authenticated', AUD, () => db.query(`select * from sp_pep_prestadores`))).rows.length === 1, 'permissão da tela vê os prestadores')
+// As tabelas do robô guardam CPF: quem tem só a tela não as lê.
+ok((await como('authenticated', AUD, () => db.query(`select * from sp_pep_itens`))).rows.length === 0, 'permissão da tela NÃO lê sp_pep_itens (CPF)')
+ok((await como('authenticated', AUD, () => db.query(`select * from sp_pep_prestadores`))).rows.length === 0, 'permissão da tela NÃO lê sp_pep_prestadores (CPFs da planilha)')
+ok((await como('authenticated', AUD, () => db.query(`select * from sp_pep_pacientes`))).rows.length === 0, 'permissão da tela NÃO lê sp_pep_pacientes (CPF)')
+const lista = (await como('authenticated', AUD, () => db.query(`select public.sp_pep_auditoria_lista() j`))).rows[0].j
+ok(lista.length === 4 && lista.every(d => d.item && d.prestador), `a tela recebe a lista pela função (${lista.length} documentos, com arquivo e pasta)`)
+const textoLista = JSON.stringify(lista)
+ok(!/cpf|52998224725|11144477735/i.test(textoLista) && !('texto' in lista[0]) && !('assinatura' in lista[0]), 'a lista não traz CPF, texto nem impressão digital')
+ok(lista.find(d => d.sp_id === 'B')?.prestador?.nome_pasta === 'Prestador de Serviço - Fulana (X LTDA)', 'pasta do prestador vem junto, com o motivo')
+ok(!!(await como('authenticated', SEM, () => erro(`select public.sp_pep_auditoria_lista()`))), 'sem permissão: a função recusa (42501)')
+ok(!!(await como('anon', null, () => erro(`select public.sp_pep_auditoria_lista()`))), 'anon não executa a função')
 ok(!!(await como('authenticated', AUD, () => erro(`select * from sp_pep_documentos_texto`))), 'permissão da tela NÃO lê o texto')
 ok((await como('authenticated', SEM, () => db.query(`select * from sp_pep_documentos`))).rows.length === 0, 'sem permissão não vê documento')
 ok(!!(await como('authenticated', AUD, () => erro(`update sp_pep_documentos set analise_status = 'pendente'`))), 'login não põe na fila direto (só a rota do servidor)')

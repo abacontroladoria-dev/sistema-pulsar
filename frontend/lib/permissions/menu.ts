@@ -37,6 +37,7 @@ import {
   PlusCircle,
   RotateCcw,
   ScrollText,
+  ScanText,
   ShieldCheck,
   Stethoscope,
   Tag,
@@ -149,6 +150,7 @@ export const MENU_ITENS: MenuItemDef[] = [
   { codigo: 'relacionamento_prestador_individual', label: 'Remuneração Individual', grupo: G.relacionamentoPrestador.nome, path: '/relacionamento-prestador/individual', icon: UserRound },
   { codigo: 'relacionamento_prestador_pep', label: 'Entregas PEP', grupo: G.relacionamentoPrestador.nome, path: '/relacionamento-prestador/pep', icon: ListChecks },
   { codigo: 'relacionamento_prestador_pep_historico', label: 'PEP - Histórico', grupo: G.relacionamentoPrestador.nome, path: '/relacionamento-prestador/pep-historico', icon: History },
+  { codigo: 'relacionamento_prestador_auditoria_documentos', label: 'Auditoria de Documentos PEP', grupo: G.relacionamentoPrestador.nome, path: '/relacionamento-prestador/auditoria-documentos', icon: ScanText },
 
   { codigo: 'tv_avisos', label: 'TV da Recepção', grupo: G.marketing.nome, path: '/tv-avisos', icon: Monitor },
 
