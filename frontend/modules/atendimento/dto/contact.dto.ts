@@ -127,6 +127,9 @@ export interface UpdateContactBody {
   // manda a lista completa que deve valer. Um add incremental, com o polling de
   // 5s no meio, ressuscitaria a tag que o clique anterior tirou.
   tags?:         string[] | null
+  // false = "salvar contato": alguém da equipe confirmou quem é. Ver
+  // NomeContatoPopover.
+  isProvisional?: boolean
 }
 
 export function parseUpdateContactBody(body: unknown): ParseResult<UpdateContactBody> {
@@ -136,7 +139,12 @@ export function parseUpdateContactBody(body: unknown): ParseResult<UpdateContact
 
   if (b.name !== undefined) {
     if (typeof b.name !== 'string') errors.push('name deve ser string')
+    else if (b.name.trim() === '')  errors.push('name não pode ser vazio')
     else if (b.name.length > 255)   errors.push('name excede 255 caracteres')
+  }
+
+  if (b.isProvisional !== undefined && typeof b.isProvisional !== 'boolean') {
+    errors.push('isProvisional deve ser boolean')
   }
 
   if (b.displayPhone !== undefined && !E164_RE.test(b.displayPhone as string)) {
@@ -188,6 +196,7 @@ export function parseUpdateContactBody(body: unknown): ParseResult<UpdateContact
       // um `??` o converteria de volta em "não enviado".
       ...('source' in b ? { source: b.source as string | null } : {}),
       ...('tags'   in b ? { tags:   b.tags   as string[] | null } : {}),
+      ...(b.isProvisional !== undefined ? { isProvisional: b.isProvisional as boolean } : {}),
     },
   }
 }

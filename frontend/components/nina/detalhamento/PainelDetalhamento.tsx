@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { X, Loader2, Phone, Mail } from 'lucide-react'
+import { X, Loader2, Phone, Mail, Pencil, UserPlus } from 'lucide-react'
 import type { DetalheConversa } from '@/hooks/nina/useCentralInbox'
 import type {
   Appointment,
@@ -13,6 +13,7 @@ import type {
 } from '@/modules/atendimento/types/central.types'
 import { rotuloTipoContato } from '../adapters/centralToNina'
 import { Avatar } from '../Avatar'
+import { NomeContatoPopover } from '../NomeContatoPopover'
 import { BlocoFicha }        from './BlocoFicha'
 import { BlocoSentimento }   from './BlocoSentimento'
 import { BlocoCanal }        from './BlocoCanal'
@@ -51,6 +52,7 @@ export interface DadosPainel {
 }
 
 export interface AcoesPainel {
+  salvarNome?:    (nome: string) => Promise<void>
   salvarOrigem?:  (valor: string | null) => Promise<void>
   salvarTags?:    (chaves: string[]) => Promise<void>
   trocarResponsavel?: (userId: string | null) => Promise<void>
@@ -101,12 +103,51 @@ export const PainelDetalhamento: React.FC<{
                 <Avatar url={contato?.avatar_url ?? ''} nome={nome} ampliavel />
               </div>
             </div>
-            <h3 className="text-base font-bold text-foreground leading-tight">{nome}</h3>
+            <div className="flex items-center justify-center gap-1 max-w-full">
+              <h3 className="text-base font-bold text-foreground leading-tight wrap-break-word min-w-0">{nome}</h3>
+              {contato && acoes.salvarNome && !contato.is_provisional && (
+                <NomeContatoPopover
+                  nome={contato.name}
+                  telefone={contato.display_phone}
+                  provisorio={false}
+                  aoSalvar={acoes.salvarNome}
+                  align="center"
+                >
+                  <button
+                    type="button"
+                    title="Editar nome"
+                    aria-label="Editar nome"
+                    className="w-7 h-7 shrink-0 rounded-lg flex items-center justify-center text-muted-foreground hover:text-cyan-400 hover:bg-muted transition-colors"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                </NomeContatoPopover>
+              )}
+            </div>
             {/* contact_type do banco: quem de fato está escrevendo
                 (responsável, paciente, primeiro contato). */}
             <p className="text-xs text-muted-foreground mt-0.5">
               {rotuloTipoContato(contato)}
             </p>
+            {/* Provisório = chegou sozinho pelo WhatsApp e ninguém confirmou
+                quem é. A ação fica à vista, não escondida num lápis. */}
+            {contato && acoes.salvarNome && contato.is_provisional && (
+              <NomeContatoPopover
+                nome={contato.name}
+                telefone={contato.display_phone}
+                provisorio
+                aoSalvar={acoes.salvarNome}
+                align="center"
+              >
+                <button
+                  type="button"
+                  className="mt-3 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-cyan-500/30 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 hover:bg-cyan-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 transition-colors"
+                >
+                  <UserPlus className="w-3.5 h-3.5" />
+                  Salvar contato
+                </button>
+              </NomeContatoPopover>
+            )}
 
             <div className="mt-3 space-y-1 text-xs">
               {contato?.display_phone && (

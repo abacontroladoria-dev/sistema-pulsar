@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect, useLayoutEffect } from 'react'
 import {
   Search, MessageSquare, Loader2, Info, Bot, User, Pause, ShieldAlert, WifiOff, MailX, Smartphone,
-  Pin, PinOff, ArrowLeft, CheckCircle2, Archive, RotateCcw, UserRoundCog,
+  Pin, PinOff, ArrowLeft, CheckCircle2, Archive, RotateCcw, UserRoundCog, UserPlus,
 } from 'lucide-react'
 
 import { ConversationStatus } from '@/types/nina'
@@ -21,6 +21,7 @@ import { ModalAgendarRetorno } from './detalhamento/ModalAgendarRetorno'
 import { ModalDesignarTarefa } from './detalhamento/ModalDesignarTarefa'
 import { ModalApagarMensagem } from './ModalApagarMensagem'
 import { ModalEditarMensagem, ModalTransferir } from './ModaisConversa'
+import { NomeContatoPopover } from './NomeContatoPopover'
 import { MessageDirection } from '@/types/nina'
 import { maiaTransferiu } from '@/modules/atendimento/agente/caixas'
 import { toast } from 'sonner'
@@ -261,7 +262,8 @@ const ChatInterface: React.FC = () => {
     const contatoId = detalhe?.contact?.id
     if (!contatoId) throw new Error('Esta conversa não tem contato.')
 
-    const res = await fetch(`/api/central/contacts/${contatoId}`, {
+    // Barra final: trailingSlash:true faz o PATCH sem ela virar 308.
+    const res = await fetch(`/api/central/contacts/${contatoId}/`, {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(corpo),
@@ -281,6 +283,19 @@ const ChatInterface: React.FC = () => {
       toast.error((err as Error).message)
       // Repropaga para o bloco manter o campo aberto com o texto digitado:
       // fechar depois de falhar faria a pessoa redigitar do zero.
+      throw err
+    }
+  }
+
+  // Salvar contato e editar o nome são a mesma escrita: dar nome é confirmar
+  // quem é, então o contato deixa de ser provisório. Ver NomeContatoPopover.
+  const handleSalvarNome = async (nome: string) => {
+    const eraProvisorio = detalhe?.contact?.is_provisional === true
+    try {
+      await patchContato({ name: nome, isProvisional: false })
+      toast.success(eraProvisorio ? 'Contato salvo.' : 'Nome atualizado.')
+    } catch (err) {
+      toast.error((err as Error).message)
       throw err
     }
   }
@@ -682,6 +697,28 @@ const ChatInterface: React.FC = () => {
               </div>
 
               <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+                {/* Só para quem ainda não foi salvo: o contato que chegou
+                    sozinho pelo WhatsApp. Depois de salvo, o nome se edita
+                    pelo lápis do detalhamento. */}
+                {detalhe?.contact?.is_provisional && (
+                  <NomeContatoPopover
+                    nome={detalhe.contact.name}
+                    telefone={detalhe.contact.display_phone}
+                    provisorio
+                    aoSalvar={handleSalvarNome}
+                  >
+                    <button
+                      type="button"
+                      title="Salvar contato"
+                      aria-label="Salvar contato"
+                      className="flex items-center gap-1.5 p-1.5 sm:px-2.5 sm:py-1 rounded-lg text-xs font-medium border border-cyan-500/30 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 hover:bg-cyan-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 transition-colors data-[state=open]:bg-cyan-500/20"
+                    >
+                      <UserPlus className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+                      <span className="hidden sm:inline">Salvar contato</span>
+                    </button>
+                  </NomeContatoPopover>
+                )}
+
                 {maiaRespondeNoNumero ? (
                   <span
                     className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-200"
@@ -905,6 +942,7 @@ const ChatInterface: React.FC = () => {
                 erroFicha:       painel.erroFicha,
               }}
               acoes={{
+                salvarNome:          handleSalvarNome,
                 salvarOrigem:        handleSalvarOrigem,
                 salvarTags:          handleSalvarTags,
                 trocarResponsavel:   handleTrocarResponsavel,

@@ -39,6 +39,7 @@ export interface UpdateContactInput {
   // Ausente = não mexer; null = limpar. Ver UpdateContactInput do repositório.
   source?:       string | null
   tags?:         string[] | null
+  isProvisional?: boolean
 }
 
 export type SearchContactsParams = SearchContactsInput
@@ -124,6 +125,7 @@ export class ContactService {
       display_email: input.displayEmail,
       contact_type:  input.contactType,
       status:        input.status,
+      is_provisional: input.isProvisional,
       // Só entram no patch se vieram no input. Passá-los sempre colocaria
       // `source: undefined` e `tags: undefined` em TODA atualização — o
       // repositório os filtra por `!== undefined`, então o banco ficaria certo,
