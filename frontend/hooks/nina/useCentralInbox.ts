@@ -389,6 +389,18 @@ export function useCentralInbox(): UseCentralInbox {
     return () => { vivo = false; controller.abort(); clearInterval(t) }
   }, [filtroCanais, visao, chaveLista])
 
+  // A etiqueta Maia / Humano da conversa aberta acompanha o detalhe na hora.
+  // Virar a chave, ou responder (que a vira para Humano), recarrega o detalhe
+  // na mesma ação; a lista só veria isso no próximo tique dela, até 5s depois.
+  const statusAberta = activeChat?.status
+  const idAberta = activeChat?.id
+  useEffect(() => {
+    if (!idAberta || !statusAberta) return
+    setConversations(lista => lista.some(c => c.id === idAberta && c.status !== statusAberta)
+      ? lista.map(c => (c.id === idAberta ? { ...c, status: statusAberta } : c))
+      : lista)
+  }, [idAberta, statusAberta])
+
   // Trocar de número responde NA HORA. Antes, a lista antiga ficava parada na
   // tela até o servidor devolver a nova — com o seletor aberto por cima, parecia
   // que o clique não tinha pegado. Agora a lista em mãos é recortada pelos
