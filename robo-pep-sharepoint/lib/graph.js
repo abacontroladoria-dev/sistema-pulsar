@@ -128,10 +128,10 @@ class Graph {
     return itens
   }
 
-  /** Conteúdo de um arquivo, em memória. Recusa acima de 10 MB. */
-  async baixar(driveId, itemId, tamanho) {
-    if (tamanho && tamanho > TAMANHO_MAX_PLANILHA) {
-      throw new ErroGraph(0, `arquivo grande demais para ser planilha (${tamanho} bytes)`)
+  /** Conteúdo de um arquivo, em memória. Recusa acima do limite (10 MB = planilha). */
+  async baixar(driveId, itemId, tamanho, limite = TAMANHO_MAX_PLANILHA) {
+    if (tamanho && tamanho > limite) {
+      throw new ErroGraph(0, `arquivo grande demais (${tamanho} bytes)`)
     }
     return this.requisitar(`/drives/${driveId}/items/${itemId}/content`, { binario: true })
   }

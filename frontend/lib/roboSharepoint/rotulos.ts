@@ -10,6 +10,9 @@ export const ETAPAS: { etapa: RoboEtapaNome; rotulo: string; explica: string }[]
   { etapa: 'classificar', rotulo: 'Classificar', explica: 'Pasta → prestador, paciente e item do PEP' },
   { etapa: 'planilhas', rotulo: 'Ler planilhas', explica: 'CNPJ e CPFs da planilha de planejamento' },
   { etapa: 'enviar', rotulo: 'Reconhecer no Pulsar', explica: 'CNPJ, CPF e sessão na Grade; grava sugestões' },
+  // 0.5.0 (14/10/2026): o texto das evidências novas ou alteradas, para a
+  // conferência do conteúdo na tela PEP. Execuções antigas não têm esta etapa.
+  { etapa: 'documentos', rotulo: 'Ler documentos', explica: 'Texto das evidências novas, para conferir o conteúdo' },
 ]
 
 export const MOTIVOS: Record<string, string> = {
@@ -209,6 +212,11 @@ export const MOTIVOS_PADRAO: Record<string, string> = {
   formato_desconhecido: 'Nome fora do padrão',
   paciente_diferente_da_pasta: 'O paciente no nome não é o da pasta',
   repetido: 'Repetido: outro arquivo igual já conta',
+  // 20261014100000: casos que antes saíam com motivo enganoso.
+  sequencial_nao_esperado: 'Sem número: só o TAP leva número (SIGLA-PACIENTE-MMAAAA)',
+  sequencial_com_dois_digitos: 'O número leva 2 dígitos: 01, 02, 03…',
+  copia_com_sufixo: 'É uma cópia: tire o “(2)” ou “Cópia” do fim do nome',
+  mes_com_separador: 'Mês e ano juntos no fim: MMAAAA (ex.: 092026)',
 }
 
 // Por que o robô não entregou um arquivo que segue o padrão (sp_pep_itens.robo_obs).
@@ -255,11 +263,12 @@ export function porQueEsperando(i: { padrao?: string | null; padrao_motivo?: str
 }
 
 /** Nome que o arquivo deveria ter: "PIC-ADRIAN COSTA-092026", "STC-01-092026", "TAP-01-JOAO-092026". */
-export function nomeEsperado(sigla: string | null | undefined, paciente: string | null | undefined, competencia: string | null | undefined) {
+export function nomeEsperado(sigla: string | null | undefined, paciente: string | null | undefined, competencia: string | null | undefined, sequencial = 1) {
   if (!sigla) return null
   const [ano, mes] = (competencia ?? '').split('-')
   const mmaaaa = ano && mes ? `${mes}${ano}` : 'MMAAAA'
-  if (sigla === 'STC' || sigla === 'ETC') return `${sigla}-01-${mmaaaa}`
+  const nn = String(Math.max(1, sequencial)).padStart(2, '0')
+  if (sigla === 'STC' || sigla === 'ETC') return `${sigla}-${nn}-${mmaaaa}`
   const pac = (paciente ?? 'PACIENTE').toLocaleUpperCase('pt-BR')
-  return sigla === 'TAP' ? `TAP-01-${pac}-${mmaaaa}` : `${sigla}-${pac}-${mmaaaa}`
+  return sigla === 'TAP' ? `TAP-${nn}-${pac}-${mmaaaa}` : `${sigla}-${pac}-${mmaaaa}`
 }

@@ -13,6 +13,7 @@ import { AbaAutenticar } from './AbaAutenticar'
 import { AbaListar } from './AbaListar'
 import { AbaClassificar } from './AbaClassificar'
 import { AbaPlanilhas } from './AbaPlanilhas'
+import { AbaDocumentos } from './AbaDocumentos'
 import { AbaReconhecer } from './AbaReconhecer'
 
 import { NumeroPastel, tom } from '@/components/ui/pastel/pecas'
@@ -209,6 +210,7 @@ export function DetalheExecucaoDrawer({ execucao, etapaInicial, ehUltima, ultima
         {resumo && comRegistro && !vazio && etapa === 'classificar' && <AbaClassificar execucao={execucao} resumo={resumo} />}
         {resumo && comRegistro && !vazio && etapa === 'planilhas' && <AbaPlanilhas execucao={execucao} etapa={atual} resumo={resumo} />}
         {resumo && etapa === 'enviar' && <AbaReconhecer execucao={execucao} etapa={atual} ehUltima={ehUltima} />}
+        {etapa === 'documentos' && <AbaDocumentos etapa={atual} />}
       </div>
       </div>
       </CamadaModal.Provider>

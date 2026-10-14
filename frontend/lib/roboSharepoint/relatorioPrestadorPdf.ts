@@ -177,7 +177,7 @@ export async function gerarPdfRelatorio(r: Relatorio, geradoEm = new Date()): Pr
 
   // ── Arquivos que não contam ────────────────────────────────────────────────
   if (r.foraDoPadrao.length > 0) {
-    titulo(`Arquivos que não contam (${r.foraDoPadrao.length})`, 'Estão nas pastas, mas o nome não segue o padrão. Renomeie como em "Nome certo" e o robô passa a contar na leitura seguinte.')
+    titulo(`Ajustar nomenclatura (${r.foraDoPadrao.length})`, 'Estão nas pastas, mas o nome não segue o padrão. Renomeie como em "Nome certo": o que ainda não foi aceito passa a contar na leitura seguinte, e o que já foi aceito por uma pessoa perde este aviso.')
     for (const f of r.foraDoPadrao) {
       const a = quebrar(f.arquivo, 220, negrito, 8)
       const b = quebrar(`${f.onde} · ${f.motivo}`, 220, fonte, 7.5)
