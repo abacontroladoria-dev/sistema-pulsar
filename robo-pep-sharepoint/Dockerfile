@@ -3,7 +3,9 @@
 # Nada de segredo aqui: token da máquina, IDs do Entra e a chave do
 # certificado entram como variáveis de ambiente (Secret) no Coolify, em tempo
 # de execução. A imagem pode ser vista por qualquer um sem expor nada.
-FROM node:20-alpine
+# Node 22 (LTS): o unpdf (texto dos PDFs, 0.5.0) exige >= 22, e o 20 saiu de
+# suporte em abril/2026.
+FROM node:22-alpine
 
 ENV NODE_ENV=production \
     PORT=8080 \

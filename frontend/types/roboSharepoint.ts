@@ -1,6 +1,6 @@
 // Tabelas sp_pep_* (migration 20261001120000_robo_pep_sharepoint.sql).
 
-export type RoboEtapaNome = 'autenticar' | 'listar' | 'classificar' | 'planilhas' | 'enviar'
+export type RoboEtapaNome = 'autenticar' | 'listar' | 'classificar' | 'planilhas' | 'enviar' | 'documentos'
 
 export type RoboEtapa = {
   etapa: RoboEtapaNome

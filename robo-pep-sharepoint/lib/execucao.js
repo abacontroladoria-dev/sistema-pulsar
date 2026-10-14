@@ -13,10 +13,15 @@
 
 const { classificarArquivo, classificarPasta, competenciaDoArquivo, pastasDePrestador } = require('./mapeamento')
 const { lerPlanilhaPlanejamento } = require('./planilha')
+const { extrairTexto, podeLer, sha256, extensaoDe, TAMANHO_MAX } = require('./documentos')
 
 const TAMANHO_LOTE = 1000
 const PAUSA_ENTRE_PARTES_MS = 300
-const ETAPAS = ['autenticar', 'listar', 'classificar', 'planilhas', 'enviar']
+const ETAPAS = ['autenticar', 'listar', 'classificar', 'planilhas', 'enviar', 'documentos']
+// "Ler documentos": quantas evidências por execução (o resto fica para a
+// próxima) e quanto texto por chamada ao banco.
+const DOCUMENTOS_POR_EXECUCAO = 150
+const TEXTO_POR_CHAMADA = 1_500_000
 
 /** Nó da árvore a partir de um driveItem do Graph. */
 function noDoItem(item) {
@@ -341,6 +346,18 @@ async function executar({ graph, api, config, gatilho, simular = false, observad
       return { resultado: total, detalhe: total }
     })
 
+    // 0.5.0: o texto das evidências novas ou alteradas, para a conferência do
+    // conteúdo na tela PEP. Depois de "enviar": a evidência já existe no banco.
+    // Falha aqui não derruba a execução: a leitura do SharePoint já foi
+    // gravada; a etapa fica vermelha no painel e o banco pede de novo amanhã.
+    if (api && !simular && typeof api.documentosALer === 'function') {
+      try {
+        await cronometrar('documentos', ctx, () => lerDocumentos({ graph, api, driveId: bib.driveId, execucaoId: ctx.execucaoId, contagens }))
+      } catch (e) {
+        observador?.evento?.(`ler documentos falhou: ${e.message}`)
+      }
+    }
+
     const metricas = resumoMetricas({ inicio, graph, api, contagens, resultadoLote, etapas: ctx.etapas })
     if (api && ctx.execucaoId) await api.finalizarExecucao(ctx.execucaoId, { status: 'concluido', metricas })
     observador?.fim?.(metricas)
@@ -352,6 +369,73 @@ async function executar({ graph, api, config, gatilho, simular = false, observad
     }
     observador?.fim?.(metricas, e)
     throw e
+  }
+}
+
+/**
+ * Baixa e lê as evidências que o banco pediu. Falha num arquivo não para a
+ * etapa: o arquivo vai como "erro" e o banco pede de novo amanhã. Banco sem a
+ * migration de 14/10/2026: a etapa termina como "indisponível", sem erro.
+ * Para log, só contagens — o texto vai no corpo da RPC e em nenhum outro lugar.
+ */
+async function lerDocumentos({ graph, api, driveId, execucaoId, contagens }) {
+  let pedido
+  try {
+    pedido = await api.documentosALer(DOCUMENTOS_POR_EXECUCAO)
+  } catch (e) {
+    if (/PGRST202|Could not find the function|404/i.test(e.message)) {
+      return { resultado: null, detalhe: { indisponivel: true } }
+    }
+    throw e
+  }
+  const itens = pedido?.itens ?? []
+  const porStatus = {}
+  let parte = []
+  let tamanhoParte = 0
+  let gravados = 0
+  const enviar = async () => {
+    if (!parte.length) return
+    const r = await api.registrarDocumentos(execucaoId, parte)
+    gravados += Number(r?.gravados ?? 0) + Number(r?.conteudo_igual ?? 0)
+    parte = []
+    tamanhoParte = 0
+  }
+
+  for (const it of itens) {
+    const base = { sp_id: it.sp_id, e_tag: it.e_tag ?? null, extensao: extensaoDe(it.nome), tamanho: it.tamanho ?? null }
+    let doc
+    const pode = podeLer(it.nome, it.tamanho)
+    if (!pode.ok) {
+      doc = { ...base, status: pode.status, detalhe: pode.detalhe }
+    } else {
+      try {
+        const buf = await graph.baixar(driveId, it.sp_id, it.tamanho, TAMANHO_MAX)
+        const r = await extrairTexto(buf, it.nome)
+        doc = { ...base, sha256: sha256(buf), status: r.status, texto: r.texto ?? null, paginas: r.paginas ?? null, caracteres: r.caracteres, detalhe: r.detalhe ?? null }
+      } catch (e) {
+        // 404 = apagado entre a listagem e agora; o banco resolve na próxima leitura.
+        doc = { ...base, status: 'erro', detalhe: String(e.message ?? e).slice(0, 200) }
+      }
+    }
+    porStatus[doc.status] = (porStatus[doc.status] ?? 0) + 1
+    const peso = (doc.texto?.length ?? 0) + 300
+    if (tamanhoParte + peso > TEXTO_POR_CHAMADA) await enviar()
+    parte.push(doc)
+    tamanhoParte += peso
+  }
+  await enviar()
+
+  const naoLegiveis = Object.entries(porStatus).filter(([s]) => s !== 'ok').reduce((n, [, v]) => n + v, 0)
+  Object.assign(contagens, { documentos_lidos: itens.length, documentos_nao_legiveis: naoLegiveis })
+  return {
+    resultado: { lidos: itens.length, gravados },
+    detalhe: {
+      lidos: itens.length,
+      gravados,
+      nao_legiveis: naoLegiveis,
+      por_status: porStatus,
+      pendentes_depois: Math.max(0, Number(pedido?.total ?? 0) - itens.length),
+    },
   }
 }
 

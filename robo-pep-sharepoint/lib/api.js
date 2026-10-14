@@ -1,5 +1,5 @@
 /**
- * Único ponto de contato com o Pulsar. Quatro RPCs `robo_pep_*`, nada de
+ * Único ponto de contato com o Pulsar. As RPCs `robo_pep_*`, nada de
  * acesso direto a tabela e nada de `service_role`.
  *
  * Mesmo desenho do robo-autorizador/api.js: a anon key (pública, já está no
@@ -123,6 +123,21 @@ class Api {
       p_arquivos_removidos: args.arquivosRemovidos ?? [],
       p_planilhas: args.planilhas ?? [],
       p_simular: !!args.simular,
+    }, { timeoutMs: 60000 })
+  }
+
+  /**
+   * 0.5.0: as evidências cujo texto o robô ainda não leu (novas, alteradas ou
+   * com falha passageira). `{ total, itens: [{ sp_id, e_tag, nome, tamanho }] }`.
+   */
+  documentosALer(limite) {
+    return this.chamar('robo_pep_documentos_a_ler', { p_limite: limite }, { timeoutMs: 30000 })
+  }
+
+  /** 0.5.0: o texto e a impressão digital de cada evidência lida. */
+  registrarDocumentos(execucaoId, documentos) {
+    return this.chamar('robo_pep_registrar_documentos', {
+      p_execucao_id: execucaoId, p_documentos: documentos,
     }, { timeoutMs: 60000 })
   }
 

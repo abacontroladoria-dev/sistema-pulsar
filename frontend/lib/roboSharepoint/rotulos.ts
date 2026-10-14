@@ -10,6 +10,9 @@ export const ETAPAS: { etapa: RoboEtapaNome; rotulo: string; explica: string }[]
   { etapa: 'classificar', rotulo: 'Classificar', explica: 'Pasta → prestador, paciente e item do PEP' },
   { etapa: 'planilhas', rotulo: 'Ler planilhas', explica: 'CNPJ e CPFs da planilha de planejamento' },
   { etapa: 'enviar', rotulo: 'Reconhecer no Pulsar', explica: 'CNPJ, CPF e sessão na Grade; grava sugestões' },
+  // 0.5.0 (14/10/2026): o texto das evidências novas ou alteradas, para a
+  // conferência do conteúdo na tela PEP. Execuções antigas não têm esta etapa.
+  { etapa: 'documentos', rotulo: 'Ler documentos', explica: 'Texto das evidências novas, para conferir o conteúdo' },
 ]
 
 export const MOTIVOS: Record<string, string> = {

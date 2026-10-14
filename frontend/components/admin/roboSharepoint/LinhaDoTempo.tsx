@@ -47,6 +47,12 @@ function numerosDetalhe(etapa: RoboEtapa): { numeros: Numero[]; nota?: string } 
     case 'enviar':
       if (d.sem_banco) return { numeros: [], nota: 'banco desligado (demonstração)' }
       return { numeros: [{ valor: n('sugeridos'), rotulo: 'sugestões' }, { valor: n('novos'), rotulo: 'novos' }, { valor: n('ms_banco'), rotulo: 'ms no banco' }] }
+    case 'documentos':
+      if (d.indisponivel) return { numeros: [], nota: 'banco ainda sem a atualização de 14/10/2026' }
+      return {
+        numeros: [{ valor: n('lidos'), rotulo: 'lidos' }, { valor: n('nao_legiveis'), rotulo: 'não legíveis', atencao: (n('nao_legiveis') ?? 0) > 0 }],
+        nota: n('pendentes_depois') ? `${n('pendentes_depois')} ficam para a próxima leitura` : 'texto não vai para o log',
+      }
     default:
       return null
   }
@@ -182,13 +188,13 @@ export function LinhaDoTempo({ execucao, onAbrir }: {
         </p>
       </div>
 
-      <ol className="mt-4 grid gap-3 md:grid-cols-5">
+      <ol className="mt-4 grid gap-3 md:grid-cols-3 xl:grid-cols-6">
         {ETAPAS.map(({ etapa }, i) => (
           <li key={etapa} className="relative flex">
             <CartaoEtapa execucao={execucao} etapa={etapa} onAbrir={onAbrir} />
             {/* seta de uma etapa para a próxima */}
             {i < ETAPAS.length - 1 && (
-              <span className="pointer-events-none absolute -right-[18px] top-[4.25rem] z-10 hidden h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 md:flex" aria-hidden>
+              <span className="pointer-events-none absolute -right-[18px] top-[4.25rem] z-10 hidden h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 xl:flex" aria-hidden>
                 <ChevronRight className="h-3.5 w-3.5" />
               </span>
             )}
