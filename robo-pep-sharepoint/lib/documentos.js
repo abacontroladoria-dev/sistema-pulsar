@@ -60,7 +60,9 @@ async function unpdf() {
 async function textoDoPdf(buf) {
   const { getDocumentProxy, extractText } = await unpdf()
   try {
-    const pdf = await getDocumentProxy(new Uint8Array(buf))
+    // PDF vem de terceiros: sem execução de código do arquivo (fontes
+    // compiladas via eval). Para tirar texto não faz falta.
+    const pdf = await getDocumentProxy(new Uint8Array(buf), { isEvalSupported: false })
     const { totalPages, text } = await extractText(pdf, { mergePages: false })
     const paginas = Array.isArray(text) ? text : [String(text ?? '')]
     return { status: 'ok', texto: paginas.map(limparTexto).join('\n\n'), paginas: totalPages }

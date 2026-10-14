@@ -166,3 +166,12 @@ describe('conferirTexto — calibração 2 (frases normais não são modelo)', (
     expect(r.find(a => a.codigo === 'lacuna_do_modelo')?.nivel).toBe('atencao')
   })
 })
+
+describe('conferirTexto — trechos sem dado de contato (revisão de segurança 15/10/2026)', () => {
+  test('CPF, telefone e e-mail não ficam gravados no trecho', () => {
+    const t = OE_BOM.replace('Cargo: Coordenadora pedagógica', 'Cargo:\nResponsável: ______ CPF 529.982.247-25, tel (11) 98765-4321, mae@exemplo.com')
+    const trechos = conferirTexto(t, ctxOE).map(a => a.trecho ?? '').join(' ')
+    expect(trechos).toContain('[CPF]')
+    expect(trechos).not.toMatch(/529\.982|98765|mae@/)
+  })
+})

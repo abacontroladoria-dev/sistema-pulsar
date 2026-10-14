@@ -108,6 +108,7 @@ export const CODIGO_PARA_ROTAS: Record<string, string[]> = {
   relacionamento_prestador_individual: ['/relacionamento-prestador/individual'],
   relacionamento_prestador_pep: ['/relacionamento-prestador/pep'],
   relacionamento_prestador_pep_historico: ['/relacionamento-prestador/pep-historico'],
+  relacionamento_prestador_auditoria_documentos: ['/relacionamento-prestador/auditoria-documentos'],
   // O Pulsar Connect não tinha código de permissão: o proxy derivava as rotas
   // permitidas deste mapa, '/connect' nunca aparecia, e todo não-admin que
   // clicasse no item do menu caía em /sem-permissao. O item era visível para

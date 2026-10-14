@@ -46,6 +46,7 @@ import {
   CalendarClock,
   Gauge,
   FileSearch,
+  ScanText,
   type LucideIcon,
 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
@@ -116,6 +117,7 @@ const pathIconLegado: Record<string, LucideIcon> = {
   "/relacionamento-prestador/individual": UserRound,
   "/relacionamento-prestador/pep": ListChecks,
   "/relacionamento-prestador/pep-historico": History,
+  "/relacionamento-prestador/auditoria-documentos": ScanText,
   "/cronograma/indicadores?tab=profissionais": BarChart3,
   "/cronograma/indicadores?tab=unidades": Building2,
   "/cronograma/indicadores?tab=pacientes": UserCheck,
@@ -732,6 +734,7 @@ export default function Sidebar() {
           {(canAccess("/relacionamento-prestador/analise") || canAccess("/relacionamento-prestador/rp") ||
             canAccess("/relacionamento-prestador/individual") || canAccess("/relacionamento-prestador/pep") ||
             canAccess("/relacionamento-prestador/pep-historico") ||
+            canAccess("/relacionamento-prestador/auditoria-documentos") ||
             canAccess("/relacionamento-prestador/ocupacao-salas") ||
             canAccess("/relacionamento-prestador/solicitacoes") ||
             canAccess("/relacionamento-prestador/ocupar-profissionais-disponiveis")) && (
@@ -763,6 +766,9 @@ export default function Sidebar() {
               )}
               {canAccess("/relacionamento-prestador/pep-historico") && (
                 <Item codigo="relacionamento_prestador_pep_historico" />
+              )}
+              {canAccess("/relacionamento-prestador/auditoria-documentos") && (
+                <Item codigo="relacionamento_prestador_auditoria_documentos" />
               )}
             </SidebarGroup>
           )}

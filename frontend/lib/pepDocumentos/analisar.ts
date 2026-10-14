@@ -7,22 +7,27 @@ import 'server-only'
 //
 // Roda com a service_role (é ela que lê sp_pep_documentos_texto). Quem chama:
 //   • o tique do worker (pg_cron a cada minuto, rota da auditoria);
-//   • a rota /api/relacionamento-prestador/pep/documentos/analisar, que a tela
-//     PEP chama ao abrir um analista com documentos esperando — depois de
-//     conferir a permissão de quem pediu.
+//   • o botão "Auditar" da tela Auditoria de Documentos PEP (rota
+//     /api/relacionamento-prestador/auditoria-documentos/auditar + despacho.ts),
+//     depois de conferir a permissão de quem pediu.
+//
+// Só analisa o que alguém pôs na fila ('pendente'); documento recém-lido fica
+// 'aguardando' (lido, não auditado) — decisão de 14/10/2026.
 //
 // O texto nunca sai daqui para log: só contagens e códigos.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { conferirTexto } from './regras'
-import { VERSAO_REGUAS, lerDocumentoComIA, temRegua } from './ia'
+import { lerDocumentoComIA, rotuloRegua } from './ia'
+import { reguasVigentes } from './reguas'
+import { VERSAO_ANALISE } from './situacao'
 import { aprenderModelo, assinatura, conteudoPreenchido, linhaComparavel, shingles } from './semelhanca'
 import { parEntre, type DocParaPar, type Par } from './pares'
 import { linhasDe } from './texto'
 import type { Achado } from './tipos'
 
 /** Muda quando as conferências mudam (o documento guarda com qual foi analisado). */
-export const VERSAO_ANALISE = '2026-10-14.2' // .2 = calibração com os documentos reais
+export { VERSAO_ANALISE } from './situacao'
 
 const LOTE_IN = 150
 const PARALELO = 3
@@ -83,10 +88,15 @@ export async function analisarDocumentosPep(db: SupabaseClient, opcoes: {
   const resumo: ResumoAnalise = { analisados: 0, falhas: 0, ia: 0, pares: 0, restantes: false }
 
   // ── 1. O que analisar ────────────────────────────────────────────────────────
+  // Só o que alguém pediu para auditar ("pendente" = na fila; "aguardando" =
+  // lido, não auditado, e não entra aqui), mais a nova tentativa da IA que falhou.
   const dezMinAtras = new Date(Date.now() - 10 * 60_000).toISOString()
+  const reservaVencida = new Date(Date.now() - 3 * 60_000).toISOString()
+  const livre = `analise_reservada_em.is.null,analise_reservada_em.lt.${reservaVencida}`
   let q = db.from('sp_pep_documentos')
     .select('sp_id, extracao_status, analise_tentativas, ia_tentativas, ia_status, ia_regua')
     .or(`analise_status.eq.pendente,and(ia_status.eq.erro,ia_tentativas.lt.3,ia_em.lt.${dezMinAtras})`)
+    .or(livre)
     .order('extraido_em', { ascending: true })
     .limit(limite + 1)
   if (opcoes.spIds?.length) q = q.in('sp_id', opcoes.spIds.slice(0, 500))
@@ -94,7 +104,18 @@ export async function analisarDocumentosPep(db: SupabaseClient, opcoes: {
   if (erroPend) throw new Error(`sp_pep_documentos: ${erroPend.message}`)
   const pendentes = (pendBruto ?? []) as Pendente[]
   resumo.restantes = pendentes.length > limite
-  const alvo = pendentes.slice(0, limite)
+  const candidatosFila = pendentes.slice(0, limite)
+  if (candidatosFila.length === 0) return resumo
+
+  // Reserva: o despacho da tela e o tique do cron podem rodar juntos; quem
+  // marcar primeiro analisa (o outro pula). A reserva vence em 3 minutos.
+  const { data: reservados } = await db.from('sp_pep_documentos')
+    .update({ analise_reservada_em: new Date().toISOString() })
+    .in('sp_id', candidatosFila.map(p => p.sp_id))
+    .or(livre)
+    .select('sp_id')
+  const meus = new Set(((reservados ?? []) as { sp_id: string }[]).map(r => r.sp_id))
+  const alvo = candidatosFila.filter(p => meus.has(p.sp_id))
   if (alvo.length === 0) return resumo
 
   // ── 2. Contexto: item, catálogo, pastas, texto ───────────────────────────────
@@ -125,6 +146,7 @@ export async function analisarDocumentosPep(db: SupabaseClient, opcoes: {
   const textoDe = new Map(textos.map(t => [t.sp_id, t.texto]))
 
   // ── 3. O texto do modelo, por sigla, aprendido dos documentos guardados ──────
+  const reguas = await reguasVigentes(db)
   const modeloPorSigla = new Map<string, Set<string>>()
   for (const sigla of new Set(itens.map(i => i.sigla).filter(Boolean)) as Set<string>) {
     modeloPorSigla.set(sigla.toUpperCase(), await modeloDaSigla(db, sigla))
@@ -136,14 +158,14 @@ export async function analisarDocumentosPep(db: SupabaseClient, opcoes: {
     const item = itemDe.get(p.sp_id)
     const texto = textoDe.get(p.sp_id)
     if (!item || p.extracao_status !== 'ok') {
-      await db.from('sp_pep_documentos').update({ analise_status: 'concluida', analisado_em: new Date().toISOString(), atualizado_em: new Date().toISOString() }).eq('sp_id', p.sp_id)
+      await db.from('sp_pep_documentos').update({ analise_reservada_em: null, analise_status: 'concluida', analisado_em: new Date().toISOString(), atualizado_em: new Date().toISOString() }).eq('sp_id', p.sp_id)
       analisados.push(p.sp_id)
       return
     }
     if (!texto) {
       // Texto já expirou (90 dias) ou não chegou: sem o que analisar.
       await db.from('sp_pep_documentos').update({
-        analise_status: 'erro', analise_erro: 'texto indisponível (expirado ou não recebido)',
+        analise_reservada_em: null, analise_status: 'erro', analise_erro: 'texto indisponível (expirado ou não recebido)',
         analise_tentativas: p.analise_tentativas + 1, atualizado_em: new Date().toISOString(),
       }).eq('sp_id', p.sp_id)
       resumo.falhas++
@@ -181,7 +203,7 @@ export async function analisarDocumentosPep(db: SupabaseClient, opcoes: {
       }
     } catch (e) {
       await db.from('sp_pep_documentos').update({
-        analise_status: 'erro', analise_erro: falhou(e), analise_tentativas: p.analise_tentativas + 1,
+        analise_reservada_em: null, analise_status: 'erro', analise_erro: falhou(e), analise_tentativas: p.analise_tentativas + 1,
         atualizado_em: new Date().toISOString(),
       }).eq('sp_id', p.sp_id)
       resumo.falhas++
@@ -193,15 +215,16 @@ export async function analisarDocumentosPep(db: SupabaseClient, opcoes: {
     // Reanálise com a mesma régua: a leitura da IA de antes continua valendo
     // (não paga a OpenAI de novo). Régua nova, conteúdo novo ou "Analisar de
     // novo" (ia_status volta a 'pendente') leem de novo.
-    const iaValida = p.ia_status === 'concluida' && p.ia_regua === `${sigla}@${VERSAO_REGUAS}`
+    const regua = reguas.get(sigla)
+    const iaValida = !!regua && p.ia_status === 'concluida' && p.ia_regua === rotuloRegua(regua)
     if (iaValida) {
       // nada: ia_* fica como está
-    } else if (!temRegua(sigla)) {
+    } else if (!regua) {
       Object.assign(ia, { ia_status: 'nao_se_aplica', ia_achados: [], ia_erro: null })
     } else {
       try {
         const r = await lerDocumentoComIA({
-          sigla, texto,
+          sigla, texto, regua,
           pacientes: [item.paciente_nome, pastaPaciente, ...outros],
           profissionais: [item.prestador_nome],
         })
@@ -216,7 +239,7 @@ export async function analisarDocumentosPep(db: SupabaseClient, opcoes: {
     }
 
     const { error } = await db.from('sp_pep_documentos').update({
-      analise_status: 'concluida', analise_erro: null, analise_versao: VERSAO_ANALISE, analisado_em: agora,
+      analise_reservada_em: null, analise_status: 'concluida', analise_erro: null, analise_versao: VERSAO_ANALISE, analisado_em: agora,
       achados, assinatura: assin, atualizado_em: agora, ...ia,
     }).eq('sp_id', p.sp_id)
     if (error) { resumo.falhas++; return }

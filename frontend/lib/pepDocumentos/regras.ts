@@ -19,6 +19,7 @@
 // "atenção" — a pessoa olha.
 
 import { nomesCompativeis } from '@/lib/roboSharepoint/padraoNome'
+import { mascararContatos } from './anonimizar'
 import type { Achado, ContextoDocumento, Nivel } from './tipos'
 import {
   RE_HORA, RE_INTERVALO, cortar, datasDaLinha, linhasDe, minutos, normalizar, rotuloValor,
@@ -105,10 +106,12 @@ class Coletor {
   achados: Achado[] = []
   private vistos = new Set<string>()
   add(a: Omit<Achado, 'origem'>) {
-    const chave = `${a.codigo}|${a.trecho ?? ''}`
+    // O trecho fica gravado e aparece na tela: sem CPF, telefone ou e-mail.
+    const trecho = a.trecho ? mascararContatos(a.trecho) : undefined
+    const chave = `${a.codigo}|${trecho ?? ''}`
     if (this.vistos.has(chave) || this.achados.length >= MAX_ACHADOS) return
     this.vistos.add(chave)
-    this.achados.push({ ...a, origem: 'regra' })
+    this.achados.push({ ...a, trecho, descricao: a.descricao ? mascararContatos(a.descricao) : undefined, origem: 'regra' })
   }
 }
 

@@ -4,6 +4,7 @@ import { respostaDeErroAuth } from '@/lib/auditoria/auth'
 import { exigirPermissaoPep } from '@/lib/pepDocumentos/auth'
 import { modeloDaSigla } from '@/lib/pepDocumentos/analisar'
 import { compararParagrafos } from '@/lib/pepDocumentos/semelhanca'
+import { mascararContatos } from '@/lib/pepDocumentos/anonimizar'
 
 // Comparador lado a lado de dois documentos parecidos (o "Evolução duplicada
 // entre pacientes" da PEP). O texto só sai daqui para um PAR QUE O SISTEMA JÁ
@@ -43,7 +44,10 @@ export async function GET(req: NextRequest) {
       prestador: i?.prestador_nome ?? null, paciente: i?.paciente_nome ?? null, web_url: i?.web_url ?? null }
   }
 
-  const ta = texto.get(a), tb = texto.get(b)
+  // Quem compara precisa ver o texto, não CPF/telefone/e-mail de ninguém.
+  const brutoA = texto.get(a), brutoB = texto.get(b)
+  const ta = brutoA ? mascararContatos(brutoA) : undefined
+  const tb = brutoB ? mascararContatos(brutoB) : undefined
   if (!ta || !tb) {
     return NextResponse.json({ par, expirado: true, a: cabecalho(a), b: cabecalho(b) }, { headers: { 'Cache-Control': 'no-store' } })
   }

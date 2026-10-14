@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { segredoConfere } from '@/lib/central/webhook-signature'
 import { supabaseService } from '@/lib/supabase/service'
 import { processarFilaReauditoria } from '@/lib/auditoria/filaReauditoria'
+import { analisarDocumentosPep } from '@/lib/pepDocumentos/analisar'
 
 // Tique da fila de reauditoria — chamado pelo pg_cron a cada minuto
 // (fn_auditoria_worker_tick), com o segredo do Vault. Molde:
@@ -17,8 +18,23 @@ export async function POST(req: NextRequest) {
     return new NextResponse(null, { status: 401 })
   }
   try {
+    const inicio = Date.now()
     const resultado = await processarFilaReauditoria(supabaseService)
-    return NextResponse.json({ ok: true, ...resultado })
+    // Auditoria de Documentos PEP (20261015100000): rede de segurança do
+    // despacho da tela. Só pega o que alguém mandou auditar ('pendente');
+    // documento recém-lido fica 'aguardando' e não entra. Falha aqui não
+    // derruba a fila da auditoria de evoluções.
+    let documentosPep: unknown = null
+    const sobra = 50_000 - (Date.now() - inicio)
+    if (sobra > 8_000) {
+      try {
+        documentosPep = await analisarDocumentosPep(supabaseService, { limite: 9, orcamentoMs: Math.min(sobra - 5_000, 25_000) })
+      } catch (e) {
+        documentosPep = { erro: e instanceof Error ? e.message.slice(0, 200) : 'falhou' }
+        console.error('[tique] auditoria de documentos PEP falhou', documentosPep)
+      }
+    }
+    return NextResponse.json({ ok: true, ...resultado, documentosPep })
   } catch (err) {
     const erro = err instanceof Error ? err.message : String(err)
     console.error('[tique reauditoria] falhou', erro)

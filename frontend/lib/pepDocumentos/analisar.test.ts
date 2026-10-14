@@ -3,9 +3,11 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 // O orquestrador de ponta a ponta, contra um banco em memória que imita as
 // chamadas do supabase-js que ele usa. A IA é simulada (vi.mock).
 
+vi.mock('./reguas', () => ({
+  reguasVigentes: async () => new Map(['OE', 'ETC', 'PIC'].map(s => [s, { sigla: s, versao: 1, conteudo: 'regua de teste' }])),
+}))
 vi.mock('./ia', () => ({
-  VERSAO_REGUAS: '2026-10-14',
-  temRegua: (s: string) => ['OE', 'ETC', 'PIC'].includes((s ?? '').toUpperCase()),
+  rotuloRegua: (r: { sigla: string; versao: number }) => `${r.sigla}@v${r.versao}`,
   lerDocumentoComIA: vi.fn(async () => ({
     achados: [{ codigo: 'ia', familia: 'qualidade', nivel: 'atencao', origem: 'ia', titulo: 'Texto genérico' }],
     resumo: 'ok', modelo: 'gpt-teste', regua: 'OE@2026-10-14',
@@ -35,10 +37,11 @@ function bancoFalso(t: Tabelas) {
   function from(tabela: string) {
     const filtros: ((l: Linha) => boolean)[] = []
     let embed = false
+    let retornar = false
     let acao: { tipo: 'select' | 'update' | 'delete' | 'upsert'; valor?: unknown } = { tipo: 'select' }
     let lim = Infinity
     const q = {
-      select(cols: string) { embed = cols.includes('sp_pep_itens!inner'); return q },
+      select(cols: string) { embed = cols.includes('sp_pep_itens!inner'); if (acao.tipo === 'update') retornar = true; return q },
       update(v: Linha) { acao = { tipo: 'update', valor: v }; return q },
       delete() { acao = { tipo: 'delete' }; return q },
       upsert(rows: Linha[]) {
@@ -54,14 +57,18 @@ function bancoFalso(t: Tabelas) {
       order() { return q },
       limit(n: number) { lim = n; return q },
       or(expr: string) {
-        if (expr.startsWith('analise_status.eq.pendente')) filtros.push(l => l.analise_status === 'pendente' || (l.ia_status === 'erro' && (l.ia_tentativas as number) < 3))
+        if (expr.startsWith('analise_reservada_em')) filtros.push(l => !l.analise_reservada_em)
+        else if (expr.startsWith('analise_status.eq.pendente')) filtros.push(l => l.analise_status === 'pendente' || (l.ia_status === 'erro' && (l.ia_tentativas as number) < 3))
         else { const id = expr.match(/a_sp_id\.eq\.([^,]+)/)![1]; filtros.push(l => l.a_sp_id === id || l.b_sp_id === id) }
         return q
       },
       maybeSingle() { return q.then(r => ({ ...r, data: r.data[0] ?? null })) },
       then<T>(res: (r: { data: Linha[]; error: null }) => T) {
         const linhas = t[tabela].filter(l => filtros.every(f => f(l)))
-        if (acao.tipo === 'update') { linhas.forEach(l => Object.assign(l, acao.valor)); return Promise.resolve(res({ data: [], error: null })) }
+        if (acao.tipo === 'update') {
+          linhas.forEach(l => Object.assign(l, acao.valor))
+          return Promise.resolve(res({ data: retornar ? linhas.map(l => ({ sp_id: l.sp_id })) as Linha[] : [], error: null }))
+        }
         if (acao.tipo === 'delete') { t[tabela] = t[tabela].filter(l => !linhas.includes(l)); return Promise.resolve(res({ data: [], error: null })) }
         const data = linhas.slice(0, lim).map(l => (embed ? { ...l, sp_pep_itens: itemDe(l.sp_id as string) } : { ...l }))
         return Promise.resolve(res({ data, error: null }))
@@ -165,5 +172,24 @@ describe('analisarDocumentosPep', () => {
     const r = await analisarDocumentosPep(bancoFalso(t), { spIds: ['C'] })
     expect(r.analisados).toBe(1)
     expect(t.sp_pep_documentos.find(d => d.sp_id === 'A')!.analise_status).toBe('pendente')
+  })
+})
+
+describe('auditoria sob comando (15/10/2026)', () => {
+  test('documento "aguardando" (lido, não auditado) não é analisado', async () => {
+    t.sp_pep_documentos.forEach(d => { d.analise_status = 'aguardando' })
+    const r = await analisarDocumentosPep(bancoFalso(t), {})
+    expect(r.analisados).toBe(0)
+    expect(lerDocumentoComIA).not.toHaveBeenCalled()
+  })
+  test('documento reservado por outro processo é pulado', async () => {
+    t.sp_pep_documentos.find(d => d.sp_id === 'A')!.analise_reservada_em = new Date().toISOString()
+    const r = await analisarDocumentosPep(bancoFalso(t), {})
+    expect(r.analisados).toBe(2)
+    expect(t.sp_pep_documentos.find(d => d.sp_id === 'A')!.analise_status).toBe('pendente')
+  })
+  test('ao terminar, a reserva é liberada', async () => {
+    await analisarDocumentosPep(bancoFalso(t), {})
+    expect(t.sp_pep_documentos.every(d => !d.analise_reservada_em)).toBe(true)
   })
 })
