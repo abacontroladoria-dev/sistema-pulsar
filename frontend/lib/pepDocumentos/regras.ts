@@ -31,6 +31,17 @@ const MAX_ACHADOS = 40
 const SIGLAS_DO_MES = new Set(['STC', 'ETC', 'TAP', 'TOP', 'OE'])
 /** As réguas OE e ETC pedem data e horário de início/término. */
 const SIGLAS_COM_HORARIO = new Set(['OE', 'ETC'])
+/**
+ * TAP é material de treinamento PARA o aplicador: traz instruções ("preencha
+ * a data…"), roteiros com colchetes ("Primeiro [tarefa]") e folhas de
+ * registro em branco para a sessão. Nele, isso é conteúdo, não sobra do
+ * modelo (medido em 14/10/2026): resíduos não contam e lacuna/campo vazio
+ * ficam só em "atenção".
+ */
+const SIGLAS_FORMULARIO = new Set(['TAP'])
+
+/** "Abril/2026", "Setembro 2026", "10/2024", "Maio de 2026": mês e ano — válido em campo de data. */
+const MES_ANO = /^(\d{1,2}\s*\/\s*\d{4}|[a-z]+\s*(\/|de)?\s*\d{4})\.?$/
 
 /**
  * Título de cada documento, sem acento e minúsculo. `titulo` é o nome por
@@ -42,7 +53,7 @@ const SIGLAS_COM_HORARIO = new Set(['OE', 'ETC'])
 const TITULOS: Record<string, { titulo: RegExp; sigla: RegExp; nome: string }> = {
   STC: { titulo: /supervisao tecnica aba|supervisao tecnica do caso/, sigla: /supervisao tecnica|\bstc\b/, nome: 'Supervisão Técnica (STC)' },
   ETC: { titulo: /estudo tecnico de caso/, sigla: /estudo tecnico|\betc\b/, nome: 'Estudo Técnico de Caso (ETC)' },
-  TAP: { titulo: /treinamento (de |dos )?aplicadores/, sigla: /\btap\b/, nome: 'Treinamento de Aplicadores (TAP)' },
+  TAP: { titulo: /treinamento (de |dos )?aplicadores|manual de treinamento|treinamento e aplicacao/, sigla: /\btap\b/, nome: 'Treinamento de Aplicadores (TAP)' },
   TOP: { titulo: /orientacao parental/, sigla: /treinamento e orientacao|\btop\b/, nome: 'Treinamento e Orientação Parental (TOP)' },
   PIC: { titulo: /plano (individualizado|de intervencao)/, sigla: /\bpic\b/, nome: 'Plano Individualizado Comportamental (PIC)' },
   RT: { titulo: /relatorio (de )?fechamento|fechamento tecnico/, sigla: /\brt\b|relatorio tecnico/, nome: 'Relatório de Fechamento Técnico (RT)' },
@@ -55,8 +66,10 @@ const CAMPOS_ESSENCIAIS = [
   'paciente', 'nome do paciente', 'nome da crianca', 'crianca', 'responsavel', 'escola',
   'cargo', 'funcao', 'psicologo', 'psicologa', 'representante', 'analista', 'coordenador', 'coordenadora',
   'coordenacao', 'supervisao tecnica', 'supervisor', 'supervisora', 'financiadora', 'convenio',
-  'idade', 'diagnostico', 'periodo de vigencia', 'vigencia', 'equipe responsavel',
+  'idade', 'diagnostico', 'periodo de vigencia', 'vigencia',
 ]
+// "Equipe responsável:" costuma ser título de bloco (Coordenação, Supervisão
+// técnica vêm embaixo) — medido em 14/10/2026 nos PICs reais: não entra aqui.
 
 /** Rótulos de data que NÃO são do encontro (não precisam cair no mês). */
 const DATA_QUE_NAO_E_DO_ENCONTRO = /nascimento|diagnost|medicac|laudo|admiss|vigenc|inicio|validade|emiss|prox/
@@ -71,9 +84,15 @@ type Padrao = { re: RegExp; nivel: Nivel; codigo: string; titulo: string }
 
 /** Resíduos do modelo e instruções ao profissional. Testados na linha sem acento e minúscula. */
 const RESIDUOS: Padrao[] = [
-  { re: /\[(?!\s*(?:sic|\d+)\s*\])[^\]\n]{2,40}\]/, nivel: 'errado', codigo: 'texto_do_modelo', titulo: 'Texto do modelo entre colchetes' },
-  { re: /\b(inserir|insira|preencher|preencha|digite|digitar)\b/, nivel: 'errado', codigo: 'texto_do_modelo', titulo: 'Instrução do modelo não apagada' },
-  { re: /\bcolocar (o|a|os|as) /, nivel: 'errado', codigo: 'texto_do_modelo', titulo: 'Instrução do modelo não apagada' },
+  // Calibrado em 14/10/2026 com os documentos reais: só é "errado" o que tem a
+  // cara do modelo. "[nome]" é modelo; "Estou [ação]" num exemplo de avaliação
+  // (VB-MAPP) não é. "Colocar o nome" é modelo; "colocar a roupa" (autocuidado)
+  // não é. "Procurando preencher a ficha" (orientação à escola) não é.
+  { re: /\[\s*(nome|data|paciente|crianca|mes|ano|idade|escola|responsavel|terapeuta|profissional|coordenador|inserir|preencher|descrever|listar|x+|\.{3}|_+)[^\]\n]{0,30}\]/, nivel: 'errado', codigo: 'texto_do_modelo', titulo: 'Texto do modelo entre colchetes' },
+  { re: /\[(?!\s*(?:sic|\d+)\s*\])[^\]\n]{2,40}\]/, nivel: 'atencao', codigo: 'possivel_instrucao', titulo: 'Texto entre colchetes: confira se é do modelo' },
+  { re: /\b(inserir|insira)\b/, nivel: 'errado', codigo: 'texto_do_modelo', titulo: 'Instrução do modelo não apagada' },
+  { re: /\bcolocar (o|a|os|as) (nome|data|mes|ano|numero|periodo|dia|horario|resultado|grafico|idade|diagnostico)\b/, nivel: 'errado', codigo: 'texto_do_modelo', titulo: 'Instrução do modelo não apagada' },
+  { re: /^(preencha|preencher|digite|digitar)\b|\((preencha|preencher|digite)\b/, nivel: 'atencao', codigo: 'possivel_instrucao', titulo: 'Parece instrução do modelo' },
   { re: /\blistar comportamentos\b|\bdescrever resumidamente\b|\bincluir (o )?grafico\b/, nivel: 'errado', codigo: 'texto_do_modelo', titulo: 'Instrução do modelo não apagada' },
   { re: /\bx{2,}\b/, nivel: 'errado', codigo: 'texto_do_modelo', titulo: 'Marcação "xx" do modelo' },
   { re: /\b(fulano|ciclano|beltrano)\b/, nivel: 'errado', codigo: 'texto_do_modelo', titulo: 'Nome genérico do modelo' },
@@ -109,6 +128,7 @@ export function conferirTexto(texto: string, ctx: ContextoDocumento): Achado[] {
   const hoje = ctx.hoje ?? new Date().toISOString().slice(0, 10)
   const normal = normalizar(texto)
   const naoEspacos = texto.replace(/\s/g, '').length
+  const formulario = SIGLAS_FORMULARIO.has(sigla)
 
   // ── Tamanho ────────────────────────────────────────────────────────────────
   if (naoEspacos < 200) {
@@ -155,14 +175,20 @@ export function conferirTexto(texto: string, ctx: ContextoDocumento): Achado[] {
 
     // Lacunas do modelo: "Data: //____", "______ às ______". Linha só de
     // sublinhado é a linha da assinatura — não conta.
-    if (/_{3,}/.test(linha) && !/^[_\s]+$/.test(linha)) {
-      c.add({ codigo: 'lacuna_do_modelo', familia: 'preenchimento', nivel: 'errado', titulo: 'Campo do modelo sem preencher', trecho: cortar(linha), secao })
+    // "Assinatura do coordenador: ______" é o lugar da assinatura (à mão ou
+    // digital): não é campo do modelo esquecido.
+    // "______ Fulana de Tal" é a linha da assinatura com o nome embaixo/ao lado.
+    // "Nome do Responsável Legal: ____" fica no bloco de assinaturas e costuma
+    // ser preenchido à mão: atenção (a régua do PIC confere só o coordenador).
+    if (/_{3,}/.test(linha) && !/^[_\s]+$/.test(linha) && !/^assinatura\b/.test(baixa) && !/^_{3,}\s*[\p{L}]/u.test(linha)) {
+      const blocoAssinatura = /^nome do responsavel|^responsavel legal/.test(baixa)
+      c.add({ codigo: 'lacuna_do_modelo', familia: 'preenchimento', nivel: formulario || blocoAssinatura ? 'atencao' : 'errado', titulo: 'Campo do modelo sem preencher', trecho: cortar(linha), secao })
     }
 
     // Resíduos: só na parte do valor quando a linha é "Rótulo: valor" —
     // "Nome do paciente: João" é rótulo, não resíduo.
     const alvo = rv ? normalizarParaResiduo(rv.valor) : baixa
-    for (const p of RESIDUOS) {
+    for (const p of formulario ? [] : RESIDUOS) {
       if (p.re.test(alvo)) {
         c.add({ codigo: p.codigo, familia: 'preenchimento', nivel: p.nivel, titulo: p.titulo, trecho: cortar(linha), secao })
         break
@@ -177,7 +203,7 @@ export function conferirTexto(texto: string, ctx: ContextoDocumento): Achado[] {
         const prox = linhas[i + 1]
         const proxEhCampo = !prox || !!rotuloValor(prox) || !!tituloNumerado(prox)
         if (proxEhCampo) {
-          const essencial = ehCampoEssencial(rv.chave)
+          const essencial = ehCampoEssencial(rv.chave) && !formulario
           c.add({
             codigo: essencial ? 'campo_vazio' : 'campo_possivelmente_vazio', familia: 'preenchimento',
             nivel: essencial ? 'errado' : 'atencao',
@@ -234,8 +260,14 @@ export function conferirTexto(texto: string, ctx: ContextoDocumento): Achado[] {
         }
       }
     }
-    if (rotuloData && !valorVazio(rotuloData.valor) && datas.length === 0 && /\d/.test(rotuloData.valor)) {
-      c.add({ codigo: 'data_invalida', familia: 'preenchimento', nivel: 'errado', titulo: 'Data incompleta ou em formato inválido', trecho: cortar(linha), secao })
+    if (rotuloData && !valorVazio(rotuloData.valor) && datas.length === 0 && /\d/.test(rotuloData.valor)
+        && !MES_ANO.test(semAcento(rotuloData.valor).toLowerCase().trim())) {
+      // "10/07/20219" é data quebrada (errado); "2026" sozinho é incompleta (atenção).
+      const quebrada = /\d{1,2}\s*\/\s*\d{1,2}\s*\/\s*\d+/.test(rotuloData.valor)
+      c.add({
+        codigo: quebrada ? 'data_invalida' : 'data_incompleta', familia: 'preenchimento', nivel: quebrada ? 'errado' : 'atencao',
+        titulo: quebrada ? 'Data em formato inválido' : 'Data incompleta', trecho: cortar(linha), secao,
+      })
     }
 
     // Horários "14h às 15h".

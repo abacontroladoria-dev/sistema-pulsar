@@ -31,3 +31,14 @@ describe('pares de documentos parecidos', () => {
     expect(relacaoEntre(stc, { ...stc, competencia: '2026-08' })).toBe('outro_mes')
   })
 })
+
+describe('calibração (14/10/2026)', () => {
+  test('PIC do mesmo paciente no mesmo mês, quase igual: versão nova, atenção', () => {
+    const b = { ...base, sp_id: 'b', sha256: 'h2', assinatura: quase(115) }
+    expect(parEntre(base, b)).toMatchObject({ relacao: 'mesmo_mes', nivel: 'atencao' })
+  })
+  test('TAP-01 × TAP-02 do mesmo mês, quase iguais: continua errado', () => {
+    const tap = { ...base, sigla: 'TAP' }
+    expect(parEntre(tap, { ...tap, sp_id: 'b', sha256: 'h2', assinatura: quase(115) })?.nivel).toBe('errado')
+  })
+})

@@ -15,14 +15,14 @@ import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { conferirTexto } from './regras'
-import { lerDocumentoComIA, temRegua } from './ia'
+import { VERSAO_REGUAS, lerDocumentoComIA, temRegua } from './ia'
 import { aprenderModelo, assinatura, conteudoPreenchido, linhaComparavel, shingles } from './semelhanca'
 import { parEntre, type DocParaPar, type Par } from './pares'
 import { linhasDe } from './texto'
 import type { Achado } from './tipos'
 
 /** Muda quando as conferências mudam (o documento guarda com qual foi analisado). */
-export const VERSAO_ANALISE = '2026-10-14.1'
+export const VERSAO_ANALISE = '2026-10-14.2' // .2 = calibração com os documentos reais
 
 const LOTE_IN = 150
 const PARALELO = 3
@@ -41,7 +41,10 @@ type ItemSp = {
   removido_em: string | null
 }
 
-type Pendente = { sp_id: string; extracao_status: string; analise_tentativas: number; ia_tentativas: number }
+type Pendente = {
+  sp_id: string; extracao_status: string; analise_tentativas: number
+  ia_tentativas: number; ia_status: string; ia_regua: string | null
+}
 
 export type ResumoAnalise = { analisados: number; falhas: number; ia: number; pares: number; restantes: boolean }
 
@@ -82,7 +85,7 @@ export async function analisarDocumentosPep(db: SupabaseClient, opcoes: {
   // ── 1. O que analisar ────────────────────────────────────────────────────────
   const dezMinAtras = new Date(Date.now() - 10 * 60_000).toISOString()
   let q = db.from('sp_pep_documentos')
-    .select('sp_id, extracao_status, analise_tentativas, ia_tentativas')
+    .select('sp_id, extracao_status, analise_tentativas, ia_tentativas, ia_status, ia_regua')
     .or(`analise_status.eq.pendente,and(ia_status.eq.erro,ia_tentativas.lt.3,ia_em.lt.${dezMinAtras})`)
     .order('extraido_em', { ascending: true })
     .limit(limite + 1)
@@ -187,7 +190,13 @@ export async function analisarDocumentosPep(db: SupabaseClient, opcoes: {
 
     const agora = new Date().toISOString()
     const ia: Record<string, unknown> = {}
-    if (!temRegua(sigla)) {
+    // Reanálise com a mesma régua: a leitura da IA de antes continua valendo
+    // (não paga a OpenAI de novo). Régua nova, conteúdo novo ou "Analisar de
+    // novo" (ia_status volta a 'pendente') leem de novo.
+    const iaValida = p.ia_status === 'concluida' && p.ia_regua === `${sigla}@${VERSAO_REGUAS}`
+    if (iaValida) {
+      // nada: ia_* fica como está
+    } else if (!temRegua(sigla)) {
       Object.assign(ia, { ia_status: 'nao_se_aplica', ia_achados: [], ia_erro: null })
     } else {
       try {

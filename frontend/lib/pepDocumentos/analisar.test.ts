@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 // chamadas do supabase-js que ele usa. A IA é simulada (vi.mock).
 
 vi.mock('./ia', () => ({
+  VERSAO_REGUAS: '2026-10-14',
   temRegua: (s: string) => ['OE', 'ETC', 'PIC'].includes((s ?? '').toUpperCase()),
   lerDocumentoComIA: vi.fn(async () => ({
     achados: [{ codigo: 'ia', familia: 'qualidade', nivel: 'atencao', origem: 'ia', titulo: 'Texto genérico' }],
@@ -79,7 +80,12 @@ Paciente: João Pedro Silva
 Psicóloga responsável: Maria Souza Lima
 Representante da escola: Ana Paula Costa
 Cargo: Coordenadora pedagógica
-Foi apresentado à coordenação o plano de manejo de comportamentos de fuga durante a transição do recreio para a sala, com antecipação visual e reforço diferencial, e combinado o registro diário em folha de frequência com nova conversa em outubro.`
+Foi apresentado à coordenação o plano de manejo de comportamentos de fuga durante a transição do recreio para a sala, com antecipação visual e reforço diferencial, e combinado o registro diário em folha de frequência com nova conversa em outubro.
+A professora relatou que as recusas aumentam nas aulas de educação física, quando há barulho no ginásio e muitos colegas ao redor.
+Combinamos que o mediador vai oferecer o abafador de ruído e uma tarefa de ajudante para reduzir a espera na fila do aquecimento.
+A coordenação pediu um modelo de quadro de rotina com figuras, que será enviado pela psicóloga até a próxima sexta-feira.
+Ficou acordado que a escola registrará o tempo de permanência em sala após o recreio, para comparar na reunião de outubro.
+Também foi discutida a adaptação das provas, com enunciados curtos, uma questão por página e tempo adicional quando necessário.`
 
 function docPendente(sp_id: string, sha: string): Linha {
   return { sp_id, sha256: sha, extracao_status: 'ok', analise_status: 'pendente', analise_tentativas: 0, ia_status: 'pendente', ia_tentativas: 0,
