@@ -347,6 +347,20 @@ export class ConversationRepository {
     if (error) throw error
   }
 
+  // "Maia responde" do número (inboxes.maia_automatica). Inbox ilegível conta
+  // como desligada: a pergunta é "a Maia envia sozinha aqui?", e na dúvida não.
+  async inboxMaiaAutomatica(inboxId: string): Promise<boolean> {
+    const { data, error } = await (this.supabase as any)
+      .schema('central')
+      .from('inboxes')
+      .select('maia_automatica')
+      .eq('id', inboxId)
+      .maybeSingle()
+
+    if (error) throw error
+    return (data as { maia_automatica: boolean } | null)?.maia_automatica === true
+  }
+
   // Campo, não tag (aba Regras, item 5) — coluna própria (20260922100200).
   // Só o matcher de campanha (agente/origem-campanha.ts) grava aqui; a Maia
   // nunca decide este campo.

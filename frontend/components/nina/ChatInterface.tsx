@@ -30,7 +30,7 @@ const ChatInterface: React.FC = () => {
   const {
     conversations, activeChat, selectedId, select,
     loading, loadingChat, erro, enviar, enviando,
-    modoIa, definirModoIa, salvandoModo,
+    modoIa, definirModoIa, definirMaiaNoNumero, salvandoModo,
     detalhe, recarregarDetalhe, marcarComoNaoLida,
     enviarMidia, enviandoMidia,
     canais, canaisSelecionados, alternarCanal, mostrarTodosCanais,
@@ -54,11 +54,14 @@ const ChatInterface: React.FC = () => {
   // por qual número a conversa chega.
   const canalHumano = detalhe?.channel?.provider === 'evolution'
   // Exceção: o número com "Maia responde" (Configurações) — ela envia sozinha
-  // por ele, ainda sem ai_mode. A chave continua fora (não há o que trocar na
-  // conversa), mas o selo diz quem atende de verdade. Conversa que a Maia
-  // transferiu volta a ser de gente, e o selo passa a "Atendimento humano".
-  const maiaRespondeNoNumero = canalHumano && detalhe?.inbox?.maia_automatica === true
-    && !maiaTransferiu(detalhe?.ai_context)
+  // por ele, ainda sem ai_mode. Ali a chave volta, ligada à marca de
+  // transferida da conversa (definirMaiaNoNumero) em vez do ai_mode. Gente que
+  // responde a vira para Humano sozinha (maiaSaiQuandoHumanoResponde).
+  const numeroComMaia = canalHumano && detalhe?.inbox?.maia_automatica === true
+  const maiaRespondeNoNumero = numeroComMaia && !maiaTransferiu(detalhe?.ai_context)
+  const modoNoNumero: ModoIa | null = numeroComMaia
+    ? { modo: maiaRespondeNoNumero ? 'autonomous' : 'off', origem: 'conversa', daConversa: detalhe?.ai_mode ?? null }
+    : null
 
   // Fontes do painel que não vêm no detalhe da conversa (catálogo de tags,
   // usuários, agendamentos, tarefas). Fora do polling — ver o hook.
@@ -242,7 +245,8 @@ const ChatInterface: React.FC = () => {
   // que ninguém tocou, e é só isso.
   const handleTrocarModo = async (ligar: boolean) => {
     try {
-      await definirModoIa(ligar ? 'autonomous' : 'off')
+      if (numeroComMaia) await definirMaiaNoNumero(ligar)
+      else await definirModoIa(ligar ? 'autonomous' : 'off')
       toast.success(ligar ? 'A Maia voltou a atender esta conversa.' : 'A Maia parou. O atendimento é seu.')
     } catch (err) {
       toast.error((err as Error).message)
@@ -719,14 +723,12 @@ const ChatInterface: React.FC = () => {
                   </NomeContatoPopover>
                 )}
 
-                {maiaRespondeNoNumero ? (
-                  <span
-                    className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-200"
-                    title="A Maia responde sozinha por este número (Configurações → números)"
-                  >
-                    <Bot className="w-3.5 h-3.5" />
-                    Maia responde
-                  </span>
+                {numeroComMaia ? (
+                  <ChaveAtendimento
+                    modo={modoNoNumero}
+                    salvando={salvandoModo}
+                    aoTrocar={handleTrocarModo}
+                  />
                 ) : canalHumano ? (
                   <span
                     className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border border-emerald-500/30 bg-emerald-500/10 text-[var(--status-ok)]"
@@ -1129,7 +1131,7 @@ const ChaveAtendimento: React.FC<{
           {salvando && ativa
             ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
             : <User className="w-3.5 h-3.5" />}
-          Atendente
+          Humano
         </button>
       </div>
     </div>

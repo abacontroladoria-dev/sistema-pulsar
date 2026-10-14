@@ -194,6 +194,8 @@ export interface UseCentralInbox {
   enviandoMidia: boolean
   modoIa:        ModoIa | null
   definirModoIa: (modo: AIMode | null) => Promise<void>
+  // A chave num número Evolution com "Maia responde" (sem ai_mode).
+  definirMaiaNoNumero: (maia: boolean) => Promise<void>
   salvandoModo:  boolean
   // A conversa como o `central` a descreve, para o painel de detalhamento.
   // Chega na mesma resposta do chat — nenhuma requisição a mais.
@@ -610,8 +612,12 @@ export function useCentralInbox(): UseCentralInbox {
 
   // ------------------------------------------------------------------------
   // Chave Maia / Atendente
+  //
+  // Dois corpos para a mesma chave: 'set_ai_mode' no número da Maia (Meta) e
+  // 'set_maia_numero' no número Evolution com "Maia responde", onde não há
+  // ai_mode — a conversa liga/desliga a marca de transferida.
 
-  const definirModoIa = useCallback(async (modo: AIMode | null) => {
+  const trocarQuemAtende = useCallback(async (corpo: Record<string, unknown>) => {
     if (!selectedId) return
 
     setSalvandoModo(true)
@@ -619,7 +625,7 @@ export function useCentralInbox(): UseCentralInbox {
       const res = await fetch(`/api/central/conversations/${selectedId}/`, {
         method:  'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ action: 'set_ai_mode', aiMode: modo }),
+        body:    JSON.stringify(corpo),
       })
 
       if (!res.ok) {
@@ -643,6 +649,15 @@ export function useCentralInbox(): UseCentralInbox {
       setSalvandoModo(false)
     }
   }, [selectedId, carregarDetalhe])
+
+  const definirModoIa = useCallback(
+    (modo: AIMode | null) => trocarQuemAtende({ action: 'set_ai_mode', aiMode: modo }),
+    [trocarQuemAtende],
+  )
+  const definirMaiaNoNumero = useCallback(
+    (maia: boolean) => trocarQuemAtende({ action: 'set_maia_numero', maia }),
+    [trocarQuemAtende],
+  )
 
   // ------------------------------------------------------------------------
   // Marca d'água de leitura
@@ -842,7 +857,7 @@ export function useCentralInbox(): UseCentralInbox {
     conversations: visiveis, activeChat, selectedId, select,
     loading, loadingChat, erro, enviar, enviando,
     enviarMidia, enviandoMidia,
-    modoIa, definirModoIa, salvandoModo,
+    modoIa, definirModoIa, definirMaiaNoNumero, salvandoModo,
     detalhe, recarregarDetalhe, marcarComoNaoLida,
     canais, canaisSelecionados, alternarCanal, mostrarTodosCanais,
     atualizandoLista, apagarMensagem,

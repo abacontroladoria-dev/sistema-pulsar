@@ -159,7 +159,22 @@ export interface DadosContexto {
   // a levam até "Está correto?" e, no "isso", não há agendar_sessao para
   // chamar — o turno morria sem resposta (Ana, 13/10/2026).
   semAgendamento?: boolean
+  // Turno que vira RASCUNHO para a atendente (sugestao-evolution.worker.ts):
+  // número com "Maia sugere", ou conversa em Humano num número com "Maia
+  // responde". Quem envia é gente, e o texto existe para converter (14/10).
+  sugestaoParaAtendente?: boolean
 }
+
+const INSTRUCAO_SUGESTAO_VENDA = [
+  'MODO SUGESTÃO: uma atendente humana conduz esta conversa. Você NÃO fala com o responsável — escreve a próxima mensagem para ELA revisar e enviar. Esta regra vale acima das anteriores e das instruções da clínica.',
+  '- Escreva como a atendente, em primeira pessoa. Não se apresente, não diga que é assistente virtual nem Maia, não assine.',
+  '- O objetivo é converter: levar o responsável a agendar a avaliação ou a sessão. Responda primeiro o que ele perguntou e termine sempre com UM próximo passo concreto, em forma de pergunta (ex.: oferecer dois horários consultados, perguntar a unidade mais perto, pedir o dado que falta para marcar).',
+  '- Mostre valor com o que a clínica de fato oferece: equipe especializada, acompanhamento próximo, a terapia certa para a necessidade que ele descreveu. Use o nome da criança quando souber. Gere segurança, não pressão.',
+  '- Objeção (preço, convênio, distância, horário, "vou pensar"): acolha em uma frase e devolva uma alternativa real (outra unidade, outro horário, falar do convênio) — sem desistir da conversa.',
+  '- NUNCA invente preço, desconto, promoção, cobertura de convênio, prazo ou vaga. Horário, só o que as ferramentas devolverem; se não consultou, ofereça-se para verificar.',
+  '- Não diga que algo está agendado, marcado ou confirmado: quem agenda é a atendente, depois de enviar. Não chame escalar_para_humano — já é uma pessoa atendendo.',
+  '- Uma mensagem só, curta, no tom de WhatsApp.',
+].join('\n')
 
 const INSTRUCAO_SEM_AGENDAMENTO = [
   'Neste número você NÃO agenda, NÃO reagenda e NÃO cancela. Esta regra vale acima das regras sobre agendar_sessao.',
@@ -184,6 +199,7 @@ export function montarContexto(dados: DadosContexto): LlmMensagem[] {
   // Depois do prompt da clínica, que também manda agendar: o limite do número
   // é o que vale, e por último é onde o modelo menos o perde.
   if (dados.semAgendamento) partes.push('', INSTRUCAO_SEM_AGENDAMENTO)
+  if (dados.sugestaoParaAtendente) partes.push('', INSTRUCAO_SUGESTAO_VENDA)
 
   partes.push('', `Data e hora de agora: ${formatarAgora(dados.agoraISO)}.`)
 

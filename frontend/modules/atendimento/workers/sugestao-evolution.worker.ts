@@ -11,7 +11,7 @@ import { executarTurno } from '../agente/orquestrador'
 import { FerramentasAgente } from '../agente/ferramentas'
 import { openAiProvider } from '../llm/openai.provider'
 import { lerAgentSettings } from '../agente/agent-settings'
-import { maiaTransferiu } from '../agente/caixas'
+import { CHAVE_MAIA_TRANSFERIU, maiaTransferiu } from '../agente/caixas'
 import { TEXTO_ESCALADA_FALLBACK, TEXTO_SEM_AGENDAMENTO_NO_NUMERO, prometeAgendamento } from '../agente/entrega'
 
 // ============================================================================
@@ -34,6 +34,12 @@ import { TEXTO_ESCALADA_FALLBACK, TEXTO_SEM_AGENDAMENTO_NO_NUMERO, prometeAgenda
 // pelo envio normal em vez de virar rascunho, em TODAS as conversas do número
 // (atribuída ou não — pedido do usuário em 08/10). Continua somenteLeitura e
 // continua sem ai_mode.
+//
+// Por conversa, a chave Maia / Humano do cabeçalho (14/10) liga e desliga a
+// mesma marca de transferida; gente que responde — pela tela ou pelo celular
+// do número — vira a chave para Humano sozinha (maiaSaiQuandoHumanoResponde).
+// Em Humano a Maia não some: volta ao rascunho, com a instrução de venda
+// (sugestaoParaAtendente), e cada sugestão nova substitui a anterior.
 //
 // Agendar ela não pode. Quando a pessoa quer marcar, a Maia avisa e transfere
 // para um atendente (pedido do usuário em 13/10): `escalar_para_humano` é a
@@ -126,9 +132,12 @@ export async function processarSugestoesEvolution(
 
   for (const conv of (conversas ?? []) as ConversaCandidata[]) {
     if (r.sugeridas + r.enviadas + r.falhas >= MAX_POR_TIQUE || Date.now() > limite) break
-    // Transferida para um atendente: a conversa é de gente até ser encerrada.
-    if (maiaTransferiu(conv.ai_context)) continue
-    const automatica = automaticas.has(conv.inbox_id)
+    // Transferida para um atendente (chave em Humano): a conversa é de gente,
+    // e a Maia volta ao rascunho — sugere o texto para a atendente (14/10).
+    const transferida = maiaTransferiu(conv.ai_context)
+    // Ela ENVIA só no número com "Maia responde" e em conversa não
+    // transferida; em todo o resto, sugere.
+    const automatica = automaticas.has(conv.inbox_id) && !transferida
     // A reivindicação deste turno; o catch precisa dela para agendar a retentativa.
     let marca: MarcaSugestao | null = null
 
@@ -136,9 +145,14 @@ export async function processarSugestoesEvolution(
       // Resposta da Maia que não saiu (status 'failed') não conta como resposta:
       // sem este filtro ela vira a "última mensagem" e a pessoa nunca mais é
       // atendida. Continua na conversa, visível como falha.
+      //
+      // Rascunho não enviado também sai: o paciente nunca o leu, e no
+      // histórico ele passaria por fala da clínica. A volta à mesma mensagem
+      // quem impede é a reivindicação (sugestao.ultima), não o rascunho.
       const historico = (await mensagens.listByConversation({
         conversationId: conv.id, limit: LIMITE_HISTORICO,
-      })).filter(m => !(m.direction === 'outbound' && m.sent_by_ai && m.status === 'failed'))
+      })).filter(m => !(m.direction === 'outbound' && m.sent_by_ai
+        && (m.status === 'failed' || (m.status === 'pending' && !m.external_message_id))))
       const ultima = historico[0]
       if (!ultima || ultima.direction !== 'inbound') continue
       if (Date.parse(ultima.created_at) > agora - ESPERA_MS) continue
@@ -155,7 +169,7 @@ export async function processarSugestoesEvolution(
       // Reivindica ANTES do turno: dois tiques podem se cruzar, e o UPDATE
       // condicional deixa só um passar. Falha não libera na hora — agenda a
       // retentativa com espera (sem ela, uma OpenAI fora repetiria a cada 10s).
-      marca = await reivindicar(supabase, conv, sugestao?.em ?? null, ultima.id, tentativa)
+      marca = await reivindicar(supabase, conv, sugestao?.em ?? null, ultima.id, tentativa, transferida)
       if (!marca) continue
 
       // As mensagens do paciente desde a última fala nossa viram o turno.
@@ -186,6 +200,8 @@ export async function processarSugestoesEvolution(
         agoraISO: new Date().toISOString(),
         vagasOferecidas: null,
         semAgendamento: automatica,
+        // Rascunho: quem envia é a atendente, e o texto é para converter.
+        sugestaoParaAtendente: !automatica,
       })
 
       const ferramentas = new FerramentasAgente(
@@ -235,6 +251,17 @@ export async function processarSugestoesEvolution(
       // Falha de envio sobe para o catch: a mensagem fica como 'failed' na
       // conversa (MessageService) e o catch agenda a retentativa.
       if (automatica) {
+        // O turno leva segundos. Se nesse tempo alguém virou a chave para
+        // Humano ou respondeu (maiaSaiQuandoHumanoResponde), nada sai — nem o
+        // aviso de transferência: já tem gente na conversa. A transferência que
+        // a própria Maia pediu neste turno também grava a marca, e o aviso dela
+        // precisa sair — por isso o escaladaPedida.
+        if (!ferramentas.escaladaPedida() && await humanoAssumiu(supabase, conv.id)) {
+          console.warn('[sugestao evolution] humano assumiu durante o turno; resposta descartada', {
+            conversationId: conv.id,
+          })
+          continue
+        }
         let texto = resultado.tipo === 'responder' ? resultado.texto : null
         if (!texto) {
           // A reivindicação já impede outra tentativa: sem isto a pessoa fica
@@ -273,6 +300,30 @@ export async function processarSugestoesEvolution(
         })
         continue
       }
+
+      // A atendente respondeu enquanto o turno rodava: a sugestão já nasceu
+      // velha.
+      const { data: respondida, error: eResp } = await db.from('messages')
+        .select('id')
+        .eq('conversation_id', conv.id)
+        .eq('direction', 'outbound')
+        .eq('sent_by_ai', false)
+        .gt('created_at', ultima.created_at)
+        .limit(1)
+      if (eResp) throw eResp
+      if ((respondida ?? []).length > 0) continue
+
+      // Uma sugestão viva por conversa: a anterior respondia a mensagens que
+      // esta já cobre (o turno junta tudo desde a última fala enviada).
+      const { error: eVelhas } = await db.from('messages')
+        .update({ deleted_at: new Date().toISOString() })
+        .eq('conversation_id', conv.id)
+        .eq('direction', 'outbound')
+        .eq('sent_by_ai', true)
+        .eq('status', 'pending')
+        .is('external_message_id', null)
+        .is('deleted_at', null)
+      if (eVelhas) throw eVelhas
 
       const { error } = await db.from('messages').insert({
         organization_id: orgId,
@@ -324,18 +375,31 @@ async function reivindicar(
   emAnterior: string | null,
   ultimaId: string,
   tentativa: number,
+  transferida: boolean,
 ): Promise<MarcaSugestao | null> {
   const marca: MarcaSugestao = { ultima: ultimaId, em: new Date().toISOString(), tentativa }
   const novo = { ...(conv.ai_context ?? {}), sugestao: marca }
+  // A chave Maia / Humano precisa estar como foi lida: o `novo` sai da cópia do
+  // começo do tique, e uma virada nesse meio-tempo seria desfeita por este
+  // UPDATE (a marca de transferida apagada, ou ressuscitada).
+  const chave = `ai_context->${CHAVE_MAIA_TRANSFERIU}`
   let q = supabase.schema('central').from('conversations')
     .update({ ai_context: novo })
     .eq('id', conv.id)
+  q = transferida ? q.not(chave, 'is', null) : q.is(chave, null)
   q = emAnterior
     ? q.eq('ai_context->sugestao->>em', emAnterior)
     : q.is('ai_context->sugestao', null)
   const { data, error } = await q.select('id')
   if (error) throw error
   return (data ?? []).length > 0 ? marca : null
+}
+
+async function humanoAssumiu(supabase: SupabaseClient, conversationId: string): Promise<boolean> {
+  const { data, error } = await supabase.schema('central').from('conversations')
+    .select('ai_context').eq('id', conversationId).maybeSingle()
+  if (error) throw error
+  return maiaTransferiu((data as { ai_context: unknown } | null)?.ai_context)
 }
 
 // Deixa a mesma mensagem voltar depois da espera da tentativa. Relê o

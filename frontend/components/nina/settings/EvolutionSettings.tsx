@@ -152,7 +152,7 @@ export function EvolutionSettings() {
       })
       toast.success(n.maiaResponde
         ? `${n.nome}: a Maia volta a só sugerir.`
-        : `${n.nome}: a Maia responde sozinha em todas as conversas.`)
+        : `${n.nome}: a Maia responde sozinha nas conversas que não estão em Humano.`)
       await carregar()
     } catch (err) {
       toast.error((err as Error).message)
@@ -221,7 +221,8 @@ export function EvolutionSettings() {
             A Maia atende pelo número oficial. Os demais números são de atendimento humano e
             aparecem na caixa de entrada só para quem for membro deles. Com &quot;Maia sugere&quot;
             ligado, ela deixa uma sugestão de resposta na conversa para a atendente enviar. Com
-            &quot;Maia responde&quot;, ela envia sozinha em todas as conversas do número.
+            &quot;Maia responde&quot;, ela envia sozinha nas conversas do número; cada conversa ganha a
+            chave Maia / Humano no topo, que vira para Humano sozinha quando alguém responde.
           </p>
 
           {/* O número da Maia — só leitura */}
@@ -315,8 +316,8 @@ export function EvolutionSettings() {
                         onClick={() => alternarMaiaResponde(n)}
                         disabled={travado}
                         title={n.maiaResponde
-                          ? 'A Maia responde sozinha em todas as conversas deste número. Clique para voltar a só sugerir.'
-                          : 'Ligar: a Maia passa a enviar as respostas sozinha em todas as conversas deste número.'}
+                          ? 'A Maia responde sozinha nas conversas deste número (menos as que estão em Humano). Clique para voltar a só sugerir.'
+                          : 'Ligar: a Maia passa a enviar as respostas sozinha nas conversas deste número. Cada conversa pode ser passada para Humano no topo.'}
                         className={`h-8 px-2.5 rounded-lg border text-xs font-medium flex items-center gap-2 transition-colors disabled:opacity-60 ${
                           n.maiaResponde
                             ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'

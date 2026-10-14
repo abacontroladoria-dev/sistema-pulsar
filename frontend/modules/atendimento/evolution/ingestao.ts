@@ -101,13 +101,10 @@ async function processarMensagem(
   const { data: candidatas, error: erroPendente } = await supabase
     .schema('central')
     .from('messages')
-    .select('id, body')
+    .select('id, body, sent_by_ai')
     .eq('conversation_id', conversation.id)
     .eq('direction', 'outbound')
     .eq('status', 'pending')
-    // Sugestão da Maia também é outbound pending sem id. Se a atendente enviar
-    // o mesmo texto, o eco é DELA — casar com o rascunho o marcaria como enviado.
-    .eq('sent_by_ai', false)
     .is('external_message_id', null)
     .gte('created_at', desde)
     .order('created_at', { ascending: false })
@@ -118,9 +115,16 @@ async function processarMensagem(
   // (utils/assinatura.ts), então o corpo casa nas duas formas — a crua cobre o
   // envio sem nome. Comparado aqui e não num `.in('body', …)`: texto livre com
   // aspas e vírgula quebra o filtro do PostgREST.
+  //
+  // A da atendente primeiro: o rascunho da Maia também é outbound pending sem
+  // id, e se a atendente enviar o mesmo texto o eco é DELA. A da Maia vem
+  // depois — com "Maia responde" o eco da resposta dela pode chegar antes do
+  // id, e sem casar aqui viraria "enviada pelo celular" (e tiraria a Maia da
+  // conversa, ver abaixo).
   const corpo = m.body ?? ''
-  const pendente = ((candidatas ?? []) as { id: string; body: string | null }[])
-    .find(c => (c.body ?? '') === corpo || (c.body ?? '') === semAssinatura(corpo))
+  const casam = ((candidatas ?? []) as { id: string; body: string | null; sent_by_ai: boolean }[])
+    .filter(c => (c.body ?? '') === corpo || (c.body ?? '') === semAssinatura(corpo))
+  const pendente = casam.find(c => !c.sent_by_ai) ?? casam.find(c => c.sent_by_ai)
 
   if (pendente) {
     // O envio pela tela ainda vai chamar confirmarEnvio com o mesmo id. Gravar
@@ -149,6 +153,11 @@ async function processarMensagem(
     sent_at: m.sentAt ?? new Date().toISOString(),
   })
   if (error && (error as { code?: string }).code !== '23505') throw error
+  // 23505 = já registrada por outro webhook: a marca, se cabia, já foi gravada.
+  if (error) return
+
+  // Alguém respondeu pelo celular: com "Maia responde", ela sai da conversa.
+  await conversationService.maiaSaiQuandoHumanoResponde(conversation, null)
 }
 
 async function processarStatus(

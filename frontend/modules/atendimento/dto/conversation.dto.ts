@@ -15,6 +15,9 @@ const VALID_ACTIONS = [
   // instante da penúltima mensagem do contato. O cliente não escolhe a data —
   // se escolhesse, um relógio adiantado apagaria mensagens que não chegaram.
   'mark_read', 'mark_unread',
+  // A chave Maia / Humano num número Evolution com "Maia responde", onde não
+  // há ai_mode a trocar (trg_evolution_sem_ia).
+  'set_maia_numero',
 ] as const
 export type PatchAction = typeof VALID_ACTIONS[number]
 
@@ -122,6 +125,7 @@ export type PatchConversationBody =
   | { action: 'set_ai_mode'; aiMode: AIMode | null }
   | { action: 'mark_read' }
   | { action: 'mark_unread' }
+  | { action: 'set_maia_numero'; maia: boolean }
 
 export function parsePatchConversationBody(body: unknown): ParseResult<PatchConversationBody> {
   if (!body || typeof body !== 'object') return { ok: false, errors: ['Body inválido'] }
@@ -161,6 +165,13 @@ export function parsePatchConversationBody(body: unknown): ParseResult<PatchConv
       return { ok: false, errors: ['aiMode deve ser off, assisted, autonomous ou null'] }
     }
     return { ok: true, data: { action, aiMode: b.aiMode as AIMode | null } }
+  }
+
+  if (action === 'set_maia_numero') {
+    if (typeof b.maia !== 'boolean') {
+      return { ok: false, errors: ['maia (boolean) é obrigatório para set_maia_numero'] }
+    }
+    return { ok: true, data: { action, maia: b.maia } }
   }
 
   if (action === 'assign') {

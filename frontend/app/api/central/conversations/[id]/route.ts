@@ -123,6 +123,9 @@ export async function PATCH(request: NextRequest, ctx: Ctx) {
       case 'set_ai_mode':
         await service.setAiMode(id, parsed.data.aiMode, user.id)
         break
+      case 'set_maia_numero':
+        await service.definirMaiaNoNumero(id, parsed.data.maia, user.id)
+        break
       // Marca d'água de leitura. Sem `actorId` na leitura porque não é auditada
       // — ver o comentário no service.
       case 'mark_read':

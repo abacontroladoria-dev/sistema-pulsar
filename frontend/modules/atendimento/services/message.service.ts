@@ -280,6 +280,8 @@ export class MessageService {
     // não tem a quem atribuir.
     if (input.sentByUserId && input.sentByAi !== true && this.conversas) {
       await this.conversas.assumirAoResponder(conversation, input.sentByUserId)
+      // Número com "Maia responde": a chave da conversa vira para Humano.
+      await this.conversas.maiaSaiQuandoHumanoResponde(conversation, input.sentByUserId)
     }
 
     return message
@@ -436,6 +438,7 @@ export class MessageService {
     // Quem responde, assume — mandar um arquivo é responder.
     if (input.sentByUserId && this.conversas) {
       await this.conversas.assumirAoResponder(conversation, input.sentByUserId)
+      await this.conversas.maiaSaiQuandoHumanoResponde(conversation, input.sentByUserId)
     }
 
     return message

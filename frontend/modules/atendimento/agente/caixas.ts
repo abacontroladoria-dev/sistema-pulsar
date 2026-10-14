@@ -41,7 +41,9 @@ export const STATUS_ENCERRADOS: readonly ConversationStatus[] = ['resolved', 'ar
 // Ali o ai_mode fica travado em 'off' (trg_evolution_sem_ia), então a escalada
 // da Meta — gravar 'off' — não tem efeito: a conversa já está em 'off' e o
 // worker responde mesmo assim. A marca por conversa é esta chave em
-// `ai_context`, gravada por ConversationService.escalarParaAtendimentoHumano.
+// `ai_context`, gravada por ConversationService.transferirDoMaiaResponde (a
+// Maia transferindo), definirMaiaNoNumero (a chave Maia / Humano da conversa) e
+// maiaSaiQuandoHumanoResponde (gente respondeu); só a chave a apaga.
 //
 // Morre com a conversa: resolvida, a próxima mensagem do contato abre conversa
 // NOVA (findActiveByContactAndChannel), com ai_context vazio e a Maia de volta.

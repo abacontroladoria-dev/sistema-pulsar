@@ -430,13 +430,7 @@ export class ConversationService {
     const jaEstavaEscalada = maiaTransferiu(conv.ai_context)
 
     if (!jaEstavaEscalada) {
-      const base = conv.ai_context && typeof conv.ai_context === 'object' && !Array.isArray(conv.ai_context)
-        ? conv.ai_context as Record<string, unknown>
-        : {}
-      await this.conv.updateAiContext(conversationId, {
-        ...base,
-        [CHAVE_MAIA_TRANSFERIU]: { em: new Date().toISOString(), motivoEscalada, origem },
-      })
+      await this.gravarMarcaHumano(conv, { motivoEscalada, origem })
     }
 
     if (conv.priority !== 'high' && conv.priority !== 'urgent') {
@@ -453,6 +447,114 @@ export class ConversationService {
     }
 
     return { jaEstavaEscalada }
+  }
+
+  // -------------------------------------------------------------------------
+  // definirMaiaNoNumero
+  //
+  // A chave Maia / Humano da conversa num número Evolution com "Maia responde".
+  // O equivalente de setAiMode para onde o ai_mode não existe: 'Humano' grava a
+  // marca CHAVE_MAIA_TRANSFERIU, 'Maia' a apaga.
+  //
+  // Ligar exige o "Maia responde" do número (Configurações → Números WhatsApp):
+  // sem ele o worker não envia nada, e a chave mostraria "Maia" numa conversa
+  // que ninguém está respondendo.
+  //
+  // Religar SOLTA o responsável, pela mesma razão de setAiMode: quem devolve a
+  // conversa à Maia está dizendo que não é mais quem conduz.
+  // -------------------------------------------------------------------------
+  async definirMaiaNoNumero(conversationId: string, maia: boolean, actorId: string): Promise<void> {
+    const conv = await this.getById(conversationId)
+    const estava = !maiaTransferiu(conv.ai_context)
+
+    if (maia) {
+      if (!(await this.conv.inboxMaiaAutomatica(conv.inbox_id))) {
+        throw new CanalSemIaError(
+          conversationId,
+          'O "Maia responde" deste número está desligado (Configurações → Números WhatsApp).',
+        )
+      }
+      if (estava) return
+      const resto = { ...this.aiContextDe(conv) }
+      delete resto[CHAVE_MAIA_TRANSFERIU]
+      await this.conv.updateAiContext(conversationId, resto)
+      if (conv.assigned_user_id !== null) {
+        await this.conv.updateAssignee(conversationId, null)
+        await this.conv.updateStatus(conversationId, 'open')
+      }
+    } else {
+      if (!estava) return
+      await this.gravarMarcaHumano(conv, { origem: 'operador', por: actorId })
+    }
+
+    void this.audit.insert({
+      organization_id: conv.organization_id,
+      conversation_id: conversationId,
+      event_type:      'conversation.ai_mode_changed',
+      performed_by:    actorId,
+      payload:         {
+        de: conv.ai_mode, para: conv.ai_mode, maiaResponde: maia, origem: 'operador',
+        ...(maia && conv.assigned_user_id !== null ? { responsavelLiberado: conv.assigned_user_id } : {}),
+      },
+    })
+  }
+
+  // -------------------------------------------------------------------------
+  // maiaSaiQuandoHumanoResponde
+  //
+  // Num número com "Maia responde", gente que escreve na conversa tira a Maia
+  // dela — pela tela (MessageService) ou direto pelo celular do número
+  // (ingestão da Evolution, `porUserId` null). Sem isto os dois respondem o
+  // mesmo paciente: o worker só espera a próxima mensagem dele.
+  //
+  // É a chave da conversa virando para "Humano" sozinha; voltar é manual.
+  // Número sem "Maia responde" não ganha marca: ali a Maia só sugere, e a marca
+  // calaria as sugestões da conversa.
+  //
+  // Não lança: a mensagem já saiu, e falhar aqui não pode desfazer o envio.
+  // -------------------------------------------------------------------------
+  async maiaSaiQuandoHumanoResponde(conversa: Conversation, porUserId: string | null): Promise<void> {
+    if (maiaTransferiu(conversa.ai_context)) return
+    try {
+      if (!(await this.conv.inboxMaiaAutomatica(conversa.inbox_id))) return
+      // Relida: o worker grava a reivindicação na mesma coluna.
+      const atual = await this.getById(conversa.id)
+      if (maiaTransferiu(atual.ai_context)) return
+      await this.gravarMarcaHumano(atual, {
+        origem: porUserId ? 'humano_respondeu' : 'celular_respondeu',
+        por:    porUserId,
+      })
+      void this.audit.insert({
+        organization_id: conversa.organization_id,
+        conversation_id: conversa.id,
+        event_type:      'conversation.ai_mode_changed',
+        performed_by:    porUserId ?? undefined,
+        payload:         {
+          de: conversa.ai_mode, para: conversa.ai_mode, maiaResponde: false,
+          origem: porUserId ? 'humano_respondeu' : 'celular_respondeu',
+        },
+      })
+    } catch (erro) {
+      console.error('[ConversationService] Falha ao tirar a Maia da conversa respondida', {
+        conversationId: conversa.id,
+        erro: erro instanceof Error ? erro.message : String(erro),
+      })
+    }
+  }
+
+  private aiContextDe(conv: Conversation): Record<string, unknown> {
+    return conv.ai_context && typeof conv.ai_context === 'object' && !Array.isArray(conv.ai_context)
+      ? conv.ai_context as Record<string, unknown>
+      : {}
+  }
+
+  // `conv` lida agora há pouco: mesclar sobre cópia velha apagaria a
+  // reivindicação do worker (ver transferirDoMaiaResponde).
+  private async gravarMarcaHumano(conv: Conversation, dados: Record<string, unknown>): Promise<void> {
+    await this.conv.updateAiContext(conv.id, {
+      ...this.aiContextDe(conv),
+      [CHAVE_MAIA_TRANSFERIU]: { em: new Date().toISOString(), ...dados },
+    })
   }
 
   // -------------------------------------------------------------------------
