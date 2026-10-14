@@ -46,7 +46,16 @@ export function anonimizarDocumento(texto: string, nomes: {
   // Nome completo antes do primeiro nome (mascararNome já faz nessa ordem).
   for (const n of nomes.pacientes) saida = mascararNome(saida, n ?? undefined, MARCADOR_PACIENTE)
   for (const n of nomes.profissionais) saida = mascararNome(saida, n ?? undefined, MARCADOR_PROFISSIONAL)
-  return saida
+  return mascararContatos(saida)
+}
+
+/**
+ * CPF, e-mail, telefone e números longos (carteirinha, CNS). Também nos
+ * trechos que ficam gravados nos achados e no comparador da tela: quem audita
+ * precisa ver o texto, não o CPF de ninguém.
+ */
+export function mascararContatos(texto: string): string {
+  return texto
     .replace(/\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b/g, '[CPF]')
     .replace(/[\w.+-]+@[\w-]+\.[\w.]+/g, '[EMAIL]')
     .replace(/(\(?\b\d{2}\)?\s?)?\b9?\d{4}[-\s]?\d{4}\b/g, '[TELEFONE]')
