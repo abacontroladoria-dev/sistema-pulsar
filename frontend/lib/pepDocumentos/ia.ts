@@ -1,9 +1,11 @@
 import 'server-only'
 
 // Leitura do conteúdo pela IA (OpenAI — OPENAI_API_KEY e OPENAI_MODEL do
-// Coolify, os mesmos da auditoria de evoluções). Só para as siglas com régua:
-// OE, ETC e PIC (recebidas em 14/10/2026). STC, TAP, TOP e RT ficam com as
-// conferências fixas até as réguas chegarem — basta acrescentá-las em REGUAS.
+// Coolify, os mesmos da auditoria de evoluções). Só para as siglas com régua.
+// Desde 15/10/2026 as réguas moram no banco (pep_reguas_versoes, versionadas,
+// publicadas por RP/admin na tela Auditoria de Documentos PEP); quem chama
+// passa a régua vigente. REGUAS_PADRAO abaixo é só o plano B — o texto da v1,
+// usado se a tabela não existir no ambiente.
 //
 // Tudo o que a IA aponta é "Pode conter erros", nunca "Está errado": é
 // julgamento, e quem decide é a pessoa. O trecho citado pela IA só é mostrado
@@ -13,8 +15,20 @@ import { anonimizarDocumento } from './anonimizar'
 import { normalizar } from './texto'
 import type { Achado } from './tipos'
 
-/** Muda quando uma régua muda: o documento guarda com qual foi lido. */
-export const VERSAO_REGUAS = '2026-10-14'
+/** Uma versão de régua. O documento guarda com qual foi lido: "PIC@v2". */
+export type Regua = { sigla: string; versao: number; conteudo: string }
+export const rotuloRegua = (r: Pick<Regua, 'sigla' | 'versao'>) => `${r.sigla.toUpperCase()}@v${r.versao}`
+
+/** Nome de cada documento, para o prompt e para a tela. */
+export const NOMES_DOCUMENTO: Record<string, string> = {
+  STC: 'Supervisão Técnica ABA do Caso (STC)',
+  ETC: 'Estudo Técnico de Caso (ETC)',
+  TAP: 'Treinamento de Aplicadores ABA (TAP)',
+  TOP: 'Treinamento e Orientação Parental (TOP)',
+  PIC: 'Plano Individualizado Comportamental (PIC)',
+  RT: 'Relatório de Fechamento Técnico (RT)',
+  OE: 'Orientação Escolar (OE)',
+}
 
 const TEXTO_MAX = 60000
 const MAX_ACHADOS = 12
@@ -22,7 +36,7 @@ const MAX_ACHADOS = 12
 const COMUM = `As conferências automáticas JÁ apontam, e você NÃO deve repetir: textos entre colchetes, linhas "______", "//____", campos com rótulo e sem valor, datas que não existem, horário de término antes do início, nome do paciente diferente da pasta. Foque no que exige leitura.`
 
 /** Régua de cada documento — o texto dos documentos do usuário, adaptado para a IA. */
-const REGUAS: Record<string, { nome: string; regua: string }> = {
+export const REGUAS_PADRAO: Record<string, { nome: string; regua: string }> = {
   OE: {
     nome: 'Orientação Escolar (OE)',
     regua: `Identificação: data do registro preenchida e completa; horário de início e de término preenchidos, claros e coerentes.
@@ -44,16 +58,11 @@ Procure especificamente: datas não preenchidas; horários incompletos; particip
   },
 }
 
-export function temRegua(sigla: string | null | undefined): boolean {
-  return !!sigla && sigla.toUpperCase() in REGUAS
-}
-
-function systemPrompt(sigla: string) {
-  const r = REGUAS[sigla]
-  return `Você é revisor técnico da Clínica Universo ABA e confere o preenchimento de um documento do tipo ${r.nome}, entregue por um prestador.
+function systemPrompt(sigla: string, regua: string) {
+  return `Você é revisor técnico da Clínica Universo ABA e confere o preenchimento de um documento do tipo ${NOMES_DOCUMENTO[sigla] ?? sigla}, entregue por um prestador.
 
 RÉGUA DE CONFERÊNCIA
-${r.regua}
+${regua}
 
 REGRAS
 - Não invente informações que não estejam no documento. Não altere o documento: só analise.
@@ -86,11 +95,13 @@ function trechoExiste(trecho: string, texto: string) {
 export async function lerDocumentoComIA(params: {
   sigla: string
   texto: string
+  /** A régua vigente da sigla (reguas.ts). */
+  regua: Regua
   pacientes: (string | null | undefined)[]
   profissionais: (string | null | undefined)[]
 }): Promise<ResultadoIA> {
   const sigla = params.sigla.toUpperCase()
-  if (!REGUAS[sigla]) throw new ErroLeituraIA(`sem régua para ${sigla}`)
+  if (!params.regua?.conteudo?.trim()) throw new ErroLeituraIA(`sem régua para ${sigla}`)
   const apiKey = (process.env.OPENAI_API_KEY ?? '').trim()
   if (!apiKey) throw new ErroLeituraIA('OPENAI_API_KEY não configurada no ambiente')
   const model = (process.env.OPENAI_MODEL ?? 'gpt-4o-mini').trim()
@@ -108,8 +119,8 @@ export async function lerDocumentoComIA(params: {
       temperature: 0.1,
       response_format: { type: 'json_object' },
       messages: [
-        { role: 'system', content: systemPrompt(sigla) },
-        { role: 'user', content: `Documento (${REGUAS[sigla].nome}):\n"""\n${anonimo}\n"""` },
+        { role: 'system', content: systemPrompt(sigla, params.regua.conteudo) },
+        { role: 'user', content: `Documento (${NOMES_DOCUMENTO[sigla] ?? sigla}):\n"""\n${anonimo}\n"""` },
       ],
     }),
     signal: AbortSignal.timeout(45_000),
@@ -141,5 +152,5 @@ export async function lerDocumentoComIA(params: {
     })
   }
   const resumo = typeof json.resumo === 'string' ? json.resumo.trim().slice(0, 300) || null : null
-  return { achados, resumo, modelo: model, regua: `${sigla}@${VERSAO_REGUAS}` }
+  return { achados, resumo, modelo: model, regua: rotuloRegua(params.regua) }
 }

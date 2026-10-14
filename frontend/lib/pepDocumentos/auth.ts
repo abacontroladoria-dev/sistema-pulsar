@@ -10,7 +10,7 @@ import { NaoAutenticadoError, SemPermissaoError } from '@/lib/auditoria/auth'
 // lê sp_pep_itens (Entregas PEP ou o painel do robô). A checagem vive aqui —
 // o proxy.ts protege página, não /api.
 
-const PERMISSOES = ['relacionamento_prestador_pep', 'robo_sharepoint']
+const PERMISSOES = ['relacionamento_prestador_pep', 'robo_sharepoint', 'relacionamento_prestador_auditoria_documentos']
 
 export type ContextoPep = { supabase: SupabaseClient; usuarioId: string; usuarioNome: string; role: string }
 
