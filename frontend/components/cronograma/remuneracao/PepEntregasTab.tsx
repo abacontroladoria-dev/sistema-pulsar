@@ -22,7 +22,6 @@ import type { PepCatalogoItem, PepEvidencia, PepPlanejamentoSemestral, PepRegist
 import toast from "react-hot-toast"
 import { usePepSharepoint } from "@/hooks/usePepSharepoint"
 import { EvidenciasSharepoint, type AvaliacaoSugestao } from "./pep/EvidenciasSharepoint"
-import { ConferenciaDocumentos } from "./pep/ConferenciaDocumentos"
 import { ChipOrigem, LegendaOrigem, ORIGEM, SeloUnidade, contarOrigem, origemDaUnidade } from "./pep/origem"
 import { RoboNaPep } from "@/components/admin/roboSharepoint/RoboNaPep"
 import { resolverItem, reverterEntregaRobo } from "@/services/roboSharepoint.service"
@@ -330,7 +329,6 @@ export function PepEntregasTab() {
   const itensPorPaciente = useMemo(() => itensRecorrentes.filter(i => i.tipo_registro === "POR_PACIENTE"), [itensRecorrentes])
 
   const catalogoCompleto = useMemo(() => [...itensRecorrentes, ...itensSemestrais], [itensRecorrentes, itensSemestrais])
-  const siglaPorItem = useMemo(() => new Map(catalogoCompleto.map(c => [c.id, c.sigla])), [catalogoCompleto])
 
   // Contagem de itens completos no mês — completude objetiva (a quantidade
   // registrada alcançou a esperada), nunca avaliação de mérito (PRD §12.4).
@@ -730,9 +728,6 @@ export function PepEntregasTab() {
           unidadesPessoa={unidadesPessoa}
           liberado={liberado}
         />
-
-        {/* O conteúdo de cada documento (14/10/2026): bom / pode conter erros / errado. */}
-        <ConferenciaDocumentos itens={spItens} catalogoSiglas={siglaPorItem} />
 
         {/* Colgroup igual nas duas tabelas (primeira coluna e largura por item
             idênticas) — Geral fica em bloco separado, mas STC/ETC alinham
