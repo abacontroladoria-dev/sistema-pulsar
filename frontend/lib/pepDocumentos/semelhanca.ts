@@ -21,8 +21,13 @@ import { cortar, ehTitulo, linhasDe, normalizar, rotuloValor, valorVazio } from 
 
 export const TAMANHO_SHINGLE = 4
 export const TAMANHO_ASSINATURA = 128
-/** Abaixo disso não há conteúdo preenchido bastante para comparar. */
-export const MIN_SHINGLES = 25
+/**
+ * Abaixo disso não há conteúdo preenchido bastante para comparar. Medido em
+ * 14/10/2026: folha de registro em branco (TAP) tem 52–65; documento escrito
+ * de verdade tem centenas (PIC: mediana 416). Com 25, o mesmo formulário em
+ * branco de um prestador virava "cópia" entre pacientes.
+ */
+export const MIN_SHINGLES = 100
 /** ≥ isto: praticamente o mesmo texto ("Está errado"). */
 export const LIMIAR_ERRADO = 0.8
 /** ≥ isto: boa parte igual ("Pode conter erros"). */

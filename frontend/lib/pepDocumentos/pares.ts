@@ -26,6 +26,9 @@ export type Par = {
   nivel: Nivel
 }
 
+/** Semestrais: duas versões do mesmo documento no mesmo mês é versão nova, não cópia de outro. */
+const SEMESTRAIS = new Set(['PIC', 'RT', 'OE'])
+
 /** Só compara documentos até 6 meses de distância. */
 const JANELA_MESES = 6
 
@@ -68,8 +71,12 @@ export function parEntre(a: DocParaPar, b: DocParaPar): Par | null {
   if (a.sigla !== b.sigla) return null
   const s = diceEstimado(a.assinatura, b.assinatura)
   if (s < LIMIAR_ATENCAO) return null
+  const relacao = relacaoEntre(a, b)
+  // PIC/RT/OE do mesmo paciente no mesmo mês, parecidos: versão revisada ou
+  // arquivo enviado duas vezes — atenção, não erro (medido em 14/10/2026).
+  const versao = relacao === 'mesmo_mes' && SEMESTRAIS.has((a.sigla ?? '').toUpperCase())
   return {
     a_sp_id: x.sp_id, b_sp_id: y.sp_id, tipo: 'parecido', similaridade: Math.round(s * 1000) / 1000,
-    relacao: relacaoEntre(a, b), nivel: s >= LIMIAR_ERRADO ? 'errado' : 'atencao',
+    relacao, nivel: s >= LIMIAR_ERRADO && !versao ? 'errado' : 'atencao',
   }
 }
