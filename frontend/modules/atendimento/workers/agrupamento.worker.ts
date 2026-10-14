@@ -20,8 +20,9 @@ import { casarPrimeiraMensagem } from '../agente/origem-campanha'
 import { openAiProvider } from '../llm/openai.provider'
 import { lerAgentSettings } from '../agente/agent-settings'
 import { resolverModoEfetivo } from '../agente/modo-efetivo'
-import { decidirEntrega } from '../agente/entrega'
+import { decidirEntrega, textoPacienteDaClinica } from '../agente/entrega'
 import { createFichaService } from '../services/ficha.service'
+import { PacienteRepository } from '../repositories/paciente.repository'
 import { FunilMaiaService } from '../services/funil-maia.service'
 import type { FichaPaciente, TagDefinition } from '../types/central.types'
 
@@ -311,6 +312,29 @@ async function processarContato(
     conversationId: conversation.id,
     limit: LIMITE_HISTORICO,
   })
+
+  // Já é paciente (vínculo no TiTa): a Maia não conduz (14/10/2026). Mesma
+  // trava do worker do Evolution — transfere antes do turno e avisa com texto
+  // fixo. Falha ao ler o vínculo segue para o turno, que tem a regra no prompt.
+  let vinculado = false
+  try {
+    vinculado = (await new PacienteRepository(supabase).titaIdDoContato(orgId, contato.id)) !== null
+  } catch (err) {
+    console.warn('[worker agrupamento] vínculo de paciente indisponível; seguindo com o turno', err)
+  }
+  if (vinculado) {
+    await conversationService.escalarParaAtendimentoHumano(
+      conversation.id, 'paciente_da_clinica', 'paciente_vinculado',
+    )
+    const primeira = !historico.some((m) => m.direction === 'outbound')
+    const aviso = textoPacienteDaClinica(primeira)
+    if (aiMode === 'assisted') {
+      await gravarRascunho(supabase, orgId, conversation.id, aviso)
+    } else {
+      await enfileirarEnvio(supabase, orgId, conversation.id, contato.id, aviso)
+    }
+    return { tipo: 'escalado', detalhe: 'paciente_da_clinica: contato vinculado a paciente do TiTa' }
+  }
 
   // A ficha do paciente, e a decisão de coletar ou não.
   //

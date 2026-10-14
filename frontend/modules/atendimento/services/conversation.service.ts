@@ -37,6 +37,9 @@ import { CHAVE_MAIA_TRANSFERIU, maiaTransferiu } from '../agente/caixas'
 const CLOSED_STATUSES = ['resolved', 'archived'] as const
 type ClosedStatus = (typeof CLOSED_STATUSES)[number]
 
+// Quem tirou a Maia da conversa. Ver events.types.ts ('conversation.ai_mode_changed').
+export type OrigemEscalada = 'ferramenta_agente' | 'falha_tecnica' | 'paciente_vinculado'
+
 export interface FindOrCreateResult {
   conversation: Conversation
   created:      boolean
@@ -369,7 +372,7 @@ export class ConversationService {
   async escalarParaAtendimentoHumano(
     conversationId: string,
     motivoEscalada: string,
-    origem: 'ferramenta_agente' | 'falha_tecnica',
+    origem: OrigemEscalada,
   ): Promise<{ jaEstavaEscalada: boolean }> {
     const conv = await this.getById(conversationId)
 
@@ -424,7 +427,7 @@ export class ConversationService {
   async transferirDoMaiaResponde(
     conversationId: string,
     motivoEscalada: string,
-    origem: 'ferramenta_agente' | 'falha_tecnica',
+    origem: OrigemEscalada,
   ): Promise<{ jaEstavaEscalada: boolean }> {
     const conv = await this.getById(conversationId)
     const jaEstavaEscalada = maiaTransferiu(conv.ai_context)

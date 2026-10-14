@@ -183,6 +183,17 @@ const INSTRUCAO_SEM_AGENDAMENTO = [
   '- Nada fica agendado por você neste número. NUNCA escreva "Agendamento confirmado", "agendado", "marcado", "reservado" nem "confirmado", e NUNCA mande a ficha do agendamento (Nome / Serviço / Profissional / Dia e horário / Unidade / Valor), nem depois de chamar escalar_para_humano. Diga que o horário ainda não está marcado e que o atendente vai finalizar.',
 ].join('\n')
 
+// Quem já é paciente vai para a equipe (pedido do usuário em 14/10/2026). O
+// prompt da clínica (§4) mandava orientar sobre o TiTa e seguir conversando, e
+// tratava como lead quem quer acrescentar serviço particular — por isso esta
+// regra vai DEPOIS dele. O contato já vinculado nem chega ao modelo (os
+// workers transferem antes); esta é a rede para quando só a conversa revela.
+const INSTRUCAO_PACIENTE_DA_CLINICA = [
+  'Paciente da clínica: esta regra vale acima das instruções da clínica.',
+  '- Se a conversa mostrar que a criança já é paciente da clínica (já faz terapia aqui, já é atendida, fala da terapeuta, do cronograma, de falta ou reposição dela), você NÃO continua o atendimento, nem para orientar, nem para vender serviço novo.',
+  '- Chame escalar_para_humano com motivoEscalada paciente_da_clinica e, depois, escreva UMA mensagem curta dizendo que vai passar a conversa para a equipe e que um atendente continua por aqui. Não responda a pergunta, não consulte horário e não peça dados.',
+].join('\n')
+
 /**
  * Monta as mensagens de contexto que precedem a fala do usuário no turno.
  * Não inclui a mensagem atual — quem a acrescenta é o orquestrador.
@@ -199,6 +210,8 @@ export function montarContexto(dados: DadosContexto): LlmMensagem[] {
   // Depois do prompt da clínica, que também manda agendar: o limite do número
   // é o que vale, e por último é onde o modelo menos o perde.
   if (dados.semAgendamento) partes.push('', INSTRUCAO_SEM_AGENDAMENTO)
+  // No rascunho quem conduz já é a atendente: não há de quem transferir.
+  if (!dados.sugestaoParaAtendente) partes.push('', INSTRUCAO_PACIENTE_DA_CLINICA)
   if (dados.sugestaoParaAtendente) partes.push('', INSTRUCAO_SUGESTAO_VENDA)
 
   partes.push('', `Data e hora de agora: ${formatarAgora(dados.agoraISO)}.`)

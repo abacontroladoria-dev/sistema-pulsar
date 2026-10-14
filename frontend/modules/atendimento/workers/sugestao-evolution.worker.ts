@@ -14,7 +14,10 @@ import { FerramentasAgente } from '../agente/ferramentas'
 import { openAiProvider } from '../llm/openai.provider'
 import { lerAgentSettings } from '../agente/agent-settings'
 import { CHAVE_MAIA_TRANSFERIU, maiaTransferiu } from '../agente/caixas'
-import { TEXTO_ESCALADA_FALLBACK, TEXTO_SEM_AGENDAMENTO_NO_NUMERO, prometeAgendamento } from '../agente/entrega'
+import {
+  TEXTO_ESCALADA_FALLBACK, TEXTO_SEM_AGENDAMENTO_NO_NUMERO, prometeAgendamento, textoPacienteDaClinica,
+} from '../agente/entrega'
+import { PacienteRepository } from '../repositories/paciente.repository'
 import type { TagDefinition } from '../types/central.types'
 
 // ============================================================================
@@ -134,6 +137,7 @@ export async function processarSugestoesEvolution(
   if (e2) throw e2
 
   const mensagens = new MessageRepository(supabase)
+  const pacientes = new PacienteRepository(supabase)
   const auditoria = new AuditRepository(supabase)
   const { conversationService, messageService } = createSystemServices()
 
@@ -200,6 +204,19 @@ export async function processarSugestoesEvolution(
       const n = historico.findIndex(m => m.direction !== 'inbound')
       const qtdInbound = n === -1 ? historico.length : n
       if (doTurno.filter(t => t.trim()).length === 0) continue
+
+      // Contato que já é paciente (vínculo no TiTa) não fica com a Maia (14/10):
+      // transfere antes do turno, sem OpenAI, e avisa com texto fixo. Só onde
+      // ela envia — no rascunho quem conduz já é a atendente. Falha ao ler o
+      // vínculo não cala a pessoa: segue para o turno, que tem a mesma regra
+      // no prompt para quando a conversa revela.
+      if (automatica && await jaEPaciente(pacientes, orgId, conv.contact_id)) {
+        await conversationService.transferirDoMaiaResponde(conv.id, 'paciente_da_clinica', 'paciente_vinculado')
+        const primeira = !historico.some(m => m.direction === 'outbound')
+        await messageService.send({ conversationId: conv.id, body: textoPacienteDaClinica(primeira), sentByAi: true })
+        r.enviadas++
+        continue
+      }
 
       const { data: contato } = await db
         .from('contacts')
@@ -421,6 +438,18 @@ async function reivindicar(
   const { data, error } = await q.select('id')
   if (error) throw error
   return (data ?? []).length > 0 ? marca : null
+}
+
+// Vínculo em central.contact_patient_links — o mesmo critério que tira o
+// contato do funil comercial (20261013160000). Erro de leitura = "não sei",
+// e "não sei" deixa a Maia atender.
+async function jaEPaciente(pacientes: PacienteRepository, orgId: string, contactId: string): Promise<boolean> {
+  try {
+    return (await pacientes.titaIdDoContato(orgId, contactId)) !== null
+  } catch (err) {
+    console.warn('[sugestao evolution] vínculo de paciente indisponível; seguindo com o turno', err)
+    return false
+  }
 }
 
 async function humanoAssumiu(supabase: SupabaseClient, conversationId: string): Promise<boolean> {

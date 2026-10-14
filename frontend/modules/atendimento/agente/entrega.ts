@@ -68,6 +68,19 @@ export const TEXTO_ESCALADA_FALLBACK =
 export const TEXTO_SEM_AGENDAMENTO_NO_NUMERO =
   'Ainda não está agendado. Vou passar a conversa para a equipe, e um atendente vai finalizar o agendamento com você por aqui.'
 
+// ----------------------------------------------------------------------------
+// Contato que já é paciente da clínica (vínculo no TiTa): a Maia não conduz —
+// o worker transfere antes do turno e manda isto (pedido do usuário em
+// 14/10/2026). Fixo, não gerado: nem há turno do modelo. Não diz "vi que você
+// é paciente": o vínculo vem do telefone, e o número pode ser de outra pessoa
+// da família.
+// ----------------------------------------------------------------------------
+
+export function textoPacienteDaClinica(primeiraResposta: boolean): string {
+  const texto = 'Vou passar sua conversa para a nossa equipe, e um atendente continua o atendimento com você por aqui.'
+  return primeiraResposta ? `Olá! ${texto}` : texto
+}
+
 // "Não está agendado" é o que ela DEVE dizer — sai antes da busca.
 const NEGADO = /\bnao (?:esta|foi|ficou|e) (?:ainda )?(?:agendad|marcad|reservad|confirmad)\w*/g
 const PROMETE = [

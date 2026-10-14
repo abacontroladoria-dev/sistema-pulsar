@@ -320,7 +320,8 @@ export const FERRAMENTAS_SEMPRE = [
         'Passa esta conversa para uma pessoa da equipe e tira você do atendimento. '
         + 'Use quando o responsável pedir para falar com alguém, com um atendente, com a recepção ou com um humano; '
         + 'quando demonstrar irritação ou insatisfação com o atendimento; '
-        + 'ou quando pedir algo que nenhuma outra ferramenta resolve e você não pode confirmar. '
+        + 'ou quando pedir algo que nenhuma outra ferramenta resolve e você não pode confirmar; '
+        + 'ou quando a conversa mostrar que a criança já é paciente da clínica. '
         + 'CHAME ESTA FERRAMENTA ANTES de dizer que vai chamar alguém — dizer sem chamar deixa a pessoa esperando por um atendimento que não foi pedido. '
         + 'Depois que ela responder, escreva UMA mensagem curta avisando que alguém da equipe vai continuar. '
         + 'Não prometa prazo e não diga o nome de ninguém. '
@@ -340,11 +341,12 @@ export const FERRAMENTAS_SEMPRE = [
           // dá para contar e filtrar, não frase que cada turno escreve diferente.
           motivoEscalada: {
             type: 'string',
-            enum: ['pedido_do_usuario', 'insatisfacao', 'fora_do_alcance'],
+            enum: ['pedido_do_usuario', 'insatisfacao', 'fora_do_alcance', 'paciente_da_clinica'],
             description:
               'pedido_do_usuario: pediu para falar com uma pessoa. '
               + 'insatisfacao: demonstrou irritação ou reclamou do atendimento. '
-              + 'fora_do_alcance: precisa de algo que você não tem como resolver.',
+              + 'fora_do_alcance: precisa de algo que você não tem como resolver. '
+              + 'paciente_da_clinica: a criança já é paciente da clínica (já faz terapia ou é atendida aqui).',
           },
         },
         required: ['motivoEscalada'],
@@ -1443,15 +1445,16 @@ const ROTULO_CAMPO: Record<CampoFicha, string> = {
 
 // Os valores do enum de `escalar_para_humano`, para validar o que chega do modelo.
 const MOTIVOS_ESCALADA: readonly string[] = [
-  'pedido_do_usuario', 'insatisfacao', 'fora_do_alcance',
+  'pedido_do_usuario', 'insatisfacao', 'fora_do_alcance', 'paciente_da_clinica',
 ] as const
 
 // O motivo da escalada como a equipe lê no card ("Encaminhado para humano"
 // exige motivo).
 const ROTULO_ESCALADA: Record<string, string> = {
-  pedido_do_usuario: 'Pediu para falar com uma pessoa',
-  insatisfacao:      'Insatisfação com o atendimento',
-  fora_do_alcance:   'Pedido fora do alcance da Maia',
+  pedido_do_usuario:   'Pediu para falar com uma pessoa',
+  insatisfacao:        'Insatisfação com o atendimento',
+  fora_do_alcance:     'Pedido fora do alcance da Maia',
+  paciente_da_clinica: 'Já é paciente da clínica',
 }
 
 // O enum de `atualizar_funil`, para validar o que chega do modelo.
