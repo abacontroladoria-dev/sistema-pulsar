@@ -20,9 +20,10 @@ import { casarPrimeiraMensagem } from '../agente/origem-campanha'
 import { openAiProvider } from '../llm/openai.provider'
 import { lerAgentSettings } from '../agente/agent-settings'
 import { resolverModoEfetivo } from '../agente/modo-efetivo'
-import { decidirEntrega, textoPacienteDaClinica } from '../agente/entrega'
+import { decidirEntrega } from '../agente/entrega'
 import { createFichaService } from '../services/ficha.service'
 import { PacienteRepository } from '../repositories/paciente.repository'
+import { SessoesTitaRepository } from '../repositories/sessoes-tita.repository'
 import { FunilMaiaService } from '../services/funil-maia.service'
 import type { FichaPaciente, TagDefinition } from '../types/central.types'
 
@@ -313,28 +314,19 @@ async function processarContato(
     limit: LIMITE_HISTORICO,
   })
 
-  // Já é paciente (vínculo no TiTa): a Maia não conduz (14/10/2026). Mesma
-  // trava do worker do Evolution — transfere antes do turno e avisa com texto
-  // fixo. Falha ao ler o vínculo segue para o turno, que tem a regra no prompt.
-  let vinculado = false
+  // Já é paciente (vínculo no TiTa): modo paciente (15/10/2026). Em 14/10 a
+  // conversa era transferida aqui, antes do turno; agora a Maia responde as
+  // perguntas sobre as sessões marcadas lendo a agenda do TiTa, e o resto ela
+  // mesma transfere (INSTRUCAO_PACIENTE_VINCULADO). Mesma regra do worker do
+  // Evolution. Falha ao ler o vínculo segue como lead — o prompt tem a rede
+  // para quando a conversa revela o paciente.
+  let vinculados: { titaPacienteId: number; nome: string | null }[] = []
   try {
-    vinculado = (await new PacienteRepository(supabase).titaIdDoContato(orgId, contato.id)) !== null
+    vinculados = await new PacienteRepository(supabase).vinculadosDoContato(orgId, contato.id)
   } catch (err) {
     console.warn('[worker agrupamento] vínculo de paciente indisponível; seguindo com o turno', err)
   }
-  if (vinculado) {
-    await conversationService.escalarParaAtendimentoHumano(
-      conversation.id, 'paciente_da_clinica', 'paciente_vinculado',
-    )
-    const primeira = !historico.some((m) => m.direction === 'outbound')
-    const aviso = textoPacienteDaClinica(primeira)
-    if (aiMode === 'assisted') {
-      await gravarRascunho(supabase, orgId, conversation.id, aviso)
-    } else {
-      await enfileirarEnvio(supabase, orgId, conversation.id, contato.id, aviso)
-    }
-    return { tipo: 'escalado', detalhe: 'paciente_da_clinica: contato vinculado a paciente do TiTa' }
-  }
+  const modoPaciente = vinculados.length > 0
 
   // A ficha do paciente, e a decisão de coletar ou não.
   //
@@ -379,13 +371,18 @@ async function processarContato(
     // modelo a leia duas vezes.
     historico: historico.slice(textos.length),
     agoraISO,
-    vagasOferecidas: vagasAnteriores,
+    // Paciente não escolhe vaga: a lista guardada só confundiria.
+    vagasOferecidas: modoPaciente ? null : vagasAnteriores,
+    pacientesVinculados: vinculados.map((v) => v.nome),
   })
 
   const ferramentas = new FerramentasAgente(
     createAppointmentSystemService(),
     new AppointmentRepository(supabase),
-    { orgId, contactId: contato.id, conversationId: conversation.id },
+    {
+      orgId, contactId: contato.id, conversationId: conversation.id,
+      titaPacienteIds: vinculados.map((v) => v.titaPacienteId),
+    },
     // Para `escalar_para_humano`. É o MESMO service que o `case 'escalar'` usa
     // lá embaixo: pedido do responsável e falha técnica escrevem pelo mesmo
     // caminho, com `origem` diferente.
@@ -403,6 +400,8 @@ async function processarContato(
     vagasAnteriores?.vagas ?? [],
     // Para a Maia mover o card do funil (crm.maia_mover_negocio, só service role).
     new FunilMaiaService(supabase),
+    // Para `consultar_sessoes_do_paciente` (modo paciente).
+    new SessoesTitaRepository(supabase),
   )
 
   // 7. O turno.
@@ -428,6 +427,7 @@ async function processarContato(
       // informação sobre o que falta precisam aparecer e sumir juntas.
       coletaDeCadastro: ficha !== null,
       ferramentaTags:   montarFerramentaRegistrarTags(porGrupoTags),
+      modoPaciente,
       aoChamarFerramenta: (registro) => {
         void auditoria.insert({
           organization_id: orgId,

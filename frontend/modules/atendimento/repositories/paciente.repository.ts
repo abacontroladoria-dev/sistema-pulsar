@@ -99,4 +99,37 @@ export class PacienteRepository {
     const linhas = (data ?? []) as { tita_paciente_id: number }[]
     return linhas[0]?.tita_paciente_id ?? null
   }
+
+  // TODOS os pacientes vinculados a este contato (irmãos inclusive), com o
+  // nome — para a Maia responder sobre as sessões de quem já é da clínica
+  // (15/10/2026). Ao contrário de `titaIdDoContato`, aqui a lista vem inteira:
+  // a mãe de dois pergunta pelos dois. Vínculo cujo paciente o sync ainda não
+  // trouxe entra sem nome — o id basta para ler a agenda.
+  async vinculadosDoContato(
+    orgId: string,
+    contactId: string,
+  ): Promise<{ titaPacienteId: number; nome: string | null }[]> {
+    const { data: links, error } = await (this.supabase as any)
+      .schema('central')
+      .from('contact_patient_links')
+      .select('tita_paciente_id')
+      .eq('organization_id', orgId)
+      .eq('contact_id', contactId)
+
+    if (error) throw error
+    const ids = [...new Set(((links ?? []) as { tita_paciente_id: number }[]).map((l) => l.tita_paciente_id))]
+    if (ids.length === 0) return []
+
+    const { data: pacientes, error: e2 } = await (this.supabase as any)
+      .from('pacientes')
+      .select('tita_paciente_id, nome')
+      .in('tita_paciente_id', ids)
+
+    if (e2) throw e2
+    const nomes = new Map(
+      ((pacientes ?? []) as { tita_paciente_id: number; nome: string | null }[])
+        .map((p) => [p.tita_paciente_id, p.nome]),
+    )
+    return ids.map((id) => ({ titaPacienteId: id, nome: nomes.get(id) ?? null }))
+  }
 }

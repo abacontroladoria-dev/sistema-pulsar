@@ -414,6 +414,72 @@ const nomesEnviados = (req: { ferramentas?: unknown } | undefined): string[] =>
     'só leitura com escalada: executa escalar, recusa agendar', executadas)
 }
 
+// Modo paciente (15/10/2026): contato vinculado a paciente do TiTa. Só a
+// leitura das sessões, escalar e classificar — nada de vaga nem de reserva.
+{
+  const ferramentaTags = {
+    type: 'function',
+    function: { name: 'registrar_tags', description: '', strict: true, parameters: { type: 'object', properties: {} } },
+  } as any
+
+  const evo = providerDe([resposta({ conteudo: 'oi' })])
+  await executarTurno(ENTRADA, deps({
+    provider: evo.provider, somenteLeitura: true, permitirEscalada: true, permitirTags: true, ferramentaTags, modoPaciente: true,
+  }))
+  const nomesEvo = nomesEnviados(evo.requisicoes[0]).sort()
+  checar(JSON.stringify(nomesEvo) === JSON.stringify(['consultar_sessoes_do_paciente', 'escalar_para_humano', 'registrar_tags']),
+    'modo paciente no número só-leitura: sessões + escalar + tags', nomesEvo)
+
+  // Fora do número só-leitura (Meta), com agenda ligada: as de agenda saem.
+  const meta = providerDe([resposta({ conteudo: 'oi' })])
+  await executarTurno(ENTRADA, deps({ provider: meta.provider, modoPaciente: true }))
+  const nomesMeta = nomesEnviados(meta.requisicoes[0]).sort()
+  checar(JSON.stringify(nomesMeta) === JSON.stringify(['consultar_sessoes_do_paciente', 'escalar_para_humano']),
+    'modo paciente na Meta: sessões + escalar, nada de vaga, reserva ou funil', nomesMeta)
+
+  // Rascunho (sem escalada liberada): só a leitura das sessões.
+  const rasc = providerDe([resposta({ conteudo: 'oi' })])
+  await executarTurno(ENTRADA, deps({ provider: rasc.provider, somenteLeitura: true, modoPaciente: true }))
+  checar(JSON.stringify(nomesEnviados(rasc.requisicoes[0])) === JSON.stringify(['consultar_sessoes_do_paciente']),
+    'modo paciente no rascunho: só a leitura das sessões', nomesEnviados(rasc.requisicoes[0]))
+
+  // Lead: a leitura do TiTa não é oferecida.
+  const lead = providerDe([resposta({ conteudo: 'oi' })])
+  await executarTurno(ENTRADA, deps({ provider: lead.provider, somenteLeitura: true, permitirEscalada: true }))
+  checar(!nomesEnviados(lead.requisicoes[0]).includes('consultar_sessoes_do_paciente'),
+    'lead: consultar_sessoes_do_paciente fica fora', nomesEnviados(lead.requisicoes[0]))
+}
+
+{
+  // Modo paciente: o executor recusa a busca de vaga inventada pelo modelo; lead
+  // não executa a leitura do TiTa mesmo que o modelo a chame.
+  const { provider } = providerDe([
+    resposta({
+      motivoParada: 'tool_calls',
+      chamadas: [
+        { id: 'c1', nome: 'consultar_horarios_disponiveis', argumentosJson: '{}' },
+        { id: 'c2', nome: 'consultar_sessoes_do_paciente', argumentosJson: '{"dataInicio":null,"dataFim":null}' },
+      ],
+    }),
+    resposta({ conteudo: 'A sessão é quinta às 11:20.' }),
+  ])
+  const { ferramentas, executadas } = ferramentasDe({ ok: true, sessoes: [] })
+  await executarTurno(ENTRADA, deps({ provider, ferramentas, somenteLeitura: true, permitirEscalada: true, modoPaciente: true }))
+  checar(executadas.length === 1 && executadas[0]?.nome === 'consultar_sessoes_do_paciente',
+    'modo paciente: executa sessões, recusa horários', executadas)
+
+  const lead = providerDe([
+    resposta({
+      motivoParada: 'tool_calls',
+      chamadas: [{ id: 'c1', nome: 'consultar_sessoes_do_paciente', argumentosJson: '{"dataInicio":null,"dataFim":null}' }],
+    }),
+    resposta({ conteudo: 'Vou passar para a equipe.' }),
+  ])
+  const l = ferramentasDe({ ok: true, sessoes: [] })
+  await executarTurno(ENTRADA, deps({ provider: lead.provider, ferramentas: l.ferramentas }))
+  checar(l.executadas.length === 0, 'lead: leitura do TiTa recusada pelo executor', l.executadas)
+}
+
 // ----------------------------------------------------------------------------
 console.log('\n9. rastro das tool calls')
 

@@ -97,5 +97,21 @@ console.log('\n4. a instrução base fecha o laço da confirmação')
   ok(/isso é a confirmação: chame agendar_sessao sem perguntar de novo/.test(texto), 'uma confirmação basta')
 }
 
+console.log('\n5. paciente vinculado pelo telefone (15/10/2026)')
+{
+  const lead = system()
+  ok(/não peça nome nem idade para procurar/.test(lead), 'lead: não procura agenda pelo nome (caso Pérola)')
+  ok(!/consultar_sessoes_do_paciente/.test(lead), 'lead: nem menciona a leitura do TiTa')
+
+  const pac = system({ pacientesVinculados: ['Pérola do Nascimento Rosa'] })
+  ok(/chame consultar_sessoes_do_paciente/.test(pac), 'vinculado: lê as sessões no TiTa')
+  ok(/Nunca diga que a criança não tem sessão/.test(pac), 'vinculado: nunca nega sessão')
+  ok(/Crianças deste telefone.*Pérola do Nascimento Rosa/.test(pac), 'vinculado: o nome da criança vai rotulado como dado')
+  ok(!/Você NÃO tem acesso à agenda dessa criança/.test(pac), 'vinculado: a regra de lead não entra junto')
+
+  const rasc = system({ pacientesVinculados: ['Pérola do Nascimento Rosa'], sugestaoParaAtendente: true })
+  ok(/Não venda/.test(rasc) && !/O objetivo é converter/.test(rasc), 'rascunho de paciente: sem roteiro de venda')
+}
+
 console.log(falhas === 0 ? '\nTodos os testes passaram.' : `\n${falhas} teste(s) FALHARAM.`)
 process.exit(falhas === 0 ? 0 : 1)

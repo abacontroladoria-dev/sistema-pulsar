@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { DEFINICOES_FERRAMENTAS, FERRAMENTAS_SEMPRE, type FerramentasAgente } from './ferramentas'
+import { DEFINICOES_FERRAMENTAS, FERRAMENTAS_PACIENTE, FERRAMENTAS_SEMPRE, type FerramentasAgente } from './ferramentas'
 import {
   LlmRateLimitError,
   LlmTimeoutError,
@@ -120,6 +120,12 @@ export interface DepsTurno {
   // conversa do número ganhava classificação (Mateus, 13/10/2026). No rascunho
   // continua fora: lá quem atende e classifica é a atendente.
   permitirTags?: boolean
+  // Contato vinculado a paciente do TiTa (15/10/2026): a Maia só responde sobre
+  // as sessões marcadas. O turno recebe `consultar_sessoes_do_paciente` — fora
+  // do interruptor de agendamento, ler a agenda não é agendar — e PERDE as de
+  // vaga e de reserva: oferecer horário a quem já tem cronograma é o defeito,
+  // não um recurso. Escalar e classificar seguem pelas mesmas chaves de sempre.
+  modoPaciente?: boolean
 }
 
 export const FERRAMENTAS_SO_LEITURA = new Set([
@@ -129,6 +135,12 @@ export const FERRAMENTAS_SO_LEITURA = new Set([
 ])
 
 function liberadaNoTurno(nome: string, deps: DepsTurno): boolean {
+  if (nome === 'consultar_sessoes_do_paciente') return deps.modoPaciente === true
+  if (deps.modoPaciente) {
+    // Fora do número só-leitura não há chave de escalada: ali ela sempre vale.
+    return (nome === 'escalar_para_humano' && (!deps.somenteLeitura || deps.permitirEscalada === true))
+      || (nome === 'registrar_tags' && (!deps.somenteLeitura || deps.permitirTags === true))
+  }
   if (!deps.somenteLeitura) return true
   return FERRAMENTAS_SO_LEITURA.has(nome)
     || (deps.permitirEscalada === true && nome === 'escalar_para_humano')
@@ -139,6 +151,13 @@ const FERRAMENTA_BLOQUEADA = JSON.stringify({
   ok: false,
   motivo: 'somente_sugestao',
   mensagem: 'Neste atendimento você só sugere a resposta; nenhuma ação é executada. Responda em texto.',
+})
+
+const FERRAMENTA_FORA_DO_MODO_PACIENTE = JSON.stringify({
+  ok: false,
+  motivo: 'modo_paciente',
+  mensagem: 'Com quem já é paciente você só informa as sessões marcadas (consultar_sessoes_do_paciente). '
+    + 'Para qualquer outro pedido, passe a conversa para a equipe.',
 })
 
 // O que se grava de uma chamada de ferramenta. Deliberadamente magro: ver a
@@ -285,7 +304,10 @@ export async function executarTurno(
   // Nunca mais é `undefined` — antes disso o provider omitia a chave `tools` e o
   // modelo nem sabia que poderia agendar. Agora sempre há ao menos uma ferramenta,
   // e a de agenda continua invisível quando desligada, que é o que importa.
-  const extras = deps.ferramentaTags ? [deps.ferramentaTags] : []
+  const extras = [
+    ...(deps.modoPaciente ? FERRAMENTAS_PACIENTE : []),
+    ...(deps.ferramentaTags ? [deps.ferramentaTags] : []),
+  ]
   const ferramentas = (
     deps.agendamentoHabilitado
       ? [...DEFINICOES_FERRAMENTAS, ...FERRAMENTAS_SEMPRE, ...extras]
@@ -388,7 +410,7 @@ export async function executarTurno(
         }
 
         if (!liberadaNoTurno(chamada.nome, deps)) {
-          return { chamada, conteudo: FERRAMENTA_BLOQUEADA }
+          return { chamada, conteudo: deps.modoPaciente ? FERRAMENTA_FORA_DO_MODO_PACIENTE : FERRAMENTA_BLOQUEADA }
         }
 
         const comecou = Date.now()

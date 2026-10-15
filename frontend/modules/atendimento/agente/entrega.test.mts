@@ -151,6 +151,20 @@ for (const t of [
 checar(!prometeAgendamento(TEXTO_SEM_AGENDAMENTO_NO_NUMERO) && TEXTO_SEM_AGENDAMENTO_NO_NUMERO.length <= 140,
   'o aviso fixo não se barra e é curto', TEXTO_SEM_AGENDAMENTO_NO_NUMERO.length)
 
+// Modo paciente (15/10/2026): "está marcada" é leitura da agenda do TiTa — a
+// resposta que a mãe da Pérola deveria ter recebido. Só a ação em primeira
+// pessoa continua barrada: a Maia não tem ferramenta de agendar ali.
+for (const t of [
+  'Sim, a sessão da Pérola está marcada para hoje, quinta, às 11:20, na Fazendinha.',
+  'Está confirmado para toda quinta-feira às 11h20.',
+  'A consulta foi cancelada pela clínica.',
+]) checar(!prometeAgendamento(t, { modoPaciente: true }), `modo paciente deixa passar: ${t}`)
+
+for (const t of [
+  'Já marquei a reposição para sexta.',
+  'Remarquei a sessão para amanhã às 9h.',
+]) checar(prometeAgendamento(t, { modoPaciente: true }), `modo paciente barra: ${t}`)
+
 // ---------------------------------------------------------------------------
 console.log(falhas === 0 ? '\nTudo certo.' : `\n${falhas} teste(s) FALHARAM.`)
 process.exit(falhas === 0 ? 0 : 1)

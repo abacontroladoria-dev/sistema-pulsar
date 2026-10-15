@@ -49,7 +49,10 @@ export type ConversationEventType =
   //                                (ou se irritou, ou pediu algo fora do alcance)
   //   origem 'falha_tecnica'     — a Maia quebrou (loop, timeout, filtro)
   //   origem 'paciente_vinculado' — o contato já tem paciente no TiTa e o worker
-  //                                transferiu antes de a Maia falar (14/10/2026)
+  //                                transferiu antes de a Maia falar (14/10/2026;
+  //                                só em eventos antigos — desde 15/10 a Maia
+  //                                responde sobre as sessões e transfere pela
+  //                                ferramenta, origem 'ferramenta_agente')
   // As duas deixam a conversa idêntica no banco e não têm nada a ver uma com a
   // outra; sem o campo, "quanto o atendimento automático não dá conta" viraria
   // adivinhação. Ver ConversationService.escalarParaAtendimentoHumano.

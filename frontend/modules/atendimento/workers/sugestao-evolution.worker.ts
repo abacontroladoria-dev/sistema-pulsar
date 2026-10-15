@@ -14,10 +14,9 @@ import { FerramentasAgente } from '../agente/ferramentas'
 import { openAiProvider } from '../llm/openai.provider'
 import { lerAgentSettings } from '../agente/agent-settings'
 import { CHAVE_MAIA_TRANSFERIU, maiaTransferiu } from '../agente/caixas'
-import {
-  TEXTO_ESCALADA_FALLBACK, TEXTO_SEM_AGENDAMENTO_NO_NUMERO, prometeAgendamento, textoPacienteDaClinica,
-} from '../agente/entrega'
+import { TEXTO_ESCALADA_FALLBACK, TEXTO_SEM_AGENDAMENTO_NO_NUMERO, prometeAgendamento } from '../agente/entrega'
 import { PacienteRepository } from '../repositories/paciente.repository'
+import { SessoesTitaRepository } from '../repositories/sessoes-tita.repository'
 import type { TagDefinition } from '../types/central.types'
 
 // ============================================================================
@@ -205,18 +204,15 @@ export async function processarSugestoesEvolution(
       const qtdInbound = n === -1 ? historico.length : n
       if (doTurno.filter(t => t.trim()).length === 0) continue
 
-      // Contato que já é paciente (vínculo no TiTa) não fica com a Maia (14/10):
-      // transfere antes do turno, sem OpenAI, e avisa com texto fixo. Só onde
-      // ela envia — no rascunho quem conduz já é a atendente. Falha ao ler o
-      // vínculo não cala a pessoa: segue para o turno, que tem a mesma regra
-      // no prompt para quando a conversa revela.
-      if (automatica && await jaEPaciente(pacientes, orgId, conv.contact_id)) {
-        await conversationService.transferirDoMaiaResponde(conv.id, 'paciente_da_clinica', 'paciente_vinculado')
-        const primeira = !historico.some(m => m.direction === 'outbound')
-        await messageService.send({ conversationId: conv.id, body: textoPacienteDaClinica(primeira), sentByAi: true })
-        r.enviadas++
-        continue
-      }
+      // Contato que já é paciente (vínculo no TiTa): modo paciente (15/10). Em
+      // 14/10 ele era transferido aqui, antes do turno; mas pais de pacientes
+      // escrevem neste número para confirmar a sessão, e a mãe da Pérola ouviu
+      // que não havia agendamento. Agora a Maia lê a agenda do TiTa e responde
+      // só sobre as sessões; o resto ela transfere (INSTRUCAO_PACIENTE_VINCULADO).
+      // No rascunho, o mesmo modo sem venda. Falha ao ler o vínculo segue como
+      // lead — o prompt tem a rede para quando a conversa revela o paciente.
+      const vinculados = await pacientesDoContato(pacientes, orgId, conv.contact_id)
+      const modoPaciente = vinculados.length > 0
 
       const { data: contato } = await db
         .from('contacts')
@@ -235,9 +231,12 @@ export async function processarSugestoesEvolution(
         historico: historico.slice(qtdInbound),
         agoraISO: new Date().toISOString(),
         vagasOferecidas: null,
-        semAgendamento: automatica,
+        // No modo paciente a regra própria já proíbe agendar, e a desta linha
+        // ("nunca escreva marcado/confirmado") calaria a resposta certa.
+        semAgendamento: automatica && !modoPaciente,
         // Rascunho: quem envia é a atendente, e o texto é para converter.
         sugestaoParaAtendente: !automatica,
+        pacientesVinculados: vinculados.map(v => v.nome),
       })
 
       // Classificação só onde ela envia: no rascunho quem atende é a atendente.
@@ -246,7 +245,10 @@ export async function processarSugestoesEvolution(
       const ferramentas = new FerramentasAgente(
         createAppointmentSystemService(),
         new AppointmentRepository(supabase),
-        { orgId, contactId: conv.contact_id, conversationId: conv.id, maiaRespondeNoNumero: automatica },
+        {
+          orgId, contactId: conv.contact_id, conversationId: conv.id, maiaRespondeNoNumero: automatica,
+          titaPacienteIds: vinculados.map(v => v.titaPacienteId),
+        },
         // Para `escalar_para_humano`, só onde ela envia. No rascunho quem
         // responde já é gente — não há de quem transferir.
         automatica ? conversationService : null,
@@ -254,6 +256,10 @@ export async function processarSugestoesEvolution(
         // Para `registrar_tags` — validação e merge por grupo usam o mesmo
         // catálogo que monta o schema abaixo.
         catalogoTags,
+        [],
+        null,
+        // Para `consultar_sessoes_do_paciente` (modo paciente).
+        new SessoesTitaRepository(supabase),
       )
 
       const resultado = await executarTurno(
@@ -267,6 +273,7 @@ export async function processarSugestoesEvolution(
           permitirEscalada: automatica,
           ferramentaTags: catalogoTags ? montarFerramentaRegistrarTags(catalogoTags) : undefined,
           permitirTags: catalogoTags !== null,
+          modoPaciente,
           // O mesmo rastro do worker da Meta. Sem ele, desde 30/09 nenhuma
           // consulta da Maia ficava registrada: em 13/10 ela respondeu "houve um
           // erro ao buscar os horários" e não havia como saber o que a
@@ -322,7 +329,7 @@ export async function processarSugestoesEvolution(
             conversationId: conv.id, tipo: resultado.tipo,
             detalhe: 'detalhe' in resultado ? resultado.detalhe : null,
           })
-        } else if (prometeAgendamento(texto)) {
+        } else if (prometeAgendamento(texto, { modoPaciente })) {
           // Ela não agenda aqui: texto que diz que agendou é falso (Ana, 13/10).
           // Quem tentou marcar quer marcar — transfere e troca pelo aviso fixo.
           if (!ferramentas.escaladaPedida()) {
@@ -442,13 +449,17 @@ async function reivindicar(
 
 // Vínculo em central.contact_patient_links — o mesmo critério que tira o
 // contato do funil comercial (20261013160000). Erro de leitura = "não sei",
-// e "não sei" deixa a Maia atender.
-async function jaEPaciente(pacientes: PacienteRepository, orgId: string, contactId: string): Promise<boolean> {
+// e "não sei" deixa a Maia atender como lead.
+async function pacientesDoContato(
+  pacientes: PacienteRepository,
+  orgId: string,
+  contactId: string,
+): Promise<{ titaPacienteId: number; nome: string | null }[]> {
   try {
-    return (await pacientes.titaIdDoContato(orgId, contactId)) !== null
+    return await pacientes.vinculadosDoContato(orgId, contactId)
   } catch (err) {
     console.warn('[sugestao evolution] vínculo de paciente indisponível; seguindo com o turno', err)
-    return false
+    return []
   }
 }
 

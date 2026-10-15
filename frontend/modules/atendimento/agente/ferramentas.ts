@@ -17,6 +17,7 @@ import type { VagaOferecida } from './vagas-oferecidas'
 import type { TagDefinition } from '../types/central.types'
 import { TagDesconhecidaError, TagNaoAplicavelPelaMaiaError } from '../types/errors.types'
 import type { FunilMaiaService } from '../services/funil-maia.service'
+import type { SessoesTitaRepository, SessaoTita } from '../repositories/sessoes-tita.repository'
 
 // ============================================================================
 // Ferramentas do agente de atendimento
@@ -49,6 +50,10 @@ export interface ContextoAgente {
   conversationId?: string | null
   // Paciente do TiTa, quando já identificado na conversa.
   titaPacienteId?: number | null
+  // Todos os pacientes vinculados ao telefone deste contato
+  // (central.contact_patient_links), resolvidos pelo worker. São os ÚNICOS
+  // cujas sessões `consultar_sessoes_do_paciente` lê — o modelo não escolhe.
+  titaPacienteIds?: number[]
   // Turno de um número Evolution com "Maia responde": ali o ai_mode já é 'off'
   // e escalar é marcar a conversa (transferirDoMaiaResponde), não desligá-lo.
   maiaRespondeNoNumero?: boolean
@@ -234,9 +239,15 @@ export const DEFINICOES_FERRAMENTAS = [
     type: 'function' as const,
     function: {
       name: 'consultar_agendamentos_do_contato',
+      // Não é a agenda da clínica (15/10/2026): lê central.appointments, que só
+      // tem as reservas feitas por este atendimento. A description antiga
+      // ("quando o responsável perguntar quando é a próxima sessão") levou a
+      // Maia a dizer à mãe de uma paciente que não havia agendamento, com a
+      // sessão marcada no TiTa para o mesmo dia.
       description:
-        'Lista os agendamentos futuros já marcados para este contato. Use antes de reagendar ou cancelar, ' +
-        'e quando o responsável perguntar quando é a próxima sessão. ' +
+        'Lista as reservas que ESTE atendimento fez para este contato e que ainda vão acontecer. ' +
+        'NÃO é a agenda da clínica: não mostra as sessões de quem já é paciente e já tem cronograma. ' +
+        'Use só antes de reagendar ou cancelar uma reserva feita por aqui. ' +
         'Não recebe parâmetro: o contato desta conversa é determinado pelo sistema.',
       strict: true,
       parameters: {
@@ -473,9 +484,50 @@ export const FERRAMENTAS_SEMPRE = [
 // e daria a impressão, para quem lesse o schema, de que o recado chega a alguém.
 // Quem assume lê o histórico da conversa, que tem o pedido original literal.
 
+// ----------------------------------------------------------------------------
+// Ferramenta do modo paciente (15/10/2026)
+//
+// Contato vinculado a paciente do TiTa: a Maia responde só sobre as sessões já
+// marcadas (pedido do usuário depois do caso Tici / Pérola — pais de pacientes
+// escrevem no número da Maia para confirmar a sessão). Fora de
+// DEFINICOES_FERRAMENTAS de propósito: ler a agenda não é agendar, e o
+// interruptor `ai_scheduling_enabled` não pode calar esta resposta. Só entra no
+// turno com `DepsTurno.modoPaciente`, e então é a única de consulta (ver
+// liberadaNoTurno no orquestrador).
+//
+// Sem parâmetro de paciente: quem é o paciente sai do vínculo do telefone
+// (ContextoAgente.titaPacienteIds). Quem só sabe o nome de uma criança não
+// chega à agenda dela.
+// ----------------------------------------------------------------------------
+export const FERRAMENTAS_PACIENTE = [
+  {
+    type: 'function' as const,
+    function: {
+      name: 'consultar_sessoes_do_paciente',
+      description:
+        'Lista as sessões já marcadas na agenda da clínica (TiTa) para a(s) criança(s) deste contato: '
+        + 'data, dia da semana, horário, terapia, profissional e unidade. '
+        + 'Use sempre que o responsável perguntar se tem sessão, quando é, a que horas, com quem ou em qual unidade. '
+        + 'Não recebe a criança: o sistema já sabe quem é pelo cadastro do telefone. '
+        + 'Responda só com o que ela devolver.',
+      strict: true,
+      parameters: {
+        type: 'object',
+        properties: {
+          dataInicio: { type: ['string', 'null'], description: 'Primeiro dia, YYYY-MM-DD. null para hoje.' },
+          dataFim:    { type: ['string', 'null'], description: 'Último dia, YYYY-MM-DD. null para 14 dias depois do início.' },
+        },
+        required: ['dataInicio', 'dataFim'],
+        additionalProperties: false,
+      },
+    },
+  },
+] as const
+
 export type NomeFerramenta =
   | typeof DEFINICOES_FERRAMENTAS[number]['function']['name']
   | typeof FERRAMENTAS_SEMPRE[number]['function']['name']
+  | typeof FERRAMENTAS_PACIENTE[number]['function']['name']
   // 'registrar_tags' fica fora dos dois arrays: seu schema é dinâmico
   // (enums vêm do catálogo da organização, ver agente/tags.ts), montado pelo
   // worker e anexado em DepsTurno.ferramentaTags — não cabe num `as const`.
@@ -524,6 +576,9 @@ export class FerramentasAgente {
     // Para `atualizar_funil` e para os movimentos automáticos do card (ver
     // moverCard). Opcional: sem ele o funil simplesmente não se mexe.
     private readonly funil:        FunilMaiaService | null = null,
+    // Para `consultar_sessoes_do_paciente`. Opcional: sem ele a ferramenta
+    // recusa, e a recusa manda passar para a equipe.
+    private readonly sessoes:      SessoesTitaRepository | null = null,
   ) {
     this.vagasOferecidas = [...vagasAnteriores]
   }
@@ -593,6 +648,7 @@ export class FerramentasAgente {
           return r
         }
         case 'consultar_agendamentos_do_contato':    return await this.consultarDoContato()
+        case 'consultar_sessoes_do_paciente':        return await this.consultarSessoesDoPaciente(args)
         case 'reagendar_sessao':                     return await this.reagendar(args)
         case 'cancelar_sessao':                      return await this.cancelar(args)
         case 'escalar_para_humano': {
@@ -1025,12 +1081,16 @@ export class FerramentasAgente {
     })
 
     if (data.length === 0) {
-      return recusa(MOTIVO.NAO_ENCONTRADO, 'Este contato não tem agendamento futuro.')
+      return recusa(
+        MOTIVO.NAO_ENCONTRADO,
+        'Nenhuma reserva feita por este atendimento para este contato. Isto não consulta a agenda da clínica: '
+        + 'não diga que a criança não tem sessão nem agendamento.',
+      )
     }
 
     return {
       ok: true,
-      agendamentos: data.map(a => ({
+      reservasDesteAtendimento: data.map(a => ({
         agendamentoId: a.id,
         data:          a.date,
         hora:          horaCurta(a.time),
@@ -1039,6 +1099,56 @@ export class FerramentasAgente {
         sala:          a.sala_nome,
         status:        a.status,
       })),
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // consultar_sessoes_do_paciente — a agenda do TiTa de quem já é paciente.
+  //
+  // Lista vazia NÃO é "a criança não tem terapia": a grade só vai até o fim do
+  // mês seguinte, e o vínculo pode apontar para o irmão errado. A recusa manda
+  // passar para a equipe em vez de negar — negar foi o erro do caso Pérola.
+  // --------------------------------------------------------------------------
+  private async consultarSessoesDoPaciente(args: Record<string, any>): Promise<ResultadoFerramenta> {
+    const ids = this.contexto.titaPacienteIds ?? []
+    if (ids.length === 0 || !this.sessoes) {
+      return recusa(
+        MOTIVO.NAO_ENCONTRADO,
+        'Não há criança identificada pelo cadastro deste telefone. Não diga que não há sessão: passe a conversa para a equipe.',
+      )
+    }
+
+    const de = dataValida(args.dataInicio) ?? hojeEmSaoPaulo()
+    let ate = dataValida(args.dataFim) ?? somarDias(de, JANELA_SESSOES_DIAS)
+    if (ate < de) ate = de
+    const teto = somarDias(de, JANELA_SESSOES_MAX_DIAS)
+    if (ate > teto) ate = teto
+
+    const linhas = await this.sessoes.listar(ids, de, ate, LIMITE_SESSOES + 1)
+    const cortada = linhas.length > LIMITE_SESSOES
+    let sessoes = agruparSessoes(linhas.slice(0, LIMITE_SESSOES), ids.length > 1)
+    // A linha que sobrou pode ser a segunda metade de uma sessão já listada (dois
+    // profissionais no mesmo horário): a última sessão sai, e a busca seguinte
+    // começa no dia dela.
+    if (cortada && sessoes.length > 1) sessoes = sessoes.slice(0, -1)
+
+    if (sessoes.length === 0) {
+      return recusa(
+        MOTIVO.NAO_ENCONTRADO,
+        `Nenhuma sessão marcada no TiTa de ${dataBr(de)} a ${dataBr(ate)}. Não afirme que a criança não tem terapia: `
+        + 'a agenda pode ainda não estar aberta para essas datas. Passe a conversa para a equipe verificar.',
+      )
+    }
+
+    const ultima = sessoes[sessoes.length - 1].data
+    return {
+      ok: true,
+      periodo: { de, ate },
+      sessoes,
+      listaCompleta: !cortada,
+      ...(cortada
+        ? { aviso: `Lista cortada: há mais sessões depois de ${dataBr(ultima)}. Para datas seguintes, consulte de novo com dataInicio a partir de ${ultima}.` }
+        : {}),
     }
   }
 
@@ -1552,6 +1662,105 @@ function clampInt(v: unknown, min: number, max: number, padrao: number): number 
   const n = toInt(v)
   if (n == null) return padrao
   return Math.min(max, Math.max(min, n))
+}
+
+// ----------------------------------------------------------------------------
+// Sessões do paciente (consultar_sessoes_do_paciente)
+// ----------------------------------------------------------------------------
+
+// 14 dias cobre "tem sessão hoje / essa semana / semana que vem". O teto é o
+// horizonte da própria grade (até o fim do mês seguinte), com folga.
+const JANELA_SESSOES_DIAS     = 14
+const JANELA_SESSOES_MAX_DIAS = 62
+// Uma criança em ABA intensivo tem até ~4 sessões por dia: 40 cobre duas
+// semanas dela. Mais que isso o modelo não lê com atenção.
+const LIMITE_SESSOES = 40
+
+export interface SessaoDoPaciente {
+  // Só quando o telefone tem mais de uma criança vinculada (irmãos).
+  crianca?:     string | null
+  data:         string
+  diaSemana:    string | null
+  inicio:       string | null
+  fim:          string | null
+  terapia:      string | null
+  profissional: string | null
+  // Uma das três unidades, ou null quando a sala não é endereço da clínica
+  // ('AT Externo Escola') — aí `local` diz onde é.
+  unidade:      Unidade | null
+  local?:       string | null
+  situacao:     'marcada' | 'cancelada' | 'realizada'
+  motivoCancelamento?: string | null
+}
+
+// Uma sessão por criança + dia + hora: o mesmo horário com dois profissionais
+// (aplicador + coordenador de caso) é UMA ida à clínica, e listar duas vezes
+// faria a mãe achar que são duas sessões.
+export function agruparSessoes(linhas: readonly SessaoTita[], comNome: boolean): SessaoDoPaciente[] {
+  const grupos = new Map<string, { base: SessaoTita; terapias: string[]; profissionais: string[] }>()
+  for (const l of linhas) {
+    const chave = `${l.paciente_id}|${l.data}|${l.hora_inicial}|${situacaoDa(l)}`
+    let g = grupos.get(chave)
+    if (!g) {
+      g = { base: l, terapias: [], profissionais: [] }
+      grupos.set(chave, g)
+    }
+    const terapia = l.terapia_exibicao_nome ?? l.terapia_nome
+    if (terapia && !g.terapias.includes(terapia)) g.terapias.push(terapia)
+    if (l.profissional_nome && !g.profissionais.includes(l.profissional_nome)) g.profissionais.push(l.profissional_nome)
+  }
+
+  return [...grupos.values()].map(({ base, terapias, profissionais }) => {
+    const unidade = unidadeDaSala(base.sala_nome)
+    const situacao = situacaoDa(base)
+    return {
+      ...(comNome ? { crianca: base.paciente_nome } : {}),
+      data:         base.data,
+      diaSemana:    base.dia_semana,
+      inicio:       horaCurta(base.hora_inicial),
+      fim:          horaCurta(base.hora_final),
+      terapia:      terapias.join(', ') || null,
+      profissional: profissionais.join(', ') || null,
+      unidade,
+      ...(unidade ? {} : { local: base.sala_nome }),
+      situacao,
+      ...(situacao === 'cancelada' ? { motivoCancelamento: base.justificativa } : {}),
+    }
+  })
+}
+
+// status_execucao: 'Realizado' · 'Cancelado' · 'Em Conflito' · 'Planejado/Pendente'.
+// 'Em Conflito' é o paciente com dois agendamentos no mesmo horário — para a
+// família, sessão marcada.
+function situacaoDa(l: SessaoTita): SessaoDoPaciente['situacao'] {
+  if (l.status_execucao === 'Cancelado') return 'cancelada'
+  if (l.status_execucao === 'Realizado') return 'realizada'
+  return 'marcada'
+}
+
+// 'YYYY-MM-DD' de verdade (o modelo às vezes manda 'hoje' ou '15/10'). O que
+// não for data vira null, e o chamador usa o padrão.
+function dataValida(v: unknown): string | null {
+  const s = texto(v)
+  if (!s || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return null
+  const d = new Date(`${s}T12:00:00Z`)
+  return Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== s ? null : s
+}
+
+function hojeEmSaoPaulo(): string {
+  // en-CA formata como YYYY-MM-DD.
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date())
+}
+
+function somarDias(iso: string, dias: number): string {
+  const d = new Date(`${iso}T12:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + dias)
+  return d.toISOString().slice(0, 10)
+}
+
+function dataBr(iso: string): string {
+  const [a, m, d] = iso.split('-')
+  return `${d}/${m}/${a}`
 }
 
 const TIPOS_ACEITOS = ['triagem', 'retorno', 'reuniao', 'followup', 'other'] as const
