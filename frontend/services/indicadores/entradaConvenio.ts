@@ -4,20 +4,39 @@ import { createClient } from "@/lib/supabase/server"
 import { supabaseService } from "@/lib/supabase/service"
 import { temPermissao } from "@/lib/permissions/resolver"
 import { carregarPermissoesEfetivas } from "@/lib/permissions/carregar"
-import type { PainelEntradaResposta } from "@/lib/indicadores/entradaConvenio"
+import type {
+  AlteracaoPrazo,
+  ImpactoPrazo,
+  PainelEntradaResposta,
+  PrazoVigente,
+} from "@/lib/indicadores/entradaConvenio"
 
 // Rotas de /api/indicadores/entrada-convenio. Molde: services/contratos/acesso.ts.
 //
 // A leitura passa pela service_role (RPC painel_entrada_convenio_atual, que só
 // ela executa), então a checagem de acesso é ESTA:
-//   • ver o painel: `indicadores_entrada_convenio`;
+//   • ver o painel e os prazos: `indicadores_entrada_convenio`;
 //   • "Atualizar agora" (dispara a cópia do Doc do ClickUp): admin ou diretoria.
 //     As leituras agendadas (7h55 a 9h25 e 12h55 a 13h55) já fazem isso sozinhas; o botão é para teste e para
-//     depois de uma correção manual no Doc.
+//     depois de uma correção manual no Doc;
+//   • alterar prazo de etapa: admin ou diretoria COM usuário identificado. No
+//     localhost sem login (DISABLE_AUTH) não altera: o banco é o de produção e
+//     toda alteração precisa de autor no histórico. A RPC confere o papel de novo.
 
 export const PERMISSAO_PAINEL = "indicadores_entrada_convenio"
 
-export type AcessoPainelEntrada = { ler: boolean; atualizar: boolean }
+export type AcessoPainelEntrada = {
+  ler: boolean
+  atualizar: boolean
+  alterarPrazos: boolean
+  usuarioId: string | null
+  /** Por que não pode alterar prazos (null quando pode). */
+  motivoBloqueio: string | null
+}
+
+const BLOQUEIO_SEM_LOGIN =
+  "No localhost sem login não dá para alterar prazos: toda alteração precisa de autor no histórico. Entre com o seu usuário para alterar."
+const BLOQUEIO_PAPEL = "Só Direção e Admin alteram prazos."
 
 export class AcessoNegado extends Error {
   constructor(
@@ -30,7 +49,9 @@ export class AcessoNegado extends Error {
 
 export async function lerAcessoPainelEntrada(): Promise<AcessoPainelEntrada> {
   // Desenvolvimento local, sem login (DISABLE_AUTH) — mesma convenção das rotas.
-  if (process.env.DISABLE_AUTH === "true") return { ler: true, atualizar: true }
+  if (process.env.DISABLE_AUTH === "true") {
+    return { ler: true, atualizar: true, alterarPrazos: false, usuarioId: null, motivoBloqueio: BLOQUEIO_SEM_LOGIN }
+  }
 
   const supabase = await createClient()
   const {
@@ -48,9 +69,13 @@ export async function lerAcessoPainelEntrada(): Promise<AcessoPainelEntrada> {
 
   const role = (perfil.role as string | null) ?? ""
   const codigos = await carregarPermissoesEfetivas(supabase)
+  const direcaoOuAdmin = role === "admin" || role === "diretoria"
   return {
     ler: temPermissao(role, codigos, PERMISSAO_PAINEL),
-    atualizar: role === "admin" || role === "diretoria",
+    atualizar: direcaoOuAdmin,
+    alterarPrazos: direcaoOuAdmin,
+    usuarioId: user.id,
+    motivoBloqueio: direcaoOuAdmin ? null : BLOQUEIO_PAPEL,
   }
 }
 
@@ -82,6 +107,61 @@ export async function buscarPainelEntrada(): Promise<PainelEntradaResposta | nul
     throw new Error(error.message)
   }
   return data as PainelEntradaResposta
+}
+
+// ─── Prazos das etapas ───────────────────────────────────────────────────────
+
+/** Migration 20261015160000 ainda não aplicada (função ou tabela ausente). */
+const PRAZOS_NAO_INSTALADOS = new Set(["PGRST202", "42883", "42P01"])
+
+/**
+ * Prazos vigentes e histórico completo. `null` = a migration ainda não foi
+ * aplicada: o painel segue com os prazos do calc (o localhost usa o banco de
+ * produção, então a tela precisa sobreviver a isso).
+ */
+export async function buscarPrazos(): Promise<{ vigentes: PrazoVigente[]; historico: AlteracaoPrazo[] } | null> {
+  const { data, error } = await supabaseService.rpc("painel_entrada_convenio_prazos")
+  if (error) {
+    if (error.code && PRAZOS_NAO_INSTALADOS.has(error.code)) return null
+    throw new Error(error.message)
+  }
+  const d = (data ?? {}) as { vigentes?: PrazoVigente[]; historico?: AlteracaoPrazo[] }
+  return { vigentes: d.vigentes ?? [], historico: d.historico ?? [] }
+}
+
+export class PrazoRecusado extends Error {
+  constructor(
+    readonly status: 400 | 403,
+    mensagem: string,
+  ) {
+    super(mensagem)
+  }
+}
+
+/** Altera o prazo e grava o histórico (mesma transação, na RPC). */
+export async function alterarPrazo(p: {
+  etapa: string
+  prazo: number
+  motivo: string
+  usuarioId: string
+  impacto: ImpactoPrazo | null
+}): Promise<{ id: number; resumo: string; meta: number }> {
+  const { data, error } = await supabaseService.rpc("painel_entrada_convenio_alterar_prazo", {
+    p_etapa: p.etapa,
+    p_prazo: p.prazo,
+    p_motivo: p.motivo,
+    p_usuario_id: p.usuarioId,
+    p_impacto: p.impacto ?? {},
+  })
+  if (error) {
+    if (error.code === "42501") throw new PrazoRecusado(403, error.message)
+    if (error.code === "22023") throw new PrazoRecusado(400, error.message)
+    if (error.code && PRAZOS_NAO_INSTALADOS.has(error.code)) {
+      throw new PrazoRecusado(400, "A tabela de prazos ainda não foi instalada (migration 20261015160000 pendente).")
+    }
+    throw new Error(error.message)
+  }
+  return data as { id: number; resumo: string; meta: number }
 }
 
 /** Dispara a cópia do Doc agora e devolve o resumo da Edge Function. */

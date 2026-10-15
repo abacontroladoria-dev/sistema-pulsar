@@ -19,15 +19,22 @@
 
 export const CAMINHO_FORMULARIO = "/disponibilidade-paciente/"
 
-export function linkFormularioDisponibilidade(origem: string): string {
-  return `${origem}${CAMINHO_FORMULARIO}`
+/**
+ * Endereço público do sistema. O link vai para a família, então é sempre este,
+ * venha a cópia de onde vier — com window.location.origin, quem copiava no
+ * localhost mandava "http://localhost:3000/..." para a família.
+ */
+export const ORIGEM_PUBLICA = "https://orbitaautomacao.com.br"
+
+export function linkFormularioDisponibilidade(): string {
+  return `${ORIGEM_PUBLICA}${CAMINHO_FORMULARIO}`
 }
 
 /** Mensagem de WhatsApp. Sem nome, sai genérica ("de terapia"). */
-export function mensagemFormularioDisponibilidade(origem: string, pacienteNome?: string | null): string {
+export function mensagemFormularioDisponibilidade(pacienteNome?: string | null): string {
   const primeiro = (pacienteNome ?? "").trim().split(/\s+/)[0] ?? ""
   const de = primeiro ? ` de ${primeiro}` : ""
-  return `Olá! Para organizarmos os horários de terapia${de}, preencha a disponibilidade neste link: ${linkFormularioDisponibilidade(origem)} — use o CPF da criança para entrar.`
+  return `Olá! Para organizarmos os horários de terapia${de}, preencha a disponibilidade neste link: ${linkFormularioDisponibilidade()} — use o CPF da criança para entrar.`
 }
 
 // ─── Dias ─────────────────────────────────────────────────────────────────────

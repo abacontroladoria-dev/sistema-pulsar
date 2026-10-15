@@ -1,20 +1,33 @@
 "use client"
 
-// Detalhe de um paciente do Painel de Entrada: etapa atual, disponibilidade,
-// histórico por etapa, datas e links do ClickUp. Painel lateral para a lista
-// continuar visível atrás (no celular vira tela cheia).
+// Detalhe de um paciente do Painel de Entrada. De cima para baixo: o que falta
+// agora (com o botão para a tarefa certa do ClickUp), o caminho pelas etapas
+// 0 a 7, disponibilidade, registros a corrigir, datas e os demais links.
+// Painel lateral para a lista continuar visível atrás (no celular vira tela cheia).
 
 import Link from "next/link"
-import { ExternalLink } from "lucide-react"
+import { AlertTriangle, Check, ExternalLink } from "lucide-react"
 import { Drawer } from "@/components/cronograma/ui/Drawer"
+import { TONE_SOFT } from "@/components/cronograma/ui/tones"
 import {
   AVISO_INICIO_DO_NOME,
   ETAPAS_DISPONIBILIDADE,
   ROTULO_DISPONIBILIDADE,
+  caminhoDoPaciente,
+  envioDoLinkDisponibilidade,
   fmtDiaMes,
+  linkDaEtapa,
   linksDoPaciente,
+  proximaAcao,
+  responsavelDo,
+  textoPrazo,
+  textosDosAlertas,
   type DisponibilidadePainel,
+  type EstadoPasso,
+  type EtapaResumo,
+  type PacienteEmAndamento,
   type PacienteEntrada,
+  type PassoCaminho,
 } from "@/lib/indicadores/entradaConvenio"
 import { BotaoCopiarMensagem, PilulaPrazo, SeloDisponibilidade } from "./comum"
 
@@ -36,13 +49,119 @@ function Linha({ rotulo, valor }: { rotulo: string; valor: React.ReactNode }) {
   )
 }
 
-export function PacienteEntradaDrawer({ paciente: p, disp, onClose }: {
+// ─── O que falta agora ───────────────────────────────────────────────────────
+
+function OQueFalta({ p }: { p: PacienteEmAndamento }) {
+  const a = p.atual
+  const acao = proximaAcao(p)
+  const prazo = textoPrazo(a)
+  const resp = responsavelDo(a.setor)
+  const link = linkDaEtapa(p)
+  const moldura = prazo.tom === "red" ? "border-rose-300 dark:border-rose-900" : prazo.tom === "amber" ? "border-amber-300 dark:border-amber-900" : "border-border"
+
+  return (
+    <Bloco titulo="O que falta agora">
+      <div className={`flex flex-col gap-2 rounded-xl border p-3 ${moldura} ${TONE_SOFT[prazo.tom].bg}`}>
+        <div className="flex flex-wrap items-center gap-2">
+          <PilulaPrazo prazo={a} dense={false} />
+          <span className="text-xs text-muted-foreground">{prazo.dica}</span>
+        </div>
+        <p className="text-base font-bold leading-snug text-foreground">
+          {acao.travado && <span className={TONE_SOFT.amber.text}>Travado: </span>}
+          {acao.texto}
+        </p>
+        {acao.travado && <p className="-mt-1 text-xs text-muted-foreground">Etapa: {a.nome}</p>}
+        <p className="text-sm text-foreground">
+          Com <b>{a.setor}</b>{resp.pessoas ? <>: {resp.pessoas}</> : null}
+        </p>
+        {a.obs && <p className="text-xs text-muted-foreground">{a.obs}</p>}
+        {link && (
+          <a
+            href={link.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex min-h-11 items-center justify-center gap-1.5 self-start rounded-lg bg-sky-700 px-3 text-xs font-bold text-white shadow-sm transition-colors hover:bg-sky-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-9 dark:bg-sky-600 dark:hover:bg-sky-700"
+          >
+            <ExternalLink size={13} aria-hidden />
+            Abrir no ClickUp ({link.rotulo})
+          </a>
+        )}
+      </div>
+    </Bloco>
+  )
+}
+
+// ─── Caminho E0 → E7 ─────────────────────────────────────────────────────────
+
+const MARCA: Record<EstadoPasso, { classe: string; feito: boolean; rotulo: string }> = {
+  feito: { classe: "bg-emerald-500 text-white", feito: true, rotulo: "Feita no prazo" },
+  feito_atrasado: { classe: "bg-rose-500 text-white", feito: true, rotulo: "Feita fora do prazo" },
+  feito_fora_de_ordem: { classe: "bg-violet-500 text-white", feito: true, rotulo: "Feita com datas fora de ordem" },
+  feito_sem_data: { classe: "bg-slate-300 text-slate-700 dark:bg-slate-600 dark:text-slate-100", feito: true, rotulo: "Feita sem data" },
+  atual: { classe: "bg-card ring-4 ring-sky-500/30 border-2 border-sky-600", feito: false, rotulo: "Etapa atual" },
+  a_fazer: { classe: "bg-card border-2 border-border", feito: false, rotulo: "A fazer" },
+}
+
+function descricaoPasso(s: PassoCaminho): string {
+  const prazo = s.dias != null ? `${s.dias} de ${s.prazo} dias úteis` : null
+  switch (s.estado) {
+    case "atual":
+      return ["Agora", prazo].filter(Boolean).join(" · ")
+    case "a_fazer":
+      return "A fazer"
+    case "feito_sem_data":
+      return s.nota ?? "Feita sem data"
+    default:
+      return [
+        `Fim ${fmtDiaMes(s.fim)}`,
+        prazo,
+        s.estado === "feito_atrasado" ? "fora do prazo" : s.estado === "feito_fora_de_ordem" ? "datas fora de ordem" : null,
+      ].filter(Boolean).join(" · ")
+  }
+}
+
+function Caminho({ passos }: { passos: PassoCaminho[] }) {
+  return (
+    <ol className="ml-2 border-l border-border">
+      {passos.map(s => {
+        const m = MARCA[s.estado]
+        return (
+          <li key={s.etapa} className="relative pb-3 pl-5 last:pb-0">
+            <span
+              aria-hidden
+              className={`absolute -left-[9px] top-0.5 flex h-[18px] w-[18px] items-center justify-center rounded-full ${m.classe}`}
+            >
+              {m.feito && <Check size={11} strokeWidth={3} />}
+            </span>
+            <div className={`text-sm leading-tight ${s.estado === "atual" ? "font-bold text-foreground" : s.estado === "a_fazer" ? "text-muted-foreground" : "font-medium text-foreground"}`}>
+              <span className="sr-only">{m.rotulo}: </span>
+              {s.nome}
+            </div>
+            <div className={`text-[11px] ${s.estado === "feito_atrasado" ? TONE_SOFT.red.text : "text-muted-foreground"}`}>
+              {descricaoPasso(s)}
+            </div>
+            {s.nota && s.estado !== "feito_sem_data" && <div className="text-[11px] text-muted-foreground">{s.nota}</div>}
+          </li>
+        )
+      })}
+    </ol>
+  )
+}
+
+// ─── Drawer ──────────────────────────────────────────────────────────────────
+
+export function PacienteEntradaDrawer({ paciente: p, disp, etapas, onClose }: {
   paciente: PacienteEntrada
   disp: DisponibilidadePainel | undefined
+  etapas: EtapaResumo[]
   onClose: () => void
 }) {
   const a = p.atual
-  const links = linksDoPaciente(p)
+  const andamento: PacienteEmAndamento | null = p.situacao === "em andamento" && a ? { ...p, atual: a } : null
+  const principal = andamento ? linkDaEtapa(andamento) : null
+  const outrosLinks = linksDoPaciente(p).filter(l => l.chave !== principal?.chave)
+  const avisos = textosDosAlertas(p)
+  const envio = envioDoLinkDisponibilidade(disp)
   const subtitulo = [
     p.convenio,
     p.tipo === "Neuro" ? "Avaliação neuro" : "Terapias",
@@ -51,25 +170,8 @@ export function PacienteEntradaDrawer({ paciente: p, disp, onClose }: {
 
   return (
     <Drawer title={p.paciente} subtitle={subtitulo} width={460} onClose={onClose}>
-      {a ? (
-        <Bloco titulo="Etapa atual">
-          <div className="rounded-xl border border-border bg-muted/30 p-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="font-bold text-foreground">{a.nome}</span>
-              <PilulaPrazo status={a.status} dense={false} />
-            </div>
-            <div className="mt-1 text-xs text-muted-foreground">
-              {a.setor} · <span className="tabular-nums">{a.dias ?? "—"} de {a.prazo} d.u.</span>
-            </div>
-            {a.pendencia && <p className="mt-2 text-sm font-semibold text-foreground">{a.pendencia}</p>}
-            {a.obs && <p className="mt-1 text-xs text-muted-foreground">{a.obs}</p>}
-            {a.sem_registro && a.sem_registro.length > 0 && (
-              <p className="mt-1 text-xs text-muted-foreground">
-                Sem data registrada: {a.sem_registro.join(", ").toLowerCase()}
-              </p>
-            )}
-          </div>
-        </Bloco>
+      {andamento ? (
+        <OQueFalta p={andamento} />
       ) : (
         <Bloco titulo="Situação">
           <p className="text-sm text-foreground">
@@ -80,8 +182,14 @@ export function PacienteEntradaDrawer({ paciente: p, disp, onClose }: {
                 : `Tratamento iniciado em ${fmtDiaMes(p.inicio)}.`}
           </p>
           {p.total_uteis != null && (
-            <p className="mt-1 text-xs text-muted-foreground">Entrada → início: {p.total_uteis} dias úteis.</p>
+            <p className="mt-1 text-xs text-muted-foreground">Da entrada ao início: {p.total_uteis} dias úteis.</p>
           )}
+        </Bloco>
+      )}
+
+      {etapas.length > 0 && (
+        <Bloco titulo="Caminho do paciente">
+          <Caminho passos={caminhoDoPaciente(p, etapas)} />
         </Bloco>
       )}
 
@@ -93,14 +201,22 @@ export function PacienteEntradaDrawer({ paciente: p, disp, onClose }: {
               <span className="text-xs text-muted-foreground">em {fmtDiaMes(disp.preenchida_em.slice(0, 10))}</span>
             )}
           </div>
-          {disp && <p className="text-xs text-muted-foreground">{ROTULO_DISPONIBILIDADE[disp.estado].dica}</p>}
+          {/* Bloqueado: o aviso "Ainda não mande o link" abaixo já explica o motivo. */}
+          {disp && !envio.bloqueio && <p className="text-xs text-muted-foreground">{ROTULO_DISPONIBILIDADE[disp.estado].dica}</p>}
           {disp?.casamento === "inicio_do_nome" && (
-            <p className="text-xs font-semibold text-amber-700 dark:text-amber-400">{AVISO_INICIO_DO_NOME}</p>
+            <p className={`text-xs font-semibold ${TONE_SOFT.amber.text}`}>{AVISO_INICIO_DO_NOME}</p>
           )}
-          {(!a || ETAPAS_DISPONIBILIDADE.has(a.etapa)) && disp?.estado !== "preenchida_familia" && (
-            <div className="flex flex-wrap gap-2">
-              <BotaoCopiarMensagem pacienteNome={p.paciente} rotulo="Copiar mensagem para a família" />
-            </div>
+          {(!a || ETAPAS_DISPONIBILIDADE.has(a.etapa)) && (
+            envio.pode ? (
+              <div className="flex flex-wrap gap-2">
+                <BotaoCopiarMensagem pacienteNome={p.paciente} rotulo="Copiar mensagem para a família" />
+              </div>
+            ) : envio.bloqueio && envio.motivo ? (
+              <p className={`flex items-start gap-1.5 rounded-lg px-2.5 py-2 text-xs font-semibold ${TONE_SOFT.amber.bg} ${TONE_SOFT.amber.text}`}>
+                <AlertTriangle size={13} className="mt-0.5 shrink-0" aria-hidden />
+                <span>Ainda não mande o link. {envio.motivo}</span>
+              </p>
+            ) : null
           )}
           {disp?.paciente_id != null && (
             <Link
@@ -113,23 +229,11 @@ export function PacienteEntradaDrawer({ paciente: p, disp, onClose }: {
         </div>
       </Bloco>
 
-      {p.historico.length > 0 && (
-        <Bloco titulo="Etapas concluídas">
-          <ol className="flex flex-col gap-1.5">
-            {p.historico.map(h => (
-              <li key={`${h.etapa}-${h.fim}`} className="flex items-start justify-between gap-3 rounded-lg border border-border/60 px-3 py-2">
-                <div className="min-w-0">
-                  <div className="text-sm font-medium text-foreground">{h.nome}</div>
-                  <div className="text-[11px] text-muted-foreground">
-                    {h.setor} · fim {fmtDiaMes(h.fim)} ·{" "}
-                    <span className="tabular-nums">{h.dias ?? "—"} de {h.prazo} d.u.</span>
-                    {h.combinado && " · etapas sem data no meio"}
-                  </div>
-                </div>
-                <PilulaPrazo status={h.status} />
-              </li>
-            ))}
-          </ol>
+      {avisos.length > 0 && (
+        <Bloco titulo="Registros a corrigir no ClickUp">
+          <ul className="flex list-disc flex-col gap-1 pl-4 text-sm text-foreground">
+            {avisos.map((al, i) => <li key={i}>{al}</li>)}
+          </ul>
         </Bloco>
       )}
 
@@ -142,18 +246,10 @@ export function PacienteEntradaDrawer({ paciente: p, disp, onClose }: {
         {p.dias_desde_entrada != null && <Linha rotulo="Dias úteis desde a entrada" valor={p.dias_desde_entrada} />}
       </Bloco>
 
-      {(p.alertas ?? []).length > 0 && (
-        <Bloco titulo="Registro a corrigir">
-          <ul className="flex list-disc flex-col gap-1 pl-4 text-sm text-foreground">
-            {(p.alertas ?? []).map((al, i) => <li key={i}>{al}</li>)}
-          </ul>
-        </Bloco>
-      )}
-
-      {links.length > 0 && (
-        <Bloco titulo="ClickUp">
+      {outrosLinks.length > 0 && (
+        <Bloco titulo={principal ? "Outras tarefas no ClickUp" : "ClickUp"}>
           <div className="flex flex-wrap gap-2">
-            {links.map(l => (
+            {outrosLinks.map(l => (
               <a
                 key={l.chave}
                 href={l.url}

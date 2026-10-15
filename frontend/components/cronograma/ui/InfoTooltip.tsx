@@ -24,12 +24,14 @@ interface InfoTooltipProps {
   trigger?: ReactNode
   /** Largura do painel em px (padrão 288). Em tela estreita continua limitada a 85% da largura. */
   largura?: number
+  /** Ícone no lugar da lâmpada (ex.: "i" de informação). Sem `trigger`, herda a cor do texto ao redor. */
+  icone?: ReactNode
 }
 
 const PANEL_WIDTH = 288 // w-72
 const VIEWPORT_MARGIN = 8
 
-export function InfoTooltip({ children, ariaLabel = "Explicação das colunas", onOpenChange, trigger, largura = PANEL_WIDTH }: InfoTooltipProps) {
+export function InfoTooltip({ children, ariaLabel = "Explicação das colunas", onOpenChange, trigger, largura = PANEL_WIDTH, icone }: InfoTooltipProps) {
   const [open, setOpenState] = useState(false)
   const setOpen = (value: boolean | ((prev: boolean) => boolean)) => {
     setOpenState(prev => {
@@ -94,10 +96,12 @@ export function InfoTooltip({ children, ariaLabel = "Explicação das colunas", 
         onClick={toggle}
         className={trigger
           ? "inline-flex items-center gap-1 rounded-full transition-colors hover:text-foreground"
-          : "inline-flex items-center justify-center rounded-full p-0.5 text-amber-500 hover:text-amber-400 hover:bg-amber-500/10 transition-colors"}
+          : icone
+            ? "inline-flex items-center justify-center rounded-full p-0.5 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            : "inline-flex items-center justify-center rounded-full p-0.5 text-amber-500 hover:text-amber-400 hover:bg-amber-500/10 transition-colors"}
       >
         {trigger}
-        <Lightbulb size={14} className={trigger ? "shrink-0 text-amber-500" : undefined} />
+        {icone ?? <Lightbulb size={14} className={trigger ? "shrink-0 text-amber-500" : undefined} />}
       </button>
       {open && typeof document !== "undefined" && createPortal(
         <div
