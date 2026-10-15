@@ -1,5 +1,6 @@
 import { buscarGrade } from "@/lib/grade/fonte"
 import { resumoSemana } from "@/lib/disponibilidadeProfissional"
+import type { LinhaGradeTita } from "@/lib/disponibilidadeDaGradeTita"
 import { getSupabaseClient } from "@/lib/supabase/client"
 import { ehMigrationPendente } from "@/lib/supabase/erro"
 import { MigrationPendenteError } from "@/services/cadastroTerapias.service"
@@ -90,6 +91,116 @@ export async function listarVersoes(profissionalId: number): Promise<VersaoDispo
     porVersao.set(versao_id, [...(porVersao.get(versao_id) ?? []), { ...resto, terapias: ts ?? [] }])
   }
   return lista.map(v => ({ ...v, faixas: porVersao.get(v.id) ?? [] }))
+}
+
+/**
+ * Versões vigentes e agendadas de TODOS os profissionais, com as faixas — base
+ * da importação em massa do TiTa. profissional.id → versões.
+ */
+export async function listarVersoesAtivasDeTodos(): Promise<Map<number, VersaoDisponibilidade[]>> {
+  const sb = getSupabaseClient()
+  type Resposta = { data: unknown[] | null; error: ErroPg | null }
+  const lista: Omit<VersaoDisponibilidade, "faixas">[] = []
+  for (let de = 0; ; de += 1000) {
+    const ler = (cols: string) =>
+      sb.from("vw_profissionais_disponibilidade_versoes")
+        .select(cols)
+        .in("situacao", ["vigente", "agendada"])
+        .order("id")
+        .range(de, de + 999) as unknown as PromiseLike<Resposta>
+    let { data, error } = await ler(COLS_VERSAO)
+    if (error && (error.code === "42703" || error.code === "PGRST204")) ({ data, error } = await ler(COLS_VERSAO_ANTIGAS))
+    if (error) falha(error)
+    const pagina = (data ?? []).map(v => ({ substituida_em: null, substituida_por: null, ...(v as object) })) as Omit<VersaoDisponibilidade, "faixas">[]
+    lista.push(...pagina)
+    if (pagina.length < 1000) break
+  }
+
+  type Linha = Omit<FaixaGravada, "terapias"> & {
+    versao_id: string
+    profissionais_disponibilidade_faixa_terapias: { terapia_id: number; terapia_nome: string }[]
+  }
+  const porVersao = new Map<string, FaixaGravada[]>()
+  // Em lotes pequenos: cada versão tem várias faixas e o PostgREST corta em 1000.
+  for (let i = 0; i < lista.length; i += 40) {
+    const ids = lista.slice(i, i + 40).map(v => v.id)
+    const lerFaixas = (cols: string) =>
+      sb.from("profissionais_disponibilidade_faixas").select(cols).in("versao_id", ids) as unknown as PromiseLike<Resposta>
+    let { data, error } = await lerFaixas(COLS_FAIXA)
+    if (error && (error.code === "42703" || error.code === "PGRST204")) ({ data, error } = await lerFaixas(COLS_FAIXA_SEM_CAPACIDADE))
+    if (error) falha(error)
+    for (const f of (data ?? []) as unknown as Linha[]) {
+      const { profissionais_disponibilidade_faixa_terapias: ts, versao_id, ...resto } = f
+      porVersao.set(versao_id, [...(porVersao.get(versao_id) ?? []), { ...resto, terapias: ts ?? [] }])
+    }
+  }
+
+  const out = new Map<number, VersaoDisponibilidade[]>()
+  for (const v of lista) {
+    out.set(v.profissional_id, [...(out.get(v.profissional_id) ?? []), { ...v, faixas: porVersao.get(v.id) ?? [] }])
+  }
+  return out
+}
+
+/**
+ * Grade do TiTa de todos os profissionais na janela (unidade 280), agrupada pelo
+ * id do TiTa, com o nome que o TiTa usa (para avisar quem falta no cadastro).
+ */
+export async function lerGradeTitaDeTodos(de: string, ate: string): Promise<Map<number, { nome: string; linhas: LinhaGradeTita[] }>> {
+  const linhas = await buscarGrade<LinhaGradeTita & { profissional_id: number | null; profissional_nome: string | null }>({
+    fonte: "base",
+    unidade: 280,
+    de,
+    ate,
+    campos: "profissional_id, profissional_nome, data, hora_inicial, hora_final, terapia_nome, sala_nome",
+    ordem: [{ coluna: "profissional_id" }, { coluna: "data" }, { coluna: "hora_inicial" }, { coluna: "id" }],
+  })
+  const out = new Map<number, { nome: string; linhas: LinhaGradeTita[] }>()
+  for (const { profissional_id, profissional_nome, ...l } of linhas) {
+    if (profissional_id === null) continue
+    const atual = out.get(profissional_id) ?? { nome: profissional_nome ?? `ID TiTa ${profissional_id}`, linhas: [] }
+    atual.linhas.push(l)
+    out.set(profissional_id, atual)
+  }
+  return out
+}
+
+/** Profissionais ligados ao TiTa (ativos e inativos). */
+export async function listarProfissionaisComTita(): Promise<{ id: number; nome: string; tita_profissional_id: number; ativo: boolean }[]> {
+  const sb = getSupabaseClient()
+  const out: { id: number; nome: string; tita_profissional_id: number; ativo: boolean }[] = []
+  for (let de = 0; ; de += 1000) {
+    const { data, error } = await sb
+      .from("profissionais")
+      .select("id, nome, tita_profissional_id, ativo")
+      .not("tita_profissional_id", "is", null)
+      .order("id")
+      .range(de, de + 999)
+    if (error) falha(error)
+    out.push(...((data ?? []) as typeof out))
+    if ((data ?? []).length < 1000) break
+  }
+  return out
+}
+
+/** profissional.id → terapias habilitadas, de todos. */
+export async function listarHabilitadasDeTodos(): Promise<Map<number, Set<number>>> {
+  const sb = getSupabaseClient()
+  const out = new Map<number, Set<number>>()
+  for (let de = 0; ; de += 1000) {
+    const { data, error } = await sb
+      .from("profissionais_terapias_habilitadas")
+      .select("profissional_id, terapia_id")
+      .order("profissional_id")
+      .order("terapia_id")
+      .range(de, de + 999)
+    if (error) falha(error)
+    for (const h of (data ?? []) as { profissional_id: number; terapia_id: number }[]) {
+      out.set(h.profissional_id, (out.get(h.profissional_id) ?? new Set()).add(h.terapia_id))
+    }
+    if ((data ?? []).length < 1000) break
+  }
+  return out
 }
 
 export async function listarEventos(profissionalId: number): Promise<EventoDisponibilidade[]> {

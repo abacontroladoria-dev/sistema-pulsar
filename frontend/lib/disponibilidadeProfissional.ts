@@ -381,7 +381,14 @@ export function faixasDaGrade(horarios: HorarioGrade[]): { faixas: FaixaRascunho
 
 // ── Diferenças entre versões ──────────────────────────────────────────────────
 
-export type Diferenca = { dia: number; tipo: "adicionada" | "removida" | "alterada" | "dia"; texto: string }
+export type Diferenca = {
+  dia: number
+  tipo: "adicionada" | "removida" | "alterada" | "dia"
+  texto: string
+  /** Faixa de antes (alterada/removida) e de depois (alterada/adicionada), já descritas. */
+  de?: string
+  para?: string
+}
 
 export function diferencasEntreVersoes(
   antes: RascunhoDisponibilidade,
@@ -406,13 +413,13 @@ export function diferencasEntreVersoes(
       // Mesma hora de início = a "mesma" faixa alterada.
       const mesma = restantesA.findIndex(x => x.inicio === f.inicio)
       if (mesma >= 0) {
-        out.push({ dia: d.n, tipo: "alterada", texto: `${desc(restantesA[mesma])} → ${desc(f)}` })
+        out.push({ dia: d.n, tipo: "alterada", texto: `${desc(restantesA[mesma])} → ${desc(f)}`, de: desc(restantesA[mesma]), para: desc(f) })
         restantesA.splice(mesma, 1)
       } else {
-        out.push({ dia: d.n, tipo: "adicionada", texto: desc(f) })
+        out.push({ dia: d.n, tipo: "adicionada", texto: desc(f), para: desc(f) })
       }
     }
-    for (const f of restantesA) out.push({ dia: d.n, tipo: "removida", texto: desc(f) })
+    for (const f of restantesA) out.push({ dia: d.n, tipo: "removida", texto: desc(f), de: desc(f) })
   }
   return out
 }

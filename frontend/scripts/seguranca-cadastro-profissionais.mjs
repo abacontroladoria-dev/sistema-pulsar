@@ -15,8 +15,9 @@
 // executar com argumentos inválidos — não grava nada mesmo se uma porta estiver
 // aberta (as RPCs recusam id inexistente antes de gravar).
 //
-// Rodar DEPOIS de aplicar as migrations 20261006120000…140000 em produção. Antes
-// disso tudo dá 404 (objeto não existe), e o script avisa.
+// Rodar DEPOIS de aplicar as migrations 20261006120000…140000 e 20261015190000
+// (log das importações do TiTa) em produção. Antes disso tudo dá 404 (objeto não
+// existe), e o script avisa.
 
 import { existsSync, readFileSync } from 'fs'
 import { dirname, join } from 'path'
@@ -46,6 +47,7 @@ async function main() {
     'profissionais_disponibilidade_versoes', 'profissionais_disponibilidade_faixas',
     'profissionais_disponibilidade_faixa_terapias', 'profissionais_disponibilidade_eventos',
     'vw_profissionais_terapias_grade', 'vw_profissionais_disponibilidade_versoes', 'vw_profissionais_grade_situacao',
+    'tita_importacoes', 'tita_importacoes_itens',
   ]
   const ZERO = '00000000-0000-0000-0000-000000000000'
   const RPCS = {
@@ -57,6 +59,13 @@ async function main() {
     profissional_disponibilidade_alterar_vigencia: { p_versao_id: ZERO, p_vigente_de: '2099-01-01', p_vigente_ate: null, p_motivo: 'teste de segurança' },
     sp_prof_disp_gravar_faixas: { p_versao_id: ZERO, p_profissional_id: -1, p_faixas: [] },
     normalizar_nome_terapia: { p: 'x' },
+    // Data no passado: mesmo com a permissão, a prévia é recusada antes de gravar.
+    tita_importacao_disponibilidade_previa: {
+      p_vigente_de: '2000-01-01', p_semana_de: '2000-01-01', p_semana_ate: '2000-01-01', p_vistos: 0, p_itens: [],
+    },
+    tita_importacao_disponibilidade_aplicar: { p_importacao_id: ZERO, p_profissionais: [] },
+    tita_importacao_concluir: { p_importacao_id: ZERO },
+    sp_mascarar_cpf: { p: '11122233344' },
     hoje_brasilia: {},
   }
 

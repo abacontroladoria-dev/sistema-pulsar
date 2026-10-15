@@ -87,6 +87,8 @@ export type TerapiaDoProfissional = {
 }
 
 export type ResultadoImportacao = {
+  /** Execução gravada em tita_importacoes (ausente antes da migration 20261015190000). */
+  importacao_id?: string
   novos: number
   vinculados_por_cpf: number
   atualizados: number

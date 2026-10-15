@@ -10,14 +10,10 @@ import { MultiSearchCombobox } from "@/components/cronograma/ui/MultiSearchCombo
 import { CabecalhoPastel, SecaoPastel, avisoFeito, tom } from "@/components/ui/pastel/pecas"
 import { useConfirmacao } from "@/components/ui/pastel/confirmacao"
 import { DatePicker } from "@/components/ui/date-picker"
-import { normTxt } from "@/lib/cronograma/constants"
-import { normalizarUnidadeOcupacao } from "@/lib/cronograma/ocupacaoProf"
-import { normNumeroSala, parseSalaAgenda } from "@/lib/cronograma/salas"
-import { separarTerapias } from "@/lib/cadastros/terapias"
+import { herdarCapacidade, janelaGradeTita, montarDaGradeTita } from "@/lib/disponibilidadeDaGradeTita"
 import {
-  CAPACIDADE_MAX, CAPACIDADE_MIN, DIAS_SEMANA, DURACOES, conflitosDeLocal, copiarDia, dataBR, faixasDaGrade, faixasParaRpc, foraDaExclusividade,
+  CAPACIDADE_MAX, CAPACIDADE_MIN, DIAS_SEMANA, DURACOES, conflitosDeLocal, copiarDia, dataBR, faixasParaRpc, foraDaExclusividade,
   hojeBrasilia, mesmoConteudo, novaFaixa, opcoesHorario, paraMin, periodoBR, sessoesDaFaixa, somarDias, totaisDaSemana, validarRascunho,
-  type HorarioGrade,
 } from "@/lib/disponibilidadeProfissional"
 import { criarVersao, lerSemanaTita } from "@/services/profissionalDisponibilidade.service"
 import type {
@@ -32,21 +28,6 @@ const OPCOES_DURACAO = DURACOES.map(d => ({ valor: String(d), rotulo: `${d} min`
 function rotuloLocal(l: LocalDisponivel): string {
   const extra = l.capacidade === "multiplo" ? " · compartilhado" : l.capacidade === "duplo" ? " · até 2 pessoas" : ""
   return `${l.unidade_nome} · ${l.nome_exibicao}${extra}`
-}
-
-/** Casa o sala_nome do TiTa com um local de Ocupação de Salas (unidade + número, ou nome). */
-function casarLocal(salaNome: string | null, locais: LocalDisponivel[]): string | null {
-  if (!salaNome) return null
-  const p = parseSalaAgenda(salaNome)
-  if (p) {
-    const daUnidade = locais.filter(l => normalizarUnidadeOcupacao(l.unidade_nome) === p.unidade)
-    const achado = p.numeroSala
-      ? daUnidade.find(l => normNumeroSala(l.numero_sala) === p.numeroSala)
-      : daUnidade.length === 1 ? daUnidade[0] : undefined
-    if (achado) return achado.id
-  }
-  const n = normTxt(salaNome)
-  return locais.find(l => normTxt(l.nome_exibicao) === n || normTxt(l.sala_nome_referencia) === n)?.id ?? null
 }
 
 export function EditorDisponibilidade({
@@ -196,37 +177,26 @@ export function EditorDisponibilidade({
     setLendoTita(true)
     setAvisoTita(null)
     try {
-      // Semana que vem (seg–sáb): a grade do TiTa vai até o fim do mês seguinte.
-      const dow = new Date(`${hoje}T12:00:00Z`).getUTCDay()
-      const segunda = somarDias(hoje, ((8 - dow) % 7) || 7)
-      let linhas = await lerSemanaTita(profissional.tita_profissional_id, segunda, somarDias(segunda, 5))
-      let semana = segunda
+      // A mesma conta do "Disponibilidade do TiTa" da lista (lib/disponibilidadeDaGradeTita):
+      // semana que vem e a seguinte, somadas por dia da semana.
+      let janela = janelaGradeTita(hoje)
+      let linhas = await lerSemanaTita(profissional.tita_profissional_id, janela.de, janela.ate)
       if (!linhas.length) {
-        semana = somarDias(segunda, -7)
-        linhas = await lerSemanaTita(profissional.tita_profissional_id, semana, somarDias(semana, 5))
+        janela = { de: somarDias(janela.de, -7), ate: somarDias(janela.ate, -7) }
+        linhas = await lerSemanaTita(profissional.tita_profissional_id, janela.de, janela.ate)
       }
       if (!linhas.length) {
-        setAvisoTita("A grade do TiTa não tem horários deste profissional nesta semana nem na próxima.")
+        setAvisoTita("A grade do TiTa não tem horários deste profissional nesta semana nem nas duas próximas.")
         return
       }
-      const porNome = new Map(catalogo.map(t => [normTxt(t.nome), t.id]))
-      const foraDoCatalogo = new Set<string>()
-      const horarios: HorarioGrade[] = linhas.map(l => {
-        const dia = new Date(`${l.data.slice(0, 10)}T12:00:00Z`).getUTCDay()
-        const terapias = separarTerapias(l.terapia_nome).map(n => {
-          const id = porNome.get(normTxt(n))
-          if (id === undefined) foraDoCatalogo.add(n)
-          return id
-        }).filter((x): x is number => x !== undefined)
-        return { dia, inicio: l.hora_inicial.slice(0, 5), fim: l.hora_final.slice(0, 5), terapias, localId: casarLocal(l.sala_nome, locais), salaTita: l.sala_nome }
-      }).filter(h => h.dia >= 1 && h.dia <= 6)
-      const { faixas, salasSemCasamento } = faixasDaGrade(horarios)
-      setR({ diasAtivos: [...new Set(faixas.map(f => f.dia))].sort(), faixas })
+      const m = montarDaGradeTita(linhas, catalogo, locais)
+      // "Pacientes por horário" não existe no TiTa: faixa em grupo da versão de partida mantém a capacidade.
+      setR(herdarCapacidade(m.rascunho, base))
       setAbertas(new Set())
       setOrigem("preenchido_tita")
-      const partes = [`Montado com a semana de ${dataBR(semana)} (${linhas.length} horários). Confira antes de salvar.`]
-      if (salasSemCasamento.length) partes.push(`Locais sem correspondência em Ocupação de Salas: ${salasSemCasamento.join(", ")} — escolha à mão.`)
-      if (foraDoCatalogo.size) partes.push(`Terapias fora do Cadastro de Terapias: ${[...foraDoCatalogo].join(", ")}.`)
+      const partes = [`Montado com a grade de ${dataBR(janela.de)} a ${dataBR(janela.ate)} (${linhas.length} horários). Confira antes de salvar.`]
+      if (m.salasSemCasamento.length) partes.push(`Locais sem correspondência em Ocupação de Salas: ${m.salasSemCasamento.join(", ")} — escolha à mão.`)
+      if (m.foraDoCatalogo.length) partes.push(`Terapias fora do Cadastro de Terapias: ${m.foraDoCatalogo.join(", ")}.`)
       setAvisoTita(partes.join(" "))
     } catch (e) {
       toast.error(String((e as Error)?.message ?? e))
