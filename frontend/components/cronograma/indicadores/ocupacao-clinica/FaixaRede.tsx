@@ -45,7 +45,7 @@ export function FaixaRede({ contagem, salasOperacionais, unidades, pessoasParaAj
 
       <div className="grid gap-3 sm:grid-cols-3">
         <Atalho valor={fmtNum(contagem.aberta)} titulo={contagem.aberta === 1 ? "vaga livre para agendar" : "vagas livres para agendar"}
-          texto="O profissional já está na sala com horário livre no TiTa. Dá para agendar paciente novo." />
+          texto="Só onde já tem profissional reservado na sala e ele está com horário livre no TiTa. Dá para agendar paciente novo." />
         <Atalho valor={fmtNum(pessoasParaAjustar)} titulo={pessoasParaAjustar === 1 ? "pessoa para ajustar no mapa de salas" : "pessoas para ajustar no mapa de salas"} alerta={pessoasParaAjustar > 0}
           texto="Reservadas numa sala sem agenda no turno, ou atendendo sem sala definida. Enquanto não ajustar, a ocupação fica errada.">
           {pessoasParaAjustar > 0 && (
@@ -56,7 +56,7 @@ export function FaixaRede({ contagem, salasOperacionais, unidades, pessoasParaAj
           )}
         </Atalho>
         <Atalho valor={fmtNum(contagem.vazia)} titulo={contagem.vazia === 1 ? "vaga sem profissional" : "vagas sem profissional"}
-          texto="Ninguém reservado na sala. Espaço para colocar um profissional ou contratar." />
+          texto="Ninguém reservado na sala: não dá para agendar ali. Primeiro é preciso colocar um profissional (ou contratar)." />
       </div>
     </section>
   )

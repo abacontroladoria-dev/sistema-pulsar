@@ -33,7 +33,7 @@ export const SITUACAO: Record<SituacaoCadeira, InfoSituacao> = {
   },
   aberta: {
     rotulo: "Livre para agendar",
-    descricao: "O profissional está na sala e tem horário livre no TiTa, ainda sem paciente.",
+    descricao: "Tem profissional reservado na sala e ele está com horário livre no TiTa, ainda sem paciente.",
     acao: "Dá para agendar paciente novo nesses horários.",
     cor: "bg-[#3E8CC4] dark:bg-[#5BA6D9]",
   },
@@ -51,8 +51,8 @@ export const SITUACAO: Record<SituacaoCadeira, InfoSituacao> = {
   },
   vazia: {
     rotulo: "Sem profissional",
-    descricao: "Ninguém está reservado nessa sala nesse horário.",
-    acao: "Espaço para colocar um profissional ou contratar.",
+    descricao: "Ninguém está reservado nesse lugar da sala nesse horário, então não dá para agendar paciente aqui.",
+    acao: "Primeiro é preciso colocar um profissional (ou contratar).",
     cor: "bg-slate-200 dark:bg-slate-700/70",
   },
 }

@@ -55,60 +55,91 @@ export function BarraCapacidade({ contagem, tamanho = "md", chave = true }: Prop
   )
 }
 
+/** As quatro situações em que HÁ profissional reservado no lugar da sala. */
+const COM_PROFISSIONAL = SITUACOES_CADEIRA.filter(s => s !== "vazia")
+
 /**
- * Legenda das cinco situações. Diz o que é uma vaga e, em cada item, quantas
- * vagas e quanto pesam no total — número solto ao lado do rótulo não dizia
- * 1.512 de quê.
+ * Legenda em dois grupos que não se misturam: COM profissional na sala (com
+ * paciente, livre para agendar, administrativo, reservada sem agenda) e SEM
+ * profissional na sala. "Livre para agendar" só existe dentro do primeiro —
+ * vaga sem ninguém reservado não é vaga para agendar, é sem profissional.
+ * Cada número diz que é "vagas" e quanto pesa no total.
  */
 export function LegendaCapacidade({ contagem, camadaExplicacao, formato = "linha" }: {
   contagem: ContagemCadeiras
   /** Camada do balão "o que é uma vaga" — só precisa dentro do painel lateral (fica por cima do Drawer). */
   camadaExplicacao?: number
   /**
-   * "linha": itens lado a lado (faixa da rede, que é larga).
-   * "lista": uma situação por linha com vagas e % em colunas alinhadas — no
-   * painel lateral, estreito, os itens lado a lado quebravam em lugares
-   * diferentes e os números ficavam desalinhados.
+   * "linha": os dois grupos lado a lado (faixa da rede, que é larga).
+   * "lista": uma situação por linha, vagas e % em colunas alinhadas (painel
+   * lateral, estreito).
    */
   formato?: "linha" | "lista"
 }) {
+  const pct = (n: number) => (contagem.total > 0 ? fmtPct(n / contagem.total) : "—")
+  const vagas = (n: number) => <><b className="text-foreground">{fmtNum(n)}</b> {n === 1 ? "vaga" : "vagas"}</>
+  const totalCom = comProfissional(contagem)
+
   if (formato === "lista") {
+    const linha = "grid grid-cols-[0.75rem_minmax(0,1fr)_auto_3rem] items-center gap-3 px-3 py-2"
     return (
       <div className="flex flex-col gap-2">
         <CabecalhoLegenda contagem={contagem} camadaExplicacao={camadaExplicacao} />
-        <ul className="flex flex-col divide-y divide-border rounded-xl border border-border text-sm">
-          {SITUACOES_CADEIRA.map(s => (
-            <li key={s} className="grid grid-cols-[0.75rem_minmax(0,1fr)_auto_3rem] items-center gap-3 px-3 py-2" title={`${SITUACAO[s].descricao} ${SITUACAO[s].acao}`}>
-              <span className={`h-3 w-3 rounded-[3px] ${SITUACAO[s].cor}`} aria-hidden />
-              <span className="text-foreground">{SITUACAO[s].rotulo}</span>
-              <span className="text-right tabular-nums text-muted-foreground">
-                <b className="text-foreground">{fmtNum(contagem[s])}</b> {contagem[s] === 1 ? "vaga" : "vagas"}
-              </span>
-              <span className="text-right font-semibold tabular-nums text-foreground">
-                {contagem.total > 0 ? fmtPct(contagem[s] / contagem.total) : "—"}
-              </span>
-            </li>
-          ))}
-        </ul>
+        <div className="overflow-hidden rounded-xl border border-border text-sm">
+          <div className={`${linha} bg-muted/50 font-bold text-foreground`}>
+            <MarcaComProfissional />
+            <span>Com profissional na sala</span>
+            <span className="text-right tabular-nums font-normal text-muted-foreground">{vagas(totalCom)}</span>
+            <span className="text-right tabular-nums">{pct(totalCom)}</span>
+          </div>
+          <ul className="divide-y divide-border border-y border-border">
+            {COM_PROFISSIONAL.map(s => (
+              <li key={s} className={`${linha} pl-7`} title={`${SITUACAO[s].descricao} ${SITUACAO[s].acao}`}>
+                <span className={`h-3 w-3 rounded-[3px] ${SITUACAO[s].cor}`} aria-hidden />
+                <span className="text-foreground">{SITUACAO[s].rotulo}</span>
+                <span className="text-right tabular-nums text-muted-foreground">{vagas(contagem[s])}</span>
+                <span className="text-right tabular-nums text-muted-foreground">{pct(contagem[s])}</span>
+              </li>
+            ))}
+          </ul>
+          <div className={`${linha} bg-muted/50 font-bold text-foreground`} title={`${SITUACAO.vazia.descricao} ${SITUACAO.vazia.acao}`}>
+            <span className={`h-3 w-3 rounded-[3px] border border-border ${SITUACAO.vazia.cor}`} aria-hidden />
+            <span>Sem profissional na sala</span>
+            <span className="text-right tabular-nums font-normal text-muted-foreground">{vagas(contagem.vazia)}</span>
+            <span className="text-right tabular-nums">{pct(contagem.vazia)}</span>
+          </div>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex flex-col gap-2">
       <CabecalhoLegenda contagem={contagem} camadaExplicacao={camadaExplicacao} />
-      <ul className="flex flex-wrap gap-x-5 gap-y-1.5 text-sm text-muted-foreground">
-        {SITUACOES_CADEIRA.map(s => (
-          <li key={s} className="inline-flex items-center gap-1.5" title={`${SITUACAO[s].descricao} ${SITUACAO[s].acao}`}>
-            <span className={`h-3 w-3 shrink-0 rounded-[3px] ${SITUACAO[s].cor}`} aria-hidden />
-            {SITUACAO[s].rotulo}:
-            <span className="tabular-nums">
-              <b className="text-foreground">{fmtNum(contagem[s])}</b> {contagem[s] === 1 ? "vaga" : "vagas"}
-              {contagem.total > 0 && <> ({fmtPct(contagem[s] / contagem.total)})</>}
-            </span>
-          </li>
-        ))}
-      </ul>
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <div className="rounded-xl border border-border p-3">
+          <div className="mb-2 flex flex-wrap items-center gap-x-2 text-sm font-bold text-foreground">
+            <MarcaComProfissional /> Com profissional na sala
+            <span className="font-normal tabular-nums text-muted-foreground">{vagas(totalCom)} ({pct(totalCom)})</span>
+          </div>
+          <ul className="grid gap-x-5 gap-y-1.5 text-sm text-muted-foreground sm:grid-cols-2">
+            {COM_PROFISSIONAL.map(s => (
+              <li key={s} className="inline-flex items-center gap-1.5" title={`${SITUACAO[s].descricao} ${SITUACAO[s].acao}`}>
+                <span className={`h-3 w-3 shrink-0 rounded-[3px] ${SITUACAO[s].cor}`} aria-hidden />
+                {SITUACAO[s].rotulo}:
+                <span className="tabular-nums">{vagas(contagem[s])} ({pct(contagem[s])})</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div className="rounded-xl border border-border p-3">
+          <div className="mb-2 flex flex-wrap items-center gap-x-2 text-sm font-bold text-foreground">
+            <span className={`h-3 w-3 shrink-0 rounded-[3px] border border-border ${SITUACAO.vazia.cor}`} aria-hidden /> Sem profissional na sala
+            <span className="font-normal tabular-nums text-muted-foreground">{vagas(contagem.vazia)} ({pct(contagem.vazia)})</span>
+          </div>
+          <p className="text-sm text-muted-foreground">{SITUACAO.vazia.descricao} {SITUACAO.vazia.acao}</p>
+        </div>
+      </div>
     </div>
   )
 }
