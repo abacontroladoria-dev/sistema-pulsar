@@ -144,6 +144,40 @@ export class TaskNotFoundError extends CentralError {
 }
 
 // ----------------------------------------------------------------------------
+// Notas internas e menções
+// ----------------------------------------------------------------------------
+
+// A nota é bem-formada mas não pode ser gravada como pedida: mencionou quem não
+// enxerga a conversa, quer delegar a quem não foi mencionado, ou delegar numa
+// conversa encerrada. 422 — repetir o mesmo corpo nunca passa.
+export class NotaRecusadaError extends CentralError {
+  constructor(motivo: string) {
+    super(motivo, 'NOTA_RECUSADA', {})
+  }
+}
+
+// A menção não existe ou não é de quem pediu. Os dois casos colapsam num 404,
+// pelo mesmo motivo de TaskNotFoundError.
+export class MencaoNaoEncontradaError extends CentralError {
+  constructor(id: string) {
+    super(`Menção ${id} não encontrada`, 'MENCAO_NAO_ENCONTRADA', { id })
+  }
+}
+
+// A migration 20261015120000 ainda não foi aplicada no banco. O localhost usa o
+// banco de produção: até ela entrar, leitura responde vazio e escrita responde
+// 503 com este erro — nenhuma tela quebra.
+export class NotasIndisponiveisError extends CentralError {
+  constructor() {
+    super(
+      'As notas internas ainda não estão disponíveis: falta aplicar a migration 20261015120000 no banco.',
+      'NOTAS_INDISPONIVEIS',
+      {},
+    )
+  }
+}
+
+// ----------------------------------------------------------------------------
 // Tags
 // ----------------------------------------------------------------------------
 

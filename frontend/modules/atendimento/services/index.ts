@@ -19,6 +19,8 @@ import { CentralUserRepository }      from '../repositories/central-user.reposit
 import { TaskRepository }             from '../repositories/task.repository'
 import { SentimentoRepository }       from '../repositories/sentimento.repository'
 import { AnexoStorageRepository }     from '../repositories/anexo-storage.repository'
+import { NotaInternaRepository }      from '../repositories/nota-interna.repository'
+import { MencaoRepository }           from '../repositories/mencao.repository'
 
 import { ConversationService }  from './conversation.service'
 import { MessageService }       from './message.service'
@@ -29,6 +31,8 @@ import { TagDefinitionService } from './tag-definition.service'
 import { CentralUserService }   from './central-user.service'
 import { TaskService }          from './task.service'
 import { SentimentoService }    from './sentimento.service'
+import { NotaInternaService }   from './nota-interna.service'
+import { MencaoService }        from './mencao.service'
 
 import { MetaWabaProvider } from '../providers/meta-waba.provider'
 import { EvolutionProvider } from '../providers/evolution.provider'
@@ -321,6 +325,42 @@ export function createSentimentoSystemService(): SentimentoService {
   )
 }
 
+// createNotaInternaService(userClient):
+//   Notas internas da conversa (com @menção e delegação). Leitura com o client
+//   do usuário — a RLS de central.conversations e central.conversation_notes
+//   decide quem vê. Escrita com SERVICE ROLE: as tabelas novas não aceitam
+//   INSERT de `authenticated` (20261015120000), e o service só grava depois de
+//   ler a conversa com o client do usuário. Os nomes vêm de
+//   CentralUserRepository com service role, pela razão de createCentralUserService.
+//
+//   Não recebe MessageService nem provider: a nota não tem caminho até o
+//   WhatsApp, por construção.
+export function createNotaInternaService(userClient: SupabaseClient): NotaInternaService {
+  const convRepo  = new ConversationRepository(userClient)
+  const auditRepo = new AuditRepository(supabaseService)   // sempre service role
+  return new NotaInternaService(
+    new NotaInternaRepository(userClient, supabaseService),
+    new MencaoRepository(userClient, supabaseService),
+    convRepo,
+    new CentralUserRepository(supabaseService),
+    // Para delegar. Mesmo repositório da leitura que provou o acesso — e com o
+    // client do usuário, então a transferência passa pela RLS de UPDATE.
+    new ConversationService(convRepo, auditRepo, caEventBus),
+    auditRepo,
+  )
+}
+
+// createMencaoService(userClient):
+//   "Menções a mim". Mesmo arranjo: lê com o usuário (a RLS só mostra a cada um
+//   as menções a ele), marca como lida com service role filtrando pelo id da
+//   sessão.
+export function createMencaoService(userClient: SupabaseClient): MencaoService {
+  return new MencaoService(
+    new MencaoRepository(userClient, supabaseService),
+    new CentralUserRepository(supabaseService),
+  )
+}
+
 // Exportar para permitir que Sprint 2 registre providers no bootstrap
 export { providerFactory }
 
@@ -334,3 +374,5 @@ export { TagDefinitionService } from './tag-definition.service'
 export { CentralUserService }   from './central-user.service'
 export { TaskService }          from './task.service'
 export { SentimentoService }    from './sentimento.service'
+export { NotaInternaService }   from './nota-interna.service'
+export { MencaoService }        from './mencao.service'

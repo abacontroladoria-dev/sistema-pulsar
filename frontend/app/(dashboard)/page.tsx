@@ -16,6 +16,7 @@ import KpiCard from "@/components/home/KpiCard"
 import FluxoOperacionalCard from "@/components/home/FluxoOperacional"
 import { fitToTimeSlots, FluxoSlotPoint } from "@/components/home/FluxoOperacional/data"
 import PulsarHubCard from "@/components/dashboard/PulsarHubCard"
+import JanelaMencoesPendentes from "@/components/mencoes/JanelaMencoesPendentes"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -207,6 +208,10 @@ export default function Home() {
 
   return (
     <div className="space-y-2">
+
+      {/* Menções em notas internas do Connect: abre uma vez por sessão, só se
+          houver alguma não lida que ainda não foi mostrada. */}
+      <JanelaMencoesPendentes />
 
       {/* ── 1. Header com saudação + Pulsar Connect ───────────────────── */}
       <div className="bg-white rounded-2xl border border-slate-100 shadow-[0_1px_3px_rgba(0,0,0,0.04),0_6px_24px_-2px_rgba(0,0,0,0.08)] px-7 py-5">

@@ -62,6 +62,44 @@ export class CentralUserRepository {
       }))
   }
 
+  // Quem pode ser mencionado (@) numa nota desta caixa: o mesmo recorte da RLS
+  // de central.conversation_notes — admin/director da organização, ou membro da
+  // caixa. Mencionar alguém fora disso mandaria um aviso de uma conversa que a
+  // pessoa não consegue abrir.
+  //
+  // Aqui SIM entra central.inbox_members: desde 20260924180200 ela decide quem
+  // vê a caixa, e a lista tem de bater com quem a RLS deixa ler a nota.
+  async listarComAcessoACaixa(orgId: string, inboxId: string): Promise<UsuarioCentral[]> {
+    const [todos, membros] = await Promise.all([
+      this.listarAtribuiveis(orgId),
+      this.supabase
+        .schema('central')
+        .from('inbox_members')
+        .select('user_id')
+        .eq('organization_id', orgId)
+        .eq('inbox_id', inboxId),
+    ])
+    if (membros.error) throw membros.error
+
+    const daCaixa = new Set(((membros.data ?? []) as { user_id: string }[]).map(m => m.user_id))
+    return todos.filter(u => u.central_role === 'admin' || u.central_role === 'director' || daCaixa.has(u.id))
+  }
+
+  // Nomes de vários usuários de uma vez (autores das menções). Sem filtro de
+  // ativo: quem escreveu a nota e saiu depois continua sendo o autor dela.
+  async nomesDe(orgId: string, ids: string[]): Promise<Map<string, string>> {
+    if (ids.length === 0) return new Map()
+    const { data, error } = await this.supabase
+      .from('usuarios')
+      .select('id, nome')
+      .eq('organization_id', orgId)
+      .in('id', ids)
+
+    if (error) throw error
+    return new Map(((data ?? []) as { id: string; nome: string | null }[])
+      .map(u => [u.id, u.nome?.trim() || `Usuário ${u.id.slice(0, 8)}`]))
+  }
+
   // O nome que assina a mensagem no WhatsApp (ver utils/assinatura.ts). Sem
   // filtro de ativo/central_role: quem acabou de enviar passou pelo
   // extractUser, e numa edição o autor pode ter saído depois — a assinatura

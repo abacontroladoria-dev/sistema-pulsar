@@ -453,19 +453,23 @@ export const FERRAMENTAS_SEMPRE = [
   },
 ] as const
 
-// LIMITAÇÃO CONHECIDA: não há como deixar um recado para quem vai assumir.
+// LIMITAÇÃO CONHECIDA: a Maia não deixa recado para quem vai assumir.
 //
 // O desenho original tinha um parâmetro `resumo` — uma frase do que a pessoa
 // precisa, para quem abrisse a conversa não começar do zero. Ele foi removido
-// porque o schema não tem onde guardá-lo: não existe nota interna em `central`
-// (nem tabela de notas, nem message_type para isso), e `payload` de auditoria
+// porque, na época, o schema não tinha onde guardá-lo, e `payload` de auditoria
 // não serve — é texto livre do responsável, que fica fora da trilha pela mesma
 // razão que `motivo` fica fora do rastro de ferramentas.
+//
+// Desde 20261015120000 existe nota interna (central.conversation_notes), mas
+// ela é da EQUIPE: escrita por gente, com autor humano obrigatório, e a Maia
+// nem a lê (contexto.ts não a consulta) nem a escreve. Trazer o `resumo` de
+// volta como nota da Maia é decisão de produto ainda não tomada — não ligar
+// isso sem combinar.
 //
 // Coletar para descartar seria pior que não coletar: custaria tokens todo turno
 // e daria a impressão, para quem lesse o schema, de que o recado chega a alguém.
 // Quem assume lê o histórico da conversa, que tem o pedido original literal.
-// Se um dia existir nota interna, é aqui que `resumo` volta.
 
 export type NomeFerramenta =
   | typeof DEFINICOES_FERRAMENTAS[number]['function']['name']

@@ -14,7 +14,10 @@ import { Avatar } from './Avatar'
 import { CanalSeletor } from './CanalSeletor'
 import { FiltrosLista, type FiltroRapido } from './FiltrosLista'
 import { BolhaMensagem } from './BolhaMensagem'
+import { BolhaNota } from './BolhaNota'
 import { Compositor } from './Compositor'
+import { useMencionaveis } from '@/hooks/nina/useMencionaveis'
+import type { NotaInternaVista } from '@/modules/atendimento/services/nota-interna.service'
 import { rotuloDia, mesmoDia } from './textoWhatsApp'
 import { PainelDetalhamento } from './detalhamento/PainelDetalhamento'
 import { ModalAgendarRetorno } from './detalhamento/ModalAgendarRetorno'
@@ -37,7 +40,9 @@ const ChatInterface: React.FC = () => {
     atualizandoLista, apagarMensagem,
     editarMensagem, carregarAntigas, carregandoAntigas, temMaisAntigas,
     acaoConversa, visao, setVisao, fixadas, alternarFixada, meuUserId,
+    notas, enviarNota, enviandoNota,
   } = useCentralInbox()
+  const mencionaveis = useMencionaveis(selectedId)
 
   // Nome do número por id, para a badge da lista. Só aparece quando o usuário
   // atende mais de um número — com um só, a badge repetiria a mesma coisa em
@@ -125,10 +130,29 @@ const ChatInterface: React.FC = () => {
     return () => window.removeEventListener('keydown', esc, true)
   }, [selectedId, select, sobreposto, citando])
 
-  // Rola para o fim quando chega mensagem NOVA (a última mudou). Pelo id, e não
-  // pelo comprimento: carregar as antigas também aumenta o comprimento, e
-  // descer ali jogaria fora o histórico que a pessoa acabou de pedir.
-  const ultimaId = activeChat?.messages.at(-1)?.id
+  // Mensagens e notas internas numa linha do tempo só, por horário. Enquanto
+  // houver mensagens antigas por carregar, a nota mais velha que a primeira
+  // mensagem em mãos fica de fora: no topo, ela pareceria ter vindo antes de
+  // uma conversa que a tela ainda não mostra. Aparece ao carregar as anteriores.
+  type ItemLinha =
+    | { tipo: 'msg';  id: string; quando: string; msg: NinaMessage }
+    | { tipo: 'nota'; id: string; quando: string; nota: NotaInternaVista }
+  const mensagens = activeChat?.messages ?? []
+  // Comparado como instante, não como texto: sent_at e created_at chegam com
+  // precisões diferentes, e a ordem alfabética das strings mentiria.
+  const desde = temMaisAntigas && mensagens[0] ? new Date(mensagens[0].quandoIso).getTime() : null
+  const linha: ItemLinha[] = [
+    ...mensagens.map(m => ({ tipo: 'msg' as const, id: m.id, quando: m.quandoIso, msg: m })),
+    ...notas
+      .filter(n => n.conversation_id === selectedId && (desde === null || new Date(n.created_at).getTime() >= desde))
+      .map(n => ({ tipo: 'nota' as const, id: `nota-${n.id}`, quando: n.created_at, nota: n })),
+  ].sort((a, b) => new Date(a.quando).getTime() - new Date(b.quando).getTime())
+
+  // Rola para o fim quando chega algo NOVO (o último item mudou) — mensagem ou
+  // nota. Pelo id, e não pelo comprimento: carregar as antigas também aumenta o
+  // comprimento, e descer ali jogaria fora o histórico que a pessoa acabou de
+  // pedir.
+  const ultimaId = linha.at(-1)?.id
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [ultimaId])
@@ -849,7 +873,7 @@ const ChatInterface: React.FC = () => {
               }}
               className="flex-1 overflow-y-auto px-3 py-4 sm:p-6 custom-scrollbar relative z-0"
             >
-              {activeChat.messages.length === 0 ? (
+              {linha.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-muted-foreground/70">
                   <MessageSquare className="w-16 h-16 mb-4 opacity-30" />
                   <p className="text-sm">Nenhuma mensagem ainda</p>
@@ -871,10 +895,29 @@ const ChatInterface: React.FC = () => {
                       </button>
                     </div>
                   )}
-                  {activeChat.messages.map((msg, i) => {
-                    const anterior = activeChat.messages[i - 1]
-                    const novoDia = !anterior || !mesmoDia(anterior.quandoIso, msg.quandoIso)
-                    const primeiraDoGrupo = novoDia || anterior.autorId !== msg.autorId
+                  {linha.map((item, i) => {
+                    const anteriorItem = linha[i - 1]
+                    const novoDia = !anteriorItem || !mesmoDia(anteriorItem.quando, item.quando)
+                    const separadorDia = novoDia && (
+                      <div className="flex justify-center my-4" role="separator">
+                        <span className="px-3 py-1 rounded-full bg-card border border-border text-[11px] font-medium text-muted-foreground shadow-sm">
+                          {rotuloDia(item.quando)}
+                        </span>
+                      </div>
+                    )
+                    if (item.tipo === 'nota') {
+                      return (
+                        <React.Fragment key={item.id}>
+                          {separadorDia}
+                          <BolhaNota nota={item.nota} meuUserId={meuUserId} />
+                        </React.Fragment>
+                      )
+                    }
+                    const msg = item.msg
+                    // Uma nota no meio quebra a rajada: a bolha seguinte volta a
+                    // dizer quem escreveu.
+                    const anterior = anteriorItem?.tipo === 'msg' ? anteriorItem.msg : null
+                    const primeiraDoGrupo = novoDia || !anterior || anterior.autorId !== msg.autorId
                     // Um número tem várias atendentes: a primeira bolha de cada
                     // rajada nossa diz quem escreveu. É o mesmo nome que vai
                     // assinado no WhatsApp do contato (utils/assinatura.ts).
@@ -885,13 +928,7 @@ const ChatInterface: React.FC = () => {
                         : painel.usuarios.find(u => u.id === msg.autorId)?.nome ?? null
                     return (
                       <React.Fragment key={msg.id}>
-                        {novoDia && (
-                          <div className="flex justify-center my-4" role="separator">
-                            <span className="px-3 py-1 rounded-full bg-card border border-border text-[11px] font-medium text-muted-foreground shadow-sm">
-                              {rotuloDia(msg.quandoIso)}
-                            </span>
-                          </div>
-                        )}
+                        {separadorDia}
                         <BolhaMensagem
                           msg={msg}
                           primeiraDoGrupo={primeiraDoGrupo}
@@ -922,6 +959,10 @@ const ChatInterface: React.FC = () => {
               aoCancelarResposta={() => setRespondendo(null)}
               enviarTexto={enviar}
               enviarArquivo={enviarMidia}
+              enviarNota={enviarNota}
+              enviandoNota={enviandoNota}
+              mencionaveis={mencionaveis}
+              podeDelegar={!encerrada}
             />
           </div>
 

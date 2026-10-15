@@ -31,3 +31,13 @@ export function isForeignKeyViolation(err: unknown): boolean {
   if (!err || typeof err !== 'object') return false
   return (err as Record<string, unknown>)['code'] === PG_FOREIGN_KEY_VIOLATION
 }
+
+// A tabela não existe: 42P01 (undefined_table) vindo do Postgres, ou PGRST205
+// quando o PostgREST não a acha no cache de schema. É o estado de uma migration
+// ainda não aplicada — e o localhost usa o banco de produção, então a tela nova
+// tem de sobreviver a ele em vez de estourar 500.
+export function isTabelaAusente(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false
+  const code = (err as Record<string, unknown>)['code']
+  return code === '42P01' || code === 'PGRST205'
+}
