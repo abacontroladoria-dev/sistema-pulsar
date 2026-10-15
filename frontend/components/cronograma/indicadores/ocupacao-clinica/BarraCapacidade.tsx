@@ -64,7 +64,7 @@ const COM_PROFISSIONAL = SITUACOES_CADEIRA.filter(s => s !== "vazia")
 /** O que fazer, em uma frase curta, ao lado de cada situação. */
 const DICA: Partial<Record<SituacaoCadeira, string>> = {
   aberta: "Dá para agendar paciente novo.",
-  administrativo: "Conferir se precisa ocupar a sala.",
+  administrativo: "Indisponível para atendimentos.",
   regularizar: "Ajustar na Ocupação de Salas.",
 }
 

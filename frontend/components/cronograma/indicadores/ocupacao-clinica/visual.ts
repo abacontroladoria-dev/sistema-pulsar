@@ -40,7 +40,7 @@ export const SITUACAO: Record<SituacaoCadeira, InfoSituacao> = {
   administrativo: {
     rotulo: "Administrativo",
     descricao: "O profissional está na sala, mas em horário administrativo ou bloqueado no TiTa.",
-    acao: "Vale conferir se esse horário precisa mesmo ocupar a sala.",
+    acao: "Indisponível para atendimentos.",
     cor: "bg-[#86B8DE] dark:bg-[#2F78B0]",
   },
   regularizar: {

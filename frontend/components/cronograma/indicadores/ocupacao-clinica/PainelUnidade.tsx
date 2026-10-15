@@ -107,7 +107,7 @@ export function PainelUnidade({ unidade: u, periodo, fechamentos, rotuloStatus, 
               <Pessoas itens={u.pendencias.aberta} unidade="vaga" unidades="vagas" />
             </Gaveta>
             <Gaveta cor={SITUACAO.administrativo.cor} titulo="Administrativo" total={plural(u.contagem.administrativo, "vaga", "vagas")}
-              texto="O profissional ocupa a sala em horário administrativo ou bloqueado no TiTa. Vale conferir se esse horário precisa mesmo ser dentro da sala."
+              texto="O profissional ocupa a sala em horário administrativo ou bloqueado no TiTa: indisponível para atendimentos."
               vazia={u.pendencias.administrativo.length === 0}>
               <Pessoas itens={u.pendencias.administrativo} unidade="vaga" unidades="vagas" />
             </Gaveta>
