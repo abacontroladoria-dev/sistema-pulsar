@@ -69,7 +69,7 @@ function Frescor({ painel }: { painel: PainelEntradaResposta }) {
             {painel.desatualizado && ` · ${painel.dias_uteis_atras} dias úteis sem rodada nova`}
           </span>
         )}
-        <span>Rodadas às 7h40 e 12h40 (seg a sex), lidas pelo Pulsar às 7h55 e 12h55.</span>
+        <span>Rodadas às 7h40 e 12h40 (seg a sex). O Pulsar lê às 7h55, 8h25 e 9h25, e às 12h55, 13h25 e 13h55.</span>
       </div>
       {painel.desatualizado && (
         <InlineNotice tone="amber" icon={<AlertTriangle size={14} />}>
@@ -549,7 +549,7 @@ export function EntradaConvenioShell() {
     return (
       <div className="flex flex-col gap-3">
         <InlineNotice tone="blue" icon={<Clock size={14} />}>
-          Ainda não há rodada copiada do ClickUp. O Pulsar lê o Doc às 7h55 e 12h55 (seg a sex)
+          Ainda não há rodada copiada do ClickUp. O Pulsar lê o Doc pela manhã (7h55, 8h25 e 9h25) e à tarde (12h55, 13h25 e 13h55), de segunda a sexta
           {podeAtualizar ? ', ou na hora pelo botão "Atualizar agora"' : ""}.
         </InlineNotice>
         {l && (

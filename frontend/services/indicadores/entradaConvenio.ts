@@ -12,7 +12,7 @@ import type { PainelEntradaResposta } from "@/lib/indicadores/entradaConvenio"
 // ela executa), então a checagem de acesso é ESTA:
 //   • ver o painel: `indicadores_entrada_convenio`;
 //   • "Atualizar agora" (dispara a cópia do Doc do ClickUp): admin ou diretoria.
-//     A rotina das 7h55/12h55 já faz isso sozinha; o botão é para teste e para
+//     As leituras agendadas (7h55 a 9h25 e 12h55 a 13h55) já fazem isso sozinhas; o botão é para teste e para
 //     depois de uma correção manual no Doc.
 
 export const PERMISSAO_PAINEL = "indicadores_entrada_convenio"

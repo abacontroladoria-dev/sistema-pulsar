@@ -8,7 +8,7 @@ import {
 
 // POST /api/indicadores/entrada-convenio/atualizar → { ok, resultado }
 //
-// Copia o Doc do ClickUp agora, sem esperar a rotina das 7h55/12h55. Só admin e
+// Copia o Doc do ClickUp agora, sem esperar a próxima leitura agendada (7h55 a 9h25 e 12h55 a 13h55). Só admin e
 // diretoria. O resultado é o resumo da Edge Function (novo, sem_mudanca,
 // ignorado ou erro com o motivo).
 export const dynamic = "force-dynamic"
