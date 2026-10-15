@@ -14,8 +14,9 @@
 import { PGlite } from '@electric-sql/pglite'
 import { readFileSync } from 'fs'
 
-const [, , migPath] = process.argv
+const [, , migPath, migPath2] = process.argv
 const mig = readFileSync(migPath, 'utf8')
+const mig2 = migPath2 ? readFileSync(migPath2, 'utf8') : null // 20261015130000: cruzamento de nomes
 
 let falhas = 0
 const ok = (cond, msg) => { if (cond) console.log('  ok  ', msg); else { falhas++; console.log('  FALHA', msg) } }
@@ -83,6 +84,12 @@ insert into public.pacientes(id_paciente, nome, nome_normalizado, cpf) values
   (5, 'Davi Teste Quatro', 'davi teste quatro', '444.555.666-77'),
   (6, 'Eva Ficticia',      'eva ficticia',      '55566677788');
 update public.pacientes set ficticio = true where id_paciente = 6;
+insert into public.pacientes(id_paciente, nome, nome_normalizado, cpf) values
+  (7,  'Pietro Teste Silva Gomes',                'pietro teste silva gomes',                '66677788899'),
+  (8,  'Maria Estela Teste Povoleri Marins',      'maria estela teste povoleri marins',      '77788899900'),
+  (9,  'Ana Maria Souza Lima',                    'ana maria souza lima',                    '88899900011'),
+  (10, 'Joao Pedro Silva Alves',                  'joao pedro silva alves',                  '99900011122'),
+  (11, 'Joao Pedro Silva Barbosa',                'joao pedro silva barbosa',                '00011122233');
 insert into public.pacientes_disponibilidade_versoes(paciente_id, numero_versao, origem) values
   (1, 1, 'equipe'), (1, 2, 'formulario');
 `)
@@ -92,6 +99,12 @@ await db.exec(mig)
 ok(true, 'primeira execução')
 await db.exec(mig)
 ok(true, 'segunda execução (idempotente)')
+if (mig2) {
+  await db.exec(mig2)
+  ok(true, 'migration do cruzamento de nomes: primeira execução')
+  await db.exec(mig2)
+  ok(true, 'migration do cruzamento de nomes: segunda execução (idempotente)')
+}
 const regras = await db.query(`select count(*)::int n from public.alertas_regras where codigo like 'painel_entrada_convenio%'`)
 ok(regras.rows[0].n === 2, 'duas regras de alerta, sem duplicar')
 
@@ -105,7 +118,9 @@ const hoje = (await db.query(`select (now() at time zone 'America/Sao_Paulo')::d
 const dados = (extra = {}) => JSON.stringify({
   gerado_em: hoje, versao_fluxo: 4, resumo: {}, setores: {}, etapas,
   pacientes: [pac('Ana Teste Um'), pac('Bruno Teste Dois'), pac('Carla Repetida'), pac('Davi Teste Quatro'),
-              pac('Eva Ficticia'), pac('Fulano Sem Cadastro'), pac('Gil Encerrado', 'encerrado')],
+              pac('Eva Ficticia'), pac('Fulano Sem Cadastro'), pac('Gil Encerrado', 'encerrado'),
+              pac('Pietro Teste Silva Gomes (ABA)'), pac('Pietro Teste Silva Gomes (Neuro)'), pac('Maria Estela Teste'),
+              pac('Ana Maria'), pac('Joao Pedro Silva')],
   ...extra,
 })
 
@@ -183,6 +198,20 @@ ok(selo['Fulano Sem Cadastro']?.estado === 'sem_cadastro', 'sem cadastro')
 ok(!selo['Gil Encerrado'], 'encerrado fica fora do selo')
 const json = JSON.stringify(tela.disponibilidade)
 ok(!/\d{11}|\d{3}\.\d{3}\.\d{3}|_inicio|_fim/.test(json), 'selo não expõe CPF nem horários')
+
+if (mig2) {
+  console.log('5b. cruzamento tolerante de nomes')
+  ok(selo['Pietro Teste Silva Gomes (ABA)']?.paciente_id === 7 && selo['Pietro Teste Silva Gomes (Neuro)']?.paciente_id === 7,
+    'sufixo (ABA)/(Neuro) ignorado: as duas linhas casam com o mesmo paciente')
+  ok(selo['Pietro Teste Silva Gomes (ABA)']?.casamento === 'exato', 'sufixo ignorado conta como casamento exato')
+  ok(selo['Maria Estela Teste']?.paciente_id === 8 && selo['Maria Estela Teste'].casamento === 'inicio_do_nome',
+    'nome do ClickUp que é o começo do nome do cadastro casa e é marcado como inicio_do_nome')
+  ok(selo['Ana Maria']?.estado === 'sem_cadastro', 'nome de só 2 palavras NÃO casa pelo começo (evita falso positivo)')
+  ok(selo['Joao Pedro Silva']?.estado === 'nome_ambiguo' && selo['Joao Pedro Silva'].paciente_id === null,
+    'começo que combina com mais de um paciente vira nome_ambiguo')
+  ok(selo['Ana Teste Um']?.casamento === 'exato', 'casamento por nome inteiro continua exato')
+  ok(selo['Fulano Sem Cadastro']?.casamento === null || selo['Fulano Sem Cadastro']?.casamento === undefined, 'sem cadastro não tem casamento')
+}
 
 console.log('6. RLS dos snapshots (leitura direta)')
 await como('authenticated', COM, 'authenticated')

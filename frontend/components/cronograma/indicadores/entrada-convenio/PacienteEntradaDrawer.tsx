@@ -8,6 +8,7 @@ import Link from "next/link"
 import { ExternalLink } from "lucide-react"
 import { Drawer } from "@/components/cronograma/ui/Drawer"
 import {
+  AVISO_INICIO_DO_NOME,
   ETAPAS_DISPONIBILIDADE,
   ROTULO_DISPONIBILIDADE,
   fmtDiaMes,
@@ -93,6 +94,9 @@ export function PacienteEntradaDrawer({ paciente: p, disp, onClose }: {
             )}
           </div>
           {disp && <p className="text-xs text-muted-foreground">{ROTULO_DISPONIBILIDADE[disp.estado].dica}</p>}
+          {disp?.casamento === "inicio_do_nome" && (
+            <p className="text-xs font-semibold text-amber-700 dark:text-amber-400">{AVISO_INICIO_DO_NOME}</p>
+          )}
           {(!a || ETAPAS_DISPONIBILIDADE.has(a.etapa)) && disp?.estado !== "preenchida_familia" && (
             <div className="flex flex-wrap gap-2">
               <BotaoCopiarMensagem pacienteNome={p.paciente} rotulo="Copiar mensagem para a família" />
@@ -158,6 +162,7 @@ export function PacienteEntradaDrawer({ paciente: p, disp, onClose }: {
                 className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-semibold text-foreground hover:bg-muted sm:min-h-0 sm:py-1.5"
               >
                 <ExternalLink size={12} aria-hidden /> {l.rotulo}
+                <span className="font-mono font-normal text-muted-foreground">{l.id}</span>
               </a>
             ))}
           </div>

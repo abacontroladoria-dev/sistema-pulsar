@@ -33,10 +33,13 @@ import {
   fmtDataHora,
   fmtDiaMes,
   filtrarPacientes,
+  idFormulario,
+  linkClickUp,
   mapaDisponibilidade,
   opcoesFiltro,
   porSetor,
   raias,
+  rotuloFrescor,
   type DadosPainel,
   type DisponibilidadePainel,
   type EtapaResumo,
@@ -53,7 +56,6 @@ function Frescor({ painel }: { painel: PainelEntradaResposta }) {
   const s = painel.snapshot
   const leitura = painel.ultima_leitura
   const falhou = leitura?.status === "erro" && (!s || leitura.lido_em > s.lido_em)
-  const quando = s?.publicado_em ? fmtDataHora(s.publicado_em) : s ? fmtDiaMes(s.gerado_em) : null
 
   return (
     <div className="flex flex-col gap-2">
@@ -65,11 +67,11 @@ function Frescor({ painel }: { painel: PainelEntradaResposta }) {
             }`}
           >
             {painel.desatualizado ? <AlertTriangle size={12} aria-hidden /> : <Clock size={12} aria-hidden />}
-            Dados de {quando}
+            {rotuloFrescor(s)}
             {painel.desatualizado && ` · ${painel.dias_uteis_atras} dias úteis sem rodada nova`}
           </span>
         )}
-        <span>Rodadas às 7h40 e 12h40 (seg a sex), lidas pelo Pulsar às 7h55 e 12h55.</span>
+        <span>Rodadas às 7h40 e 12h40 (seg a sex). O Pulsar lê às 7h55, 8h25 e 9h25, e às 12h55, 13h25 e 13h55.</span>
       </div>
       {painel.desatualizado && (
         <InlineNotice tone="amber" icon={<AlertTriangle size={14} />}>
@@ -356,6 +358,9 @@ function ListaPacientes({ pacs, disp, filtro, setFiltro, onAbrir }: {
                   <div className="mt-1 text-xs text-muted-foreground">
                     {p.convenio} · {p.atual.nome} · {p.atual.setor} · <span className="tabular-nums">{p.atual.dias ?? "—"}/{p.atual.prazo} d.u.</span>
                   </div>
+                  <div className="mt-0.5 text-[11px] text-muted-foreground">
+                    {idFormulario(p) ? <>Formulário <span className="font-mono">{idFormulario(p)}</span></> : "Sem formulário"}
+                  </div>
                   {nota(p) && <p className="mt-1 line-clamp-2 text-xs text-foreground">{nota(p)}</p>}
                   {selo(p) && <div className="mt-2">{selo(p)}</div>}
                 </button>
@@ -392,7 +397,22 @@ function ListaPacientes({ pacs, disp, filtro, setFiltro, onAbrir }: {
                     <td className={`min-w-[200px] px-3 py-2 ${p.atual.status === "atrasado" ? "shadow-[inset_3px_0_0_var(--color-rose-500)]" : ""}`}>
                       <div className="font-semibold text-foreground">{p.paciente}</div>
                       <div className="text-[11px] text-muted-foreground">
-                        {p.tipo === "Neuro" ? "Avaliação neuro" : "Terapias"} · via {p.rota === "Família" ? "família" : "convênio"} · entrada {fmtDiaMes(p.entrada)}
+                        {p.tipo === "Neuro" ? "Avaliação neuro" : "Terapias"} · via {p.rota === "Família" ? "família" : "convênio"} · entrada {fmtDiaMes(p.entrada)} ·{" "}
+                        {idFormulario(p) ? (
+                          <a
+                            href={linkClickUp(idFormulario(p)!)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={e => e.stopPropagation()}
+                            onKeyDown={e => e.stopPropagation()}
+                            title="Abrir o formulário no ClickUp"
+                            className="font-mono text-sky-700 underline-offset-2 hover:underline dark:text-sky-400"
+                          >
+                            {idFormulario(p)}
+                          </a>
+                        ) : (
+                          <span className="text-amber-700 dark:text-amber-400">sem formulário</span>
+                        )}
                       </div>
                     </td>
                     <td className="px-3 py-2">{p.convenio}</td>
@@ -549,7 +569,7 @@ export function EntradaConvenioShell() {
     return (
       <div className="flex flex-col gap-3">
         <InlineNotice tone="blue" icon={<Clock size={14} />}>
-          Ainda não há rodada copiada do ClickUp. O Pulsar lê o Doc às 7h55 e 12h55 (seg a sex)
+          Ainda não há rodada copiada do ClickUp. O Pulsar lê o Doc pela manhã (7h55, 8h25 e 9h25) e à tarde (12h55, 13h25 e 13h55), de segunda a sexta
           {podeAtualizar ? ', ou na hora pelo botão "Atualizar agora"' : ""}.
         </InlineNotice>
         {l && (

@@ -9,6 +9,7 @@ import { StatusPill } from "@/components/cronograma/ui/StatusPill"
 import type { Tone } from "@/components/cronograma/ui/tones"
 import { mensagemFormularioDisponibilidade } from "@/lib/disponibilidadePaciente"
 import {
+  AVISO_INICIO_DO_NOME,
   ROTULO_DISPONIBILIDADE,
   type DisponibilidadePainel,
   type EstadoDisponibilidade,
@@ -44,8 +45,12 @@ export function SeloDisponibilidade({ disp, dense = true }: { disp: Disponibilid
   if (!disp) return <span className="text-muted-foreground">—</span>
   const r = ROTULO_DISPONIBILIDADE[disp.estado]
   return (
-    <StatusPill tone={TOM_DISPONIBILIDADE[disp.estado]} dense={dense} title={r.dica}>
-      {r.rotulo}
+    <StatusPill
+      tone={TOM_DISPONIBILIDADE[disp.estado]}
+      dense={dense}
+      title={disp.casamento === "inicio_do_nome" ? `${r.dica} ${AVISO_INICIO_DO_NOME}` : r.dica}
+    >
+      {r.rotulo}{disp.casamento === "inicio_do_nome" ? " (conferir)" : ""}
     </StatusPill>
   )
 }
