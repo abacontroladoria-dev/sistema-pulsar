@@ -111,8 +111,13 @@ export interface DisponibilidadePainel {
   nome: string
   paciente_id: number | null
   estado: EstadoDisponibilidade
+  /** 'inicio_do_nome': o cadastro foi achado porque o nome do ClickUp é só o começo do nome dele; vale conferir. */
+  casamento?: "exato" | "inicio_do_nome" | null
   preenchida_em: string | null
 }
+
+export const AVISO_INICIO_DO_NOME =
+  "Cadastro achado pelo começo do nome (o nome no ClickUp está incompleto). Confira se é a mesma criança e complete o nome no ClickUp."
 
 export interface LeituraPainel {
   lido_em: string
