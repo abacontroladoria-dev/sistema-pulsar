@@ -230,6 +230,13 @@ export interface BlocoOcupacaoSlot {
   /** tita_agendamento_id da sessão real, só quando status é "preenchido" */
   idAgendamento: number | null
   status: "preenchido" | "livre"
+  /**
+   * Alocação planejada dona desta cadeira (independe de `status`) — null =
+   * cadeira sem ninguém alocado. Usado pela Ocupação Clínica
+   * (ocupacaoClinica.ts) para separar "livre com profissional" de "cadeira
+   * vazia" sem refazer o casamento cadeira × alocação de calcularSlotsDaSala.
+   */
+  alocacao?: { nome: string; id: number | null; terapia: string | null } | null
 }
 
 /** Ocupação de uma sala em um dia da semana × turno específico, guiada pelas alocações (planejamento), não pelos dados brutos da agenda */
