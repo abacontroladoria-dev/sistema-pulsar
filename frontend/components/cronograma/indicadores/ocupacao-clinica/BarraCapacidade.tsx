@@ -14,7 +14,7 @@ import { LINK_REGULARIZACOES, SITUACAO, fmtNum, fmtPct, porcentagensQueSomam } f
 
 interface Props {
   contagem: ContagemCadeiras
-  tamanho?: "md" | "lg"
+  tamanho?: "sm" | "md" | "lg"
   /** Chave "com profissional" sob o trecho colorido. */
   chave?: boolean
 }
@@ -29,7 +29,7 @@ export function BarraCapacidade({ contagem, tamanho = "md", chave = true }: Prop
       <div
         role="img"
         aria-label={resumo}
-        className={`flex w-full gap-0.5 overflow-hidden rounded-md ${SITUACAO.vazia.cor} ${tamanho === "lg" ? "h-6" : "h-4"}`}
+        className={`flex w-full gap-0.5 overflow-hidden rounded-md ${SITUACAO.vazia.cor} ${tamanho === "lg" ? "h-6" : tamanho === "sm" ? "h-2.5" : "h-4"}`}
       >
         {total > 0 && SITUACOES_CADEIRA.filter(s => s !== "vazia" && contagem[s] > 0).map(s => (
           <span

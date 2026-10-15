@@ -3,12 +3,16 @@
 // TabelaComparar — uma linha por unidade, com a MESMA estrutura dos blocos da
 // tela: "Com profissional na sala" (total + as quatro situações) e "Sem
 // profissional na sala". Todo percentual tem a mesma base — as vagas da
-// semana daquela unidade — e as partes somam o total (maior resto). A razão
-// "profissional com paciente" (outra base) não entra aqui: misturada às
-// outras colunas, ninguém sabia a que cada % se referia.
+// semana daquela unidade — e as partes somam o total (maior resto).
+//
+// Visual: colunas de largura fixa (a tabela não "espalha" em tela larga),
+// cabeçalho com a cor de cada situação no lugar de caixa alta + lâmpadas,
+// números centralizados (% em cima, vagas embaixo) e a barra da semana sob o
+// nome da unidade para comparar de relance. A linha inteira abre o painel.
 
-import { useMemo, useState } from "react"
-import { SortableTh, compararValores, type SortDir } from "@/components/cronograma/ui/SortableTh"
+import { useMemo, useState, type ReactNode } from "react"
+import { ChevronDown, ChevronUp, ChevronsUpDown } from "lucide-react"
+import { compararValores, type SortDir } from "@/components/cronograma/ui/SortableTh"
 import {
   SITUACOES_CADEIRA,
   comProfissional,
@@ -16,8 +20,8 @@ import {
   type OcupacaoClinicaUnidade,
   type SituacaoCadeira,
 } from "@/lib/cronograma/ocupacaoClinica"
-import { MarcaComProfissional } from "./BarraCapacidade"
-import { SITUACAO, fmtNum, porcentagensQueSomam } from "./visual"
+import { BarraCapacidade, MarcaComProfissional } from "./BarraCapacidade"
+import { COR_ALERTA, SITUACAO, fmtNum, plural, porcentagensQueSomam } from "./visual"
 
 interface Props {
   unidades: OcupacaoClinicaUnidade[]
@@ -30,14 +34,12 @@ type Coluna = "com" | SituacaoCadeira
 type Linha = {
   u: OcupacaoClinicaUnidade
   unidade: string
-  salas: number
   ajustar: number
   vagas: Record<Coluna, number>
   pct: Record<Coluna, number>
 }
 
-const TOM_COM = "bg-[#1F4E79]/10 dark:bg-[#9CC7E6]/15"
-const TOM_SEM = "bg-slate-100 dark:bg-slate-800/70"
+const DIVISOR = "border-l border-border"
 
 export function TabelaComparar({ unidades, onAbrir }: Props) {
   const [sort, setSort] = useState<{ key: string; dir: SortDir }>({ key: "pct.paciente", dir: "desc" })
@@ -51,92 +53,139 @@ export function TabelaComparar({ unidades, onAbrir }: Props) {
       return {
         u,
         unidade: u.unidade,
-        salas: u.salasOperacionais,
         ajustar: pessoasParaAjustarNoMapa(u).total,
         vagas: { com: totalCom, paciente: c.paciente, aberta: c.aberta, administrativo: c.administrativo, regularizar: c.regularizar, vazia: c.vazia },
         pct: { com: pctCom, ...Object.fromEntries(COM_PROFISSIONAL.map((s, i) => [s, subs[i]])), vazia: pctSem } as Record<Coluna, number>,
       }
     })
-    const valor = (l: Linha, chave: string) => {
-      if (chave.startsWith("pct.")) return l.pct[chave.slice(4) as Coluna]
-      return l[chave as "unidade" | "salas" | "ajustar"]
-    }
+    const valor = (l: Linha, chave: string) => (chave.startsWith("pct.") ? l.pct[chave.slice(4) as Coluna] : l[chave as "unidade" | "ajustar"])
     const ord = [...base].sort((a, b) => compararValores(valor(a, sort.key), valor(b, sort.key)) * (sort.dir === "asc" ? 1 : -1))
     // Terceirizada sempre no fim, qualquer que seja a ordenação.
     return [...ord.filter(l => !l.u.terceirizada), ...ord.filter(l => l.u.terceirizada)]
   }, [unidades, sort])
 
-  function onSortClick(key: string) {
+  function ordenar(key: string) {
     setSort(prev => ({ key, dir: prev.key === key && prev.dir === "desc" ? "asc" : key === "unidade" ? "asc" : "desc" }))
   }
 
-  const th = (label: string, key: string, align: "left" | "right" = "right", info?: string) => (
-    <SortableTh label={label} sortKey={key} activeKey={sort.key} dir={sort.dir} align={align} info={info} onClick={onSortClick} />
+  const cab = (key: string, rotulo: ReactNode, opts: { explicacao?: string; alinhar?: "left" | "center"; classe?: string } = {}) => (
+    <CabecalhoOrdenavel key={key} chave={key} ativo={sort.key === key} dir={sort.dir} onClick={ordenar} explicacao={opts.explicacao} alinhar={opts.alinhar} classe={opts.classe}>
+      {rotulo}
+    </CabecalhoOrdenavel>
+  )
+  const sit = (s: SituacaoCadeira) => (
+    <span className="inline-flex items-center gap-1.5 text-left leading-tight">
+      <span className={`h-2.5 w-2.5 shrink-0 rounded-[3px] ${SITUACAO[s].cor}`} aria-hidden />{SITUACAO[s].rotulo}
+    </span>
   )
 
   return (
-    <div className="flex flex-col gap-2">
-      <p className="text-sm text-muted-foreground">
-        Cada percentual é sobre as vagas da semana daquela unidade. Embaixo do percentual, a quantidade de vagas.
-      </p>
+    <section aria-labelledby="ocup-comparar" className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <h2 id="ocup-comparar" className="text-sm font-bold uppercase tracking-wide text-muted-foreground">Unidades lado a lado</h2>
+        <p className="text-sm text-muted-foreground">% das vagas da semana de cada unidade · clique numa linha para ver o detalhe</p>
+      </div>
       <div className="overflow-x-auto rounded-2xl border border-border bg-card shadow-sm">
-        <table className="w-full min-w-[1040px] text-sm [&_td]:px-3 [&_td]:py-3 [&_th]:px-3 [&_th]:py-2">
-          <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
-            <tr className="border-b border-border">
-              <th colSpan={2} />
-              <th colSpan={5} className={`${TOM_COM} border-x border-border text-center normal-case tracking-normal`}>
-                <span className="inline-flex items-center gap-2 text-sm font-black text-foreground"><MarcaComProfissional grande />Com profissional na sala</span>
-              </th>
-              <th className={`${TOM_SEM} min-w-[10rem] border-r border-border text-center normal-case tracking-normal`}>
-                <span className="inline-flex items-center gap-2 text-sm font-black text-foreground">
-                  <span className={`h-4 w-4 rounded-[4px] border border-border ${SITUACAO.vazia.cor}`} aria-hidden />Sem profissional na sala
+        <table className="w-full min-w-[980px] table-fixed border-collapse text-sm">
+          <colgroup>
+            <col className="w-[22%]" />
+            <col className="w-[10%]" />
+            <col className="w-[10%]" />
+            <col className="w-[10%]" />
+            <col className="w-[10%]" />
+            <col className="w-[10%]" />
+            <col className="w-[13%]" />
+            <col className="w-[15%]" />
+          </colgroup>
+          <thead>
+            <tr>
+              <th />
+              <th colSpan={5} className="px-3 pb-1 pt-4 text-left">
+                <span className="flex items-center gap-2 border-b-2 border-[#1F4E79] pb-2 text-sm font-bold text-foreground dark:border-[#9CC7E6]">
+                  <MarcaComProfissional grande />Com profissional na sala
                 </span>
               </th>
-              <th />
+              <th className={`px-3 pb-1 pt-4 text-left ${DIVISOR}`}>
+                <span className="flex items-center gap-2 border-b-2 border-slate-300 pb-2 text-sm font-bold text-foreground dark:border-slate-600">
+                  <span className={`h-4 w-4 shrink-0 rounded-[4px] border border-border ${SITUACAO.vazia.cor}`} aria-hidden />Sem profissional
+                </span>
+              </th>
+              <th className={DIVISOR} />
             </tr>
-            <tr className="border-b border-border">
-              {th("Unidade", "unidade", "left")}
-              {th("Salas em uso", "salas")}
-              {th("Total", "pct.com", "right", "Todas as vagas em que há profissional reservado na sala.")}
-              {th(SITUACAO.paciente.rotulo, "pct.paciente", "right", SITUACAO.paciente.descricao)}
-              {th(SITUACAO.aberta.rotulo, "pct.aberta", "right", `${SITUACAO.aberta.descricao} ${SITUACAO.aberta.acao}`)}
-              {th(SITUACAO.administrativo.rotulo, "pct.administrativo", "right", `${SITUACAO.administrativo.descricao} ${SITUACAO.administrativo.acao}`)}
-              {th(SITUACAO.regularizar.rotulo, "pct.regularizar", "right", `${SITUACAO.regularizar.descricao} ${SITUACAO.regularizar.acao}`)}
-              {th("Total", "pct.vazia", "right", `${SITUACAO.vazia.descricao} ${SITUACAO.vazia.acao}`)}
-              {th("Ajustes no mapa de salas", "ajustar", "right", "Pessoas reservadas numa sala sem agenda no turno, ou atendendo sem sala definida. Corrige-se em Ocupação de Salas › Regularizações.")}
+            <tr className="border-b border-border text-xs text-muted-foreground">
+              {cab("unidade", "Unidade", { alinhar: "left", classe: "pl-5" })}
+              {cab("pct.com", <b className="text-foreground">Total</b>, { explicacao: "Todas as vagas em que há profissional reservado na sala." })}
+              {COM_PROFISSIONAL.map(s => cab(`pct.${s}`, sit(s), { explicacao: `${SITUACAO[s].descricao} ${SITUACAO[s].acao}`.trim() }))}
+              {cab("pct.vazia", <b className="text-foreground">Total</b>, { explicacao: `${SITUACAO.vazia.descricao} ${SITUACAO.vazia.acao}`, classe: DIVISOR })}
+              {cab("ajustar", "Ajustes no mapa de salas", { explicacao: "Pessoas reservadas numa sala sem agenda no turno, ou atendendo sem sala definida. Corrige-se em Ocupação de Salas › Regularizações.", classe: DIVISOR })}
             </tr>
           </thead>
           <tbody>
             {linhas.map(l => (
-              <tr key={l.unidade} className={`border-t border-border/60 ${l.u.terceirizada ? "text-muted-foreground" : ""}`}>
-                <td className="min-w-48">
-                  <button type="button" onClick={() => onAbrir(l.unidade)} className="text-left font-bold text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <tr
+                key={l.unidade}
+                onClick={() => onAbrir(l.unidade)}
+                className={`cursor-pointer border-b border-border/70 transition-colors last:border-b-0 hover:bg-muted/40 ${l.u.terceirizada ? "text-muted-foreground" : ""}`}
+              >
+                <td className="py-3.5 pl-5 pr-3 align-middle">
+                  <button type="button" onClick={e => { e.stopPropagation(); onAbrir(l.unidade) }}
+                    className="text-left font-bold text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                     {l.unidade}
                   </button>
-                  {l.u.terceirizada && <div className="text-xs">fora do total da rede</div>}
+                  <div className="mt-0.5 text-xs text-muted-foreground">
+                    {plural(l.u.salasOperacionais, "sala em uso", "salas em uso")}{l.u.terceirizada ? " · fora do total da rede" : ""}
+                  </div>
+                  <div className="mt-2 max-w-[13rem]"><BarraCapacidade contagem={l.u.contagem} tamanho="sm" chave={false} /></div>
                 </td>
-                <td className="text-right tabular-nums">{fmtNum(l.salas)}</td>
-                <Celula pct={l.pct.com} vagas={l.vagas.com} forte fundo={TOM_COM} />
+                <Celula pct={l.pct.com} vagas={l.vagas.com} forte />
                 {COM_PROFISSIONAL.map(s => <Celula key={s} pct={l.pct[s]} vagas={l.vagas[s]} />)}
-                <Celula pct={l.pct.vazia} vagas={l.vagas.vazia} forte fundo={TOM_SEM} />
-                <td className={`text-right tabular-nums ${l.ajustar > 0 ? "font-semibold text-amber-700 dark:text-amber-400" : ""}`}>
-                  {l.ajustar > 0 ? `${fmtNum(l.ajustar)} ${l.ajustar === 1 ? "pessoa" : "pessoas"}` : "—"}
+                <Celula pct={l.pct.vazia} vagas={l.vagas.vazia} forte classe={DIVISOR} />
+                <td className={`px-3 text-center ${DIVISOR}`}>
+                  {l.ajustar > 0
+                    ? <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${COR_ALERTA}`}>{plural(l.ajustar, "pessoa", "pessoas")}</span>
+                    : <span className="text-muted-foreground">—</span>}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-    </div>
+    </section>
   )
 }
 
-/** Percentual em cima (o que se compara entre unidades), quantidade de vagas embaixo. */
-function Celula({ pct, vagas, forte = false, fundo = "" }: { pct: number; vagas: number; forte?: boolean; fundo?: string }) {
+/** % em cima (o que se compara entre unidades), vagas embaixo. */
+function Celula({ pct, vagas, forte = false, classe = "" }: { pct: number; vagas: number; forte?: boolean; classe?: string }) {
   return (
-    <td className={`text-right tabular-nums ${fundo}`}>
-      <div className={forte ? "text-base font-black text-foreground" : "font-semibold text-foreground"}>{pct}%</div>
+    <td className={`px-3 text-center tabular-nums ${classe}`}>
+      <div className={forte ? "text-lg font-black text-foreground" : "text-base font-bold text-foreground"}>{pct}%</div>
       <div className="text-xs text-muted-foreground">{fmtNum(vagas)} {vagas === 1 ? "vaga" : "vagas"}</div>
     </td>
+  )
+}
+
+function CabecalhoOrdenavel({ chave, ativo, dir, onClick, explicacao, alinhar = "center", classe = "", children }: {
+  chave: string
+  ativo: boolean
+  dir: SortDir
+  onClick: (chave: string) => void
+  explicacao?: string
+  alinhar?: "left" | "center"
+  classe?: string
+  children: ReactNode
+}) {
+  const Icone = !ativo ? ChevronsUpDown : dir === "asc" ? ChevronUp : ChevronDown
+  return (
+    <th className={`px-3 py-2.5 font-semibold ${alinhar === "left" ? "text-left" : "text-center"} ${classe}`} aria-sort={ativo ? (dir === "asc" ? "ascending" : "descending") : undefined}>
+      <button
+        type="button"
+        onClick={() => onClick(chave)}
+        title={explicacao}
+        className={`inline-flex items-center gap-1 rounded-md px-1 py-0.5 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${ativo ? "text-foreground" : ""}`}
+      >
+        {children}
+        <Icone size={13} className={`shrink-0 ${ativo ? "opacity-100" : "opacity-40"}`} aria-hidden />
+      </button>
+    </th>
   )
 }

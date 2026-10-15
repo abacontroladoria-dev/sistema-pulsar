@@ -15,7 +15,6 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { CalendarDays, Download, Loader2 } from "lucide-react"
 import { useHeader } from "@/contexts/HeaderContext"
 import { DatePicker } from "@/components/ui/date-picker"
-import { SegmentedTabs } from "@/components/cronograma/ui/SegmentedTabs"
 import { Z_MODAL_EMPILHADO } from "@/components/cronograma/ui/useModalLayer"
 import { semanaCorrenteRange, useOcupacaoSalas } from "@/hooks/useOcupacaoSalas"
 import { useStatusLabels } from "@/hooks/useStatusLabels"
@@ -27,9 +26,11 @@ import { CartaoUnidade, LinhaTerceirizada } from "./ocupacao-clinica/CartaoUnida
 import { FaixaRede } from "./ocupacao-clinica/FaixaRede"
 import { PainelUnidade } from "./ocupacao-clinica/PainelUnidade"
 import { TabelaComparar } from "./ocupacao-clinica/TabelaComparar"
+import { DestaquesComparacao } from "./ocupacao-clinica/DestaquesComparacao"
+import { ChaveVisao } from "./ocupacao-clinica/ChaveVisao"
 import { exportarOcupacaoClinica } from "./ocupacao-clinica/exportar"
 
-type Visao = "unidades" | "comparar"
+import type { Visao } from "./ocupacao-clinica/ChaveVisao"
 
 function iso(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
@@ -128,6 +129,7 @@ export function UnidadeDashboardShell() {
               <CalendarDays className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
             </>}
           />
+          <ChaveVisao visao={visao} onChange={setVisao} />
           {!ehPadrao && (
             <button type="button" onClick={() => setSemana(padrao)} className="min-h-10 rounded-lg px-2 text-sm font-semibold text-sky-700 hover:underline dark:text-sky-400">
               Voltar à semana padrão
@@ -135,16 +137,6 @@ export function UnidadeDashboardShell() {
           )}
           {carregando && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-label="Carregando" />}
         </div>
-        <SegmentedTabs
-          value={visao}
-          onChange={setVisao}
-          ariaLabel="Visualização"
-          size="lg"
-          tabs={[
-            { value: "unidades", label: "Unidades" },
-            { value: "comparar", label: "Comparar" },
-          ]}
-        />
       </div>
 
       {error && <div className="text-sm font-semibold text-rose-600 dark:text-rose-400">{error}</div>}
@@ -155,12 +147,11 @@ export function UnidadeDashboardShell() {
         </div>
       ) : (
         <div className={`flex flex-col gap-4 transition-opacity ${carregando ? "opacity-60" : ""}`} aria-busy={carregando}>
-          {proprias.length > 0 && (
-            <FaixaRede contagem={rede.contagem} salasOperacionais={rede.salasOperacionais} unidades={rede.unidades} pessoasParaAjustar={rede.pessoasParaAjustar} />
-          )}
-
           {visao === "unidades" ? (
             <>
+              {proprias.length > 0 && (
+                <FaixaRede contagem={rede.contagem} salasOperacionais={rede.salasOperacionais} unidades={rede.unidades} pessoasParaAjustar={rede.pessoasParaAjustar} />
+              )}
               {/* Colunas automáticas: 3 unidades cabem lado a lado numa tela larga, sem uma sobrar sozinha. */}
               <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,22rem),1fr))] gap-4">
                 {proprias.map(u => <CartaoUnidade key={u.unidade} unidade={u} fechamentos={fechamentos} onAbrir={() => setAberta(u.unidade)} />)}
@@ -168,7 +159,10 @@ export function UnidadeDashboardShell() {
               {terceirizadas.map(u => <LinhaTerceirizada key={u.unidade} unidade={u} onAbrir={() => setAberta(u.unidade)} />)}
             </>
           ) : (
-            <TabelaComparar unidades={unidades} onAbrir={setAberta} />
+            <>
+              <DestaquesComparacao unidades={proprias} onAbrir={setAberta} />
+              <TabelaComparar unidades={unidades} onAbrir={setAberta} />
+            </>
           )}
 
           {!carregando && unidades.length === 0 && !error && (
