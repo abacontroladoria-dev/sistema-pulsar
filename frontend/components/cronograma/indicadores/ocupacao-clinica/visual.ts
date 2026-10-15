@@ -77,6 +77,26 @@ export function fmtPct(v: number | null | undefined, casas = 0): string {
   return `${(v * 100).toLocaleString("pt-BR", { minimumFractionDigits: casas, maximumFractionDigits: casas })}%`
 }
 
+/**
+ * Percentuais inteiros que SOMAM `alvo` (método do maior resto): arredonda
+ * tudo para baixo e dá os pontos que faltam a quem tinha a maior fração.
+ * Arredondar cada parte sozinha fazia a legenda mostrar 55 + 9 + 6 + 1 = 71
+ * debaixo de um total de 70%.
+ */
+export function porcentagensQueSomam(partes: number[], total: number, alvo = 100): number[] {
+  if (total <= 0) return partes.map(() => 0)
+  const exatos = partes.map(p => (p / total) * 100)
+  const pisos = exatos.map(Math.floor)
+  let faltam = Math.round(alvo) - pisos.reduce((s, v) => s + v, 0)
+  const ordem = exatos.map((v, i) => ({ i, resto: v - pisos[i] })).sort((a, b) => b.resto - a.resto)
+  for (const { i } of ordem) {
+    if (faltam <= 0) break
+    pisos[i]++
+    faltam--
+  }
+  return pisos
+}
+
 export function fmtNum(n: number): string {
   return n.toLocaleString("pt-BR")
 }

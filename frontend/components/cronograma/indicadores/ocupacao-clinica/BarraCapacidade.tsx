@@ -6,8 +6,8 @@
 // dois números ficam na mesma régua.
 
 import { InfoTooltip } from "@/components/cronograma/ui/InfoTooltip"
-import { SITUACOES_CADEIRA, comProfissional, type ContagemCadeiras } from "@/lib/cronograma/ocupacaoClinica"
-import { SITUACAO, fmtNum, fmtPct } from "./visual"
+import { SITUACOES_CADEIRA, comProfissional, type ContagemCadeiras, type SituacaoCadeira } from "@/lib/cronograma/ocupacaoClinica"
+import { SITUACAO, fmtNum, fmtPct, porcentagensQueSomam } from "./visual"
 
 interface Props {
   contagem: ContagemCadeiras
@@ -76,9 +76,15 @@ export function LegendaCapacidade({ contagem, camadaExplicacao, formato = "linha
    */
   formato?: "linha" | "lista"
 }) {
-  const pct = (n: number) => (contagem.total > 0 ? fmtPct(n / contagem.total) : "—")
   const vagas = (n: number) => <><b className="text-foreground">{fmtNum(n)}</b> {n === 1 ? "vaga" : "vagas"}</>
   const totalCom = comProfissional(contagem)
+  // Percentuais que fecham: os dois grupos somam 100% e as quatro situações
+  // somam exatamente o % do grupo "com profissional" (maior resto).
+  const [pctCom, pctVazia] = porcentagensQueSomam([totalCom, contagem.vazia], contagem.total)
+  const pctSub = Object.fromEntries(
+    porcentagensQueSomam(COM_PROFISSIONAL.map(s => contagem[s]), contagem.total, pctCom).map((v, i) => [COM_PROFISSIONAL[i], v]),
+  ) as Record<SituacaoCadeira, number>
+  const pct = (v: number) => (contagem.total > 0 ? `${v}%` : "—")
 
   if (formato === "lista") {
     const linha = "grid grid-cols-[0.75rem_minmax(0,1fr)_auto_3rem] items-center gap-3 px-3 py-2"
@@ -90,15 +96,15 @@ export function LegendaCapacidade({ contagem, camadaExplicacao, formato = "linha
             <MarcaComProfissional />
             <span>Com profissional na sala</span>
             <span className="text-right tabular-nums font-normal text-muted-foreground">{vagas(totalCom)}</span>
-            <span className="text-right tabular-nums">{pct(totalCom)}</span>
+            <span className="text-right tabular-nums">{pct(pctCom)}</span>
           </div>
           <ul className="divide-y divide-border border-y border-border">
             {COM_PROFISSIONAL.map(s => (
               <li key={s} className={`${linha} pl-7`} title={`${SITUACAO[s].descricao} ${SITUACAO[s].acao}`}>
                 <span className={`h-3 w-3 rounded-[3px] ${SITUACAO[s].cor}`} aria-hidden />
-                <span className="text-foreground">{SITUACAO[s].rotulo}</span>
+                <span className="text-foreground">{s === "regularizar" ? "Reservada sem agenda (ajustar Ocupação de Salas)" : SITUACAO[s].rotulo}</span>
                 <span className="text-right tabular-nums text-muted-foreground">{vagas(contagem[s])}</span>
-                <span className="text-right tabular-nums text-muted-foreground">{pct(contagem[s])}</span>
+                <span className="text-right tabular-nums text-muted-foreground">{pct(pctSub[s])}</span>
               </li>
             ))}
           </ul>
@@ -106,7 +112,7 @@ export function LegendaCapacidade({ contagem, camadaExplicacao, formato = "linha
             <span className={`h-3 w-3 rounded-[3px] border border-border ${SITUACAO.vazia.cor}`} aria-hidden />
             <span>Sem profissional na sala</span>
             <span className="text-right tabular-nums font-normal text-muted-foreground">{vagas(contagem.vazia)}</span>
-            <span className="text-right tabular-nums">{pct(contagem.vazia)}</span>
+            <span className="text-right tabular-nums">{pct(pctVazia)}</span>
           </div>
         </div>
       </div>
@@ -120,14 +126,14 @@ export function LegendaCapacidade({ contagem, camadaExplicacao, formato = "linha
         <div className="rounded-xl border border-border p-3">
           <div className="mb-2 flex flex-wrap items-center gap-x-2 text-sm font-bold text-foreground">
             <MarcaComProfissional /> Com profissional na sala
-            <span className="font-normal tabular-nums text-muted-foreground">{vagas(totalCom)} ({pct(totalCom)})</span>
+            <span className="font-normal tabular-nums text-muted-foreground">{vagas(totalCom)} ({pct(pctCom)})</span>
           </div>
           <ul className="grid gap-x-5 gap-y-1.5 text-sm text-muted-foreground sm:grid-cols-2">
             {COM_PROFISSIONAL.map(s => (
               <li key={s} className="inline-flex items-center gap-1.5" title={`${SITUACAO[s].descricao} ${SITUACAO[s].acao}`}>
                 <span className={`h-3 w-3 shrink-0 rounded-[3px] ${SITUACAO[s].cor}`} aria-hidden />
                 {SITUACAO[s].rotulo}:
-                <span className="tabular-nums">{vagas(contagem[s])} ({pct(contagem[s])})</span>
+                <span className="tabular-nums">{vagas(contagem[s])} ({pct(pctSub[s])})</span>
               </li>
             ))}
           </ul>
@@ -135,7 +141,7 @@ export function LegendaCapacidade({ contagem, camadaExplicacao, formato = "linha
         <div className="rounded-xl border border-border p-3">
           <div className="mb-2 flex flex-wrap items-center gap-x-2 text-sm font-bold text-foreground">
             <span className={`h-3 w-3 shrink-0 rounded-[3px] border border-border ${SITUACAO.vazia.cor}`} aria-hidden /> Sem profissional na sala
-            <span className="font-normal tabular-nums text-muted-foreground">{vagas(contagem.vazia)} ({pct(contagem.vazia)})</span>
+            <span className="font-normal tabular-nums text-muted-foreground">{vagas(contagem.vazia)} ({pct(pctVazia)})</span>
           </div>
           <p className="text-sm text-muted-foreground">{SITUACAO.vazia.descricao} {SITUACAO.vazia.acao}</p>
         </div>
