@@ -8,8 +8,9 @@
 // Paleta validada para daltonismo nos dois temas (ordinal, um matiz, passos
 // de luminosidade monotônicos) — não trocar uma cor sem trocar as três.
 //
-// Palavras: a unidade de medida que aparece na tela é "vaga" (um atendimento
-// de 40 min que cabe numa sala), nunca "cadeira" ou "bloco".
+// Palavras: a unidade de medida que aparece na tela é "vaga" (o lugar de um
+// profissional atendendo por 40 min numa sala — não um paciente; sessão em
+// grupo é 1 vaga), nunca "cadeira" ou "bloco".
 
 import type { SituacaoCadeira } from "@/lib/cronograma/ocupacaoClinica"
 

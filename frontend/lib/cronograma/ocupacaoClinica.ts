@@ -1,8 +1,9 @@
 // ─── OCUPAÇÃO CLÍNICA: CADA VAGA DE 40 MIN EM UMA SITUAÇÃO ───────────────────
 // Motor da aba Indicadores › Ocupação Clínica (UnidadeDashboardShell).
 //
-// A unidade de medida é a "vaga": um atendimento que cabe numa sala em um
-// horário da grade (40 min no padrão). Sala individual tem 1 vaga por
+// A unidade de medida é a "vaga": o lugar de UM PROFISSIONAL atendendo numa sala em um
+// horário da grade (40 min no padrão) — não um paciente: sessão em grupo (um
+// profissional, vários pacientes) é 1 vaga. Sala individual tem 1 vaga por
 // horário, dupla 2, múltipla 3. É exatamente o `slot.blocos` que
 // calcularSlotsDaSala já monta — aqui só classificamos cada bloco em UMA de
 // cinco situações:
@@ -99,7 +100,7 @@ export interface OcupacaoClinicaUnidade {
   /** Salas por status não-operacional, chaveado pelo código (adm/nti/bloqueada/…). */
   porStatus: Record<string, number>
   salasPorCapacidade: Record<SalaCapacidade, number>
-  /** Atendimentos que cabem ao mesmo tempo somando as salas em uso (individual 1, dupla 2, múltipla 3). */
+  /** Profissionais que cabem atendendo ao mesmo tempo somando as salas em uso (individual 1, dupla 2, múltipla 3). */
   atendimentosSimultaneos: number
   contagem: ContagemCadeiras
   porTurno: Record<TurnoClinica, ContagemCadeiras>

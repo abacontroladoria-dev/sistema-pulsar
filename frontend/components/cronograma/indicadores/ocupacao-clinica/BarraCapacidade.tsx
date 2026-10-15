@@ -63,7 +63,7 @@ export function LegendaCapacidade({ contagem }: { contagem: ContagemCadeiras }) 
   return (
     <div className="flex flex-col gap-1.5">
       <p className="text-sm text-muted-foreground">
-        Cada vaga é um atendimento de 40 min que cabe numa sala. Das <b className="text-foreground">{fmtNum(contagem.total)}</b> vagas da semana:
+        Cada vaga é o lugar de um profissional atendendo por 40 min. Sala individual tem 1 vaga por horário, dupla 2 e múltipla 3. Sessão em grupo conta como 1 vaga. Das <b className="text-foreground">{fmtNum(contagem.total)}</b> vagas da semana:
       </p>
       <ul className="flex flex-wrap gap-x-5 gap-y-1.5 text-sm text-muted-foreground">
         {SITUACOES_CADEIRA.map(s => (

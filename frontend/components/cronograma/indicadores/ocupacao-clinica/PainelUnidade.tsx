@@ -157,7 +157,7 @@ export function PainelUnidade({ unidade: u, periodo, fechamentos, rotuloStatus, 
 
         <Secao titulo="Salas">
           <p className="text-sm text-foreground">{status}</p>
-          {tipos && <p className="text-sm text-muted-foreground">{tipos} · cabem até {plural(u.atendimentosSimultaneos, "atendimento", "atendimentos")} ao mesmo tempo</p>}
+          {tipos && <p className="text-sm text-muted-foreground">{tipos} · cabem até {plural(u.atendimentosSimultaneos, "profissional", "profissionais")} atendendo ao mesmo tempo</p>}
           {u.inconsistencias > 0 && (
             <p className="mt-1 text-sm font-semibold text-rose-700 dark:text-rose-300">
               {plural(u.inconsistencias, "sala tem", "salas têm")} conflito em algum turno: mais pessoas reservadas do que cabem, ou terapia fora da sala exclusiva dela.
