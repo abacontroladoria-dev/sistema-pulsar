@@ -7,6 +7,8 @@ import { MessageRepository } from '../repositories/message.repository'
 import { AppointmentRepository } from '../repositories/appointment.repository'
 import { AuditRepository } from '../repositories/audit.repository'
 import { TagDefinitionRepository } from '../repositories/tag-definition.repository'
+import { CampaignPhraseRepository } from '../repositories/campaign-phrase.repository'
+import { resolverOrigem, type FraseCadastrada } from '../agente/origem-campanha'
 import { montarContexto, LIMITE_HISTORICO } from '../agente/contexto'
 import { montarFerramentaRegistrarTags } from '../agente/tags'
 import { executarTurno } from '../agente/orquestrador'
@@ -103,6 +105,7 @@ interface ConversaCandidata {
   inbox_id: string
   contact_id: string
   ai_context: Record<string, unknown> | null
+  tags: string[] | null
 }
 
 export async function processarSugestoesEvolution(
@@ -127,7 +130,7 @@ export async function processarSugestoesEvolution(
   const agora = Date.now()
   const { data: conversas, error: e2 } = await db
     .from('conversations')
-    .select('id, inbox_id, contact_id, ai_context')
+    .select('id, inbox_id, contact_id, ai_context, tags')
     .eq('organization_id', orgId)
     .in('inbox_id', inboxIds)
     .gte('last_message_at', new Date(agora - JANELA_MS).toISOString())
@@ -140,17 +143,18 @@ export async function processarSugestoesEvolution(
   const auditoria = new AuditRepository(supabase)
   const { conversationService, messageService } = createSystemServices()
 
-  // Catálogo para `registrar_tags`, só onde ela envia. Lido uma vez por tique.
-  // Falha isolada, como no worker da Meta: sem catálogo o turno sai sem a
-  // ferramenta de classificação, não sem resposta.
+  // Catálogo de tags, lido uma vez por tique: para a ORIGEM que o sistema
+  // aplica em toda conversa e para `registrar_tags`, que só vai onde ela
+  // envia. Falha isolada, como no worker da Meta: sem catálogo o turno sai sem
+  // classificação, não sem resposta.
   let porGrupoTags: Map<string, TagDefinition[]> | null = null
-  if (automaticas.size > 0) {
-    try {
-      porGrupoTags = await new TagDefinitionRepository(supabase).porGrupo(orgId)
-    } catch (err) {
-      console.warn('[sugestao evolution] catálogo de tags indisponível; turnos sem classificação', err)
-    }
+  try {
+    porGrupoTags = await new TagDefinitionRepository(supabase).porGrupo(orgId)
+  } catch (err) {
+    console.warn('[sugestao evolution] catálogo de tags indisponível; turnos sem classificação', err)
   }
+  // Frases de campanha: só lidas se alguma conversa do tique ainda não tiver ORIGEM.
+  let frases: FraseCadastrada[] | null = null
 
   for (const conv of (conversas ?? []) as ConversaCandidata[]) {
     if (r.sugeridas + r.enviadas + r.falhas >= MAX_POR_TIQUE || Date.now() > limite) break
@@ -203,6 +207,24 @@ export async function processarSugestoesEvolution(
       const n = historico.findIndex(m => m.direction !== 'inbound')
       const qtdInbound = n === -1 ? historico.length : n
       if (doTurno.filter(t => t.trim()).length === 0) continue
+
+      // ORIGEM pelo sistema (15/10): a Maia nunca a aplicava, e toda conversa
+      // deste número ficava sem. Decidida pela primeira mensagem da pessoa
+      // (a mais antiga do histórico) — campanha, texto de anúncio ou Contato
+      // Direto —, uma vez só: conversa que já tem ORIGEM não é tocada, nem a
+      // posta pela Maia ou pela atendente. Vale também no rascunho: é
+      // classificação da conversa, não fala de ninguém. Falha não cala o turno.
+      if (porGrupoTags && !temOrigem(conv.tags, porGrupoTags)) {
+        try {
+          const primeira = [...historico].reverse().find(m => m.direction === 'inbound' && m.message_type !== 'reaction')
+          if (primeira?.body?.trim()) {
+            frases ??= await new CampaignPhraseRepository(supabase).listar(orgId)
+            await conversationService.aplicarOrigemInicial(conv.id, resolverOrigem(primeira.body, frases), porGrupoTags)
+          }
+        } catch (err) {
+          console.warn('[sugestao evolution] ORIGEM não aplicada; seguindo', { conversationId: conv.id, err })
+        }
+      }
 
       // Contato que já é paciente (vínculo no TiTa): modo paciente (15/10). Em
       // 14/10 ele era transferido aqui, antes do turno; mas pais de pacientes
@@ -461,6 +483,11 @@ async function pacientesDoContato(
     console.warn('[sugestao evolution] vínculo de paciente indisponível; seguindo com o turno', err)
     return []
   }
+}
+
+function temOrigem(tags: string[] | null, porGrupo: Map<string, TagDefinition[]>): boolean {
+  const doGrupo = new Set((porGrupo.get('origem') ?? []).map(t => t.key))
+  return (tags ?? []).some(t => doGrupo.has(t))
 }
 
 async function humanoAssumiu(supabase: SupabaseClient, conversationId: string): Promise<boolean> {

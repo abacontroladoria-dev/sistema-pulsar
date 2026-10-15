@@ -2,7 +2,7 @@
 //
 //   npx tsx modules/atendimento/agente/origem-campanha.test.mts
 
-import { casarPrimeiraMensagem, type FraseCadastrada } from './origem-campanha.js'
+import { casarPrimeiraMensagem, origemSemCampanha, resolverOrigem, type FraseCadastrada } from './origem-campanha.js'
 
 let falhas = 0
 function checar(condicao: boolean, descricao: string, extra?: unknown) {
@@ -50,6 +50,26 @@ console.log('\n4. identificador de anúncio presente — não decide sozinho (ne
     { tipo: 'meta_referral', valor: 'abc123' },
   )
   checar(r === null, 'com identificador, o módulo devolve null (ver comentário do arquivo)', r)
+}
+
+// ORIGEM sem campanha (15/10/2026): texto de anúncio pela Regra 5b, o resto
+// é Contato Direto — o caso Tici abriu com "Oi" e ficou sem ORIGEM.
+for (const [texto, esperado] of [
+  ['Oi', 'contato_direto'],
+  ['Bom dia, vocês vão funcionar hoje?', 'contato_direto'],
+  ['Gostaria de saber sobre fonoaudiologia', 'meta_ads'],
+  ['Olá! Vim pelo site e quero informações', 'site'],
+  ['Vim do Linktree', 'linktree'],
+  ['tenho interesse em ABA', 'meta_ads'],
+] as const) {
+  checar(origemSemCampanha(texto) === esperado, `origem de "${texto}" = ${esperado}`, origemSemCampanha(texto))
+}
+{
+  const frases: FraseCadastrada[] = [{ origemTag: 'meta_ads', fraseExata: 'Quero FUSEX', campanha: 'FUSEX', prontaParaMatch: true }]
+  const c = resolverOrigem('Quero FUSEX', frases)
+  checar(c.origemTag === 'meta_ads' && c.campanha === 'FUSEX', 'frase cadastrada vence e traz a campanha', c)
+  const d = resolverOrigem('Oi', frases)
+  checar(d.origemTag === 'contato_direto' && d.campanha === null, 'sem frase: contato_direto sem campanha', d)
 }
 
 if (falhas > 0) {

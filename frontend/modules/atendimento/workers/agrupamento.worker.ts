@@ -16,7 +16,7 @@ import { executarTurno } from '../agente/orquestrador'
 import { FerramentasAgente } from '../agente/ferramentas'
 import { lerVagasGuardadas, paraGuardar, mesclarAiContext } from '../agente/vagas-oferecidas'
 import { montarFerramentaRegistrarTags } from '../agente/tags'
-import { casarPrimeiraMensagem } from '../agente/origem-campanha'
+import { resolverOrigem } from '../agente/origem-campanha'
 import { openAiProvider } from '../llm/openai.provider'
 import { lerAgentSettings } from '../agente/agent-settings'
 import { resolverModoEfetivo } from '../agente/modo-efetivo'
@@ -246,26 +246,23 @@ async function processarContato(
     console.warn('[worker agrupamento] catálogo de tags indisponível; turno sem classificação', err)
   }
 
-  // 4.5. Matcher de campanha (Regra 5) — só na PRIMEIRA mensagem de uma
-  // conversa NOVA. Roda antes do turno do agente e sem custo de LLM: se a
-  // primeira mensagem casar com uma frase cadastrada, aplica a tag de ORIGEM
-  // e grava o campo campanha diretamente. Sem casar, cai no fallback textual
-  // que a instrução de agente/tags.ts já cobre (prefixos "Gostaria de", "Vim
-  // do" etc.) — não precisa de lógica extra aqui.
+  // 4.5. ORIGEM (Regras 5 e 5b) — só na PRIMEIRA mensagem de uma conversa
+  // NOVA. Roda antes do turno do agente e sem custo de LLM: frase de campanha
+  // cadastrada aplica a tag e grava o campo campanha; sem ela, texto de
+  // anúncio vira meta_ads/site/linktree e o resto vira contato_direto
+  // (agente/origem-campanha.ts — até 15/10 isso ficava para a Maia, que
+  // nunca aplicou).
   //
   // Falha isolada, como os demais blocos opcionais deste worker: não achar
   // frase, ou o catálogo estar indisponível, não pode impedir a resposta.
   if (conversaNova) {
     try {
       const frases = await new CampaignPhraseRepository(supabase).listar(orgId)
-      const casada = casarPrimeiraMensagem(textos[0] ?? '', frases)
-      if (casada) {
-        await conversationService.aplicarOrigemDeCampanha(
-          conversation.id, casada.origemTag, casada.campanha, porGrupoTags,
-        )
-      }
+      await conversationService.aplicarOrigemInicial(
+        conversation.id, resolverOrigem(textos[0] ?? '', frases), porGrupoTags,
+      )
     } catch (err) {
-      console.warn('[worker agrupamento] matcher de campanha falhou; seguindo sem aplicar', err)
+      console.warn('[worker agrupamento] ORIGEM não aplicada; seguindo', err)
     }
   }
 

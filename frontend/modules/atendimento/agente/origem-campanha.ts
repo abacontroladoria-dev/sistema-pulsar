@@ -75,3 +75,48 @@ export function casarPrimeiraMensagem(
 
   return { origemTag: casada.origemTag, campanha: casada.campanha }
 }
+
+// ----------------------------------------------------------------------------
+// ORIGEM sem campanha cadastrada — Regra 5b + Contato Direto (15/10/2026)
+//
+// Até aqui, sem frase casada, a ORIGEM ficava para a Maia (description do
+// campo `origem` em agente/tags.ts). Ela nunca a aplicou: em 30 dias, nos dois
+// números, `registrar_tags` não foi chamada uma única vez, e nenhuma conversa
+// tinha ORIGEM. A regra é determinística, então quem decide é o sistema:
+//
+//   - primeira mensagem com cara de texto pré-preenchido por anúncio (os
+//     prefixos da Regra 5b) → meta_ads, ou site / linktree se a palavra
+//     aparecer;
+//   - o resto → contato_direto ("quando não vem de anúncio/site/Meta Ads/
+//     Google Ads/Linktree", regra do comercial em 15/10).
+//
+// A Maia ainda pode trocar depois, se a família contar (indicação médica,
+// escola): o grupo é single e registrar_tags sobrescreve.
+// ----------------------------------------------------------------------------
+
+const PREFIXOS_ANUNCIO = [
+  'gostaria de', 'vim do', 'vim pelo', 'ola vim', 'quero saber sobre', 'tenho interesse em',
+] as const
+
+export type OrigemSemCampanha = 'meta_ads' | 'site' | 'linktree' | 'contato_direto'
+
+export function origemSemCampanha(textoPrimeiraMensagem: string): OrigemSemCampanha {
+  // Sem acento, sem pontuação, espaço simples: "Olá! Vim pelo site" → "ola vim pelo site".
+  const t = textoPrimeiraMensagem
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+  if (!PREFIXOS_ANUNCIO.some((p) => t.startsWith(p))) return 'contato_direto'
+  if (/\blinktree\b/.test(t)) return 'linktree'
+  if (/\bsite\b/.test(t)) return 'site'
+  return 'meta_ads'
+}
+
+// Frase cadastrada primeiro (Regra 5, traz a campanha); sem ela, a regra acima.
+export function resolverOrigem(
+  textoPrimeiraMensagem: string,
+  frasesCadastradas:     readonly FraseCadastrada[],
+): { origemTag: string; campanha: string | null } {
+  const casada = casarPrimeiraMensagem(textoPrimeiraMensagem, frasesCadastradas)
+  if (casada) return casada
+  return { origemTag: origemSemCampanha(textoPrimeiraMensagem), campanha: null }
+}

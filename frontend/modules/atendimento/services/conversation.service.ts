@@ -664,6 +664,20 @@ export class ConversationService {
     await this.conv.updateCampanha(conversationId, campanha)
   }
 
+  // ORIGEM decidida pelo sistema na primeira mensagem (agente/origem-campanha.ts,
+  // resolverOrigem): com campanha, o caminho acima; sem, só a tag.
+  async aplicarOrigemInicial(
+    conversationId: string,
+    origem:         { origemTag: string; campanha: string | null },
+    porGrupo:       Map<string, TagDefinition[]>,
+  ): Promise<void> {
+    if (origem.campanha) {
+      await this.aplicarOrigemDeCampanha(conversationId, origem.origemTag, origem.campanha, porGrupo)
+      return
+    }
+    await this.atualizarTags(conversationId, { origem: origem.origemTag }, porGrupo, 'sistema', null)
+  }
+
   // -------------------------------------------------------------------------
   // atualizarObjecao
   //
