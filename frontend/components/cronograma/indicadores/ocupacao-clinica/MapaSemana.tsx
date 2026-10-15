@@ -2,20 +2,30 @@
 
 // MapaSemana — dia da semana × turno de uma unidade, cada célula pintada pelo
 // % do horário com paciente. No cartão mostra só esse número; no painel
-// (`detalhado`) mostra também o % com profissional embaixo.
+// (`detalhado`) mostra também o % com profissional embaixo. Turno fechado por
+// feriado aparece como "Feriado" — ele já está fora da conta, não é alerta.
 
 import { DOW_PT } from "@/lib/cronograma/ocupacaoConst"
-import { contagemVazia, pctComPaciente, pctComProfissional, type OcupacaoClinicaUnidade, type TurnoClinica } from "@/lib/cronograma/ocupacaoClinica"
+import {
+  contagemVazia,
+  feriadoDoTurno,
+  pctComPaciente,
+  pctComProfissional,
+  type FechamentoDia,
+  type OcupacaoClinicaUnidade,
+  type TurnoClinica,
+} from "@/lib/cronograma/ocupacaoClinica"
 import { CLASSE_ESCALA_MAPA, fmtPct, fundoMapa } from "./visual"
 
 const TURNOS: TurnoClinica[] = ["Manhã", "Tarde"]
 
 interface Props {
   unidade: Pick<OcupacaoClinicaUnidade, "porDiaTurno" | "dias">
+  fechamentos?: FechamentoDia[]
   detalhado?: boolean
 }
 
-export function MapaSemana({ unidade, detalhado = false }: Props) {
+export function MapaSemana({ unidade, fechamentos = [], detalhado = false }: Props) {
   const dias = unidade.dias.length ? unidade.dias : [1, 2, 3, 4, 5]
 
   return (
@@ -29,7 +39,7 @@ export function MapaSemana({ unidade, detalhado = false }: Props) {
           <span key={d} className="text-center text-xs font-bold text-muted-foreground">{DOW_PT[d]}</span>
         ))}
         {TURNOS.map(turno => (
-          <Linha key={turno} turno={turno} dias={dias} unidade={unidade} detalhado={detalhado} />
+          <Linha key={turno} turno={turno} dias={dias} unidade={unidade} fechamentos={fechamentos} detalhado={detalhado} />
         ))}
       </div>
       <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
@@ -44,12 +54,27 @@ export function MapaSemana({ unidade, detalhado = false }: Props) {
   )
 }
 
-function Linha({ turno, dias, unidade, detalhado }: { turno: TurnoClinica; dias: number[]; unidade: Props["unidade"]; detalhado: boolean }) {
+function Linha({ turno, dias, unidade, fechamentos, detalhado }: {
+  turno: TurnoClinica
+  dias: number[]
+  unidade: Props["unidade"]
+  fechamentos: FechamentoDia[]
+  detalhado: boolean
+}) {
   return (
     <>
       <span className="flex items-center text-xs font-bold text-muted-foreground">{turno}</span>
       {dias.map(d => {
         const c = unidade.porDiaTurno[`${d}|${turno}`] ?? contagemVazia()
+        const feriado = feriadoDoTurno(fechamentos, d, turno)
+        if (feriado) {
+          return (
+            <span key={d} title={`${feriado}: fora da conta`} aria-label={`${DOW_PT[d]} ${turno}: feriado (${feriado}), fora da conta`}
+              className="flex min-h-10 items-center justify-center rounded-md bg-muted/60 text-xs font-semibold text-muted-foreground">
+              Feriado
+            </span>
+          )
+        }
         if (c.total === 0) {
           return (
             <span key={d} className="flex min-h-10 items-center justify-center rounded-md border border-dashed border-border text-xs text-muted-foreground" aria-label={`${DOW_PT[d]} ${turno}: sala fechada`}>
@@ -60,7 +85,7 @@ function Linha({ turno, dias, unidade, detalhado }: { turno: TurnoClinica; dias:
         const pac = pctComPaciente(c) ?? 0
         const prof = pctComProfissional(c) ?? 0
         const { background, escuro } = fundoMapa(pac)
-        const texto = `${DOW_PT[d]} · ${turno}: ${fmtPct(pac)} com paciente, ${fmtPct(prof)} com profissional — ${c.aberta} com agenda aberta, ${c.regularizar} a regularizar`
+        const texto = `${DOW_PT[d]} · ${turno}: ${fmtPct(pac)} com paciente, ${fmtPct(prof)} com profissional. ${c.aberta} vagas livres para agendar.`
         return (
           <span
             key={d}

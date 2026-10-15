@@ -1,6 +1,7 @@
 // Exportação XLSX da Ocupação Clínica. Mantém as colunas que a planilha antiga
-// já tinha (salas, slots, % por slot, blocos) e acrescenta as cinco situações,
-// o recorte dia × turno e as pendências nominais.
+// já tinha (salas, slots, % por slot) e acrescenta as cinco situações (em
+// vagas de 40 min, com os mesmos nomes da tela), o recorte dia × turno e as
+// pessoas de cada situação.
 
 import * as XLSX from "xlsx"
 import { DOW_PT } from "@/lib/cronograma/ocupacaoConst"
@@ -10,38 +11,42 @@ import { CAPACIDADE_LABEL_CURTO, capacidadeProjetadaSala, type SalaComOcupacao }
 import {
   comProfissional,
   contagemVazia,
+  feriadoDoTurno,
   pctAproveitamento,
   pctComPaciente,
   pctComProfissional,
   type ContagemCadeiras,
+  type FechamentoDia,
   type OcupacaoClinicaUnidade,
+  type PendenciaProfissional,
 } from "@/lib/cronograma/ocupacaoClinica"
 
 const pct = (v: number | null) => (v === null ? null : Math.round(v * 1000) / 10)
 
 function colunasContagem(c: ContagemCadeiras) {
   return {
-    Horarios_Cadeira: c.total,
+    Vagas_40min: c.total,
     Com_Paciente: c.paciente,
-    Agenda_Aberta: c.aberta,
+    Livre_para_Agendar: c.aberta,
     Administrativo: c.administrativo,
-    A_Regularizar: c.regularizar,
+    Reservada_sem_Agenda: c.regularizar,
     Sem_Profissional: c.vazia,
     Com_Profissional: comProfissional(c),
     Pct_Com_Profissional: pct(pctComProfissional(c)),
     Pct_Com_Paciente: pct(pctComPaciente(c)),
-    Pct_Vira_Atendimento: pct(pctAproveitamento(c)),
+    Pct_Profissional_com_Paciente: pct(pctAproveitamento(c)),
   }
 }
 
 export function exportarOcupacaoClinica(args: {
   unidades: OcupacaoClinicaUnidade[]
   salasComOcupacao: SalaComOcupacao[]
+  fechamentos: FechamentoDia[]
   rotuloStatus: (codigo: string) => string
   inicio: string
   fim: string
 }) {
-  const { unidades, salasComOcupacao, rotuloStatus, inicio, fim } = args
+  const { unidades, salasComOcupacao, fechamentos, rotuloStatus, inicio, fim } = args
   const coluna = (codigo: string) => `Salas_${rotuloStatus(codigo).replace(/[^A-Za-z0-9]+/g, "_")}`
   const statusExistentes = [...new Set(unidades.flatMap(u => Object.keys(u.porStatus)))].sort()
   const itensDaUnidade = (u: string) => salasComOcupacao.filter(i => normalizarUnidadeOcupacao(i.sala.unidade_nome) === u)
@@ -54,15 +59,17 @@ export function exportarOcupacaoClinica(args: {
       Salas_Total: u.salasTotal,
       Salas_Em_Uso: u.salasOperacionais,
       ...Object.fromEntries(statusExistentes.map(c => [coluna(c), u.porStatus[c] ?? 0])),
-      Salas_Unico: u.salasPorCapacidade.unico,
-      Salas_Duplo: u.salasPorCapacidade.duplo,
-      Salas_Multiplo: u.salasPorCapacidade.multiplo,
-      Cadeiras: u.cadeiras,
+      Salas_Individuais: u.salasPorCapacidade.unico,
+      Salas_Duplas: u.salasPorCapacidade.duplo,
+      Salas_Multiplas: u.salasPorCapacidade.multiplo,
+      Atendimentos_ao_Mesmo_Tempo: u.atendimentosSimultaneos,
       ...colunasContagem(u.contagem),
-      Sessoes_Fora_do_Mapa: u.foraDoMapa.sessoes,
-      Profissionais_Alocados: u.profissionaisAlocados,
+      Reservada_sem_Agenda_no_Turno: u.regularizarPorMotivo.semAgendaNoTurno,
+      Reservada_Atende_Parte_do_Turno: u.regularizarPorMotivo.foraDoHorario,
+      Sessoes_sem_Sala_Definida: u.semSalaDefinida.sessoes,
+      Profissionais: u.profissionaisAlocados,
       Pacientes: u.pacientes,
-      Conflitos_de_Sala: u.inconsistencias,
+      Salas_com_Conflito: u.inconsistencias,
       Slots_Ocupados: slot.slotsOcupados,
       Slots_Total: slot.slotsTotal,
       Pct_Slots_com_Profissional: pct(slot.pct),
@@ -81,6 +88,7 @@ export function exportarOcupacaoClinica(args: {
       Unidade: u.unidade,
       Dia: DOW_PT[d],
       Turno: t,
+      Feriado: feriadoDoTurno(fechamentos, d, t) ?? "",
       ...colunasContagem(u.porDiaTurno[`${d}|${t}`] ?? contagemVazia()),
     })))
   })
@@ -95,12 +103,12 @@ export function exportarOcupacaoClinica(args: {
       Numero_Sala: sala.numero_sala,
       Capacidade: CAPACIDADE_LABEL_CURTO[sala.capacidade],
       Status: rotuloStatus(sala.status),
-      Cadeiras: capacidadeProjetadaSala(sala.capacidade, sala.status),
+      Atendimentos_ao_Mesmo_Tempo: capacidadeProjetadaSala(sala.capacidade, sala.status),
       ...colunasContagem(situacaoPorSala.get(sala.id) ?? contagemVazia()),
       Slots_Ocupados: slot.slotsOcupados,
       Slots_Total: slot.slotsTotal,
       Pct_Slots_com_Profissional: pct(slot.pct),
-      Conflitos_de_Sala: slot.inconsistencias,
+      Conflitos: slot.inconsistencias,
     }
   }).sort((a, b) => {
     const cmp = a.Unidade.localeCompare(b.Unidade, "pt-BR")
@@ -110,14 +118,16 @@ export function exportarOcupacaoClinica(args: {
     return a.Numero_Sala.localeCompare(b.Numero_Sala, "pt-BR")
   })
 
-  const ROTULO = { aberta: "Agenda aberta", administrativo: "Administrativo", regularizar: "A regularizar" } as const
-  const pendencias = unidades.flatMap(u => [
-    ...(Object.keys(ROTULO) as (keyof typeof ROTULO)[]).flatMap(k => u.pendencias[k].map(p => ({
-      Unidade: u.unidade, Situacao: ROTULO[k], Profissional: p.profissional, Terapia: p.terapia ?? "", Quantidade: p.horarios, Medida: "horários", Salas: p.salas.join(", "),
-    }))),
-    ...u.foraDoMapa.profissionais.map(p => ({
-      Unidade: u.unidade, Situacao: "Fora do mapa de salas", Profissional: p.profissional, Terapia: p.terapia ?? "", Quantidade: p.horarios, Medida: "sessões", Salas: "",
-    })),
+  const linha = (unidade: string, situacao: string, medida: string) => (p: PendenciaProfissional) => ({
+    Unidade: unidade, Situacao: situacao, Profissional: p.profissional, Terapia: p.terapia ?? "",
+    Quantidade: p.horarios, Medida: medida, Salas: p.salas.join(", "), Turnos: p.turnos.join(", "),
+  })
+  const pessoas = unidades.flatMap(u => [
+    ...u.pendencias.aberta.map(linha(u.unidade, "Livre para agendar", "vagas")),
+    ...u.pendencias.administrativo.map(linha(u.unidade, "Administrativo", "vagas")),
+    ...u.pendencias.regularizar.foraDoHorario.map(linha(u.unidade, "Atende só parte do turno", "vagas")),
+    ...u.pendencias.regularizar.semAgendaNoTurno.map(linha(u.unidade, "Reservada sem nenhuma agenda no turno", "vagas")),
+    ...u.semSalaDefinida.profissionais.map(linha(u.unidade, "Atende sem sala definida", "sessões")),
   ])
 
   const wb = XLSX.utils.book_new()
@@ -125,6 +135,6 @@ export function exportarOcupacaoClinica(args: {
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(porTurno), "Por unidade e turno")
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(porDiaTurno), "Por dia e turno")
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(porSala), "Por sala")
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(pendencias), "Pendencias")
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(pessoas), "Pessoas por situacao")
   XLSX.writeFile(wb, `Ocupacao_Clinica_${inicio}_a_${fim}.xlsx`)
 }

@@ -5,7 +5,7 @@
 
 import { useMemo, useState } from "react"
 import { SortableTh, compararValores, type SortDir } from "@/components/cronograma/ui/SortableTh"
-import { pctAproveitamento, pctComPaciente, pctComProfissional, type OcupacaoClinicaUnidade } from "@/lib/cronograma/ocupacaoClinica"
+import { pctAproveitamento, pctComPaciente, pctComProfissional, pessoasParaAjustarNoMapa, type OcupacaoClinicaUnidade } from "@/lib/cronograma/ocupacaoClinica"
 import { SITUACAO, fmtNum, fmtPct } from "./visual"
 
 interface Props {
@@ -16,14 +16,13 @@ interface Props {
 type Linha = {
   u: OcupacaoClinicaUnidade
   unidade: string
-  cadeiras: number
+  salas: number
   prof: number
   pac: number
   aproveitamento: number
   aberta: number
-  regularizar: number
-  fora: number
   vazia: number
+  ajustar: number
 }
 
 export function TabelaComparar({ unidades, onAbrir }: Props) {
@@ -33,14 +32,13 @@ export function TabelaComparar({ unidades, onAbrir }: Props) {
     const base: Linha[] = unidades.map(u => ({
       u,
       unidade: u.unidade,
-      cadeiras: u.cadeiras,
+      salas: u.salasOperacionais,
       prof: pctComProfissional(u.contagem) ?? 0,
       pac: pctComPaciente(u.contagem) ?? 0,
       aproveitamento: pctAproveitamento(u.contagem) ?? 0,
       aberta: u.contagem.aberta,
-      regularizar: u.contagem.regularizar,
-      fora: u.foraDoMapa.sessoes,
       vazia: u.contagem.vazia,
+      ajustar: pessoasParaAjustarNoMapa(u).total,
     }))
     const ord = [...base].sort((a, b) => compararValores(a[sort.key as keyof Linha], b[sort.key as keyof Linha]) * (sort.dir === "asc" ? 1 : -1))
     // Terceirizada sempre no fim, qualquer que seja a ordenação.
@@ -61,14 +59,13 @@ export function TabelaComparar({ unidades, onAbrir }: Props) {
         <thead className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
           <tr>
             {th("Unidade", "unidade", "left")}
-            {th("Cadeiras", "cadeiras")}
-            {th("Com profissional", "prof", "left")}
-            {th("Com paciente", "pac", "left")}
-            {th("Vira atendimento", "aproveitamento", "right", "Do tempo com profissional, quanto tem paciente.")}
-            {th("Agenda aberta", "aberta", "right", SITUACAO.aberta.descricao)}
-            {th("A regularizar", "regularizar", "right", SITUACAO.regularizar.descricao)}
-            {th("Fora do mapa", "fora", "right", "Sessões de quem atende na unidade sem estar alocado em sala naquele horário.")}
-            {th("Sem profissional", "vazia", "right", SITUACAO.vazia.descricao)}
+            {th("Salas em uso", "salas")}
+            {th("Com profissional", "prof", "left", "Parte do tempo das salas em uso em que há um profissional reservado.")}
+            {th("Com paciente", "pac", "left", "Parte do tempo das salas em uso em que há paciente agendado.")}
+            {th("Profissional com paciente", "aproveitamento", "right", "Quando há profissional na sala, quanto desse tempo é com paciente.")}
+            {th("Vagas livres para agendar", "aberta", "right", `Vagas de 40 min na semana. ${SITUACAO.aberta.descricao}`)}
+            {th("Vagas sem profissional", "vazia", "right", `Vagas de 40 min na semana. ${SITUACAO.vazia.descricao}`)}
+            {th("Ajustes no mapa de salas", "ajustar", "right", "Pessoas reservadas numa sala sem agenda no turno, ou atendendo sem sala definida. Corrige-se em Ocupação de Salas › Regularizações.")}
           </tr>
         </thead>
         <tbody>
@@ -80,14 +77,15 @@ export function TabelaComparar({ unidades, onAbrir }: Props) {
                 </button>
                 {l.u.terceirizada && <div className="text-xs">fora do total da rede</div>}
               </td>
-              <td className="text-right tabular-nums">{fmtNum(l.cadeiras)}</td>
+              <td className="text-right tabular-nums">{fmtNum(l.salas)}</td>
               <td><MiniBarra valor={l.prof} cor={SITUACAO.aberta.cor} /></td>
               <td><MiniBarra valor={l.pac} cor={SITUACAO.paciente.cor} /></td>
               <td className="text-right font-semibold tabular-nums">{fmtPct(l.aproveitamento)}</td>
               <td className="text-right tabular-nums">{fmtNum(l.aberta)}</td>
-              <td className={`text-right tabular-nums ${l.regularizar > 0 ? "font-semibold text-amber-700 dark:text-amber-400" : ""}`}>{fmtNum(l.regularizar)}</td>
-              <td className={`text-right tabular-nums ${l.fora > 0 ? "font-semibold text-amber-700 dark:text-amber-400" : ""}`}>{fmtNum(l.fora)}</td>
               <td className="text-right tabular-nums">{fmtNum(l.vazia)}</td>
+              <td className={`text-right tabular-nums ${l.ajustar > 0 ? "font-semibold text-amber-700 dark:text-amber-400" : ""}`}>
+                {l.ajustar > 0 ? `${fmtNum(l.ajustar)} ${l.ajustar === 1 ? "pessoa" : "pessoas"}` : "—"}
+              </td>
             </tr>
           ))}
         </tbody>

@@ -1,6 +1,6 @@
 "use client"
 
-// BarraCapacidade — os horários de cadeira da semana enfileirados nas cinco
+// BarraCapacidade — as vagas de 40 min da semana enfileiradas nas cinco
 // situações. O 1º trecho é o "% com paciente"; tudo que é colorido (os quatro
 // primeiros) é o "% com profissional", marcado pela chave embaixo. Assim os
 // dois números ficam na mesma régua.
@@ -32,7 +32,7 @@ export function BarraCapacidade({ contagem, tamanho = "md", chave = true }: Prop
             key={s}
             className={`h-full min-w-[3px] ${SITUACAO[s].cor}`}
             style={{ width: `${(contagem[s] / total) * 100}%` }}
-            title={`${SITUACAO[s].rotulo}: ${fmtNum(contagem[s])} horários (${fmtPct(contagem[s] / total)})`}
+            title={`${SITUACAO[s].rotulo}: ${fmtNum(contagem[s])} vagas (${fmtPct(contagem[s] / total)})`}
           />
         ))}
       </div>

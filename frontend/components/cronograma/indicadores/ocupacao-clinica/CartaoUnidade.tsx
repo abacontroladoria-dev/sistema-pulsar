@@ -1,12 +1,20 @@
 "use client"
 
 // CartaoUnidade — o "quadrado" de cada unidade: % com profissional e % com
-// paciente lado a lado, a barra que contém os dois, o mapa da semana e os
-// atalhos do que fazer com a folga. Clique abre o PainelUnidade.
+// paciente lado a lado, a barra que contém os dois, o mapa da semana e o que
+// dá para fazer com a folga. Clique abre o PainelUnidade.
 
 import type { KeyboardEvent } from "react"
 import { ChevronRight } from "lucide-react"
-import { pctAproveitamento, pctComPaciente, pctComProfissional, type ContagemCadeiras, type OcupacaoClinicaUnidade } from "@/lib/cronograma/ocupacaoClinica"
+import {
+  pctAproveitamento,
+  pctComPaciente,
+  pctComProfissional,
+  pessoasParaAjustarNoMapa,
+  type ContagemCadeiras,
+  type FechamentoDia,
+  type OcupacaoClinicaUnidade,
+} from "@/lib/cronograma/ocupacaoClinica"
 import { BarraCapacidade, MarcaComProfissional } from "./BarraCapacidade"
 import { MapaSemana } from "./MapaSemana"
 import { COR_ALERTA, SITUACAO, fmtNum, fmtPct, plural } from "./visual"
@@ -14,21 +22,24 @@ import { COR_ALERTA, SITUACAO, fmtNum, fmtPct, plural } from "./visual"
 /** Os dois números grandes, sempre na mesma ordem e com a mesma marca da barra. */
 export function ParDeNumeros({ contagem, grande = false, casas = 0 }: { contagem: ContagemCadeiras; grande?: boolean; casas?: number }) {
   const valor = grande ? "text-4xl sm:text-5xl" : "text-3xl sm:text-4xl"
+  const aproveitamento = pctAproveitamento(contagem)
   return (
-    <div className="flex flex-wrap items-end gap-x-8 gap-y-2">
-      <div>
-        <div className={`${valor} font-black leading-none tracking-tight text-foreground`}>{fmtPct(pctComProfissional(contagem), casas)}</div>
-        <div className="mt-1.5 inline-flex items-center gap-1.5 text-sm font-semibold text-muted-foreground"><MarcaComProfissional />Com profissional</div>
-      </div>
-      <div>
-        <div className={`${valor} font-black leading-none tracking-tight text-foreground`}>{fmtPct(pctComPaciente(contagem), casas)}</div>
-        <div className="mt-1.5 inline-flex items-center gap-1.5 text-sm font-semibold text-muted-foreground">
-          <span className={`h-3 w-3 rounded-[3px] ${SITUACAO.paciente.cor}`} aria-hidden />Com paciente
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-end gap-x-8 gap-y-2">
+        <div>
+          <div className={`${valor} font-black leading-none tracking-tight text-foreground`}>{fmtPct(pctComProfissional(contagem), casas)}</div>
+          <div className="mt-1.5 inline-flex items-center gap-1.5 text-sm font-semibold text-muted-foreground"><MarcaComProfissional />Com profissional</div>
+        </div>
+        <div>
+          <div className={`${valor} font-black leading-none tracking-tight text-foreground`}>{fmtPct(pctComPaciente(contagem), casas)}</div>
+          <div className="mt-1.5 inline-flex items-center gap-1.5 text-sm font-semibold text-muted-foreground">
+            <span className={`h-3 w-3 rounded-[3px] ${SITUACAO.paciente.cor}`} aria-hidden />Com paciente
+          </div>
         </div>
       </div>
-      {pctAproveitamento(contagem) !== null && (
-        <p className="pb-1 text-sm text-muted-foreground">
-          <b className="text-foreground">{fmtPct(pctAproveitamento(contagem))}</b> do tempo com profissional vira atendimento
+      {aproveitamento !== null && (
+        <p className="text-sm text-muted-foreground">
+          Quando há profissional na sala, <b className="text-foreground">{fmtPct(aproveitamento)}</b> do tempo é com paciente.
         </p>
       )}
     </div>
@@ -50,10 +61,12 @@ function clicavel(onAbrir: () => void) {
 
 interface Props {
   unidade: OcupacaoClinicaUnidade
+  fechamentos?: FechamentoDia[]
   onAbrir: () => void
 }
 
-export function CartaoUnidade({ unidade: u, onAbrir }: Props) {
+export function CartaoUnidade({ unidade: u, fechamentos, onAbrir }: Props) {
+  const ajustar = pessoasParaAjustarNoMapa(u)
   return (
     <div
       {...clicavel(onAbrir)}
@@ -64,7 +77,7 @@ export function CartaoUnidade({ unidade: u, onAbrir }: Props) {
         <div className="min-w-0">
           <h3 className="text-lg font-black text-foreground">{u.unidade}</h3>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            {plural(u.salasOperacionais, "sala em uso", "salas em uso")} · {plural(u.cadeiras, "cadeira", "cadeiras")} · {plural(u.profissionaisAlocados, "profissional", "profissionais")} · {plural(u.pacientes, "paciente", "pacientes")}
+            {plural(u.salasOperacionais, "sala em uso", "salas em uso")} · {plural(u.profissionaisAlocados, "profissional", "profissionais")} · {plural(u.pacientes, "paciente", "pacientes")}
           </p>
         </div>
         <span className="inline-flex shrink-0 items-center gap-0.5 pt-1 text-sm font-bold text-sky-700 group-hover:underline dark:text-sky-400">
@@ -74,26 +87,21 @@ export function CartaoUnidade({ unidade: u, onAbrir }: Props) {
 
       <ParDeNumeros contagem={u.contagem} />
       <div className="w-full"><BarraCapacidade contagem={u.contagem} /></div>
-      <div className="w-full"><MapaSemana unidade={u} /></div>
+      <div className="w-full"><MapaSemana unidade={u} fechamentos={fechamentos} /></div>
 
       <div className="flex flex-wrap gap-2">
         <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/50 px-3 py-1 text-sm font-semibold text-foreground">
           <span className={`h-2.5 w-2.5 rounded-sm ${SITUACAO.aberta.cor}`} aria-hidden />
-          <b className="tabular-nums">{fmtNum(u.contagem.aberta)}</b> com agenda aberta
+          <b className="tabular-nums">{fmtNum(u.contagem.aberta)}</b> {u.contagem.aberta === 1 ? "vaga livre" : "vagas livres"} para agendar
         </span>
-        {u.contagem.regularizar > 0 && (
+        {ajustar.total > 0 && (
           <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-semibold ${COR_ALERTA}`}>
-            <b className="tabular-nums">{fmtNum(u.contagem.regularizar)}</b> a regularizar
-          </span>
-        )}
-        {u.foraDoMapa.sessoes > 0 && (
-          <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-semibold ${COR_ALERTA}`}>
-            <b className="tabular-nums">{fmtNum(u.foraDoMapa.sessoes)}</b> {u.foraDoMapa.sessoes === 1 ? "sessão" : "sessões"} fora do mapa
+            Mapa de salas: <b className="tabular-nums">{plural(ajustar.total, "pessoa", "pessoas")}</b> para ajustar
           </span>
         )}
         {u.inconsistencias > 0 && (
           <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-3 py-1 text-sm font-semibold text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
-            <b className="tabular-nums">{fmtNum(u.inconsistencias)}</b> {u.inconsistencias === 1 ? "conflito" : "conflitos"} de sala
+            <b className="tabular-nums">{fmtNum(u.inconsistencias)}</b> {u.inconsistencias === 1 ? "sala com conflito" : "salas com conflito"}
           </span>
         )}
       </div>
@@ -115,7 +123,7 @@ export function LinhaTerceirizada({ unidade: u, onAbrir }: Props) {
         </div>
       </div>
       <div className="text-sm text-muted-foreground">
-        <b className="text-foreground">{fmtPct(pctComProfissional(u.contagem))}</b> com profissional · <b className="text-foreground">{fmtPct(pctComPaciente(u.contagem))}</b> com paciente · {plural(u.contagem.total, "horário", "horários")}
+        <b className="text-foreground">{fmtPct(pctComProfissional(u.contagem))}</b> com profissional · <b className="text-foreground">{fmtPct(pctComPaciente(u.contagem))}</b> com paciente
       </div>
       <span className="inline-flex items-center gap-0.5 text-sm font-bold text-sky-700 dark:text-sky-400">Detalhes <ChevronRight size={16} aria-hidden /></span>
     </div>

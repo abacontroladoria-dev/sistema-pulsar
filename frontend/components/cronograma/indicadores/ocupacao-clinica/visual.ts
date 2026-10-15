@@ -1,12 +1,15 @@
-// Vocabulário visual da Ocupação Clínica — uma fonte só para barra, legenda,
-// mapa da semana, painel e tabela não divergirem.
+// Vocabulário visual e de texto da Ocupação Clínica — uma fonte só para barra,
+// legenda, mapa da semana, painel e tabela não divergirem.
 //
 // As três situações "com profissional" usam UM tom de azul em três
 // intensidades (paciente = mais forte): é uma sequência, não categorias
-// independentes. Âmbar listrado é a única cor de alerta (a regularizar), e a
-// cadeira vazia é o próprio trilho cinza da barra. Paleta validada para
-// daltonismo nos dois temas (ordinal, um matiz, passos de luminosidade
-// monotônicos) — não trocar uma cor sem trocar as três.
+// independentes. Âmbar listrado é a única cor de alerta (reservada sem
+// agenda), e a vaga sem profissional é o próprio trilho cinza da barra.
+// Paleta validada para daltonismo nos dois temas (ordinal, um matiz, passos
+// de luminosidade monotônicos) — não trocar uma cor sem trocar as três.
+//
+// Palavras: a unidade de medida que aparece na tela é "vaga" (um atendimento
+// de 40 min que cabe numa sala), nunca "cadeira" ou "bloco".
 
 import type { SituacaoCadeira } from "@/lib/cronograma/ocupacaoClinica"
 
@@ -23,37 +26,40 @@ export interface InfoSituacao {
 export const SITUACAO: Record<SituacaoCadeira, InfoSituacao> = {
   paciente: {
     rotulo: "Com paciente",
-    descricao: "Sessão agendada do profissional alocado na cadeira, no horário exato.",
-    acao: "Está funcionando.",
+    descricao: "O profissional reservado na sala tem paciente agendado nesse horário.",
+    acao: "",
     cor: "bg-[#1F4E79] dark:bg-[#9CC7E6]",
   },
   aberta: {
-    rotulo: "Agenda aberta",
-    descricao: "O profissional está alocado e tem horário Livre no TiTa, sem paciente.",
-    acao: "Dá para vender.",
+    rotulo: "Livre para agendar",
+    descricao: "O profissional está na sala e tem horário livre no TiTa, ainda sem paciente.",
+    acao: "Dá para agendar paciente novo nesses horários.",
     cor: "bg-[#3E8CC4] dark:bg-[#5BA6D9]",
   },
   administrativo: {
     rotulo: "Administrativo",
-    descricao: "O profissional está alocado, mas em Horário Administrativo ou Bloqueado no TiTa.",
-    acao: "Rever se precisa ocupar a sala.",
+    descricao: "O profissional está na sala, mas em horário administrativo ou bloqueado no TiTa.",
+    acao: "Vale conferir se esse horário precisa mesmo ocupar a sala.",
     cor: "bg-[#86B8DE] dark:bg-[#2F78B0]",
   },
   regularizar: {
-    rotulo: "A regularizar",
-    descricao: "O profissional está alocado na sala, mas não tem nada no TiTa nesse horário.",
-    acao: "Corrigir o mapa de salas ou a agenda.",
+    rotulo: "Reservada sem agenda",
+    descricao: "A sala está reservada para o profissional, mas ele não tem nada no TiTa nesse horário: nem paciente, nem horário livre. A sala fica parada.",
+    acao: "Tire a reserva na Ocupação de Salas ou abra a agenda no TiTa.",
     cor: "bg-[image:repeating-linear-gradient(45deg,#C98512_0_3px,#F1D49B_3px_6px)] dark:bg-[image:repeating-linear-gradient(45deg,#E0A642_0_3px,#5a4216_3px_6px)]",
   },
   vazia: {
     rotulo: "Sem profissional",
-    descricao: "Cadeira sem ninguém alocado no mapa de salas.",
-    acao: "Alocar alguém ou contratar.",
+    descricao: "Ninguém está reservado nessa sala nesse horário.",
+    acao: "Espaço para colocar um profissional ou contratar.",
     cor: "bg-slate-200 dark:bg-slate-700/70",
   },
 }
 
-/** Cor do texto de alerta (âmbar) que acompanha "a regularizar"/"fora do mapa". */
+/** Tela da Ocupação de Salas que lista, por profissional, reserva sem agenda e agenda sem reserva. */
+export const LINK_REGULARIZACOES = "/relacionamento-prestador/ocupacao-salas?view=regularizacoes"
+
+/** Fundo/texto de alerta (âmbar) dos chips de ajuste do mapa de salas. */
 export const COR_ALERTA = "bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
 
 /** Escala do mapa da semana: mistura do azul forte sobre um fundo neutro, por tema. */
