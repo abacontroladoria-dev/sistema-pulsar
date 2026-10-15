@@ -31,7 +31,7 @@ const TAB_SUBTITLES: Record<TabKey, string> = {
   "previsao-receitas": "Receita mensal projetada, cruzando sessões com valores cadastrados por convênio",
   "alimentar-bd": "Lançamento manual de NF e pagamentos recebidos, por paciente e mês",
   "comparativo-sessoes": "Compara sessões agendadas entre dois períodos: total geral, por unidade e por paciente",
-  "entrada-convenio": "Leve, ASSIM e FUSEx: do pedido à 1ª sessão, meta de 19 dias úteis",
+  "entrada-convenio": "Leve, ASSIM e FUSEx: quem precisa agir em cada paciente, do pedido à 1ª sessão",
 }
 
 function IndicadoresContent() {

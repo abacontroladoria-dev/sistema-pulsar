@@ -469,11 +469,11 @@ function BotoesLink({ pacienteNome, pacienteCpf }: { pacienteNome: string; pacie
   const semCpf = !pacienteCpf || pacienteCpf.replace(/\D/g, "").length !== 11
 
   function link() {
-    return linkFormularioDisponibilidade(window.location.origin)
+    return linkFormularioDisponibilidade()
   }
 
   function mensagem() {
-    return mensagemFormularioDisponibilidade(window.location.origin, pacienteNome)
+    return mensagemFormularioDisponibilidade(pacienteNome)
   }
 
   async function copiar(texto: string, sucesso: string) {
