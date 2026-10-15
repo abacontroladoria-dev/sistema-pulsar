@@ -394,6 +394,7 @@ function OcupacaoSalasConteudo() {
               alocacoes={alocacoes}
               linhas={linhas}
               turnosBloqueioAdmin={turnosBloqueioAdmin}
+              carregando={loading}
               onVerNaGrade={nome => {
                 setFiltros(f => ({ ...f, profissional: nome }))
                 irPara({ view: "lista", sala: null })

@@ -54,18 +54,30 @@ export function BarraCapacidade({ contagem, tamanho = "md", chave = true }: Prop
   )
 }
 
-/** Legenda das cinco situações, com a contagem de cada uma. */
+/**
+ * Legenda das cinco situações. Diz o que é uma vaga e, em cada item, quantas
+ * vagas e quanto pesam no total — número solto ao lado do rótulo não dizia
+ * 1.512 de quê.
+ */
 export function LegendaCapacidade({ contagem }: { contagem: ContagemCadeiras }) {
   return (
-    <ul className="flex flex-wrap gap-x-4 gap-y-1.5 text-sm text-muted-foreground">
-      {SITUACOES_CADEIRA.map(s => (
-        <li key={s} className="inline-flex items-center gap-1.5" title={`${SITUACAO[s].descricao} ${SITUACAO[s].acao}`}>
-          <span className={`h-3 w-3 shrink-0 rounded-[3px] ${SITUACAO[s].cor}`} aria-hidden />
-          {SITUACAO[s].rotulo}
-          <span className="font-bold tabular-nums text-foreground">{fmtNum(contagem[s])}</span>
-        </li>
-      ))}
-    </ul>
+    <div className="flex flex-col gap-1.5">
+      <p className="text-sm text-muted-foreground">
+        Cada vaga é um atendimento de 40 min que cabe numa sala. Das <b className="text-foreground">{fmtNum(contagem.total)}</b> vagas da semana:
+      </p>
+      <ul className="flex flex-wrap gap-x-5 gap-y-1.5 text-sm text-muted-foreground">
+        {SITUACOES_CADEIRA.map(s => (
+          <li key={s} className="inline-flex items-center gap-1.5" title={`${SITUACAO[s].descricao} ${SITUACAO[s].acao}`}>
+            <span className={`h-3 w-3 shrink-0 rounded-[3px] ${SITUACAO[s].cor}`} aria-hidden />
+            {SITUACAO[s].rotulo}:
+            <span className="tabular-nums">
+              <b className="text-foreground">{fmtNum(contagem[s])}</b> {contagem[s] === 1 ? "vaga" : "vagas"}
+              {contagem.total > 0 && <> ({fmtPct(contagem[s] / contagem.total)})</>}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
   )
 }
 
