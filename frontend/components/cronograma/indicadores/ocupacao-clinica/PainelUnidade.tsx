@@ -10,6 +10,7 @@ import Link from "next/link"
 import type { ReactNode } from "react"
 import { ExternalLink } from "lucide-react"
 import { Drawer } from "@/components/cronograma/ui/Drawer"
+import { Z_MODAL_EMPILHADO } from "@/components/cronograma/ui/useModalLayer"
 import {
   HORARIOS_TEMPO_INTEGRAL_SEMANA,
   pctComPaciente,
@@ -72,7 +73,7 @@ export function PainelUnidade({ unidade: u, periodo, fechamentos, rotuloStatus, 
         <div className="flex flex-col gap-4">
           <ParDeNumeros contagem={u.contagem} />
           <BarraCapacidade contagem={u.contagem} tamanho="lg" />
-          <LegendaCapacidade contagem={u.contagem} />
+          <LegendaCapacidade contagem={u.contagem} camadaExplicacao={Z_MODAL_EMPILHADO} />
         </div>
 
         <Secao titulo="Manhã e tarde">

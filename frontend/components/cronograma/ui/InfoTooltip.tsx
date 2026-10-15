@@ -26,12 +26,14 @@ interface InfoTooltipProps {
   largura?: number
   /** Ícone no lugar da lâmpada (ex.: "i" de informação). Sem `trigger`, herda a cor do texto ao redor. */
   icone?: ReactNode
+  /** Camada do painel (padrão z-50). Passe Z_MODAL_EMPILHADO quando o ícone vive dentro de um Drawer/modal, senão o painel abre por trás dele. */
+  zIndex?: number
 }
 
 const PANEL_WIDTH = 288 // w-72
 const VIEWPORT_MARGIN = 8
 
-export function InfoTooltip({ children, ariaLabel = "Explicação das colunas", onOpenChange, trigger, largura = PANEL_WIDTH, icone }: InfoTooltipProps) {
+export function InfoTooltip({ children, ariaLabel = "Explicação das colunas", onOpenChange, trigger, largura = PANEL_WIDTH, icone, zIndex }: InfoTooltipProps) {
   const [open, setOpenState] = useState(false)
   const setOpen = (value: boolean | ((prev: boolean) => boolean)) => {
     setOpenState(prev => {
@@ -107,7 +109,7 @@ export function InfoTooltip({ children, ariaLabel = "Explicação das colunas", 
         <div
           ref={panelRef}
           role="tooltip"
-          style={{ top: coords.top, left: coords.left, width: largura }}
+          style={{ top: coords.top, left: coords.left, width: largura, zIndex }}
           className="fixed z-50 max-w-[85vw] rounded-lg border border-border bg-popover p-3 text-xs font-normal normal-case text-popover-foreground shadow-lg"
         >
           {children}

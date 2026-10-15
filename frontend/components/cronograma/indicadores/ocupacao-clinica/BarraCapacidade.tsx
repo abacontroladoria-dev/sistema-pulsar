@@ -5,6 +5,7 @@
 // primeiros) é o "% com profissional", marcado pela chave embaixo. Assim os
 // dois números ficam na mesma régua.
 
+import { InfoTooltip } from "@/components/cronograma/ui/InfoTooltip"
 import { SITUACOES_CADEIRA, comProfissional, type ContagemCadeiras } from "@/lib/cronograma/ocupacaoClinica"
 import { SITUACAO, fmtNum, fmtPct } from "./visual"
 
@@ -59,12 +60,21 @@ export function BarraCapacidade({ contagem, tamanho = "md", chave = true }: Prop
  * vagas e quanto pesam no total — número solto ao lado do rótulo não dizia
  * 1.512 de quê.
  */
-export function LegendaCapacidade({ contagem }: { contagem: ContagemCadeiras }) {
+export function LegendaCapacidade({ contagem, camadaExplicacao }: {
+  contagem: ContagemCadeiras
+  /** Camada do balão "o que é uma vaga" — só precisa dentro do painel lateral (fica por cima do Drawer). */
+  camadaExplicacao?: number
+}) {
   return (
     <div className="flex flex-col gap-1.5">
-      <p className="text-sm text-muted-foreground">
-        Cada vaga é o lugar de um profissional atendendo por 40 min. Sala individual tem 1 vaga por horário, dupla 2 e múltipla 3. Sessão em grupo conta como 1 vaga. Das <b className="text-foreground">{fmtNum(contagem.total)}</b> vagas da semana:
-      </p>
+      <div className="inline-flex flex-wrap items-center gap-1 text-sm text-muted-foreground">
+        <span>Das <b className="text-foreground">{fmtNum(contagem.total)}</b> vagas da semana</span>
+        <InfoTooltip ariaLabel="O que é uma vaga" zIndex={camadaExplicacao} largura={320}>
+          <span className="block text-sm leading-relaxed">
+            Cada vaga é o lugar de um profissional atendendo por 40 min. Sala individual tem 1 vaga por horário, dupla 2 e múltipla 3. Sessão em grupo conta como 1 vaga.
+          </span>
+        </InfoTooltip>
+      </div>
       <ul className="flex flex-wrap gap-x-5 gap-y-1.5 text-sm text-muted-foreground">
         {SITUACOES_CADEIRA.map(s => (
           <li key={s} className="inline-flex items-center gap-1.5" title={`${SITUACAO[s].descricao} ${SITUACAO[s].acao}`}>
