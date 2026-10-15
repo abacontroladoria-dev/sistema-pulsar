@@ -6,10 +6,12 @@ import {
   filtrarPacientes,
   fmtDataHora,
   fmtDiaMes,
+  idFormulario,
   linksDoPaciente,
   opcoesFiltro,
   porSetor,
   raias,
+  rotuloFrescor,
   type EtapaAtual,
   type PacienteEntrada,
 } from "./entradaConvenio"
@@ -89,6 +91,21 @@ describe("recortes do painel", () => {
   })
 })
 
+describe("id do formulário e frescor", () => {
+  it("id do formulário vem de links.aut e ignora o placeholder", () => {
+    expect(idFormulario(paciente("X", { links: { aut: " 868mepdn1 ", crm: "abc123" } }))).toBe("868mepdn1")
+    expect(idFormulario(paciente("X", { links: { aut: "TASK_ID" } }))).toBeNull()
+    expect(idFormulario(paciente("X", { links: { crm: "abc123" } }))).toBeNull()
+    expect(idFormulario(paciente("X", { links: null }))).toBeNull()
+  })
+
+  it("selo do topo mostra a rodada e a hora em que o Doc foi gravado", () => {
+    expect(rotuloFrescor({ gerado_em: "2026-10-15", publicado_em: "2026-10-15T12:03:11Z" }))
+      .toBe("Rodada de 15/10 · Doc gravado em 15/10 às 09:03")
+    expect(rotuloFrescor({ gerado_em: "2026-10-09", publicado_em: null })).toBe("Rodada de 09/10")
+  })
+})
+
 describe("formatação", () => {
   it("data curta e '?' sem data", () => {
     expect(fmtDiaMes("2026-10-08")).toBe("08/10")
@@ -102,7 +119,7 @@ describe("formatação", () => {
 
   it("links do ClickUp descartam o placeholder do exemplo", () => {
     const p = paciente("X", { links: { aut: "86abc", crm: "TASK_ID" } })
-    expect(linksDoPaciente(p)).toEqual([{ chave: "aut", rotulo: "Autorização", url: "https://app.clickup.com/t/86abc" }])
+    expect(linksDoPaciente(p)).toEqual([{ chave: "aut", rotulo: "Autorização", id: "86abc", url: "https://app.clickup.com/t/86abc" }])
   })
 })
 

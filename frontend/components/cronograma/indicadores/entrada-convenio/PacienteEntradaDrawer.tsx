@@ -162,6 +162,7 @@ export function PacienteEntradaDrawer({ paciente: p, disp, onClose }: {
                 className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-semibold text-foreground hover:bg-muted sm:min-h-0 sm:py-1.5"
               >
                 <ExternalLink size={12} aria-hidden /> {l.rotulo}
+                <span className="font-mono font-normal text-muted-foreground">{l.id}</span>
               </a>
             ))}
           </div>

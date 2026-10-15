@@ -184,19 +184,33 @@ export function fmtDataHora(iso: string): string {
   return `${get("day")}/${get("month")} às ${get("hour")}:${get("minute")}`
 }
 
-export function nomeCurto(nome: string, palavras = 3): string {
-  return nome.trim().split(/\s+/).slice(0, palavras).join(" ")
-}
-
 export function linkClickUp(taskId: string): string {
   return `https://app.clickup.com/t/${encodeURIComponent(taskId)}`
 }
 
+const ehIdValido = (id: unknown): id is string => typeof id === "string" && !!id.trim() && id !== "TASK_ID"
+
 /** Links reais do paciente (o exemplo do pacote traz "TASK_ID" no lugar do id). */
-export function linksDoPaciente(p: PacienteEntrada): { chave: string; rotulo: string; url: string }[] {
+export function linksDoPaciente(p: PacienteEntrada): { chave: string; rotulo: string; id: string; url: string }[] {
   return Object.entries(p.links ?? {})
-    .filter(([, id]) => typeof id === "string" && id.trim() && id !== "TASK_ID")
-    .map(([chave, id]) => ({ chave, rotulo: ROTULO_LINK[chave] ?? chave, url: linkClickUp(id) }))
+    .filter((par): par is [string, string] => ehIdValido(par[1]))
+    .map(([chave, id]) => ({ chave, rotulo: ROTULO_LINK[chave] ?? chave, id: id.trim(), url: linkClickUp(id.trim()) }))
+}
+
+/** Id da tarefa do formulário em Solicitações Autorização (links.aut), ou null. */
+export function idFormulario(p: PacienteEntrada): string | null {
+  const id = p.links?.aut
+  return ehIdValido(id) ? id.trim() : null
+}
+
+/**
+ * Texto do selo do topo: a data da rodada (gerado_em do calc.py) e a hora em
+ * que o Doc foi gravado, que podem ser de dias diferentes (o Doc pode ter sido
+ * regravado com uma rodada antiga, como no teste com o exemplo do pacote).
+ */
+export function rotuloFrescor(s: { gerado_em: string; publicado_em: string | null }): string {
+  const rodada = `Rodada de ${fmtDiaMes(s.gerado_em)}`
+  return s.publicado_em ? `${rodada} · Doc gravado em ${fmtDataHora(s.publicado_em)}` : rodada
 }
 
 /** Dias corridos/úteis acima do prazo (negativo = folga). */
