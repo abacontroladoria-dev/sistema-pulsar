@@ -317,18 +317,23 @@ export function calcularSlotsDaSala(
             ? (alocacao.profissional_id !== null ? sessoesPorHoraProfissionalId.get(`${chaveHora}|${alocacao.profissional_id}`) : undefined)
               ?? sessoesPorHoraProfissional.get(`${chaveHora}|${normTxt(alocacao.profissional_nome)}`)
             : undefined
+          const donoDaCadeira = alocacao
+            ? { nome: alocacao.profissional_nome, id: alocacao.profissional_id, terapia: alocacao.terapia_nome }
+            : null
           blocos.push(linhaReal ? {
             hora, horaFim,
             profissional: alocacao!.profissional_nome,
             terapia: alocacao!.terapia_nome ?? (cleanTxt(linhaReal.terapia_nome) || cleanTxt(linhaReal.terapia_exibicao_nome) || null),
             idAgendamento: linhaReal.tita_agendamento_id ?? null,
             status: "preenchido",
+            alocacao: donoDaCadeira,
           } : {
             hora, horaFim,
             profissional: null,
             terapia: null,
             idAgendamento: null,
             status: "livre",
+            alocacao: donoDaCadeira,
           })
         }
       }

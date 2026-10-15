@@ -8,7 +8,7 @@
 // pelo nome do profissional, pra o cadastro real acontecer no fluxo normal
 // (precisa escolher a sala).
 
-import { AlertTriangle, ArrowRight, CheckCircle2 } from "lucide-react"
+import { AlertTriangle, ArrowRight, CheckCircle2, Loader2 } from "lucide-react"
 import { StatusPill } from "@/components/cronograma/ui/StatusPill"
 import { calcularRegularizacoes, labelTurno } from "@/lib/cronograma/regularizacoes"
 import type { AgendaSalaRow, AlocacaoSala } from "@/lib/cronograma/salasTypes"
@@ -17,10 +17,20 @@ interface RegularizacoesViewProps {
   alocacoes: AlocacaoSala[]
   linhas: AgendaSalaRow[]
   turnosBloqueioAdmin?: AgendaSalaRow[]
+  /** Agenda/alocações ainda chegando: sem isto, as listas vazias davam "Tudo regularizado" antes da hora. */
+  carregando?: boolean
   onVerNaGrade: (profissionalNome: string) => void
 }
 
-export function RegularizacoesView({ alocacoes, linhas, turnosBloqueioAdmin = [], onVerNaGrade }: RegularizacoesViewProps) {
+export function RegularizacoesView({ alocacoes, linhas, turnosBloqueioAdmin = [], carregando = false, onVerNaGrade }: RegularizacoesViewProps) {
+  if (carregando) {
+    return (
+      <div className="flex items-center justify-center gap-2 rounded-xl border border-dashed border-border py-16 text-sm text-muted-foreground" aria-busy="true">
+        <Loader2 size={16} className="animate-spin" /> Carregando a agenda da semana...
+      </div>
+    )
+  }
+
   const regularizacoes = calcularRegularizacoes(alocacoes, linhas, turnosBloqueioAdmin)
 
   if (regularizacoes.length === 0) {

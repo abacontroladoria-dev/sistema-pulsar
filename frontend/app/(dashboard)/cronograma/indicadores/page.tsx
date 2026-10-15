@@ -26,7 +26,7 @@ const TAB_LABELS: Record<TabKey, string> = {
 
 const TAB_SUBTITLES: Record<TabKey, string> = {
   profissionais: "",
-  unidades: "Ocupação agregada de salas por unidade",
+  unidades: "Quanto do espaço de cada unidade tem profissional e paciente",
   pacientes: "Métricas de pacientes ativos: CH, convênio, unidade",
   "previsao-receitas": "Receita mensal projetada, cruzando sessões com valores cadastrados por convênio",
   "alimentar-bd": "Lançamento manual de NF e pagamentos recebidos, por paciente e mês",
