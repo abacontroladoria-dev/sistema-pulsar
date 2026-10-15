@@ -23,6 +23,8 @@ export type DetalheOcupacao =
 
 interface OcupacaoDetalheModalProps {
   detalhe: DetalheOcupacao
+  /** Para abrir por cima de um painel lateral já aberto (Z_MODAL_EMPILHADO). */
+  zIndex?: number
   onClose: () => void
 }
 
@@ -59,7 +61,7 @@ function ordenarComDesempate<T extends Record<string, unknown>>(rows: T[], key: 
   })
 }
 
-export function OcupacaoDetalheModal({ detalhe, onClose }: OcupacaoDetalheModalProps) {
+export function OcupacaoDetalheModal({ detalhe, zIndex, onClose }: OcupacaoDetalheModalProps) {
   const { tipo, unidade, turno } = detalhe
 
   // Chave de ordenação cronológica (dia, e horário quando existe) — string
@@ -103,6 +105,7 @@ export function OcupacaoDetalheModal({ detalhe, onClose }: OcupacaoDetalheModalP
       title={`${unidade} — ${turno} — ${tipo === "slot" ? "Slots ocupados" : "Blocos preenchidos"}`}
       subtitle={`${ocupados} ${rotuloOcupado.toLowerCase()} de ${total} · ${livres} livres — mesmos dados de /relacionamento-prestador/ocupacao-salas/`}
       maxWidth={1360}
+      zIndex={zIndex}
       onClose={onClose}
     >
       <div className="mb-3">
