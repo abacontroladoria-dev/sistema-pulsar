@@ -105,7 +105,7 @@ export function LegendaCapacidade({ contagem, camadaExplicacao, formato = "lado-
           marca={<MarcaComProfissional grande />}
           vagas={totalCom}
           pct={pct(pctCom)}
-          tom="border-[#1F4E79] bg-[#1F4E79]/[0.07] dark:border-[#9CC7E6] dark:bg-[#9CC7E6]/10"
+          tom="bg-[#1F4E79]/10 dark:bg-[#9CC7E6]/15"
         >
           <ul className="divide-y divide-border">
             {COM_PROFISSIONAL.map(s => {
@@ -141,7 +141,7 @@ export function LegendaCapacidade({ contagem, camadaExplicacao, formato = "lado-
           marca={<span className={`h-4 w-4 shrink-0 rounded-[4px] border border-border ${SITUACAO.vazia.cor}`} aria-hidden />}
           vagas={contagem.vazia}
           pct={pct(pctVazia)}
-          tom="border-slate-400 bg-slate-100 dark:border-slate-500 dark:bg-slate-800/60"
+          tom="bg-slate-100 dark:bg-slate-800/70"
         >
           <p className="px-4 py-3 text-sm text-muted-foreground">
             Ninguém reservado na sala nesse horário: <b className="text-foreground">não dá para agendar aqui</b>. Primeiro é preciso colocar um profissional (ou contratar).
@@ -163,7 +163,7 @@ function BlocoGrupo({ titulo, marca, vagas, pct, tom, children }: {
 }) {
   return (
     <section className="flex flex-col overflow-hidden rounded-xl border border-border bg-card">
-      <header className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-l-4 border-b-border px-4 py-3 ${tom}`}>
+      <header className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-border px-4 py-3 ${tom}`}>
         <h3 className="inline-flex items-center gap-2 text-base font-black text-foreground">{marca}{titulo}</h3>
         <span className="tabular-nums text-muted-foreground">
           <b className="text-xl font-black text-foreground">{fmtNum(vagas)}</b> {vagas === 1 ? "vaga" : "vagas"} · <b className="text-xl font-black text-foreground">{pct}</b>
