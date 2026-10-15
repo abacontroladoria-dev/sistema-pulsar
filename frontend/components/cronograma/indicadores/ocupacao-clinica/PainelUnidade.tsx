@@ -8,6 +8,7 @@
 
 import Link from "next/link"
 import type { ReactNode } from "react"
+import { ExternalLink } from "lucide-react"
 import { Drawer } from "@/components/cronograma/ui/Drawer"
 import {
   HORARIOS_TEMPO_INTEGRAL_SEMANA,
@@ -147,8 +148,9 @@ export function PainelUnidade({ unidade: u, periodo, fechamentos, rotuloStatus, 
                 <Pessoas itens={u.semSalaDefinida.profissionais} unidade="sessão" unidades="sessões" />
               </Gaveta>
             </div>
-            <Link href={LINK_REGULARIZACOES} className="inline-flex min-h-10 w-fit items-center rounded-lg bg-[#2B5E86] px-4 text-sm font-bold text-white hover:bg-[#24506F]">
-              Ajustar em Regularizações
+            <Link href={LINK_REGULARIZACOES} target="_blank" rel="noopener noreferrer"
+              className="inline-flex min-h-10 w-fit items-center gap-1.5 rounded-lg bg-[#2B5E86] px-4 text-sm font-bold text-white hover:bg-[#24506F]">
+              Ajustar em Regularizações <ExternalLink size={14} aria-hidden /><span className="sr-only">(abre em outra guia)</span>
             </Link>
           </Secao>
         )}

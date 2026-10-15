@@ -5,6 +5,7 @@
 
 import Link from "next/link"
 import type { ReactNode } from "react"
+import { ExternalLink } from "lucide-react"
 import { SITUACOES_CADEIRA, type ContagemCadeiras } from "@/lib/cronograma/ocupacaoClinica"
 import { InfoTooltip } from "@/components/cronograma/ui/InfoTooltip"
 import { BarraCapacidade, LegendaCapacidade } from "./BarraCapacidade"
@@ -48,7 +49,10 @@ export function FaixaRede({ contagem, salasOperacionais, unidades, pessoasParaAj
         <Atalho valor={fmtNum(pessoasParaAjustar)} titulo={pessoasParaAjustar === 1 ? "pessoa para ajustar no mapa de salas" : "pessoas para ajustar no mapa de salas"} alerta={pessoasParaAjustar > 0}
           texto="Reservadas numa sala sem agenda no turno, ou atendendo sem sala definida. Enquanto não ajustar, a ocupação fica errada.">
           {pessoasParaAjustar > 0 && (
-            <Link href={LINK_REGULARIZACOES} className="mt-1 text-sm font-bold text-sky-700 hover:underline dark:text-sky-400">Ajustar em Regularizações ›</Link>
+            <Link href={LINK_REGULARIZACOES} target="_blank" rel="noopener noreferrer"
+              className="mt-1 inline-flex w-fit items-center gap-1 text-sm font-bold text-sky-700 hover:underline dark:text-sky-400">
+              Ajustar em Regularizações <ExternalLink size={13} aria-hidden /><span className="sr-only">(abre em outra guia)</span>
+            </Link>
           )}
         </Atalho>
         <Atalho valor={fmtNum(contagem.vazia)} titulo={contagem.vazia === 1 ? "vaga sem profissional" : "vagas sem profissional"}
