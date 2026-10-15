@@ -35,6 +35,9 @@ export interface ConfiguracaoAgente {
   chaveConfigurada:   boolean
   chaveMascarada:     string | null
   atualizadoEm:       string | null
+  // 'prompt': quem tem usuarios.pode_editar_prompt_maia sem ser admin/diretoria
+  // — a API só grava o systemPrompt dessa pessoa.
+  acesso?:            'total' | 'prompt'
 }
 
 // Estado da integração com a OpenAI. Diferente de tudo o mais neste arquivo,

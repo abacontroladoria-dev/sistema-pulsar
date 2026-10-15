@@ -85,17 +85,29 @@ interface Rascunho {
   systemPrompt:     string;
 }
 
-const AgentSettings = forwardRef<AgentSettingsRef>((_props, ref) => {
+interface AgentSettingsProps {
+  // A tela de cima (Settings.tsx) decide o botão Salvar a partir disto: quem só
+  // edita o prompt não é admin nem diretoria, mas precisa do botão nesta aba.
+  onAcesso?: (acesso: 'total' | 'prompt') => void;
+}
+
+const AgentSettings = forwardRef<AgentSettingsRef, AgentSettingsProps>(({ onAcesso }, ref) => {
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando]     = useState(false);
   const [erro, setErro]             = useState<string | null>(null);
   const [rascunho, setRascunho]     = useState<Rascunho | null>(null);
+  // 'prompt' (15/10/2026): autonomia e agendamento ficam só para leitura — a
+  // API ignora esses campos para quem só tem a permissão do prompt.
+  const [soPrompt, setSoPrompt]     = useState(false);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
     setErro(null);
     try {
       const cfg = await obterConfiguracao();
+      const acesso = cfg.acesso ?? 'total';
+      setSoPrompt(acesso === 'prompt');
+      onAcesso?.(acesso);
       setRascunho({
         aiMode:           cfg.aiMode,
         agendamentoPorIa: cfg.agendamentoPorIa,
@@ -112,7 +124,7 @@ const AgentSettings = forwardRef<AgentSettingsRef>((_props, ref) => {
     } finally {
       setCarregando(false);
     }
-  }, []);
+  }, [onAcesso]);
 
   useEffect(() => { void carregar(); }, [carregar]);
 
@@ -191,6 +203,13 @@ const AgentSettings = forwardRef<AgentSettingsRef>((_props, ref) => {
             no servidor, por variável de ambiente, e não é configurável aqui.
           </p>
 
+          {soPrompt && (
+            <p className="mb-3 flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-300">
+              <Info className="w-3.5 h-3.5 shrink-0" />
+              Você pode alterar o prompt do sistema. Autonomia e agendamento são da administração e da diretoria.
+            </p>
+          )}
+
           <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Autonomia do agente">
             {MODOS.map(({ id, rotulo, nota, Icone }) => {
               const ativo = rascunho.aiMode === id;
@@ -200,8 +219,9 @@ const AgentSettings = forwardRef<AgentSettingsRef>((_props, ref) => {
                   type="button"
                   role="radio"
                   aria-checked={ativo}
+                  disabled={soPrompt}
                   onClick={() => setRascunho({ ...rascunho, aiMode: id })}
-                  className={`flex flex-col items-center gap-1 p-3 rounded-lg border transition-all ${
+                  className={`flex flex-col items-center gap-1 p-3 rounded-lg border transition-all disabled:cursor-not-allowed disabled:opacity-60 ${
                     ativo
                       ? 'bg-cyan-500/15 border-cyan-500 text-cyan-700 dark:text-cyan-200'
                       : 'bg-background border-border text-muted-foreground hover:bg-muted'
@@ -264,6 +284,7 @@ const AgentSettings = forwardRef<AgentSettingsRef>((_props, ref) => {
               <input
                 type="checkbox"
                 checked={rascunho.agendamentoPorIa}
+                disabled={soPrompt}
                 onChange={e => setRascunho({ ...rascunho, agendamentoPorIa: e.target.checked })}
                 className="sr-only peer"
               />

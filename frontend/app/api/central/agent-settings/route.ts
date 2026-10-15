@@ -1,7 +1,8 @@
 import { extractUser }                    from '@/lib/central/auth'
 import { mapCentralError }                from '@/lib/central/errors'
 import { ok, badRequest, forbidden }      from '@/lib/central/response'
-import { createAgentSettingsService }     from '@/modules/atendimento/services'
+import { supabaseService }                from '@/lib/supabase/service'
+import { createAgentSettingsService, createAgentSettingsSystemService } from '@/modules/atendimento/services'
 import { parseSalvarConfiguracaoBody }    from '@/modules/atendimento/dto/agent-settings.dto'
 
 // ============================================================================
@@ -27,22 +28,42 @@ import { parseSalvarConfiguracaoBody }    from '@/modules/atendimento/dto/agent-
 //
 // A checagem continua existindo para devolver 403 com mensagem em vez do
 // "nenhuma linha encontrada" que a RLS produziria e que pareceria banco vazio.
-function exigirAcesso(centralRole: string): string | null {
-  if (centralRole !== 'admin' && centralRole !== 'director') {
-    return 'Apenas administradores e diretoria podem ver ou alterar a configuração do agente'
-  }
-  return null
+//
+// Acesso 'prompt' (15/10/2026): quem tem `usuarios.pode_editar_prompt_maia`
+// sem ser admin/director vê a configuração e grava SÓ `systemPrompt`. A RLS
+// de central.agent_settings é de admin/director, então essa escrita vai pelo
+// servidor (service role), com o recorte de campo feito aqui — é este o
+// portão. A marca só muda por admin, diretoria ou SQL (trava em
+// 20261015170000/180000).
+type Acesso = 'total' | 'prompt'
+
+const NEGADO = 'Apenas administradores e diretoria podem ver ou alterar a configuração do agente'
+
+async function acessoDe(user: { id: string; centralRole: string }): Promise<Acesso | null> {
+  if (user.centralRole === 'admin' || user.centralRole === 'director') return 'total'
+  const { data } = await supabaseService
+    .from('usuarios')
+    .select('ativo, pode_editar_prompt_maia')
+    .eq('id', user.id)
+    .maybeSingle()
+  return data?.ativo && data.pode_editar_prompt_maia ? 'prompt' : null
 }
 
 export async function GET() {
   try {
     const { user, supabase } = await extractUser()
 
-    const negado = exigirAcesso(user.centralRole)
-    if (negado) return forbidden(negado)
+    const acesso = await acessoDe(user)
+    if (!acesso) return forbidden(NEGADO)
+
+    if (acesso === 'prompt') {
+      const cfg = await createAgentSettingsSystemService().obter(user.orgId)
+      // Nem o sufixo da chave da ElevenLabs: não é assunto de quem só edita o prompt.
+      return ok({ ...cfg, chaveMascarada: null, acesso })
+    }
 
     const service = createAgentSettingsService(supabase)
-    return ok(await service.obter(user.orgId))
+    return ok({ ...(await service.obter(user.orgId)), acesso })
   } catch (err) {
     return mapCentralError(err)
   }
@@ -52,15 +73,24 @@ export async function PATCH(request: Request) {
   try {
     const { user, supabase } = await extractUser()
 
-    const negado = exigirAcesso(user.centralRole)
-    if (negado) return forbidden(negado)
+    const acesso = await acessoDe(user)
+    if (!acesso) return forbidden(NEGADO)
 
     const raw = await request.json().catch(() => null)
     const parsed = parseSalvarConfiguracaoBody(raw)
     if (!parsed.ok) return badRequest(parsed.errors.join('; '))
 
+    if (acesso === 'prompt') {
+      // Só o prompt; o resto do corpo (a tela manda modo e agendamento
+      // inalterados) é ignorado, nunca gravado.
+      if (parsed.data.systemPrompt === undefined) return badRequest('systemPrompt é obrigatório')
+      const cfg = await createAgentSettingsSystemService()
+        .salvar(user.orgId, { systemPrompt: parsed.data.systemPrompt }, user.id)
+      return ok({ ...cfg, chaveMascarada: null, acesso })
+    }
+
     const service = createAgentSettingsService(supabase)
-    return ok(await service.salvar(user.orgId, parsed.data, user.id))
+    return ok({ ...(await service.salvar(user.orgId, parsed.data, user.id)), acesso })
   } catch (err) {
     return mapCentralError(err)
   }

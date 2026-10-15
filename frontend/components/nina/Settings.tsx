@@ -19,7 +19,11 @@ const Settings: React.FC = () => {
   const apiRef = useRef<ApiSettingsRef>(null);
   const [activeTab, setActiveTab] = useState('agent');
 
-  const podeSalvarAqui = podeEditar;
+  // Quem só tem a permissão do prompt (usuarios.pode_editar_prompt_maia, 15/10)
+  // salva na aba Agente — e só lá. A API é quem limita o que essa pessoa grava.
+  const [acessoAgente, setAcessoAgente] = useState<'total' | 'prompt' | null>(null);
+  const editorDoPrompt = !podeEditar && acessoAgente === 'prompt';
+  const podeSalvarAqui = podeEditar || (editorDoPrompt && activeTab === 'agent');
 
   // Confirmação inline, ao lado do botão. O toast aparece no canto oposto da
   // tela e passa despercebido justamente quando mais importa — depois de um
@@ -75,7 +79,7 @@ const Settings: React.FC = () => {
           <h2 className="text-3xl font-bold tracking-tight text-foreground">Configurações</h2>
           <p className="text-sm text-muted-foreground mt-1">
             Central de controle da sua instância {companyName}.
-            {!podeEditar && (
+            {!podeEditar && !editorDoPrompt && (
               <span className="ml-2 text-amber-400">(Somente leitura)</span>
             )}
           </p>
@@ -89,6 +93,10 @@ const Settings: React.FC = () => {
             ) : podeEditar ? (
               <>
                 <Shield className="w-3 h-3 mr-1" /> Diretoria
+              </>
+            ) : editorDoPrompt ? (
+              <>
+                <Bot className="w-3 h-3 mr-1" /> Editor do prompt
               </>
             ) : (
               <>
@@ -165,7 +173,7 @@ const Settings: React.FC = () => {
         </div>
 
         <TabsContent value="agent">
-          <AgentSettings ref={agentRef} />
+          <AgentSettings ref={agentRef} onAcesso={setAcessoAgente} />
         </TabsContent>
 
         {/* Números WhatsApp ficam FORA de ApiSettings: aquele bloco para em
