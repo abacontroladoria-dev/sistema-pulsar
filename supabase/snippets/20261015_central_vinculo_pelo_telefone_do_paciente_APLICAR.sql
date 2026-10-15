@@ -1,4 +1,4 @@
--- Aplica 20261015120000_central_vinculo_pelo_telefone_do_paciente. Ensaio feito em 15/10 (2 vínculos novos; trigger em pacientes conferido).
+-- Aplica 20261015150000_central_vinculo_pelo_telefone_do_paciente. Ensaio feito em 15/10 (2 vínculos novos; trigger em pacientes conferido).
 begin;
 set local lock_timeout = '5s';
 
@@ -162,7 +162,7 @@ select central.resolver_vinculo_paciente_por_telefone(c.id)
    and c.merged_into_contact_id is null;
 
 insert into supabase_migrations.schema_migrations (version, name)
-values ('20261015120000', 'central_vinculo_pelo_telefone_do_paciente')
+values ('20261015150000', 'central_vinculo_pelo_telefone_do_paciente')
 on conflict (version) do nothing;
 
 commit;
