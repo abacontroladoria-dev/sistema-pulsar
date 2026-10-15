@@ -14,6 +14,8 @@ import {
   type NinaConversation,
 } from '@/components/nina/adapters/centralToNina'
 import { getSupabaseClient } from '@/lib/supabase/client'
+import type { NotaInternaVista } from '@/modules/atendimento/services/nota-interna.service'
+import { avisarMencoesAlteradas } from '@/hooks/nina/useMencoesNaoLidas'
 
 // ============================================================================
 // Dados vivos da caixa de entrada
@@ -232,6 +234,11 @@ export interface UseCentralInbox {
   fixadas:             string[]
   alternarFixada:      (id: string) => Promise<void>
   meuUserId:           string | null
+  // Notas internas da conversa aberta — só a equipe vê, nunca vão ao WhatsApp.
+  notas:               NotaInternaVista[]
+  // Lança em caso de falha: o texto fica no compositor para tentar de novo.
+  enviarNota:          (texto: string, mencoes: string[], delegarPara: string | null) => Promise<void>
+  enviandoNota:        boolean
 }
 
 export function useCentralInbox(): UseCentralInbox {
@@ -251,6 +258,8 @@ export function useCentralInbox(): UseCentralInbox {
   const [meuUserId, setMeuUserId]         = useState<string | null>(null)
   const [carregandoAntigas, setCarregandoAntigas] = useState(false)
   const [temMaisAntigas, setTemMaisAntigas]       = useState(true)
+  const [notas, setNotas]                 = useState<NotaInternaVista[]>([])
+  const [enviandoNota, setEnviandoNota]   = useState(false)
 
   // Mensagens mais antigas que as 20 do detalhe, já buscadas para a conversa
   // aberta. Ref, e não estado, porque o polling do detalhe as mescla a cada
@@ -487,6 +496,109 @@ export function useCentralInbox(): UseCentralInbox {
     return () => { vivo = false; controller.abort(); clearInterval(t) }
   }, [selectedId, carregarDetalhe])
 
+  // ------------------------------------------------------------------------
+  // Notas internas da conversa aberta
+  //
+  // Polling próprio, no mesmo ritmo do detalhe, e não dentro de carregarDetalhe:
+  // a nota de uma colega precisa aparecer sem F5, mas uma falha aqui (migration
+  // ainda não aplicada, rota fora) não pode pintar a conversa de "Sem acesso" —
+  // o erro desta busca nunca sobe para `erro`. A conversa segue, sem notas.
+
+  const carregarNotas = useCallback(async (id: string, signal: AbortSignal) => {
+    const lista = await buscar<NotaInternaVista[]>(`/api/central/conversations/${id}/notas/`, signal)
+    if (selecionada.current === id) setNotas(lista)
+  }, [])
+
+  useEffect(() => {
+    if (!selectedId) return
+    const controller = new AbortController()
+    const tique = () => {
+      if (document.visibilityState === 'hidden') return
+      carregarNotas(selectedId, controller.signal).catch(() => { /* segue sem notas */ })
+    }
+    tique()
+    const t = setInterval(tique, INTERVALO_MS)
+    return () => { controller.abort(); clearInterval(t) }
+  }, [selectedId, carregarNotas])
+
+  const enviarNota = useCallback(async (texto: string, mencoes: string[], delegarPara: string | null) => {
+    const corpo = texto.trim()
+    if (!corpo || !selectedId) return
+
+    setEnviandoNota(true)
+    try {
+      // Barra final obrigatória: sem ela o POST vira 308 e o corpo se perde.
+      const res = await fetch(`/api/central/conversations/${selectedId}/notas/`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ body: corpo, mencoes, delegarPara }),
+      })
+      if (!res.ok) {
+        const json = await res.json().catch(() => null)
+        throw new Error(json?.error?.message ?? `A nota não foi gravada (${res.status}).`)
+      }
+
+      const controller = new AbortController()
+      await carregarNotas(selectedId, controller.signal).catch(() => {})
+      // Delegar troca o responsável: o painel precisa mostrar o novo dono já.
+      if (delegarPara) {
+        const { chat, modo, detalhe: d } = await carregarDetalhe(selectedId, controller.signal)
+        setActiveChat(chat)
+        setModoIa(modo)
+        setDetalhe(d)
+      }
+    } finally {
+      setEnviandoNota(false)
+    }
+  }, [selectedId, carregarNotas, carregarDetalhe])
+
+  // ------------------------------------------------------------------------
+  // Menções a mim nesta conversa
+  //
+  // Abrir a conversa marca como lidas as menções a quem abriu — venha a pessoa
+  // do aviso da página inicial, de "Menções a mim" ou da própria lista. E uma
+  // menção NOVA que chegue com a conversa aberta também: a pessoa está vendo a
+  // nota aparecer na tela.
+  //
+  // `vistas` guarda as notas que já mencionavam esta pessoa quando ela as viu,
+  // para o POST sair só quando aparece uma nova — e não a cada tique de 5s.
+  // `abertaEm` é a conversa em que a marcação de abertura já saiu: ela sai uma
+  // vez ao abrir, antes mesmo de as notas chegarem.
+  const vistas   = useRef<Set<string>>(new Set())
+  const abertaEm = useRef<string | null>(null)
+
+  useEffect(() => {
+    // Fechar a conversa encerra a "abertura": voltar a ela marca de novo.
+    if (!selectedId) { abertaEm.current = null; return }
+    if (!meuUserId) return
+    const aMim  = notas.filter(n => n.conversation_id === selectedId && n.mentioned_user_ids.includes(meuUserId))
+    // A nota em que a própria pessoa se marcou é um lembrete: ela acabou de
+    // escrevê-la, e marcá-la como lida no mesmo instante a apagaria de
+    // "Menções a mim". Ela só passa a lida quando a conversa for aberta de novo.
+    const novas = aMim.filter(n => !vistas.current.has(n.id) && n.author_user_id !== meuUserId)
+    const abrindo = abertaEm.current !== selectedId
+    if (!abrindo && novas.length === 0) return
+
+    if (abrindo) { abertaEm.current = selectedId; vistas.current = new Set() }
+    aMim.forEach(n => vistas.current.add(n.id))
+
+    // Abrindo: todas as menções desta conversa. Com ela já aberta: só as das
+    // notas que acabaram de chegar — o lembrete que a pessoa deixou para si
+    // não pode ir junto.
+    fetch('/api/central/mencoes/lidas/', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(abrindo
+        ? { conversationId: selectedId }
+        : { conversationId: selectedId, noteIds: novas.map(n => n.id) }),
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(j => { if ((j?.data?.marcadas ?? 0) > 0) avisarMencoesAlteradas() })
+      // Silêncio deliberado, como a marca d'água de leitura: falhar em marcar
+      // não atrapalha quem está lendo; a menção só continua acesa no menu.
+      .catch(() => {})
+  }, [selectedId, meuUserId, notas])
+
   // Declarado aqui, acima de `select`, porque é ele quem libera a trava. Ver o
   // bloco "Marca d'água de leitura" mais abaixo para o que ela protege.
   const naoRemarcar = useRef<string | null>(null)
@@ -519,6 +631,9 @@ export function useCentralInbox(): UseCentralInbox {
     // E pelo mesmo motivo outra vez: o painel exibindo as tags e o responsável
     // do contato anterior faria o operador editar a ficha da pessoa errada.
     setDetalhe(null)
+    // E as notas internas: a nota de outra conversa no meio desta é recado
+    // para a pessoa errada.
+    setNotas([])
   }, [])
 
   // ------------------------------------------------------------------------
@@ -873,5 +988,6 @@ export function useCentralInbox(): UseCentralInbox {
     detalhe, recarregarDetalhe, marcarComoNaoLida,
     canais, canaisSelecionados, alternarCanal, mostrarTodosCanais,
     atualizandoLista, apagarMensagem,
+    notas, enviarNota, enviandoNota,
   }
 }

@@ -1,14 +1,17 @@
 'use client'
 
 import React, { useState } from 'react'
-import { MessageSquare, Users, LayoutDashboard, Kanban, Calendar, Settings as SettingsIcon, LogOut, ArrowLeft, ChevronLeft, Inbox as InboxIcon } from 'lucide-react'
+import { MessageSquare, Users, LayoutDashboard, Kanban, Calendar, Settings as SettingsIcon, LogOut, ArrowLeft, ChevronLeft, Inbox as InboxIcon, AtSign } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import { useAuth } from '@/hooks/nina/useAuth'
 import { useUsuarioAtual } from '@/hooks/useUsuarioAtual'
+import { useMencoesNaoLidas } from '@/hooks/nina/useMencoesNaoLidas'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { ThemeSwitcher } from '@/components/sidebar/ThemeSwitcher'
 
+// `contador`: o item mostra o número de não lidas ao lado. Hoje só "Menções a
+// mim" tem — as notas internas em que alguém marcou quem está logado.
 const menuItems = [
   { id: 'crm',       label: 'Dashboard',     icon: LayoutDashboard },
   { id: 'inbox',     label: 'Inbox',         icon: MessageSquare },
@@ -17,11 +20,13 @@ const menuItems = [
   { id: 'pipeline',  label: 'Funil',         icon: Kanban },
   { id: 'analytics', label: 'Agendamentos',  icon: Calendar },
   { id: 'settings',  label: 'Configurações', icon: SettingsIcon },
+  { id: 'mencoes',   label: 'Menções a mim', icon: AtSign, contador: true },
 ]
 
 const SidebarContent = ({ collapsed }: { collapsed: boolean }) => {
   const { signOut } = useAuth()
   const usuario = useUsuarioAtual()
+  const naoLidas = useMencoesNaoLidas()
   const pathname = usePathname()
   const currentPath = pathname.replace('/connect/', '')
 
@@ -44,20 +49,34 @@ const SidebarContent = ({ collapsed }: { collapsed: boolean }) => {
         <nav className="flex flex-col gap-0.5">
           {menuItems.map((item) => {
             const isActive = currentPath.startsWith(item.id)
+            const n = item.contador ? naoLidas : 0
+            const rotuloN = n > 99 ? '99+' : String(n)
             return (
               <Link
                 key={item.id}
                 href={`/connect/${item.id}`}
-                title={collapsed ? item.label : undefined}
+                title={collapsed ? (n > 0 ? `${item.label} (${rotuloN} não lidas)` : item.label) : undefined}
+                aria-label={n > 0 ? `${item.label}, ${rotuloN} não lidas` : undefined}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
                   isActive
                     ? 'bg-sidebar-accent text-sidebar-accent-foreground'
                     : 'text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/60'
                 }`}
               >
-                <item.icon className="h-5 w-5 shrink-0" />
+                <span className="relative shrink-0">
+                  <item.icon className="h-5 w-5" />
+                  {/* Recolhido, o número não cabe: vira um ponto sobre o ícone. */}
+                  {collapsed && n > 0 && (
+                    <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-rose-500 ring-2 ring-sidebar" aria-hidden />
+                  )}
+                </span>
                 {!collapsed && (
                   <span className="text-sm font-medium truncate">{item.label}</span>
+                )}
+                {!collapsed && n > 0 && (
+                  <span className="ml-auto min-w-[20px] rounded-full bg-rose-500 px-1.5 py-0.5 text-center text-xs font-semibold leading-none text-white tabular-nums" aria-hidden>
+                    {rotuloN}
+                  </span>
                 )}
               </Link>
             )

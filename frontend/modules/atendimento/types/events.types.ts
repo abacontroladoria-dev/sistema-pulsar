@@ -90,6 +90,11 @@ export type ConversationEventType =
   | 'task.created'
   | 'task.updated'
   | 'task.status_changed'
+  // Nota interna gravada (central.conversation_notes). payload: { noteId,
+  // mencionados, delegouPara }. NUNCA o texto da nota: a trilha diz que ela
+  // existe, quem escreveu e quem foi avisado; o conteúdo mora na própria tabela,
+  // com a RLS dela.
+  | 'conversation.note_added'
   // Configuração do agente. Payload lista quais campos mudaram e sinaliza
   // troca de credencial — nunca o valor da credencial.
   | 'agent_settings.updated'

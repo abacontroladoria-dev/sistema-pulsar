@@ -511,6 +511,37 @@ export interface Task {
 }
 
 // ----------------------------------------------------------------------------
+// central.conversation_notes — nota interna da conversa (20261015120000).
+//
+// O contato NUNCA vê: a nota não passa por central.messages nem por provider.
+// ----------------------------------------------------------------------------
+export interface NotaInterna {
+  id:                   string
+  organization_id:      string
+  conversation_id:      string
+  author_user_id:       string
+  body:                 string
+  // Quem a nota menciona (@). Cópia para a bolha destacar os nomes.
+  mentioned_user_ids:   string[]
+  // Quando a nota também transferiu a conversa: para quem.
+  delegated_to_user_id: string | null
+  created_at:           string
+}
+
+// central.conversation_mentions — o aviso de uma pessoa mencionada.
+export interface Mencao {
+  id:                string
+  organization_id:   string
+  note_id:           string
+  conversation_id:   string
+  mentioned_user_id: string
+  author_user_id:    string
+  // Nulo = não lida.
+  lida_em:           string | null
+  created_at:        string
+}
+
+// ----------------------------------------------------------------------------
 // central.contact_sentiment_readings — a leitura de sentimento do contato.
 //
 // Tabela APPEND-ONLY (migration 20260921100000): a linha nasce e nunca é
