@@ -60,21 +60,43 @@ export function BarraCapacidade({ contagem, tamanho = "md", chave = true }: Prop
  * vagas e quanto pesam no total — número solto ao lado do rótulo não dizia
  * 1.512 de quê.
  */
-export function LegendaCapacidade({ contagem, camadaExplicacao }: {
+export function LegendaCapacidade({ contagem, camadaExplicacao, formato = "linha" }: {
   contagem: ContagemCadeiras
   /** Camada do balão "o que é uma vaga" — só precisa dentro do painel lateral (fica por cima do Drawer). */
   camadaExplicacao?: number
+  /**
+   * "linha": itens lado a lado (faixa da rede, que é larga).
+   * "lista": uma situação por linha com vagas e % em colunas alinhadas — no
+   * painel lateral, estreito, os itens lado a lado quebravam em lugares
+   * diferentes e os números ficavam desalinhados.
+   */
+  formato?: "linha" | "lista"
 }) {
+  if (formato === "lista") {
+    return (
+      <div className="flex flex-col gap-2">
+        <CabecalhoLegenda contagem={contagem} camadaExplicacao={camadaExplicacao} />
+        <ul className="flex flex-col divide-y divide-border rounded-xl border border-border text-sm">
+          {SITUACOES_CADEIRA.map(s => (
+            <li key={s} className="grid grid-cols-[0.75rem_minmax(0,1fr)_auto_3rem] items-center gap-3 px-3 py-2" title={`${SITUACAO[s].descricao} ${SITUACAO[s].acao}`}>
+              <span className={`h-3 w-3 rounded-[3px] ${SITUACAO[s].cor}`} aria-hidden />
+              <span className="text-foreground">{SITUACAO[s].rotulo}</span>
+              <span className="text-right tabular-nums text-muted-foreground">
+                <b className="text-foreground">{fmtNum(contagem[s])}</b> {contagem[s] === 1 ? "vaga" : "vagas"}
+              </span>
+              <span className="text-right font-semibold tabular-nums text-foreground">
+                {contagem.total > 0 ? fmtPct(contagem[s] / contagem.total) : "—"}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="inline-flex flex-wrap items-center gap-1 text-sm text-muted-foreground">
-        <span>Das <b className="text-foreground">{fmtNum(contagem.total)}</b> vagas da semana</span>
-        <InfoTooltip ariaLabel="O que é uma vaga" zIndex={camadaExplicacao} largura={320}>
-          <span className="block text-sm leading-relaxed">
-            Cada vaga é o lugar de um profissional atendendo por 40 min. Sala individual tem 1 vaga por horário, dupla 2 e múltipla 3. Sessão em grupo conta como 1 vaga.
-          </span>
-        </InfoTooltip>
-      </div>
+      <CabecalhoLegenda contagem={contagem} camadaExplicacao={camadaExplicacao} />
       <ul className="flex flex-wrap gap-x-5 gap-y-1.5 text-sm text-muted-foreground">
         {SITUACOES_CADEIRA.map(s => (
           <li key={s} className="inline-flex items-center gap-1.5" title={`${SITUACAO[s].descricao} ${SITUACAO[s].acao}`}>
@@ -87,6 +109,20 @@ export function LegendaCapacidade({ contagem, camadaExplicacao }: {
           </li>
         ))}
       </ul>
+    </div>
+  )
+}
+
+/** "Das N vagas da semana" + balão explicando o que é uma vaga. */
+function CabecalhoLegenda({ contagem, camadaExplicacao }: { contagem: ContagemCadeiras; camadaExplicacao?: number }) {
+  return (
+    <div className="inline-flex flex-wrap items-center gap-1 text-sm text-muted-foreground">
+      <span>Das <b className="text-foreground">{fmtNum(contagem.total)}</b> vagas da semana</span>
+      <InfoTooltip ariaLabel="O que é uma vaga" zIndex={camadaExplicacao} largura={320}>
+        <span className="block text-sm leading-relaxed">
+          Cada vaga é o lugar de um profissional atendendo por 40 min. Sala individual tem 1 vaga por horário, dupla 2 e múltipla 3. Sessão em grupo conta como 1 vaga.
+        </span>
+      </InfoTooltip>
     </div>
   )
 }

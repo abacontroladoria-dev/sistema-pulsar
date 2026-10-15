@@ -73,7 +73,7 @@ export function PainelUnidade({ unidade: u, periodo, fechamentos, rotuloStatus, 
         <div className="flex flex-col gap-4">
           <ParDeNumeros contagem={u.contagem} />
           <BarraCapacidade contagem={u.contagem} tamanho="lg" />
-          <LegendaCapacidade contagem={u.contagem} camadaExplicacao={Z_MODAL_EMPILHADO} />
+          <LegendaCapacidade contagem={u.contagem} camadaExplicacao={Z_MODAL_EMPILHADO} formato="lista" />
         </div>
 
         <Secao titulo="Manhã e tarde">
