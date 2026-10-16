@@ -1,5 +1,8 @@
-import { AlertTriangle, CalendarPlus, CalendarSync, CalendarX, CheckCircle2, UserCheck, UserPlus } from "lucide-react"
-import { dataBR } from "@/lib/disponibilidadeProfissional"
+import {
+  AlertTriangle, CalendarMinus, CalendarPlus, CalendarSync, CalendarX, CheckCircle2, Lock, RotateCcw, UserCheck, UserPlus,
+} from "lucide-react"
+import { curtoDia, dataBR } from "@/lib/disponibilidadeProfissional"
+import type { ImportacaoGrade, ItemImportacaoGrade } from "@/services/grade.service"
 import type { PacienteImportacaoLog } from "@/types/pacienteImportacao"
 import type { ImportacaoTita, ItemImportacaoTita } from "@/types/titaImportacao"
 import type { ItemRelatorio, RodadaRelatorio, SecaoRelatorio } from "./RelatorioSincronizacaoTita"
@@ -255,6 +258,185 @@ export function rodadaDeDisponibilidade(imp: ImportacaoTita, itens?: ItemImporta
       plural(imp.alterados, "alterado", "alterados"),
       ...(imp.pendencias ? [plural(imp.pendencias, "pendência", "pendências")] : []),
       ...(imp.erros ? [plural(imp.erros, "com erro", "com erro")] : []),
+    ],
+    secoes,
+  }
+}
+
+// ── Agenda (grade_importacoes + grade_importacoes_itens) ──────────────────────
+
+const ROTULO_PENDENCIA_GRADE: Record<string, string> = {
+  paciente_sem_cadastro: "Paciente sem cadastro no Pulsar",
+  profissional_sem_cadastro: "Profissional sem cadastro no Pulsar",
+  terapia_sem_catalogo: "Terapia fora do Cadastro de Terapias",
+}
+
+const diaCurto = (iso: string | null) => {
+  if (!iso) return ""
+  const dow = new Date(`${iso.slice(0, 10)}T12:00:00Z`).getUTCDay()
+  return `${dow === 0 ? "Dom" : curtoDia(dow)} ${dataBR(iso).slice(0, 5)}`
+}
+const LINHAS_POR_PROFISSIONAL = 40
+
+/** Sessões agrupadas por profissional: um item por profissional, uma linha por sessão. */
+function porProfissional(itens: ItemImportacaoGrade[], prefixo: string): ItemRelatorio[] {
+  const grupos = new Map<string, ItemImportacaoGrade[]>()
+  for (const i of itens) {
+    const k = i.profissional_nome ?? "Sem profissional"
+    grupos.set(k, [...(grupos.get(k) ?? []), i])
+  }
+  return [...grupos.entries()]
+    .sort(([a], [b]) => a.localeCompare(b, "pt-BR"))
+    .map(([nome, lista]) => {
+      const pacientes = new Set(lista.map(i => i.paciente_nome)).size
+      const extras = lista.length - LINHAS_POR_PROFISSIONAL
+      return {
+        chave: `${prefixo}:${nome}`,
+        nome,
+        href: lista[0]?.profissional_id ? `/cadastros/profissionais/${lista[0].profissional_id}` : null,
+        subtitulo: `${plural(lista.length, "sessão", "sessões")} · ${plural(pacientes, "paciente", "pacientes")}`,
+        mudancas: lista.slice(0, LINHAS_POR_PROFISSIONAL).map(i => ({
+          campo: `${diaCurto(i.data)} ${i.hora ?? ""}`.trim(),
+          para: [i.paciente_nome, i.terapia, i.sala].filter(Boolean).join(" · "),
+        })),
+        etiquetas: extras > 0 ? [`+ ${extras} outras sessões`] : undefined,
+      }
+    })
+}
+
+/** Uma importação da agenda. Sem `itens` = só os contadores (o histórico detalha sob demanda). */
+export function rodadaDeGrade(imp: ImportacaoGrade, itens?: ItemImportacaoGrade[]): RodadaRelatorio {
+  const a = imp.aplicado ?? ({} as ImportacaoGrade["aplicado"])
+  const c = imp.contadores ?? ({} as ImportacaoGrade["contadores"])
+  const lista = itens ?? []
+  const doTipoG = (...tipos: ItemImportacaoGrade["tipo"][]) => lista.filter(i => tipos.includes(i.tipo))
+  const novas = a.sessoes_novas ?? 0
+  const alteradas = a.alteradas ?? 0
+  const sairam = a.sumidos_excluidos ?? 0
+  const voltaram = a.restauradas ?? 0
+  const bloqueios = (a.bloqueios ?? 0) + (a.bloqueios_excluidos ?? 0)
+  const pendencias = imp.pendencias ?? []
+
+  const secoes: SecaoRelatorio[] = [
+    {
+      chave: "novos",
+      titulo: "Sessões novas",
+      rotuloCartao: "Novas",
+      total: novas,
+      tom: "verde",
+      Icone: CalendarPlus,
+      itens: porProfissional(doTipoG("novo"), "novo"),
+      dicaFechada: "Toque para ver o que entrou, por profissional",
+      vazio: "Nenhuma sessão nova nesta rodada.",
+      buscaPlaceholder: "Buscar profissional, paciente ou terapia...",
+      semResultado: "Nada encontrado na busca.",
+      rotuloSoPara: null,
+    },
+    {
+      chave: "alterados",
+      titulo: "Alteradas no TiTa",
+      rotuloCartao: "Alteradas",
+      total: alteradas,
+      tom: "primario",
+      Icone: CalendarSync,
+      itens: doTipoG("alterado").map(i => ({
+        chave: String(i.id),
+        nome: `${i.paciente_nome ?? "?"} — ${i.profissional_nome ?? "?"}`,
+        mudancas: [{ campo: "Sessão", de: i.de, para: `${diaCurto(i.data)} ${i.hora ?? ""}${i.sala ? ` · ${i.sala}` : ""}` }],
+      })),
+      dicaFechada: "Toque para ver como era e como ficou",
+      vazio: "Nenhuma sessão alterada nesta rodada.",
+      buscaPlaceholder: "Buscar paciente ou profissional...",
+      semResultado: "Nada encontrado na busca.",
+      rotuloSoPara: null,
+    },
+    {
+      chave: "sumidos",
+      titulo: "Saíram (não estão mais no TiTa)",
+      rotuloCartao: "Saíram",
+      total: sairam,
+      tom: "ambar",
+      Icone: CalendarMinus,
+      itens: porProfissional(doTipoG("sumido"), "sumido"),
+      dicaFechada: "Toque para ver o que saiu, por profissional",
+      vazio: "Nada saiu nesta rodada.",
+      buscaPlaceholder: "Buscar profissional, paciente ou terapia...",
+      semResultado: "Nada encontrado na busca.",
+      rotuloSoPara: null,
+    },
+  ]
+  if (voltaram > 0 || doTipoG("restaurado").length) {
+    secoes.push({
+      chave: "restaurados",
+      titulo: "Voltaram (excluídas aqui, ainda no TiTa)",
+      total: voltaram,
+      tom: "primario",
+      Icone: RotateCcw,
+      itens: porProfissional(doTipoG("restaurado"), "restaurado"),
+      dicaFechada: "O TiTa manda: toque para ver o que voltou",
+      vazio: "Nada voltou nesta rodada.",
+      buscaPlaceholder: "Buscar profissional ou paciente...",
+      semResultado: "Nada encontrado na busca.",
+      rotuloSoPara: null,
+    })
+  }
+  if (bloqueios > 0 || doTipoG("bloqueio", "bloqueio_sumido").length) {
+    secoes.push({
+      chave: "bloqueios",
+      titulo: "Bloqueios",
+      total: bloqueios,
+      tom: "cinza",
+      Icone: Lock,
+      itens: doTipoG("bloqueio", "bloqueio_sumido").map(i => ({
+        chave: String(i.id),
+        nome: i.profissional_nome ?? "?",
+        subtitulo: `${diaCurto(i.data)} ${i.hora ?? ""} · ${i.paciente_nome ?? ""}`,
+        selo: i.tipo === "bloqueio" ? "Novo" : "Saiu",
+      })),
+      dicaFechada: "Horário bloqueado / administrativo do TiTa",
+      vazio: "Nenhum bloqueio nesta rodada.",
+      buscaPlaceholder: "Buscar profissional...",
+      semResultado: "Nada encontrado na busca.",
+    })
+  }
+  if (pendencias.length) {
+    secoes.push({
+      chave: "pendencias",
+      titulo: "Pendências de cadastro",
+      total: c.pendencias ?? pendencias.reduce((s, p) => s + p.sessoes, 0),
+      tom: "ambar",
+      Icone: AlertTriangle,
+      itens: pendencias.map((p, i) => ({
+        chave: `p${i}`,
+        nome: p.nome ?? "?",
+        subtitulo: `${ROTULO_PENDENCIA_GRADE[p.motivo] ?? p.motivo}${p.tita_id ? ` · ID TiTa ${p.tita_id}` : ""}`,
+        direita: plural(p.sessoes, "sessão", "sessões"),
+      })),
+      dicaFechada: "Não entram até cadastrar — toque para ver quem",
+      vazio: "Nenhuma pendência.",
+      buscaPlaceholder: "Buscar nome...",
+      semResultado: "Nada encontrado na busca.",
+    })
+  }
+
+  const aplicada = imp.situacao === "aplicada"
+  return {
+    id: imp.id,
+    iniciadoEm: imp.aplicada_em ?? imp.criado_em,
+    situacao: aplicada ? "sucesso" : "previa",
+    origemLonga: "Disparo manual",
+    origemCurta: "Manual",
+    usuarioNome: imp.aplicada_por_nome ?? imp.criado_por_nome,
+    erroMensagem: null,
+    noTita: c.lidas ?? 0,
+    nota: `Agenda de ${dataBR(imp.janela_inicio)} a ${dataBR(imp.janela_fim)}`
+      + ((a.series_encerradas ?? 0) > 0 ? ` · ${plural(a.series_encerradas, "série encerrada", "séries encerradas")} (acabaram no TiTa)` : "")
+      + ((c.ja_no_pulsar ?? 0) > 0 ? ` · ${plural(c.ja_no_pulsar ?? 0, "sessão já criada", "sessões já criadas")} no Pulsar (intocadas)` : ""),
+    resumoHistorico: [
+      plural(novas, "nova", "novas"),
+      plural(alteradas, "alterada", "alteradas"),
+      `${sairam} saíram`,
+      ...(voltaram ? [`${voltaram} voltaram`] : []),
     ],
     secoes,
   }

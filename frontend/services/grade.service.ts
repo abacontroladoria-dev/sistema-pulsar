@@ -243,23 +243,40 @@ export type PreviaImportacao = {
   janela_inicio: string
   janela_fim: string
   frescor: string | null
+  /** Dia da janela (de hoje em diante) conferido há MAIS tempo. Ausente antes da migration 20261016100000. */
+  frescor_pior?: string | null
+  /** Cópia com mais de 30 h: aplicar é recusado. */
+  copia_velha?: boolean
   dias_uteis: number
   dias_sincronizados: number
   contadores: {
-    lidas: number; novos: number; series_novas: number; vinculos: number; existentes: number; ignorados: number
+    lidas: number; novos: number; series_novas: number; vinculos: number; existentes: number
     bloqueios_novos: number; bloqueios_existentes: number; pendencias: number; sumidos: number
+    /** Só no banco antigo (antes de "o TiTa manda"). */
+    ignorados?: number
+    restaurados?: number; alterados?: number; desfaz_pulsar?: number; ja_no_pulsar?: number; bloqueios_sumidos?: number
   }
   profissionais: number[]
-  pendencias: { motivo: "paciente_sem_cadastro" | "profissional_sem_cadastro" | "terapia_sem_catalogo"; tita_id: number | null; nome: string | null; sessoes: number }[]
+  pendencias: PendenciaImportacao[]
   novos: { data: string; hora: string; paciente: string; profissional: string; terapia: string }[]
-  ignorados: { data: string; hora: string; paciente: string; profissional: string; terapia: string }[]
+  ignorados?: { data: string; hora: string; paciente: string; profissional: string; terapia: string }[]
+  restaurados?: { data: string; hora: string; paciente: string; profissional: string; terapia: string; desfaz_pulsar: boolean }[]
+  alterados?: { data: string; hora: string; paciente: string; profissional: string; terapia: string; sala: string | null; de: string }[]
   sumidos: { id: string; data: string; hora: string; paciente: string; profissional: string; terapia: string }[]
   sem_disponibilidade: { id: number; nome: string; sessoes: number }[]
+}
+
+export type PendenciaImportacao = {
+  motivo: "paciente_sem_cadastro" | "profissional_sem_cadastro" | "terapia_sem_catalogo"
+  tita_id: number | null
+  nome: string | null
+  sessoes: number
 }
 
 export type AplicadoImportacao = {
   vinculos: number; series_novas: number; sessoes_novas: number; bloqueios: number
   sumidos_excluidos: number; series_encerradas: number; lotes?: number; excluir_sumidos?: boolean
+  restauradas?: number; alteradas?: number; bloqueios_excluidos?: number
 }
 
 export async function previaImportacao(de: string, ate: string): Promise<PreviaImportacao> {
@@ -280,6 +297,130 @@ export async function concluirImportacao(importacaoId: string): Promise<Aplicado
   const { data, error } = await sb().rpc("grade_importar_tita_concluir", { p_importacao_id: importacaoId })
   if (error) falha(error)
   return data as AplicadoImportacao
+}
+
+const LOTE_IMPORTACAO = 15
+const ZERADO: AplicadoImportacao = { vinculos: 0, series_novas: 0, sessoes_novas: 0, bloqueios: 0, sumidos_excluidos: 0, series_encerradas: 0 }
+
+/**
+ * Aplica a prévia inteira em lotes de profissionais (com o TiTa mandando, o que
+ * sumiu dele sempre sai) e fecha a importação. Lote que falha interrompe; o que
+ * já foi aplicado fica, e reimportar não duplica.
+ */
+export async function aplicarImportacaoCompleta(
+  previa: PreviaImportacao,
+  onProgresso?: (feitos: number, total: number) => void,
+  /** Só vale no banco antigo; depois da migration 20261016100000 o que sumiu sempre sai. */
+  excluirSumidos = true,
+): Promise<AplicadoImportacao> {
+  const lotes: number[][] = []
+  for (let i = 0; i < previa.profissionais.length; i += LOTE_IMPORTACAO) lotes.push(previa.profissionais.slice(i, i + LOTE_IMPORTACAO))
+  onProgresso?.(0, lotes.length)
+  for (let i = 0; i < lotes.length; i++) {
+    await aplicarLote(previa.importacao_id, excluirSumidos, lotes[i])
+    onProgresso?.(i + 1, lotes.length)
+  }
+  try {
+    // Sem nada a aplicar também fecha: fica no histórico como "conferido".
+    return { ...ZERADO, ...(await concluirImportacao(previa.importacao_id)) }
+  } catch (e) {
+    // Banco antes da migration 20261016100000 não fecha importação vazia.
+    if (!lotes.length) return ZERADO
+    throw e
+  }
+}
+
+/** Uma importação da Grade, para o relatório "Sincronização do TiTa". */
+export type ImportacaoGrade = {
+  id: string
+  janela_inicio: string
+  janela_fim: string
+  situacao: "previa" | "aplicando" | "aplicada" | "descartada"
+  contadores: PreviaImportacao["contadores"]
+  aplicado: AplicadoImportacao
+  frescor: string | null
+  frescor_pior: string | null
+  pendencias: PendenciaImportacao[]
+  criado_por_nome: string | null
+  criado_em: string
+  aplicada_em: string | null
+  aplicada_por_nome: string | null
+}
+
+export type ItemImportacaoGrade = {
+  id: number
+  tipo: "novo" | "restaurado" | "alterado" | "sumido" | "bloqueio" | "bloqueio_sumido" | "serie_encerrada"
+  profissional_id: number | null
+  profissional_nome: string | null
+  paciente_nome: string | null
+  data: string | null
+  hora: string | null
+  terapia: string | null
+  sala: string | null
+  de: string | null
+}
+
+const COLS_IMPORTACAO_GRADE =
+  "id, janela_inicio, janela_fim, situacao, contadores, aplicado, frescor, frescor_pior, pendencias, criado_por_nome, criado_em, aplicada_em, aplicada_por_nome"
+// O localhost usa o banco de produção: sem a migration 20261016100000 as duas colunas não existem.
+const COLS_IMPORTACAO_GRADE_ANTIGAS = COLS_IMPORTACAO_GRADE.replace("frescor_pior, pendencias, ", "")
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function lerImportacoesGrade(filtrar: (q: any) => PromiseLike<{ data: unknown[] | null; error: ErroPg | null }>): Promise<ImportacaoGrade[]> {
+  let r = await filtrar(sb().from("grade_importacoes").select(COLS_IMPORTACAO_GRADE))
+  if (r.error && (r.error.code === "42703" || r.error.code === "PGRST204")) {
+    r = await filtrar(sb().from("grade_importacoes").select(COLS_IMPORTACAO_GRADE_ANTIGAS))
+  }
+  if (r.error) falha(r.error)
+  return ((r.data ?? []) as Partial<ImportacaoGrade>[]).map(i => ({ frescor_pior: null, pendencias: [], ...i }) as ImportacaoGrade)
+}
+
+/** Importações aplicadas, a mais recente primeiro. */
+export async function listarImportacoesGrade(limite = 10): Promise<ImportacaoGrade[]> {
+  return lerImportacoesGrade(q => q.eq("situacao", "aplicada").order("aplicada_em", { ascending: false }).limit(limite))
+}
+
+export async function lerImportacaoGrade(id: string): Promise<ImportacaoGrade> {
+  const [imp] = await lerImportacoesGrade(q => q.eq("id", id).limit(1))
+  if (!imp) throw new Error("Importação não encontrada.")
+  return imp
+}
+
+/** O que a importação fez, sessão a sessão (vazio antes da migration 20261016100000). */
+export async function listarItensImportacaoGrade(importacaoId: string): Promise<ItemImportacaoGrade[]> {
+  const out: ItemImportacaoGrade[] = []
+  for (let de = 0; ; de += 1000) {
+    const { data, error } = await sb()
+      .from("grade_importacoes_itens")
+      .select("id, tipo, profissional_id, profissional_nome, paciente_nome, data, hora, terapia, sala, de")
+      .eq("importacao_id", importacaoId)
+      .order("profissional_nome")
+      .order("data")
+      .order("id")
+      .range(de, de + 999)
+    if (error) {
+      if (ehMigrationPendente(error)) return []
+      falha(error)
+    }
+    out.push(...((data ?? []) as ItemImportacaoGrade[]))
+    if ((data ?? []).length < 1000) break
+  }
+  return out
+}
+
+/**
+ * Pede ao sync uma cópia nova da grade do TiTa para a janela. O sync confere um
+ * dia por vez (cerca de 1 minuto por dia útil) e segue sozinho; a tela acompanha
+ * pelo frescor (grade_sync_dia). Nada é escrito no TiTa.
+ */
+export async function atualizarCopiaTita(de: string, ate: string): Promise<void> {
+  const r = await fetch("/api/grade/atualizar-copia-tita", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ de, ate }),
+  })
+  const corpo = (await r.json().catch(() => ({}))) as { ok?: boolean; mensagem?: string }
+  if (!r.ok || !corpo.ok) throw new Error(corpo.mensagem ?? "Não foi possível pedir a cópia nova do TiTa.")
 }
 
 export type ImportacaoResumo = { id: string; aplicada_em: string | null; aplicada_por_nome: string | null; janela_inicio: string; janela_fim: string; aplicado: AplicadoImportacao }
