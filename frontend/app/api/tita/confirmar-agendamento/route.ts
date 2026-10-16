@@ -1,5 +1,7 @@
 import { createServerClient } from "@supabase/ssr"
 import { NextResponse } from "next/server"
+import { carregarPermissoesEfetivas } from "@/lib/permissions/carregar"
+import { temPermissao } from "@/lib/permissions/resolver"
 import type { NextRequest } from "next/server"
 import {
   prepararAgendamento,
@@ -61,8 +63,16 @@ async function getCurrentUser(request: NextRequest) {
     }
   )
   const { data: { user } } = await supabase.auth.getUser()
-  return user
+  if (!user) return { user: null, podeImplantar: false }
+  // Esta rota GRAVA no TiTa. Exige o mesmo que abrir a tela que a chama
+  // (Ocupação Paciente) e usuário ativo — até 16/10/2026 bastava estar logado.
+  const { data: perfil } = await supabase.from("usuarios").select("role, ativo").eq("id", user.id).maybeSingle()
+  const codigos = perfil?.ativo ? await carregarPermissoesEfetivas(supabase) : new Set<string>()
+  const podeImplantar = !!perfil?.ativo && temPermissao((perfil.role as string | null) ?? "", codigos, PERMISSAO_IMPLANTAR)
+  return { user, podeImplantar }
 }
+
+const PERMISSAO_IMPLANTAR = "cronograma_ocupacao_paciente"
 
 // Implanta no TiTa as sessões aceitas no fluxo de Ocupação de Paciente.
 //
@@ -83,8 +93,11 @@ export async function POST(request: NextRequest) {
   // auth.users/usuarios) e o e-mail vira um marcador óbvio de teste local, pra
   // nunca ser confundido com uma implantação real na consulta de auditoria.
   const devBypass = process.env.DISABLE_AUTH === "true"
-  const user = await getCurrentUser(request)
+  const { user, podeImplantar } = await getCurrentUser(request)
   if (!user && !devBypass) return NextResponse.json({ ok: false, error: "not_authenticated" }, { status: 401 })
+  if (user && !podeImplantar) {
+    return NextResponse.json({ ok: false, error: "sem_permissao", mensagem: "Você não tem permissão para implantar no TiTa." }, { status: 403 })
+  }
   const userId = user?.id ?? null
   const userEmail = user?.email ?? (devBypass ? "dev-local@localhost" : null)
 
