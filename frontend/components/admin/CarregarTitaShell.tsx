@@ -1,6 +1,7 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import {
   AlertCircle, AlertTriangle, CalendarDays, CalendarSync, CheckCircle2, CircleDashed, CloudDownload, History, Loader2,
   LogOut, RefreshCw, ShieldCheck, UserRound, Users, type LucideIcon,
@@ -10,7 +11,7 @@ import { useHeader } from "@/contexts/HeaderContext"
 import { useCadastroTerapias } from "@/hooks/useCadastroTerapias"
 import { InlineNotice } from "@/components/cronograma/ui/InlineNotice"
 import { btnPrimario, btnSecundario, cartao } from "@/components/cronograma/grade/estilo"
-import { useConfirmacao } from "@/components/ui/pastel/confirmacao"
+import { useModalLayer, Z_MODAL } from "@/components/cronograma/ui/useModalLayer"
 import {
   rodadaDeDisponibilidade, rodadaDeGrade, rodadaDePacientes, rodadaDeProfissionais,
 } from "@/components/tita/adaptadoresRelatorio"
@@ -20,6 +21,7 @@ import { medirFrescorGrade, type FrescorGrade } from "@/lib/grade/fonte"
 import { janelaImportacaoTita } from "@/lib/grade/janelaTita"
 import { DEPENDENCIAS_TITA } from "@/lib/tita/dependencias"
 import { lerCorteTita } from "@/services/corteTita.service"
+import { listarCargasTita, type CargaTita } from "@/services/cargaTita.service"
 import { gravarDisponibilidadeTita, lerImportacaoCompleta, prepararPreviaDisponibilidade } from "@/services/disponibilidadeTita.service"
 import {
   aplicarImportacaoCompleta, atualizarCopiaTita, lerImportacaoGrade, listarImportacoesGrade, listarItensImportacaoGrade, previaImportacao,
@@ -46,7 +48,7 @@ type Estado =
   | { t: "erro"; mensagem: string }
 
 const ETAPAS: { id: Etapa; titulo: string; Icone: LucideIcon; descricao: string }[] = [
-  { id: "pacientes", titulo: "Pacientes", Icone: Users, descricao: "Cadastro, responsável, convênio e endereço vindos da agenda do TiTa." },
+  { id: "pacientes", titulo: "Pacientes", Icone: Users, descricao: "Cadastro, responsável e endereço. O convênio vem do CADASTRO do TiTa, nunca do agendamento." },
   { id: "profissionais", titulo: "Profissionais", Icone: UserRound, descricao: "Cadastro (CPF, registro, celular) e terapias habilitadas. Completa vazios; não sobrescreve edição." },
   { id: "disponibilidade", titulo: "Disponibilidades", Icone: CalendarSync, descricao: "Horários de cada profissional pela grade do TiTa das próximas duas semanas. O TiTa prevalece." },
   { id: "agenda", titulo: "Agendamentos", Icone: CalendarDays, descricao: "Sessões “Agendado” da grade do TiTa, em séries. O TiTa manda no que veio dele; o que foi criado no Pulsar fica." },
@@ -75,12 +77,14 @@ export default function CarregarTitaShell() {
   }, [setHeader])
 
   const { terapias: catalogo } = useCadastroTerapias()
-  const { confirmar, dialogo } = useConfirmacao()
+  const [confirmando, setConfirmando] = useState(false)
   const janela = useMemo(() => janelaImportacaoTita(), [])
   const [estados, setEstados] = useState<Record<Etapa, Estado>>(INICIAL)
   const [rodando, setRodando] = useState(false)
   const [frescor, setFrescor] = useState<FrescorGrade | null>(null)
   const [corte, setCorte] = useState<string | null>(null)
+  // undefined = carregando; null = migration da rotina ainda não aplicada.
+  const [cargas, setCargas] = useState<CargaTita[] | null | undefined>(undefined)
   const [pedindoCopia, setPedindoCopia] = useState(false)
   const [relatorio, setRelatorio] = useState<Relatorio | null>(null)
 
@@ -90,6 +94,7 @@ export default function CarregarTitaShell() {
   useEffect(() => {
     void lerFrescor()
     lerCorteTita().then(setCorte).catch(() => {})
+    listarCargasTita(7).then(setCargas).catch(() => setCargas(null))
   }, [lerFrescor])
 
   const definir = (etapa: Etapa, estado: Estado) => setEstados(prev => ({ ...prev, [etapa]: estado }))
@@ -138,12 +143,13 @@ export default function CarregarTitaShell() {
 
   // ── As quatro etapas ───────────────────────────────────────────────────────
   async function etapaPacientes() {
-    definir("pacientes", { t: "rodando", passo: "Trazendo pacientes…" })
+    definir("pacientes", { t: "rodando", passo: "Lendo o cadastro de pacientes do TiTa e trazendo…" })
     const r = await importarPacientesDaTita()
     if (!r.sucesso) throw new Error(r.erro ?? "A importação de pacientes falhou.")
     definir("pacientes", {
       t: "feito",
       resumo: [`${r.novos} novos`, `${r.atualizados} alterados`, `${r.vistos_na_tita} no TiTa`],
+      aviso: r.avisoCadastro,
       abrir: () => abrirPacientes(r.log_id),
     })
   }
@@ -228,19 +234,7 @@ export default function CarregarTitaShell() {
     }
   }
 
-  const iniciar = async () => {
-    if (!(await confirmar({
-      titulo: "Carregar o Pulsar segundo o TiTa?",
-      texto: "Traz, nesta ordem: pacientes, profissionais, disponibilidades e agendamentos da cópia do TiTa. "
-        + "Nas disponibilidades e nos agendamentos que vieram do TiTa, o TiTa prevalece (o que está diferente aqui é trocado, e fica no histórico). "
-        + "O que foi criado no Pulsar não é tocado. Nada é enviado ao TiTa.",
-      confirmar: "Carregar agora",
-      cancelar: "Ainda não",
-      t: "aco",
-      Icone: CloudDownload,
-    }))) return
-    await rodar("pacientes")
-  }
+  const iniciar = () => setConfirmando(true)
 
   const pedirCopia = async () => {
     setPedindoCopia(true)
@@ -269,7 +263,7 @@ export default function CarregarTitaShell() {
           <h2 className="text-base font-semibold text-foreground">Carregar o Pulsar segundo o TiTa</h2>
           <p className="text-sm text-muted-foreground">
             Clona no Pulsar os pacientes, os profissionais, as disponibilidades e os agendamentos que estão no TiTa, mostrando em
-            detalhe o que foi trazido em cada etapa. Use quando quiser conferir — e uma última vez, no dia de se despedir do TiTa.
+            detalhe o que foi trazido em cada etapa. Roda sozinho todo dia às 04:00 (Brasília); este botão faz o mesmo na hora.
           </p>
         </div>
         <ul className="space-y-1.5 text-sm text-muted-foreground">
@@ -297,6 +291,9 @@ export default function CarregarTitaShell() {
         </button>
       </section>
 
+      {/* ── A rotina das 04:00 ──────────────────────────────────────────── */}
+      {cargas !== null && <RotinaDiaria cargas={cargas} />}
+
       {/* ── As etapas ───────────────────────────────────────────────────── */}
       <ol className="space-y-3">
         {ETAPAS.map((e, i) => (
@@ -315,12 +312,15 @@ export default function CarregarTitaShell() {
       {/* ── A despedida ─────────────────────────────────────────────────── */}
       <section className={`${cartao} space-y-3 p-4 sm:p-5`}>
         <h2 className="flex items-center gap-2 text-base font-semibold text-foreground">
-          <LogOut className="h-4 w-4 text-muted-foreground" aria-hidden /> Despedir do TiTa
+          <LogOut className="h-4 w-4 text-muted-foreground" aria-hidden /> No futuro: a despedida do TiTa
         </h2>
+        <p className="rounded-lg bg-muted px-3 py-2 text-sm font-medium text-foreground">
+          Não é agora. Nada nesta página desliga o TiTa: carregar só copia do TiTa para o Pulsar, e o TiTa continua funcionando
+          normalmente.
+        </p>
         <p className="text-sm text-muted-foreground">
-          Depois da última carga, o corte desliga as rotinas que copiam o TiTa e trava as importações para sempre. Ele é feito pelo
-          arquivo <code className="rounded bg-muted px-1 text-xs">docs/CORTE_TITA.sql</code> (com trava), aplicado no SQL Editor.
-          Ainda dependem do TiTa — e ficariam congeladas no dia do corte:
+          Quando você decidir, o corte é feito à mão pelo arquivo <code className="rounded bg-muted px-1 text-xs">docs/CORTE_TITA.sql</code>,
+          que vem travado. Antes disso, estas telas ainda precisam deixar de ler o TiTa — senão ficariam paradas no dia do corte:
         </p>
         <ul className="divide-y divide-border rounded-lg border border-border">
           {DEPENDENCIAS_TITA.map(d => (
@@ -349,8 +349,133 @@ export default function CarregarTitaShell() {
           onClose={() => setRelatorio(null)}
         />
       )}
-      {dialogo}
+      {confirmando && (
+        <ConfirmarCarga
+          onCancelar={() => setConfirmando(false)}
+          onConfirmar={() => { setConfirmando(false); void rodar("pacientes") }}
+        />
+      )}
     </div>
+  )
+}
+
+/** Confirmação no design padrão do Pulsar (mesmos tokens da Grade e desta página). */
+function ConfirmarCarga({ onCancelar, onConfirmar }: { onCancelar: () => void; onConfirmar: () => void }) {
+  const cartaoRef = useRef<HTMLDivElement | null>(null)
+  useModalLayer(cartaoRef, onCancelar)
+  return createPortal(
+    <div
+      className="fixed inset-0 flex items-center justify-center bg-black/45 p-4 animate-in fade-in duration-150 motion-reduce:animate-none"
+      style={{ zIndex: Z_MODAL }}
+      onClick={e => { if (e.target === e.currentTarget) onCancelar() }}
+    >
+      <div
+        ref={cartaoRef}
+        tabIndex={-1}
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="carregar-tita-titulo"
+        className={`${cartao} w-full max-w-md space-y-4 p-5 outline-none`}
+      >
+        <div className="flex items-start gap-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted text-foreground" aria-hidden>
+            <CloudDownload className="h-5 w-5" />
+          </span>
+          <div className="min-w-0 space-y-1">
+            <h2 id="carregar-tita-titulo" className="text-base font-semibold text-foreground">Carregar o Pulsar segundo o TiTa?</h2>
+            <p className="text-sm text-muted-foreground">Traz da cópia do TiTa, nesta ordem: pacientes, profissionais, disponibilidades e agendamentos.</p>
+          </div>
+        </div>
+        <ul className="space-y-2 text-sm text-foreground">
+          <li className="flex gap-2">
+            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+            Nas disponibilidades e nos agendamentos que vieram do TiTa, o TiTa prevalece: o que está diferente aqui é trocado e fica no histórico.
+          </li>
+          <li className="flex gap-2">
+            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" aria-hidden />
+            O que foi criado no Pulsar não é tocado.
+          </li>
+          <li className="flex gap-2">
+            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" aria-hidden />
+            Nada é enviado ao TiTa, e ele continua funcionando normalmente.
+          </li>
+        </ul>
+        <div className="flex flex-wrap justify-end gap-2 border-t border-border pt-4">
+          <button type="button" onClick={onCancelar} className={btnSecundario}>Ainda não</button>
+          <button type="button" onClick={onConfirmar} className={btnPrimario}>
+            <CloudDownload className="h-4 w-4" aria-hidden /> Carregar agora
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  )
+}
+
+const ROTULO_ETAPA: Record<string, string> = {
+  pacientes: "Pacientes", profissionais: "Profissionais", disponibilidade: "Disponibilidades", agenda: "Agendamentos",
+}
+const SELO_CARGA: Record<CargaTita["situacao"], { texto: string; classe: string }> = {
+  sucesso: { texto: "Concluída", classe: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" },
+  parcial: { texto: "Concluída com avisos", classe: "bg-amber-500/10 text-amber-800 dark:text-amber-300" },
+  erro: { texto: "Falhou", classe: "bg-destructive/10 text-destructive" },
+  rodando: { texto: "Rodando", classe: "bg-muted text-muted-foreground" },
+}
+
+/** Última execução da rotina diária e as anteriores, em uma linha cada. */
+function RotinaDiaria({ cargas }: { cargas: CargaTita[] | undefined }) {
+  const [ultima, ...anteriores] = cargas ?? []
+  return (
+    <section className={`${cartao} space-y-3 p-4 sm:p-5`}>
+      <h2 className="flex items-center gap-2 text-base font-semibold text-foreground">
+        <History className="h-4 w-4 text-muted-foreground" aria-hidden /> Rotina diária das 04:00
+      </h2>
+      {cargas === undefined ? (
+        <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Carregando…</p>
+      ) : !ultima ? (
+        <p className="text-sm text-muted-foreground">
+          Ainda não rodou. Ela é ligada depois que o site for publicado (docs/ATIVAR_CARGA_TITA_DIARIA_1_SEGREDO.sql e _2_LIGAR.sql) e roda as mesmas etapas
+          do botão acima, todo dia às 04:00.
+        </p>
+      ) : (
+        <>
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${SELO_CARGA[ultima.situacao].classe}`}>{SELO_CARGA[ultima.situacao].texto}</span>
+            <span className="text-muted-foreground">
+              {formatarDataHora(ultima.iniciado_em)}{ultima.origem === "manual" ? " · disparada à mão" : ""}
+            </span>
+          </div>
+          <ul className="divide-y divide-border rounded-lg border border-border">
+            {ultima.etapas.map(e => (
+              <li key={e.etapa} className="space-y-1 px-3 py-2 text-sm">
+                <div className="flex flex-wrap items-center gap-2">
+                  {e.situacao === "sucesso" ? <CheckCircle2 className="h-4 w-4 text-emerald-600" aria-hidden />
+                    : e.situacao === "pulada" ? <AlertTriangle className="h-4 w-4 text-amber-600" aria-hidden />
+                    : <AlertCircle className="h-4 w-4 text-destructive" aria-hidden />}
+                  <span className="font-medium text-foreground">{ROTULO_ETAPA[e.etapa] ?? e.etapa}</span>
+                  {e.resumo.map(r => (
+                    <span key={r} className="rounded-full bg-muted px-2 py-0.5 text-xs text-foreground tabular-nums">{r}</span>
+                  ))}
+                </div>
+                {e.aviso && <p className="text-xs text-amber-800 dark:text-amber-300">{e.aviso}</p>}
+                {e.erro && <p className="text-xs text-destructive">{e.erro}</p>}
+              </li>
+            ))}
+          </ul>
+          {ultima.erro_mensagem && !ultima.etapas.some(e => e.erro) && (
+            <p className="text-sm text-destructive">{ultima.erro_mensagem}</p>
+          )}
+          {anteriores.length > 0 && (
+            <p className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+              Anteriores:
+              {anteriores.map(c => (
+                <span key={c.id}>{formatarDataHora(c.iniciado_em).slice(0, 5)} · {SELO_CARGA[c.situacao].texto.toLowerCase()}</span>
+              ))}
+            </p>
+          )}
+        </>
+      )}
+    </section>
   )
 }
 

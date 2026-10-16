@@ -1,4 +1,5 @@
 import { getSupabaseClient } from "@/lib/supabase/client"
+import type { SupabaseClient } from "@supabase/supabase-js"
 import { ehMigrationPendente } from "@/lib/supabase/erro"
 import type {
   AlvoImportacaoTita, ImportacaoTita, ItemImportacaoTita, ItemPreviaDisponibilidade,
@@ -8,6 +9,10 @@ import type {
 // Log legível por quem tem cadastros_profissionais; escrita só pelas RPCs.
 
 const MIGRATION = "20261015190000_tita_importacoes_disponibilidade.sql"
+
+/** Cliente do banco: o do navegador por padrão; a rotina das 04:00 passa o da service_role. */
+type Cliente = SupabaseClient
+const cli = (c?: Cliente) => (c ?? getSupabaseClient()) as Cliente
 
 type ErroPg = { message: string; code?: string }
 
@@ -27,8 +32,8 @@ const COLS_IMPORTACAO =
  * devolve lista vazia: o localhost usa o banco de produção e a tela não pode
  * quebrar antes do deploy.
  */
-export async function listarImportacoes(alvo: AlvoImportacaoTita, limite = 10): Promise<ImportacaoTita[]> {
-  const { data, error } = await getSupabaseClient()
+export async function listarImportacoes(alvo: AlvoImportacaoTita, limite = 10, cliente?: Cliente): Promise<ImportacaoTita[]> {
+  const { data, error } = await cli(cliente)
     .from("tita_importacoes")
     .select(COLS_IMPORTACAO)
     .eq("alvo", alvo)
@@ -42,15 +47,15 @@ export async function listarImportacoes(alvo: AlvoImportacaoTita, limite = 10): 
   return (data ?? []) as ImportacaoTita[]
 }
 
-export async function lerImportacao(id: string): Promise<ImportacaoTita> {
-  const { data, error } = await getSupabaseClient().from("tita_importacoes").select(COLS_IMPORTACAO).eq("id", id).single()
+export async function lerImportacao(id: string, cliente?: Cliente): Promise<ImportacaoTita> {
+  const { data, error } = await cli(cliente).from("tita_importacoes").select(COLS_IMPORTACAO).eq("id", id).single()
   if (error) falha(error)
   return data as ImportacaoTita
 }
 
 /** Itens de uma execução (todas as páginas). */
-export async function listarItensImportacao(importacaoId: string): Promise<ItemImportacaoTita[]> {
-  const sb = getSupabaseClient()
+export async function listarItensImportacao(importacaoId: string, cliente?: Cliente): Promise<ItemImportacaoTita[]> {
+  const sb = cli(cliente)
   const out: ItemImportacaoTita[] = []
   for (let de = 0; ; de += 1000) {
     const { data, error } = await sb
@@ -73,8 +78,8 @@ export async function gravarPreviaDisponibilidade(args: {
   janela: { de: string; ate: string }
   vistos: number
   itens: ItemPreviaDisponibilidade[]
-}): Promise<string> {
-  const { data, error } = await getSupabaseClient().rpc("tita_importacao_disponibilidade_previa", {
+}, cliente?: Cliente): Promise<string> {
+  const { data, error } = await cli(cliente).rpc("tita_importacao_disponibilidade_previa", {
     p_vigente_de: args.vigenteDe,
     p_semana_de: args.janela.de,
     p_semana_ate: args.janela.ate,
@@ -87,8 +92,8 @@ export async function gravarPreviaDisponibilidade(args: {
   return data as string
 }
 
-export async function aplicarLoteDisponibilidade(importacaoId: string, profissionais: number[]): Promise<{ aplicados: number; erros: number }> {
-  const { data, error } = await getSupabaseClient().rpc("tita_importacao_disponibilidade_aplicar", {
+export async function aplicarLoteDisponibilidade(importacaoId: string, profissionais: number[], cliente?: Cliente): Promise<{ aplicados: number; erros: number }> {
+  const { data, error } = await cli(cliente).rpc("tita_importacao_disponibilidade_aplicar", {
     p_importacao_id: importacaoId,
     p_profissionais: profissionais,
   })
@@ -96,8 +101,8 @@ export async function aplicarLoteDisponibilidade(importacaoId: string, profissio
   return data as { aplicados: number; erros: number }
 }
 
-export async function concluirImportacaoDisponibilidade(importacaoId: string): Promise<{ situacao: string; aplicados: number; erros: number }> {
-  const { data, error } = await getSupabaseClient().rpc("tita_importacao_concluir", { p_importacao_id: importacaoId })
+export async function concluirImportacaoDisponibilidade(importacaoId: string, cliente?: Cliente): Promise<{ situacao: string; aplicados: number; erros: number }> {
+  const { data, error } = await cli(cliente).rpc("tita_importacao_concluir", { p_importacao_id: importacaoId })
   if (error) falha(error)
   return data as { situacao: string; aplicados: number; erros: number }
 }

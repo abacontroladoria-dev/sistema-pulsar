@@ -3,19 +3,18 @@
 import { useId, useMemo, useState } from "react"
 import toast from "react-hot-toast"
 import {
-  AlertTriangle, CalendarRange, Check, ChevronDown, CloudDownload, Info, Loader2, MapPin, Minus, Plus, Replace, Trash2, Users, X,
+  AlertTriangle, CalendarRange, Check, ChevronDown, Info, Loader2, MapPin, Minus, Plus, Replace, Trash2, Users, X,
 } from "lucide-react"
 import { CampoSelect, rotulo } from "@/components/cadastros/pacientes/ui/campos"
 import { MultiSearchCombobox } from "@/components/cronograma/ui/MultiSearchCombobox"
 import { CabecalhoPastel, SecaoPastel, avisoFeito, tom } from "@/components/ui/pastel/pecas"
 import { useConfirmacao } from "@/components/ui/pastel/confirmacao"
 import { DatePicker } from "@/components/ui/date-picker"
-import { herdarCapacidade, janelaGradeTita, montarDaGradeTita } from "@/lib/disponibilidadeDaGradeTita"
 import {
   CAPACIDADE_MAX, CAPACIDADE_MIN, DIAS_SEMANA, DURACOES, conflitosDeLocal, copiarDia, dataBR, faixasParaRpc, foraDaExclusividade,
   hojeBrasilia, mesmoConteudo, novaFaixa, opcoesHorario, paraMin, periodoBR, sessoesDaFaixa, somarDias, totaisDaSemana, validarRascunho,
 } from "@/lib/disponibilidadeProfissional"
-import { criarVersao, lerSemanaTita } from "@/services/profissionalDisponibilidade.service"
+import { criarVersao } from "@/services/profissionalDisponibilidade.service"
 import type {
   FaixaRascunho, LocalDisponivel, OcupacaoLocal, OrigemVersao, RascunhoDisponibilidade, VersaoDisponibilidade,
 } from "@/types/disponibilidadeProfissional"
@@ -70,7 +69,8 @@ export function EditorDisponibilidade({
   const dePadrao = hoje
 
   const [r, setR] = useState<RascunhoDisponibilidade>(base)
-  const [origem, setOrigem] = useState<OrigemVersao>(origemInicial)
+  // O que vem do TiTa entra pela carga (Administração → Carregar do TiTa); aqui é só edição à mão.
+  const [origem] = useState<OrigemVersao>(origemInicial)
   const [vigenteDe, setVigenteDe] = useState(dePadrao)
   // Já existe versão agendada mais à frente: a nova termina na véspera dela, em
   // vez de nascer cruzando o período (o que a RPC recusaria).
@@ -81,8 +81,6 @@ export function EditorDisponibilidade({
   const [vigenteAte, setVigenteAte] = useState(proximaFutura ? somarDias(proximaFutura.vigente_de, -1) : "")
   const [motivo, setMotivo] = useState(restauradaDe ? `Restaurada da versão nº ${restauradaDe.numero}` : "")
   const [salvando, setSalvando] = useState(false)
-  const [lendoTita, setLendoTita] = useState(false)
-  const [avisoTita, setAvisoTita] = useState<string | null>(null)
   const [abertas, setAbertas] = useState<Set<string>>(() => new Set(base.faixas.length <= 2 ? base.faixas.map(f => f.chave) : []))
 
   const catalogoPorId = useMemo(() => new Map(catalogo.map(t => [t.id, t])), [catalogo])
@@ -165,45 +163,6 @@ export function EditorDisponibilidade({
     }))
   }
 
-  const preencherDaTita = async () => {
-    if (!profissional.tita_profissional_id) return
-    if (r.faixas.length && !(await confirmar({
-      titulo: "Substituir pelos horários do TiTa?",
-      texto: "As faixas que estão no editor serão trocadas pelas da grade do TiTa da semana. Nada é salvo antes de você revisar.",
-      confirmar: "Substituir",
-      t: "aco",
-      Icone: CloudDownload,
-    }))) return
-    setLendoTita(true)
-    setAvisoTita(null)
-    try {
-      // A mesma conta do "Disponibilidade do TiTa" da lista (lib/disponibilidadeDaGradeTita):
-      // semana que vem e a seguinte, somadas por dia da semana.
-      let janela = janelaGradeTita(hoje)
-      let linhas = await lerSemanaTita(profissional.tita_profissional_id, janela.de, janela.ate)
-      if (!linhas.length) {
-        janela = { de: somarDias(janela.de, -7), ate: somarDias(janela.ate, -7) }
-        linhas = await lerSemanaTita(profissional.tita_profissional_id, janela.de, janela.ate)
-      }
-      if (!linhas.length) {
-        setAvisoTita("A grade do TiTa não tem horários deste profissional nesta semana nem nas duas próximas.")
-        return
-      }
-      const m = montarDaGradeTita(linhas, catalogo, locais)
-      // "Pacientes por horário" não existe no TiTa: faixa em grupo da versão de partida mantém a capacidade.
-      setR(herdarCapacidade(m.rascunho, base))
-      setAbertas(new Set())
-      setOrigem("preenchido_tita")
-      const partes = [`Montado com a grade de ${dataBR(janela.de)} a ${dataBR(janela.ate)} (${linhas.length} horários). Confira antes de salvar.`]
-      if (m.salasSemCasamento.length) partes.push(`Locais sem correspondência em Ocupação de Salas: ${m.salasSemCasamento.join(", ")} — escolha à mão.`)
-      if (m.foraDoCatalogo.length) partes.push(`Terapias fora do Cadastro de Terapias: ${m.foraDoCatalogo.join(", ")}.`)
-      setAvisoTita(partes.join(" "))
-    } catch (e) {
-      toast.error(String((e as Error)?.message ?? e))
-    } finally {
-      setLendoTita(false)
-    }
-  }
 
   const salvar = async () => {
     if (semMudanca) {
@@ -268,12 +227,6 @@ export function EditorDisponibilidade({
           apoio={editandoExistente
             ? "Se algo mudar, o sistema cria uma versão nova e guarda a atual no histórico"
             : "Nada é apagado: toda mudança futura fica guardada no histórico"}
-          direita={profissional.tita_profissional_id ? (
-            <button type="button" onClick={preencherDaTita} disabled={lendoTita} className={`${tom("aco")} pp-btn pp-btn-suave`}>
-              {lendoTita ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <CloudDownload className="h-4 w-4" aria-hidden />}
-              Preencher a partir da grade do TiTa
-            </button>
-          ) : undefined}
         />
         <div className="grid gap-4 @2xl:grid-cols-[repeat(2,minmax(0,13rem))_minmax(0,1fr)] @2xl:items-start">
           <div>
@@ -312,11 +265,6 @@ export function EditorDisponibilidade({
               </span>
             </p>
           ) : null}
-          {avisoTita && (
-            <p className={`${tom("amber")} flex items-start gap-2 rounded-[14px] bg-[var(--c-suave)] px-3 py-2 text-[13px] font-bold text-[var(--c-tinta)]`}>
-              <CloudDownload className="mt-0.5 h-4 w-4 shrink-0" aria-hidden /> {avisoTita}
-            </p>
-          )}
           {validacao.gerais.map(g => (
             <p key={g} className="text-[13px] font-bold text-rose-600 dark:text-rose-400">{g}</p>
           ))}

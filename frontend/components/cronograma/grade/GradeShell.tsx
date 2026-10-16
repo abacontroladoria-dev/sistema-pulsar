@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
-  AlertCircle, CalendarDays, CalendarPlus, ChevronLeft, ChevronRight, CloudDownload, Database, Eye, EyeOff, History, Loader2, Lock, Maximize2, Search, X, Stethoscope, Users,
+  AlertCircle, CalendarDays, CalendarPlus, ChevronLeft, ChevronRight, Database, Eye, EyeOff, History, Loader2, Lock, Maximize2, Search, X, Stethoscope, Users,
 } from "lucide-react"
 import toast from "react-hot-toast"
 import { campo, foco } from "@/components/cadastros/pacientes/ui/campos"
@@ -24,7 +24,6 @@ import { PainelResumo, QuemPaciente, QuemProfissional, type EstadoFiltro, type F
 import { ListaPacientes, ListaProfissionais, SeletorDaLista, type LinhaPaciente, type LinhaProfissional } from "./ListaLateral"
 import { PainelAgendamento } from "./PainelAgendamento"
 import { PainelNovoBloqueio, PainelVerBloqueio } from "./PainelBloqueio"
-import { PainelImportarTita } from "./PainelImportarTita"
 import { PainelNovoAgendamento, type InicialNovo } from "./PainelNovoAgendamento"
 import { PainelRegistro } from "./PainelRegistro"
 import {
@@ -148,7 +147,6 @@ export function GradeShell() {
   useEffect(() => { setHeader("Grade", "Agenda do Pulsar — por profissional e por paciente") }, [setHeader])
   const profSel = visao === "profissional" && id ? profPorId.get(id) ?? null : null
   useEffect(() => {
-    const imp = base.importacao
     // Mesmos botões do header de /cadastros/profissionais (design padrão).
     setRightContent(
       <div className="flex flex-wrap items-center justify-end gap-2">
@@ -160,11 +158,6 @@ export function GradeShell() {
           className={btnSecundario} title="Bloquear horário de um profissional" aria-label="Bloquear horário">
           <Lock className="h-4 w-4" aria-hidden /><span className="hidden xl:inline">Bloquear</span>
         </button>
-        <button type="button" onClick={() => setPainel({ tipo: "importar" })} aria-label="Importar do TiTa"
-          title={imp?.aplicada_em ? `Última importação: ${new Date(imp.aplicada_em).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" })}${imp.aplicada_por_nome ? ` por ${imp.aplicada_por_nome}` : ""}` : "Nenhuma importação ainda"}
-          className={btnSecundario}>
-          <CloudDownload className="h-4 w-4" aria-hidden /><span className="hidden xl:inline">Importar do TiTa</span>
-        </button>
         <button type="button" onClick={() => setPainel({ tipo: "novo", inicial: { profissionalId: profSel?.id ?? null, pacienteId: visao === "paciente" ? id : null, data } })}
           className={btnPrimario} aria-label="Novo agendamento">
           <CalendarPlus className="h-4 w-4" aria-hidden /><span className="hidden sm:inline">Novo agendamento</span>
@@ -172,7 +165,7 @@ export function GradeShell() {
       </div>
     )
     return () => setRightContent(null)
-  }, [setRightContent, base.importacao, profSel, visao, id, data])
+  }, [setRightContent, profSel, visao, id, data])
 
   // ── Abrir painéis a partir da grade ─────────────────────────────────────────
   const abrirSessao = useCallback((a: AgendamentoGrade, foraDaGrade = false) => setPainel({ tipo: "sessao", a, foraDaGrade }), [])
@@ -632,7 +625,6 @@ export function GradeShell() {
       {painel?.tipo === "bloqueio" && (
         <PainelVerBloqueio b={painel.b} nomeProfissional={profPorId.get(painel.b.profissional_id)?.nome ?? ""} onFechar={() => setPainel(null)} onMudou={recarregar} />
       )}
-      {painel?.tipo === "importar" && <PainelImportarTita onFechar={() => setPainel(null)} onImportado={recarregar} />}
       {painel?.tipo === "registro" && (
         <PainelRegistro onFechar={() => setPainel(null)}
           profissional={profSel ? { id: profSel.id, nome: profSel.nome } : null}

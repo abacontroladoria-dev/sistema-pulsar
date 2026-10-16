@@ -321,10 +321,12 @@ export async function upsertPaciente(row: PacienteEdit): Promise<Resultado> {
 
   const salvo = depois as Paciente | null
 
-  await registrarAuditoria({
+  // Edição: quem grava o histórico é o banco (gatilho trg_pacientes_historico,
+  // 20261016150000), venha a mudança de onde vier. A tela registra só a criação.
+  if (criando) await registrarAuditoria({
     tabela: "paciente",
     registroId: salvo?.id_paciente ?? row.id_paciente ?? "",
-    acao: criando ? "criar" : "editar",
+    acao: "criar",
     pacienteId: salvo?.id_paciente ?? row.id_paciente ?? null,
     pacienteNome: salvo?.nome ?? row.nome,
     alvoNome: salvo?.nome ?? row.nome,
@@ -382,14 +384,34 @@ export async function definirAtivoPaciente(
 }
 
 /**
- * Dispara manualmente a importação de pacientes do TiTa via RPC.
+ * Grava a cópia do CADASTRO de pacientes do TiTa (de onde a importação tira o
+ * convênio — o do cadastro, nunca o do agendamento). Só lê o TiTa.
  */
-export async function importarPacientesDaTita(): Promise<ResultadoImportacaoPacientes> {
+export async function atualizarCopiaCadastroTita(): Promise<{ ok: boolean; mensagem?: string; total?: number }> {
+  try {
+    const r = await fetch("/api/tita/favorecidos/sincronizar", { method: "POST" })
+    const corpo = (await r.json().catch(() => ({}))) as { ok?: boolean; mensagem?: string; total?: number }
+    return r.ok && corpo.ok ? { ok: true, total: corpo.total } : { ok: false, mensagem: corpo.mensagem ?? `HTTP ${r.status}` }
+  } catch {
+    return { ok: false, mensagem: "falha de rede" }
+  }
+}
+
+/**
+ * Dispara manualmente a importação de pacientes do TiTa via RPC. Antes, atualiza
+ * a cópia do cadastro do TiTa; se ela falhar, a importação segue e o convênio de
+ * quem não tem cópia fresca fica como está (aviso em `avisoCadastro`).
+ */
+export async function importarPacientesDaTita(): Promise<ResultadoImportacaoPacientes & { avisoCadastro?: string }> {
+  const copia = await atualizarCopiaCadastroTita()
   const { data, error } = await getSupabaseClient().rpc("pacientes_importar_tita", { p_origem: "manual" })
   if (error) {
     throw new Error(mensagemDeErro(error))
   }
-  return data as ResultadoImportacaoPacientes
+  return {
+    ...(data as ResultadoImportacaoPacientes),
+    avisoCadastro: copia.ok ? undefined : `Cadastro do TiTa não atualizado (${copia.mensagem}): convênios mantidos como estavam.`,
+  }
 }
 
 /**
