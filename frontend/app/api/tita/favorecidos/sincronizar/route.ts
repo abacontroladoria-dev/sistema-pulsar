@@ -4,8 +4,7 @@ import { supabaseService } from "@/lib/supabase/service"
 import { carregarPermissoesEfetivas } from "@/lib/permissions/carregar"
 import { temPermissao } from "@/lib/permissions/resolver"
 import { checkRateLimit } from "@/lib/rate-limit"
-import { montarMapaConvenioCadastro } from "@/lib/cronograma/convenioCadastro"
-import { buscarSituacaoFavorecidos } from "@/services/tita/situacaoFavorecidos"
+import { gravarCopiaCadastroTita } from "@/services/tita/cargaTita.server"
 
 // Grava a cópia do CADASTRO de pacientes do TiTa (csv_situacao_favorecidos) em
 // public.tita_favorecidos_cadastro. É de lá que a importação de pacientes tira
@@ -41,44 +40,7 @@ export async function POST() {
     return negar(429, "Atualizado há instantes. Tente de novo em um minuto.")
   }
 
-  const r = await buscarSituacaoFavorecidos()
-  if (!r.ok) return negar(502, `O TiTa não respondeu o cadastro de pacientes (${r.erro ?? "erro"}).`)
-
-  const mapa = montarMapaConvenioCadastro(r.favorecidos)
-  const agora = new Date().toISOString()
-  const porId = new Map<number, Record<string, unknown>>()
-  for (const f of r.favorecidos) {
-    if (f.id == null) continue
-    const atual = porId.get(f.id)
-    // Linha repetida: mantém a primeira, mas "Ativo" vence "Inativo".
-    if (atual && !(atual.situacao === "Inativo" && f.situacao === "Ativo")) continue
-    porId.set(f.id, {
-      tita_favorecido_id: f.id,
-      nome: f.nome || `ID TiTa ${f.id}`,
-      situacao: f.situacao,
-      plano_saude: mapa.porPacienteId.get(f.id) ?? null,
-      plano_em_conflito: mapa.conflitos.has(f.id),
-      unidade_nome: f.unidadeNome || null,
-      sincronizado_em: agora,
-    })
-  }
-  const linhas = [...porId.values()]
-  for (let i = 0; i < linhas.length; i += 500) {
-    const { error } = await supabaseService
-      .from("tita_favorecidos_cadastro")
-      .upsert(linhas.slice(i, i + 500), { onConflict: "tita_favorecido_id" })
-    if (error) {
-      console.error("[tita:favorecidos:sincronizar]", error.message)
-      const pendente = /tita_favorecidos_cadastro|does not exist|schema cache/i.test(error.message)
-      return negar(pendente ? 424 : 500, pendente
-        ? "Falta aplicar a migration 20261016140000_pacientes_convenio_do_cadastro_tita.sql."
-        : "Não foi possível gravar a cópia do cadastro do TiTa.")
-    }
-  }
-  return NextResponse.json({
-    ok: true,
-    total: linhas.length,
-    comConvenio: linhas.filter(l => l.plano_saude).length,
-    emConflito: mapa.conflitos.size,
-  })
+  const r = await gravarCopiaCadastroTita(supabaseService)
+  if (!r.ok) return negar(r.migrationPendente ? 424 : 502, r.mensagem)
+  return NextResponse.json({ ok: true, total: r.total, comConvenio: r.comConvenio, emConflito: r.emConflito })
 }

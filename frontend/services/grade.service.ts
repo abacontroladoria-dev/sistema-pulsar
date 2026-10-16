@@ -308,22 +308,25 @@ export type AplicadoImportacao = {
   restauradas?: number; alteradas?: number; bloqueios_excluidos?: number
 }
 
-export async function previaImportacao(de: string, ate: string): Promise<PreviaImportacao> {
-  const { data, error } = await sb().rpc("grade_importar_tita_previa", { p_de: de, p_ate: ate })
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type ClienteGrade = any
+
+export async function previaImportacao(de: string, ate: string, cliente?: ClienteGrade): Promise<PreviaImportacao> {
+  const { data, error } = await (cliente ?? sb()).rpc("grade_importar_tita_previa", { p_de: de, p_ate: ate })
   if (error) falha(error)
   return data as PreviaImportacao
 }
 
-export async function aplicarLote(importacaoId: string, excluirSumidos: boolean, profissionais: number[]): Promise<AplicadoImportacao> {
-  const { data, error } = await sb().rpc("grade_importar_tita_aplicar", {
+export async function aplicarLote(importacaoId: string, excluirSumidos: boolean, profissionais: number[], cliente?: ClienteGrade): Promise<AplicadoImportacao> {
+  const { data, error } = await (cliente ?? sb()).rpc("grade_importar_tita_aplicar", {
     p_importacao_id: importacaoId, p_excluir_sumidos: excluirSumidos, p_profissionais: profissionais,
   })
   if (error) falha(error)
   return (data as { aplicado: AplicadoImportacao }).aplicado
 }
 
-export async function concluirImportacao(importacaoId: string): Promise<AplicadoImportacao> {
-  const { data, error } = await sb().rpc("grade_importar_tita_concluir", { p_importacao_id: importacaoId })
+export async function concluirImportacao(importacaoId: string, cliente?: ClienteGrade): Promise<AplicadoImportacao> {
+  const { data, error } = await (cliente ?? sb()).rpc("grade_importar_tita_concluir", { p_importacao_id: importacaoId })
   if (error) falha(error)
   return data as AplicadoImportacao
 }
@@ -341,17 +344,19 @@ export async function aplicarImportacaoCompleta(
   onProgresso?: (feitos: number, total: number) => void,
   /** Só vale no banco antigo; depois da migration 20261016100000 o que sumiu sempre sai. */
   excluirSumidos = true,
+  /** A rotina das 04:00 passa o cliente da service_role. */
+  cliente?: ClienteGrade,
 ): Promise<AplicadoImportacao> {
   const lotes: number[][] = []
   for (let i = 0; i < previa.profissionais.length; i += LOTE_IMPORTACAO) lotes.push(previa.profissionais.slice(i, i + LOTE_IMPORTACAO))
   onProgresso?.(0, lotes.length)
   for (let i = 0; i < lotes.length; i++) {
-    await aplicarLote(previa.importacao_id, excluirSumidos, lotes[i])
+    await aplicarLote(previa.importacao_id, excluirSumidos, lotes[i], cliente)
     onProgresso?.(i + 1, lotes.length)
   }
   try {
     // Sem nada a aplicar também fecha: fica no histórico como "conferido".
-    return { ...ZERADO, ...(await concluirImportacao(previa.importacao_id)) }
+    return { ...ZERADO, ...(await concluirImportacao(previa.importacao_id, cliente)) }
   } catch (e) {
     // Banco antes da migration 20261016100000 não fecha importação vazia.
     if (!lotes.length) return ZERADO

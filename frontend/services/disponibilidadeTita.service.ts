@@ -6,6 +6,7 @@ import {
 import {
   aplicarLoteDisponibilidade, concluirImportacaoDisponibilidade, gravarPreviaDisponibilidade, lerImportacao, listarItensImportacao,
 } from "@/services/titaImportacoes.service"
+import type { SupabaseClient } from "@supabase/supabase-js"
 import type { CadastroTerapia } from "@/types/terapia"
 import type { ImportacaoTita, ItemImportacaoTita } from "@/types/titaImportacao"
 
@@ -28,19 +29,22 @@ export type PreviaDisponibilidadeTita = {
 /** Monta a prévia de todos e grava no banco (nada muda na disponibilidade). */
 export async function prepararPreviaDisponibilidade(args: {
   vigenteDe?: string
-  catalogo: CadastroTerapia[]
+  catalogo: Pick<CadastroTerapia, "id" | "nome" | "ativo">[]
   onPasso?: (texto: string) => void
+  /** A rotina das 04:00 passa o cliente da service_role. */
+  cliente?: SupabaseClient
 }): Promise<PreviaDisponibilidadeTita> {
+  const { cliente } = args
   const hoje = hojeBrasilia()
   const vigenteDe = args.vigenteDe ?? hoje
   const janela = janelaGradeTita(hoje)
   args.onPasso?.("Lendo a grade do TiTa das duas semanas…")
   const [grade, profissionais, versoes, habilitadas, locais] = await Promise.all([
-    lerGradeTitaDeTodos(janela.de, janela.ate),
-    listarProfissionaisComTita(),
-    listarVersoesAtivasDeTodos(),
-    listarHabilitadasDeTodos(),
-    listarLocais(),
+    lerGradeTitaDeTodos(janela.de, janela.ate, cliente),
+    listarProfissionaisComTita(cliente),
+    listarVersoesAtivasDeTodos(cliente),
+    listarHabilitadasDeTodos(cliente),
+    listarLocais(cliente),
   ])
   args.onPasso?.("Comparando com a disponibilidade de cada profissional…")
   const porTita = new Map(profissionais.map(p => [p.tita_profissional_id, p]))
@@ -63,7 +67,7 @@ export async function prepararPreviaDisponibilidade(args: {
     }))
 
   args.onPasso?.("Gravando a prévia…")
-  const id = await gravarPreviaDisponibilidade({ vigenteDe, janela, vistos: grade.size, itens })
+  const id = await gravarPreviaDisponibilidade({ vigenteDe, janela, vistos: grade.size, itens }, cliente)
   return {
     id,
     aGravar: itens.filter(i => i.tipo === "novo" || i.tipo === "alterado").map(i => i.profissional_id),
@@ -76,19 +80,20 @@ export async function prepararPreviaDisponibilidade(args: {
 export async function gravarDisponibilidadeTita(
   previa: PreviaDisponibilidadeTita,
   onProgresso?: (feitos: number, total: number) => void,
+  cliente?: SupabaseClient,
 ): Promise<{ situacao: string; aplicados: number; erros: number }> {
   const lotes: number[][] = []
   for (let i = 0; i < previa.aGravar.length; i += LOTE) lotes.push(previa.aGravar.slice(i, i + LOTE))
   onProgresso?.(0, lotes.length)
   for (let i = 0; i < lotes.length; i++) {
-    await aplicarLoteDisponibilidade(previa.id, lotes[i])
+    await aplicarLoteDisponibilidade(previa.id, lotes[i], cliente)
     onProgresso?.(i + 1, lotes.length)
   }
-  return concluirImportacaoDisponibilidade(previa.id)
+  return concluirImportacaoDisponibilidade(previa.id, cliente)
 }
 
 /** A importação e seus itens, relidos do banco (o que a tela mostra é o que ficou gravado). */
-export async function lerImportacaoCompleta(id: string): Promise<{ imp: ImportacaoTita; itens: ItemImportacaoTita[] }> {
-  const [imp, itens] = await Promise.all([lerImportacao(id), listarItensImportacao(id)])
+export async function lerImportacaoCompleta(id: string, cliente?: SupabaseClient): Promise<{ imp: ImportacaoTita; itens: ItemImportacaoTita[] }> {
+  const [imp, itens] = await Promise.all([lerImportacao(id, cliente), listarItensImportacao(id, cliente)])
   return { imp, itens }
 }

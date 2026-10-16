@@ -62,7 +62,7 @@ begin
       'sync-tita-diario', 'sync-tita-grade-diario', 'sync-tita-grade-horizonte-diario', 'sync-tita-grade-semanal',
       'sync-tita-operacional', 'sync-tita-planejamento', 'sync-tita-reconciliacao', 'sync-tita-semana-segunda',
       'sync_tita_agenda', 'sync-grade-profissionais-hora', 'cco-sync-tita-sessions',
-      'pacientes-importar-tita-diario', 'sync-reposicao-faltas',
+      'pacientes-importar-tita-diario', 'carga-tita-diaria', 'sync-reposicao-faltas',
       'snapshot-previsao-receitas-daily', 'snapshot-previsao-receitas-fechamento'
     )
   loop

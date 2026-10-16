@@ -2,6 +2,7 @@ import { buscarGrade } from "@/lib/grade/fonte"
 import { resumoSemana } from "@/lib/disponibilidadeProfissional"
 import type { LinhaGradeTita } from "@/lib/disponibilidadeDaGradeTita"
 import { getSupabaseClient } from "@/lib/supabase/client"
+import type { SupabaseClient } from "@supabase/supabase-js"
 import { ehMigrationPendente } from "@/lib/supabase/erro"
 import { MigrationPendenteError } from "@/services/cadastroTerapias.service"
 import type {
@@ -14,6 +15,10 @@ import type {
 // SÓ pelas RPCs — as tabelas não têm grant de escrita para a aplicação.
 
 type ErroPg = { message: string; code?: string }
+
+/** Cliente do banco: o do navegador por padrão; a rotina das 04:00 passa o da service_role. */
+type Cliente = SupabaseClient
+const cli = (c?: Cliente) => (c ?? getSupabaseClient()) as Cliente
 
 function mensagem(e: ErroPg): string {
   const m = e.message ?? ""
@@ -97,8 +102,8 @@ export async function listarVersoes(profissionalId: number): Promise<VersaoDispo
  * Versões vigentes e agendadas de TODOS os profissionais, com as faixas — base
  * da importação em massa do TiTa. profissional.id → versões.
  */
-export async function listarVersoesAtivasDeTodos(): Promise<Map<number, VersaoDisponibilidade[]>> {
-  const sb = getSupabaseClient()
+export async function listarVersoesAtivasDeTodos(cliente?: Cliente): Promise<Map<number, VersaoDisponibilidade[]>> {
+  const sb = cli(cliente)
   type Resposta = { data: unknown[] | null; error: ErroPg | null }
   const lista: Omit<VersaoDisponibilidade, "faixas">[] = []
   for (let de = 0; ; de += 1000) {
@@ -146,7 +151,7 @@ export async function listarVersoesAtivasDeTodos(): Promise<Map<number, VersaoDi
  * Grade do TiTa de todos os profissionais na janela (unidade 280), agrupada pelo
  * id do TiTa, com o nome que o TiTa usa (para avisar quem falta no cadastro).
  */
-export async function lerGradeTitaDeTodos(de: string, ate: string): Promise<Map<number, { nome: string; linhas: LinhaGradeTita[] }>> {
+export async function lerGradeTitaDeTodos(de: string, ate: string, cliente?: Cliente): Promise<Map<number, { nome: string; linhas: LinhaGradeTita[] }>> {
   const linhas = await buscarGrade<LinhaGradeTita & { profissional_id: number | null; profissional_nome: string | null }>({
     fonte: "base",
     unidade: 280,
@@ -154,6 +159,7 @@ export async function lerGradeTitaDeTodos(de: string, ate: string): Promise<Map<
     ate,
     campos: "profissional_id, profissional_nome, data, hora_inicial, hora_final, terapia_nome, sala_nome",
     ordem: [{ coluna: "profissional_id" }, { coluna: "data" }, { coluna: "hora_inicial" }, { coluna: "id" }],
+    cliente,
   })
   const out = new Map<number, { nome: string; linhas: LinhaGradeTita[] }>()
   for (const { profissional_id, profissional_nome, ...l } of linhas) {
@@ -166,8 +172,8 @@ export async function lerGradeTitaDeTodos(de: string, ate: string): Promise<Map<
 }
 
 /** Profissionais ligados ao TiTa (ativos e inativos). */
-export async function listarProfissionaisComTita(): Promise<{ id: number; nome: string; tita_profissional_id: number; ativo: boolean }[]> {
-  const sb = getSupabaseClient()
+export async function listarProfissionaisComTita(cliente?: Cliente): Promise<{ id: number; nome: string; tita_profissional_id: number; ativo: boolean }[]> {
+  const sb = cli(cliente)
   const out: { id: number; nome: string; tita_profissional_id: number; ativo: boolean }[] = []
   for (let de = 0; ; de += 1000) {
     const { data, error } = await sb
@@ -184,8 +190,8 @@ export async function listarProfissionaisComTita(): Promise<{ id: number; nome: 
 }
 
 /** profissional.id → terapias habilitadas, de todos. */
-export async function listarHabilitadasDeTodos(): Promise<Map<number, Set<number>>> {
-  const sb = getSupabaseClient()
+export async function listarHabilitadasDeTodos(cliente?: Cliente): Promise<Map<number, Set<number>>> {
+  const sb = cli(cliente)
   const out = new Map<number, Set<number>>()
   for (let de = 0; ; de += 1000) {
     const { data, error } = await sb
@@ -223,8 +229,8 @@ export async function listarSituacaoGrades(): Promise<Map<number, SituacaoGradeP
   return new Map(((data ?? []) as SituacaoGradeProfissional[]).map(s => [s.profissional_id, s]))
 }
 
-export async function listarLocais(): Promise<LocalDisponivel[]> {
-  const { data, error } = await getSupabaseClient().rpc("profissionais_locais")
+export async function listarLocais(cliente?: Cliente): Promise<LocalDisponivel[]> {
+  const { data, error } = await cli(cliente).rpc("profissionais_locais")
   if (error) falha(error)
   return (data ?? []) as LocalDisponivel[]
 }
