@@ -684,7 +684,9 @@ begin
   perform public.sp_grade_tita_calcular(p_de, p_ate);
   v_resumo := public.sp_grade_tita_resumo(p_de, p_ate);
 
-  select max(d.sincronizado_em), count(distinct d.data) into v_frescor, v_dias_ok
+  -- Só dias úteis, como o total (antes contava sábado e domingo: "50 de 36").
+  select max(d.sincronizado_em), count(distinct d.data) filter (where extract(isodow from d.data) between 1 and 5)
+    into v_frescor, v_dias_ok
   from public.grade_sync_dia d
   where d.modo = 'grade' and d.unidade_id = 280 and d.data between p_de and p_ate;
   select count(*) into v_dias
