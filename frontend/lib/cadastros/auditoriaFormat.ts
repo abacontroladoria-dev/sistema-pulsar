@@ -68,6 +68,15 @@ const LABEL_POR_ENTIDADE: Record<EntidadeAuditada, Record<string, string>> = {
     cidade: "Cidade",
     uf: "UF",
     foto_path: "Foto",
+    // O convênio passou a ser gravado pelo banco no histórico (20261016150000).
+    convenio_nome: "Convênio",
+    convenio_catalogo_id: "Convênio (vínculo com o catálogo)",
+    convenio_id: "Convênio (id no TiTa)",
+    numero_carteirinha: "Carteirinha",
+    responsavel_nome: "Nome do responsável",
+    responsavel_cpf: "CPF do responsável",
+    responsavel_email: "E-mail do responsável",
+    responsavel_telefone: "Telefone do responsável",
   },
   responsavel: {
     nome: "Nome",

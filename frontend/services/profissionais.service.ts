@@ -201,7 +201,9 @@ export async function atualizarProfissional(
 
   const acao =
     input.ativo === undefined || input.ativo === antes.ativo ? "editar" : input.ativo ? "reativar" : "inativar"
-  await registrarAuditoria({
+  // Edição de campos: o banco grava (gatilho trg_profissionais_historico,
+  // 20261016150000). A tela registra só inativar/reativar.
+  if (acao !== "editar") await registrarAuditoria({
     tabela: "profissional",
     registroId: prof.id,
     acao,

@@ -68,6 +68,7 @@
 | P6c | Assinaturas de profissional ficam no mesmo bucket das fotos de paciente, e quem tem `cadastros_profissionais` lê todas | próximo esforço | Bucket próprio para assinatura, leitura só pela própria pessoa e por quem emite documento |
 | P7 | Admin e diretoria sem segundo fator | você | Ligar MFA (TOTP) no Supabase Auth para esses papéis |
 | P8 | Usuário com permissão pode extrair a lista inteira (sem limite nem trilha de exportação) | próximo esforço | Limite de linhas por chamada nas RPCs de lista e trilha de exportação em massa |
+| P8b | `/api/tita/situacao-favorecidos` devolve nome, situação e convênio de todos os pacientes do TiTa a qualquer login | próximo esforço | Exigir a permissão das telas que a usam (Indicadores → Pacientes, Previsão, Ocupação Paciente) |
 | P9 | Saída de colaborador | rotina | Ao desligar alguém: `usuarios.ativo = false` no mesmo dia (`usuario_tem_permissao` já recusa inativo); conferir o bloco 11 do SQL de auditoria todo mês |
 
 ## 5. Matriz de acesso (estado pelas migrations, 16/10/2026)
@@ -79,6 +80,8 @@
 | `pacientes` | **qualquer login** (`using (true)`) — P1b | sem acesso depois da C1 | `cadastros_pacientes` / papéis |
 | `pacientes_importacoes_log` | `cadastros_pacientes` (C9) | sem acesso | só RPC |
 | `pacientes_disponibilidade_versoes` | `cadastros_pacientes` | sem acesso | só RPC |
+| `pacientes_convenio_vigencias` | `cadastros_pacientes` (consulta por data via `convenio_do_paciente_em`, só logado) | sem acesso | só gatilho |
+| `tita_favorecidos_cadastro` (cópia do cadastro do TiTa) | `cadastros_pacientes` | sem acesso | só service_role (rota de servidor e snapshot) |
 | `profissionais`, `profissionais_terapias_habilitadas` | `cadastros_profissionais` | sem acesso | `cadastros_profissionais` |
 | `profissionais_disponibilidade_*` | `cadastros_profissionais` | sem acesso | só RPC |
 | `grade_*` (agenda do Pulsar) | `cronograma_grade` | sem acesso | só RPC |

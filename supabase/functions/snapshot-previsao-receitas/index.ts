@@ -242,6 +242,79 @@ function montarMapaConvenioCadastro(favorecidos: FavorecidoPlano[]): Map<number,
   return porPacienteId
 }
 
+/**
+ * Cópia do CADASTRO de pacientes do TiTa em public.tita_favorecidos_cadastro.
+ * A importação de pacientes das 04:00 tira o convênio dela (o do cadastro,
+ * nunca o do agendamento — decisão de 16/10/2026). Mesma regra de
+ * app/api/tita/favorecidos/sincronizar (Next): conflito ou "Não informado" →
+ * plano vazio. Melhor esforço: falha só vai para o log, o snapshot segue.
+ */
+// deno-lint-ignore no-explicit-any
+async function gravarCopiaCadastro(sb: any): Promise<void> {
+  if (!TITA_TOKEN) return
+  try {
+    const resp = await fetch(`${TITA_BASE_URL}/integracao/csv_situacao_favorecidos`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-INTEGRACAO-TOKEN": TITA_TOKEN },
+      body: JSON.stringify({}),
+      signal: AbortSignal.timeout(30_000),
+    })
+    if (!resp.ok) { console.error(`[snapshot-previsao-receitas] cópia do cadastro: TiTa ${resp.status}`); return }
+    const linhas = (await resp.text()).trim().split(/\r?\n/)
+    if (linhas.length < 2) return
+    const headers = parseCSVLine(linhas[0]).map(normalizarCabecalho)
+    const idxId = acharColuna(headers, ["id favorecido", "id do favorecido", "favorecido id", "id"])
+    const idxNome = acharColuna(headers, ["nome favorecido", "nome do favorecido", "favorecido", "nome"])
+    const idxSit = acharColuna(headers, ["situacao", "situacao favorecido", "status"])
+    const idxPlano = acharColuna(headers, ["plano saude", "plano de saude", "plano", "convenio"])
+    const idxUnid = acharColuna(headers, ["nome unidade", "unidade nome", "unidade"])
+    if (idxId < 0 || idxNome < 0) { console.error("[snapshot-previsao-receitas] cópia do cadastro: colunas inesperadas"); return }
+
+    const brutos: { id: number; nome: string; situacao: string; planoSaude: string; unidade: string }[] = []
+    for (let i = 1; i < linhas.length; i++) {
+      const v = parseCSVLine(linhas[i])
+      const id = Number((v[idxId] ?? "").replace(/\D/g, ""))
+      const nome = (v[idxNome] ?? "").trim()
+      if (!(id > 0) || !nome) continue
+      brutos.push({
+        id, nome,
+        situacao: (idxSit >= 0 ? (v[idxSit] ?? "") : "").trim().toLowerCase().startsWith("inativ") ? "Inativo" : "Ativo",
+        planoSaude: idxPlano >= 0 ? (v[idxPlano] ?? "").trim() : "",
+        unidade: idxUnid >= 0 ? (v[idxUnid] ?? "").trim() : "",
+      })
+    }
+    const planos = new Map<number, string>()
+    const conflitos = new Set<number>()
+    for (const f of brutos) {
+      const plano = planoUtil(f.planoSaude)
+      if (!plano) continue
+      const anterior = planos.get(f.id)
+      if (anterior !== undefined && anterior !== plano) conflitos.add(f.id)
+      else planos.set(f.id, plano)
+    }
+    const agora = new Date().toISOString()
+    const porId = new Map<number, Record<string, unknown>>()
+    for (const f of brutos) {
+      const atual = porId.get(f.id)
+      if (atual && !(atual.situacao === "Inativo" && f.situacao === "Ativo")) continue
+      porId.set(f.id, {
+        tita_favorecido_id: f.id, nome: f.nome, situacao: f.situacao,
+        plano_saude: conflitos.has(f.id) ? null : planos.get(f.id) ?? null,
+        plano_em_conflito: conflitos.has(f.id),
+        unidade_nome: f.unidade || null, sincronizado_em: agora,
+      })
+    }
+    const registros = [...porId.values()]
+    for (let i = 0; i < registros.length; i += 500) {
+      const { error } = await sb.from("tita_favorecidos_cadastro").upsert(registros.slice(i, i + 500), { onConflict: "tita_favorecido_id" })
+      if (error) { console.error(`[snapshot-previsao-receitas] cópia do cadastro: ${error.message}`); return }
+    }
+    console.log(`[snapshot-previsao-receitas] cópia do cadastro: ${registros.length} pacientes (${conflitos.size} em conflito)`)
+  } catch (e) {
+    console.error(`[snapshot-previsao-receitas] cópia do cadastro falhou: ${e instanceof Error ? e.message : String(e)}`)
+  }
+}
+
 /** aplicarConvenioCadastro: troca convenio_nome pelo do cadastro quando ele responde pelo paciente. */
 function aplicarConvenioCadastro(rows: AgendaSalaRow[], mapa: Map<number, string>): { rows: AgendaSalaRow[]; doCadastro: number } {
   let doCadastro = 0
@@ -462,6 +535,9 @@ serve(async (req: Request) => {
   const { inicio, fim } = mesInteiroRange(ano, mes)
 
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
+
+  // Antes de tudo e isolada: a importação de pacientes das 04:00 depende dela.
+  await gravarCopiaCadastro(sb)
 
   try {
     const AGENDA_FIELDS = "id, origem, tita_agendamento_id, paciente_id, paciente_nome, convenio_nome, terapia_id, terapia_nome, terapia_exibicao_id, terapia_exibicao_nome, hora_inicial, status_agendamento, data"

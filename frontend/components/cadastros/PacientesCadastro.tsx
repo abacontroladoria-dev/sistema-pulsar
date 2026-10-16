@@ -171,6 +171,7 @@ export function PacientesCadastro() {
     setImportando(true)
     try {
       const r = await importarPacientesDaTita()
+      if (r.avisoCadastro) toast.error(r.avisoCadastro, { duration: 9000 })
       const partes = [
         r.novos ? `${r.novos} novo${r.novos === 1 ? "" : "s"}` : null,
         r.vinculados_por_cpf

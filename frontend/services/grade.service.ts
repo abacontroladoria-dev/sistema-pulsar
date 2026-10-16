@@ -77,6 +77,34 @@ const COLS_AGENDAMENTO =
   "terapia_id, terapia_nome, terapia_exibicao_id, terapia_exibicao_nome, local_id, sala_nome, unidade_nome, situacao, " +
   "excluido_em, excluido_por_nome, motivo_exclusao, escopo_exclusao, origem, tita_agendamento_id, criado_em, criado_por_nome"
 
+// Nome ATUAL do cadastro, pelas ligações de id (decisão de 16/10/2026: a sessão
+// guarda quem/o quê; nome se lê do cadastro na hora). As colunas *_nome da
+// própria sessão são só a cópia do momento em que foi criada: valem apenas se o
+// cadastro não puder ser lido (RLS de quem consulta).
+const COLS_CADASTRO_ATUAL =
+  ", cad_paciente:pacientes!grade_agendamentos_paciente_id_fkey(nome)" +
+  ", cad_profissional:profissionais!grade_agendamentos_profissional_id_fkey(nome)" +
+  ", cad_terapia:cadastro_terapias!grade_agendamentos_terapia_id_fkey(nome)" +
+  ", cad_exibicao:cadastro_terapias!grade_agendamentos_terapia_exibicao_id_fkey(nome)"
+
+type ComCadastro = AgendamentoGrade & {
+  cad_paciente?: { nome: string } | null
+  cad_profissional?: { nome: string } | null
+  cad_terapia?: { nome: string } | null
+  cad_exibicao?: { nome: string } | null
+}
+
+function comNomesDoCadastro(r: ComCadastro): AgendamentoGrade {
+  const { cad_paciente, cad_profissional, cad_terapia, cad_exibicao, ...a } = r
+  return {
+    ...a,
+    paciente_nome: cad_paciente?.nome ?? a.paciente_nome,
+    profissional_nome: cad_profissional?.nome ?? a.profissional_nome,
+    terapia_nome: cad_terapia?.nome ?? a.terapia_nome,
+    terapia_exibicao_nome: cad_exibicao?.nome ?? a.terapia_exibicao_nome,
+  }
+}
+
 /** Sessões agendadas no período (excluídas ficam de fora: estão no Registro). */
 export async function listarAgendamentos(args: {
   de: string
@@ -84,19 +112,20 @@ export async function listarAgendamentos(args: {
   profissionais?: number[]
   pacienteId?: number
 }): Promise<AgendamentoGrade[]> {
-  return lerTudo<AgendamentoGrade>((i, f) => {
-    let q = sb().from("grade_agendamentos").select(COLS_AGENDAMENTO)
+  const linhas = await lerTudo<ComCadastro>((i, f) => {
+    let q = sb().from("grade_agendamentos").select(COLS_AGENDAMENTO + COLS_CADASTRO_ATUAL)
       .eq("situacao", "agendado").gte("data", args.de).lte("data", args.ate)
     if (args.profissionais?.length) q = q.in("profissional_id", args.profissionais)
     if (args.pacienteId != null) q = q.eq("paciente_id", args.pacienteId)
     return q.order("data").order("hora_inicio").order("id").range(i, f)
   })
+  return linhas.map(comNomesDoCadastro)
 }
 
 export async function buscarAgendamento(id: string): Promise<AgendamentoGrade | null> {
-  const { data, error } = await sb().from("grade_agendamentos").select(COLS_AGENDAMENTO).eq("id", id).maybeSingle()
+  const { data, error } = await sb().from("grade_agendamentos").select(COLS_AGENDAMENTO + COLS_CADASTRO_ATUAL).eq("id", id).maybeSingle()
   if (error) falha(error)
-  return (data as AgendamentoGrade | null) ?? null
+  return data ? comNomesDoCadastro(data as unknown as ComCadastro) : null
 }
 
 /** Quantas sessões "desta em diante" apagaria (prévia do botão). */

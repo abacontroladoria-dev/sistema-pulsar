@@ -46,7 +46,7 @@ type Estado =
   | { t: "erro"; mensagem: string }
 
 const ETAPAS: { id: Etapa; titulo: string; Icone: LucideIcon; descricao: string }[] = [
-  { id: "pacientes", titulo: "Pacientes", Icone: Users, descricao: "Cadastro, responsável, convênio e endereço vindos da agenda do TiTa." },
+  { id: "pacientes", titulo: "Pacientes", Icone: Users, descricao: "Cadastro, responsável e endereço. O convênio vem do CADASTRO do TiTa, nunca do agendamento." },
   { id: "profissionais", titulo: "Profissionais", Icone: UserRound, descricao: "Cadastro (CPF, registro, celular) e terapias habilitadas. Completa vazios; não sobrescreve edição." },
   { id: "disponibilidade", titulo: "Disponibilidades", Icone: CalendarSync, descricao: "Horários de cada profissional pela grade do TiTa das próximas duas semanas. O TiTa prevalece." },
   { id: "agenda", titulo: "Agendamentos", Icone: CalendarDays, descricao: "Sessões “Agendado” da grade do TiTa, em séries. O TiTa manda no que veio dele; o que foi criado no Pulsar fica." },
@@ -138,12 +138,13 @@ export default function CarregarTitaShell() {
 
   // ── As quatro etapas ───────────────────────────────────────────────────────
   async function etapaPacientes() {
-    definir("pacientes", { t: "rodando", passo: "Trazendo pacientes…" })
+    definir("pacientes", { t: "rodando", passo: "Lendo o cadastro de pacientes do TiTa e trazendo…" })
     const r = await importarPacientesDaTita()
     if (!r.sucesso) throw new Error(r.erro ?? "A importação de pacientes falhou.")
     definir("pacientes", {
       t: "feito",
       resumo: [`${r.novos} novos`, `${r.atualizados} alterados`, `${r.vistos_na_tita} no TiTa`],
+      aviso: r.avisoCadastro,
       abrir: () => abrirPacientes(r.log_id),
     })
   }
