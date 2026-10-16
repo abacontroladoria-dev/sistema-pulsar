@@ -9,17 +9,13 @@ import { useConfirmacao } from "@/components/ui/pastel/confirmacao"
 import { DatePicker } from "@/components/ui/date-picker"
 import { rodadaDeDisponibilidade } from "@/components/tita/adaptadoresRelatorio"
 import { CorpoRelatorio, formatarDataHora, type RodadaRelatorio } from "@/components/tita/RelatorioSincronizacaoTita"
-import { classificarDisponibilidade, janelaGradeTita } from "@/lib/disponibilidadeDaGradeTita"
+import { janelaGradeTita } from "@/lib/disponibilidadeDaGradeTita"
 import { dataBR, hojeBrasilia } from "@/lib/disponibilidadeProfissional"
 import { medirFrescorGrade, type FrescorGrade } from "@/lib/grade/fonte"
 import {
-  lerGradeTitaDeTodos, listarHabilitadasDeTodos, listarLocais, listarProfissionaisComTita, listarVersoesAtivasDeTodos,
-} from "@/services/profissionalDisponibilidade.service"
-import {
-  aplicarLoteDisponibilidade, concluirImportacaoDisponibilidade, gravarPreviaDisponibilidade, lerImportacao, listarItensImportacao,
-} from "@/services/titaImportacoes.service"
+  gravarDisponibilidadeTita, lerImportacaoCompleta, prepararPreviaDisponibilidade, type PreviaDisponibilidadeTita,
+} from "@/services/disponibilidadeTita.service"
 import type { CadastroTerapia } from "@/types/terapia"
-import type { ItemPreviaDisponibilidade } from "@/types/titaImportacao"
 
 // "Gravar no Pulsar a disponibilidade do TiTa" — todos os profissionais de uma
 // vez, SÓ quando alguém clica (nenhuma rotina automática). Lê a cópia da grade
@@ -29,7 +25,6 @@ import type { ItemPreviaDisponibilidade } from "@/types/titaImportacao"
 // que aparece na tela é exatamente o que o "Gravar" vai aplicar.
 // Regra (15/10/2026): o TiTa PREVALECE; a versão editada no Pulsar fica no histórico.
 
-const LOTE = 15
 const btnPrimario =
   "inline-flex h-9 items-center justify-center gap-2 rounded-md bg-primary px-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
 const btnSecundario =
@@ -38,7 +33,7 @@ const btnSecundario =
 type Fase =
   | { t: "inicio" }
   | { t: "lendo"; passo: string }
-  | { t: "previa"; id: string; rodada: RodadaRelatorio; aGravar: number[]; editadasNoPulsar: number; foraDoCadastro: string[] }
+  | { t: "previa"; previa: PreviaDisponibilidadeTita; rodada: RodadaRelatorio }
   | { t: "gravando"; feitos: number; total: number }
   | { t: "feito"; rodada: RodadaRelatorio }
 
@@ -68,49 +63,16 @@ export function PainelDisponibilidadeTita({
   }, [janela.de, janela.ate])
 
   const lerDoBanco = async (id: string) => {
-    const [imp, itens] = await Promise.all([lerImportacao(id), listarItensImportacao(id)])
-    return { imp, itens, rodada: rodadaDeDisponibilidade(imp, itens) }
+    const { imp, itens } = await lerImportacaoCompleta(id)
+    return rodadaDeDisponibilidade(imp, itens)
   }
 
   const gerarPrevia = async () => {
     setErro(null)
     try {
-      setFase({ t: "lendo", passo: "Lendo a grade do TiTa das duas semanas…" })
-      const [grade, profissionais, versoes, habilitadas, locais] = await Promise.all([
-        lerGradeTitaDeTodos(janela.de, janela.ate),
-        listarProfissionaisComTita(),
-        listarVersoesAtivasDeTodos(),
-        listarHabilitadasDeTodos(),
-        listarLocais(),
-      ])
-      setFase({ t: "lendo", passo: "Comparando com a disponibilidade de cada profissional…" })
-      const porTita = new Map(profissionais.map(p => [p.tita_profissional_id, p]))
-      const foraDoCadastro = [...grade.entries()].filter(([titaId]) => !porTita.has(titaId)).map(([, g]) => g.nome).sort((a, b) => a.localeCompare(b, "pt-BR"))
-      const itens: ItemPreviaDisponibilidade[] = profissionais
-        .filter(p => p.ativo)
-        .map(p => classificarDisponibilidade({
-          profissionalId: p.id,
-          nome: p.nome,
-          linhas: grade.get(p.tita_profissional_id)?.linhas ?? [],
-          versoes: versoes.get(p.id) ?? [],
-          vigenteDe,
-          janela,
-          habilitadas: habilitadas.get(p.id) ?? new Set(),
-          catalogo,
-          locais,
-        }))
-
-      setFase({ t: "lendo", passo: "Gravando a prévia…" })
-      const id = await gravarPreviaDisponibilidade({ vigenteDe, janela, vistos: grade.size, itens })
-      const { rodada } = await lerDoBanco(id)
-      setFase({
-        t: "previa",
-        id,
-        rodada,
-        aGravar: itens.filter(i => i.tipo === "novo" || i.tipo === "alterado").map(i => i.profissional_id),
-        editadasNoPulsar: itens.filter(i => i.tipo === "alterado" && i.etiquetas?.some(e => e.startsWith("Substitui a versão editada"))).length,
-        foraDoCadastro,
-      })
+      setFase({ t: "lendo", passo: "Lendo a grade do TiTa…" })
+      const previa = await prepararPreviaDisponibilidade({ vigenteDe, catalogo, onPasso: passo => setFase({ t: "lendo", passo }) })
+      setFase({ t: "previa", previa, rodada: await lerDoBanco(previa.id) })
     } catch (e) {
       setErro(e instanceof Error ? e.message : String(e))
       setFase({ t: "inicio" })
@@ -119,30 +81,22 @@ export function PainelDisponibilidadeTita({
 
   const gravar = async () => {
     if (fase.t !== "previa") return
-    const { id, aGravar, editadasNoPulsar } = fase
-    if (editadasNoPulsar > 0 && !(await confirmar({
+    const { previa } = fase
+    if (previa.editadasNoPulsar > 0 && !(await confirmar({
       titulo: "O TiTa prevalece",
-      texto: `${editadasNoPulsar === 1 ? "1 profissional tem" : `${editadasNoPulsar} profissionais têm`} disponibilidade editada no Pulsar que será substituída pela do TiTa. A versão editada continua no histórico e pode ser restaurada.`,
+      texto: `${previa.editadasNoPulsar === 1 ? "1 profissional tem" : `${previa.editadasNoPulsar} profissionais têm`} disponibilidade editada no Pulsar que será substituída pela do TiTa. A versão editada continua no histórico e pode ser restaurada.`,
       confirmar: "Gravar mesmo assim",
       cancelar: "Revisar",
       t: "aco",
       Icone: Replace,
     }))) return
 
-    const lotes: number[][] = []
-    for (let i = 0; i < aGravar.length; i += LOTE) lotes.push(aGravar.slice(i, i + LOTE))
     setErro(null)
-    setFase({ t: "gravando", feitos: 0, total: lotes.length })
     try {
-      for (let i = 0; i < lotes.length; i++) {
-        await aplicarLoteDisponibilidade(id, lotes[i])
-        setFase({ t: "gravando", feitos: i + 1, total: lotes.length })
-      }
-      const r = await concluirImportacaoDisponibilidade(id)
-      const { rodada } = await lerDoBanco(id)
-      setFase({ t: "feito", rodada })
+      const r = await gravarDisponibilidadeTita(previa, (feitos, total) => setFase({ t: "gravando", feitos, total }))
+      setFase({ t: "feito", rodada: await lerDoBanco(previa.id) })
       if (r.erros) toast.error(`${r.aplicados} gravados, ${r.erros} com erro — veja no relatório.`, { duration: 8000 })
-      else toast.success(aGravar.length ? `Disponibilidade gravada para ${r.aplicados} profissionais` : "Conferido: nada a gravar")
+      else toast.success(previa.aGravar.length ? `Disponibilidade gravada para ${r.aplicados} profissionais` : "Conferido: nada a gravar")
       onGravado()
     } catch (e) {
       // O que já foi gravado fica; gerar outra prévia mostra o que falta.
@@ -164,7 +118,7 @@ export function PainelDisponibilidadeTita({
           <button type="button" onClick={() => setFase({ t: "inicio" })} className={btnSecundario}>Voltar</button>
           <button type="button" onClick={gravar} className={btnPrimario}>
             <CloudDownload className="h-4 w-4" aria-hidden />
-            {fase.aGravar.length ? `Gravar no Pulsar (${fase.aGravar.length})` : "Registrar conferência"}
+            {fase.previa.aGravar.length ? `Gravar no Pulsar (${fase.previa.aGravar.length})` : "Registrar conferência"}
           </button>
         </>
       ) : fase.t === "feito" ? (
@@ -221,13 +175,13 @@ export function PainelDisponibilidadeTita({
 
         {fase.t === "previa" && (
           <>
-            {fase.foraDoCadastro.length > 0 && (
+            {fase.previa.foraDoCadastro.length > 0 && (
               <InlineNotice tone="amber" icon={<UserX className="h-4 w-4" />}>
-                {fase.foraDoCadastro.length === 1 ? "1 profissional da grade do TiTa ainda não está" : `${fase.foraDoCadastro.length} profissionais da grade do TiTa ainda não estão`} no
-                cadastro do Pulsar e fica{fase.foraDoCadastro.length === 1 ? "" : "m"} de fora: {fase.foraDoCadastro.join(", ")}. Use “Importar do TiTa” antes, se precisar deles.
+                {fase.previa.foraDoCadastro.length === 1 ? "1 profissional da grade do TiTa ainda não está" : `${fase.previa.foraDoCadastro.length} profissionais da grade do TiTa ainda não estão`} no
+                cadastro do Pulsar e fica{fase.previa.foraDoCadastro.length === 1 ? "" : "m"} de fora: {fase.previa.foraDoCadastro.join(", ")}. Use “Importar do TiTa” antes, se precisar deles.
               </InlineNotice>
             )}
-            <CorpoRelatorio key={fase.id} rodada={fase.rodada} onNavegar={onFechar} />
+            <CorpoRelatorio key={fase.previa.id} rodada={fase.rodada} onNavegar={onFechar} />
           </>
         )}
 

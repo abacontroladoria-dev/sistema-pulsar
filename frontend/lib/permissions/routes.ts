@@ -57,6 +57,11 @@ export const CODIGO_PARA_ROTAS: Record<string, string[]> = {
   // enquanto as SUGESTÕES que o robô gera aparecem na tela PEP para o RP
   // (RLS de sp_pep_itens aceita os dois códigos — 20261001120000).
   robo_sharepoint: ['/admin/robo-sharepoint'],
+  // "Carregar o Pulsar segundo o TiTa": um botão que traz, em sequência,
+  // pacientes, profissionais, disponibilidades e agendamentos da cópia do TiTa
+  // (só leitura do TiTa). Código próprio: é a tela do dia de se despedir do
+  // TiTa. Cada etapa ainda exige a permissão do seu módulo no banco.
+  carregar_tita: ['/admin/carregar-tita'],
   // Carrossel de avisos da TV da recepção. Código PRÓPRIO porque quem opera é o
   // MARKETING — um setor sem nenhuma outra permissão aqui, e que não pode ganhar
   // acesso a dado de paciente só para trocar um cartaz de parede. A RLS de

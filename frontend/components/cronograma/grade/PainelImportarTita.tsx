@@ -1,39 +1,32 @@
 "use client"
 
-import { useState } from "react"
+import { useCallback, useMemo, useState } from "react"
 import {
-  AlertTriangle, CalendarPlus, CheckCircle2, ChevronDown, CloudDownload, Link2, Loader2, Lock, SearchX, type LucideIcon,
+  AlertTriangle, CalendarMinus, CalendarPlus, CalendarSync, CheckCircle2, ChevronDown, CloudDownload, History, Loader2,
+  Lock, RefreshCw, RotateCcw, SearchX, ShieldCheck, type LucideIcon,
 } from "lucide-react"
 import toast from "react-hot-toast"
 import { Drawer } from "@/components/cronograma/ui/Drawer"
-import { InlineNotice } from "@/components/cronograma/ui/InlineNotice"
+import { rodadaDeGrade } from "@/components/tita/adaptadoresRelatorio"
+import { CorpoRelatorio, RelatorioSincronizacaoTita, formatarDataHora, type RodadaRelatorio } from "@/components/tita/RelatorioSincronizacaoTita"
 import { DateRangePicker } from "@/components/ui/date-range-picker"
-import { dataBR, hojeBrasilia, somarDias } from "@/lib/disponibilidadeProfissional"
-import { inicioDaSemana } from "@/lib/grade/motor"
+import { dataBR } from "@/lib/disponibilidadeProfissional"
+import { janelaImportacaoTita } from "@/lib/grade/janelaTita"
 import {
-  aplicarLote, concluirImportacao, previaImportacao, type AplicadoImportacao, type PreviaImportacao,
+  aplicarImportacaoCompleta, atualizarCopiaTita, lerImportacaoGrade, listarImportacoesGrade, listarItensImportacaoGrade,
+  previaImportacao, type ImportacaoGrade, type PreviaImportacao,
 } from "@/services/grade.service"
 import { aviso, btnPrimario, btnSecundario, rotuloCampo } from "./estilo"
 
 // "Importar do TiTa" — SOMENTE LEITURA. Lê a cópia da grade do TiTa que o sync
-// diário já gravou no Supabase (csv_grades_profissionais) e traz para a agenda
-// do Pulsar. Nenhuma chamada ao TiTa; nada volta para lá.
+// já gravou no Supabase (csv_grades_profissionais) e traz para a agenda do
+// Pulsar. Nenhuma chamada ao TiTa; nada volta para lá.
 //
-// Regras que a tela explica: o que foi excluído no Pulsar nunca volta; o que
-// sumiu do TiTa só sai daqui se a caixa for marcada; quem não tem cadastro no
-// Pulsar fica como pendência.
-
-const LOTE = 15
-
-/** Segunda da semana atual até o fim do mês seguinte (o que o sync cobre), no máximo 120 dias. */
-function janelaPadrao() {
-  const hoje = hojeBrasilia()
-  const inicio = somarDias(inicioDaSemana(hoje), 1)
-  const [a, m] = hoje.split("-").map(Number)
-  const fimMesSeguinte = new Date(Date.UTC(a, m + 1, 0)).toISOString().slice(0, 10)
-  const limite = somarDias(inicio, 120)
-  return { inicio, fim: fimMesSeguinte < limite ? fimMesSeguinte : limite }
-}
+// Regra (15/10/2026): O TiTa MANDA nas sessões que vieram dele — o que mudou lá
+// muda aqui, o que sumiu sai, o que foi excluído aqui e continua lá volta.
+// Sessões CRIADAS NO PULSAR nunca são tocadas (o banco recusa).
+// Antes da migration 20261016100000 o banco segue a regra antiga ("o Pulsar
+// manda", sumidos só com a caixa marcada): a tela detecta e mostra a caixa.
 
 const ROTULO_PENDENCIA = {
   paciente_sem_cadastro: "Paciente sem cadastro no Pulsar",
@@ -42,13 +35,18 @@ const ROTULO_PENDENCIA = {
 } as const
 
 export function PainelImportarTita({ onFechar, onImportado }: { onFechar: () => void; onImportado: () => void }) {
-  const [janela, setJanela] = useState(janelaPadrao)
+  const [janela, setJanela] = useState(() => janelaImportacaoTita())
   const [previa, setPrevia] = useState<PreviaImportacao | null>(null)
   const [lendo, setLendo] = useState(false)
   const [excluirSumidos, setExcluirSumidos] = useState(false)
   const [progresso, setProgresso] = useState<{ feitos: number; total: number } | null>(null)
-  const [resultado, setResultado] = useState<AplicadoImportacao | null>(null)
+  const [resultado, setResultado] = useState<RodadaRelatorio | null>(null)
   const [erro, setErro] = useState<string | null>(null)
+  const [pedindoCopia, setPedindoCopia] = useState(false)
+  const [historico, setHistorico] = useState<ImportacaoGrade[] | null>(null)
+
+  // Banco com "o TiTa manda" devolve os contadores novos.
+  const regraNova = previa?.contadores.restaurados !== undefined
 
   const gerarPrevia = async () => {
     setLendo(true)
@@ -64,19 +62,25 @@ export function PainelImportarTita({ onFechar, onImportado }: { onFechar: () => 
     }
   }
 
+  const pedirCopia = async () => {
+    setPedindoCopia(true)
+    try {
+      await atualizarCopiaTita(janela.inicio, janela.fim)
+      toast.success("Cópia pedida ao TiTa. Ele confere um dia por vez (cerca de 1 minuto por dia útil); gere a prévia de novo depois.", { duration: 9000 })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e), { duration: 8000 })
+    } finally {
+      setPedindoCopia(false)
+    }
+  }
+
   const aplicar = async () => {
     if (!previa) return
-    const lotes: number[][] = []
-    for (let i = 0; i < previa.profissionais.length; i += LOTE) lotes.push(previa.profissionais.slice(i, i + LOTE))
-    setProgresso({ feitos: 0, total: lotes.length })
     setErro(null)
     try {
-      for (let i = 0; i < lotes.length; i++) {
-        await aplicarLote(previa.importacao_id, excluirSumidos, lotes[i])
-        setProgresso({ feitos: i + 1, total: lotes.length })
-      }
-      const r = lotes.length ? await concluirImportacao(previa.importacao_id) : null
-      setResultado(r ?? { vinculos: 0, series_novas: 0, sessoes_novas: 0, bloqueios: 0, sumidos_excluidos: 0, series_encerradas: 0 })
+      await aplicarImportacaoCompleta(previa, (feitos, total) => setProgresso({ feitos, total }), regraNova || excluirSumidos)
+      const [imp, itens] = await Promise.all([lerImportacaoGrade(previa.importacao_id), listarItensImportacaoGrade(previa.importacao_id)])
+      setResultado(rodadaDeGrade(imp, itens))
       toast.success("Importação concluída")
       onImportado()
     } catch (e) {
@@ -89,35 +93,59 @@ export function PainelImportarTita({ onFechar, onImportado }: { onFechar: () => 
     }
   }
 
+  const abrirHistorico = async () => {
+    try {
+      setHistorico(await listarImportacoesGrade(10))
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e))
+    }
+  }
+  const rodadasHistorico = useMemo(() => (historico ?? []).map(i => rodadaDeGrade(i)), [historico])
+  const detalhar = useCallback(async (r: RodadaRelatorio) => {
+    const imp = historico?.find(i => i.id === r.id)
+    return imp ? rodadaDeGrade(imp, await listarItensImportacaoGrade(imp.id)) : r
+  }, [historico])
+
   const c = previa?.contadores
   const nada = c && !c.novos && !c.vinculos && !c.bloqueios_novos && !c.sumidos
+    && !c.alterados && !c.restaurados && !c.bloqueios_sumidos
+  const velha = !!previa?.copia_velha
+
+  if (historico) {
+    return (
+      <RelatorioSincronizacaoTita
+        subtitulo="Agenda trazida da cópia da grade do TiTa."
+        rodadas={rodadasHistorico}
+        detalhar={detalhar}
+        vazio="Nenhuma importação aplicada ainda."
+        onClose={() => setHistorico(null)}
+      />
+    )
+  }
 
   return (
-    <Drawer title="Importar do TiTa" subtitle="Lê a grade do TiTa já sincronizada. Nada é enviado ao TiTa." width={600} onClose={onFechar}
+    <Drawer title="Importar do TiTa" subtitle="Lê a grade do TiTa já sincronizada. Nada é enviado ao TiTa." width={600} onClose={progresso ? () => {} : onFechar}
       footer={previa && !resultado && (
         <>
           <button type="button" onClick={() => setPrevia(null)} disabled={!!progresso} className={btnSecundario}>Voltar</button>
-          <button type="button" onClick={aplicar} disabled={!!progresso || !!nada} className={btnPrimario}>
+          <button type="button" onClick={aplicar} disabled={!!progresso || velha} className={btnPrimario}>
             {progresso ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <CloudDownload className="h-4 w-4" aria-hidden />}
-            {progresso ? `Aplicando ${progresso.feitos} de ${progresso.total}…` : "Aplicar"}
+            {progresso ? `Aplicando ${progresso.feitos} de ${progresso.total}…` : nada ? "Registrar conferência" : "Aplicar"}
           </button>
         </>
       )}>
       <div className="space-y-5">
         {resultado ? (
-          <div className="space-y-3">
-            <InlineNotice tone="green" icon={<CheckCircle2 className="h-4 w-4" />}>
-              <strong className="block text-sm">Importação concluída</strong>
-              {`${resultado.sessoes_novas} sessões novas em ${resultado.series_novas} séries, ${resultado.vinculos} vinculadas, ${resultado.bloqueios} bloqueios` +
-                (resultado.sumidos_excluidos ? `, ${resultado.sumidos_excluidos} excluídas por não estarem mais no TiTa` : "") + "."}
-            </InlineNotice>
+          <div className="space-y-4">
+            <CorpoRelatorio key={resultado.id} rodada={resultado} onNavegar={onFechar} />
             <button type="button" onClick={onFechar} className={btnPrimario}>Ver a grade</button>
           </div>
         ) : !previa ? (
           <>
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li className="flex gap-2"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" aria-hidden />Traz as sessões “Agendado” da unidade, agrupadas em séries semanais.</li>
-              <li className="flex gap-2"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" aria-hidden />O que foi excluído aqui no Pulsar nunca volta, e nada editado aqui é sobrescrito.</li>
+              <li className="flex gap-2"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" aria-hidden />O TiTa manda nas sessões que vieram dele: o que mudou lá muda aqui, o que saiu de lá sai daqui.</li>
+              <li className="flex gap-2"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" aria-hidden />Sessões criadas aqui no Pulsar nunca são tocadas.</li>
               <li className="flex gap-2"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" aria-hidden />Primeiro você vê a prévia; só depois aplica.</li>
             </ul>
             <div>
@@ -125,42 +153,86 @@ export function PainelImportarTita({ onFechar, onImportado }: { onFechar: () => 
               <DateRangePicker inicio={janela.inicio} fim={janela.fim} onChange={setJanela} />
             </div>
             {erro && <p role="alert" className="text-sm text-destructive">{erro}</p>}
-            <button type="button" onClick={gerarPrevia} disabled={lendo} className={btnPrimario}>
-              {lendo ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <SearchX className="h-4 w-4" aria-hidden />} Gerar prévia
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={gerarPrevia} disabled={lendo} className={btnPrimario}>
+                {lendo ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <SearchX className="h-4 w-4" aria-hidden />} Gerar prévia
+              </button>
+              <button type="button" onClick={abrirHistorico} className={btnSecundario}>
+                <History className="h-4 w-4" aria-hidden /> Importações anteriores
+              </button>
+            </div>
           </>
         ) : (
           <>
             {/* Frescor do que foi lido */}
-            <p className={aviso(previa.dias_sincronizados >= previa.dias_uteis ? "green" : "amber")}>
-              <span>
-                {dataBR(previa.janela_inicio)} a {dataBR(previa.janela_fim)} · {previa.dias_sincronizados} de {previa.dias_uteis} dias úteis sincronizados com o TiTa
-                {previa.frescor && ` · última sincronização ${new Date(previa.frescor).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" })}`}
-                {previa.dias_sincronizados < previa.dias_uteis && " — dias sem sincronização não entram nem contam como “sumidos”."}
-              </span>
-            </p>
+            <div className={aviso(velha ? "red" : previa.dias_sincronizados >= previa.dias_uteis ? "green" : "amber")}>
+              <div className="min-w-0 flex-1 space-y-2">
+                <p>
+                  {dataBR(previa.janela_inicio)} a {dataBR(previa.janela_fim)} · {previa.dias_sincronizados} de {previa.dias_uteis} dias úteis sincronizados com o TiTa
+                  {previa.frescor && ` · última sincronização ${formatarDataHora(previa.frescor)}`}
+                  {previa.dias_sincronizados < previa.dias_uteis && " — dias sem sincronização não entram nem contam como “saíram”."}
+                </p>
+                {velha && (
+                  <p className="font-semibold">
+                    A cópia está velha: um dia foi conferido em {formatarDataHora(previa.frescor_pior)}. Com o TiTa mandando, ela excluiria
+                    sessões que ainda existem. Atualize a cópia e gere a prévia de novo.
+                  </p>
+                )}
+                <button type="button" onClick={pedirCopia} disabled={pedindoCopia} className={btnSecundario}>
+                  {pedindoCopia ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <RefreshCw className="h-4 w-4" aria-hidden />}
+                  Atualizar a cópia do TiTa agora
+                </button>
+              </div>
+            </div>
 
             <div className="grid gap-2 sm:grid-cols-2">
               <Numero Icone={CalendarPlus} valor={c!.novos} rotulo="sessões novas" apoio={`${c!.series_novas} séries novas`} />
-              <Numero Icone={Link2} valor={c!.vinculos} rotulo="vinculadas" apoio="já estavam no Pulsar sem o id do TiTa" />
-              <Numero Icone={Lock} valor={c!.bloqueios_novos} rotulo="bloqueios" apoio="horário bloqueado / administrativo" />
+              {regraNova && <Numero Icone={CalendarSync} valor={c!.alterados ?? 0} rotulo="alteradas no TiTa" apoio="a antiga sai, a nova entra" />}
+              {regraNova && <Numero Icone={CalendarMinus} valor={c!.sumidos} rotulo="saem" apoio="não estão mais no TiTa" alerta />}
+              {regraNova && <Numero Icone={RotateCcw} valor={c!.restaurados ?? 0} rotulo="voltam" apoio="excluídas aqui, ainda no TiTa" alerta={(c!.desfaz_pulsar ?? 0) > 0} />}
+              <Numero Icone={Lock} valor={c!.bloqueios_novos + (c!.bloqueios_sumidos ?? 0)} rotulo="bloqueios"
+                apoio={regraNova ? `${c!.bloqueios_novos} novos · ${c!.bloqueios_sumidos ?? 0} saem` : "horário bloqueado / administrativo"} />
               <Numero Icone={AlertTriangle} valor={c!.pendencias} rotulo="pendências de cadastro" apoio="não entram" alerta />
             </div>
             <p className="text-xs text-muted-foreground">
-              {c!.existentes} já estão no Pulsar (nada a fazer){c!.ignorados ? ` · ${c!.ignorados} ignoradas por série excluída no Pulsar` : ""} · {c!.lidas} linhas lidas.
+              {c!.existentes} já estão iguais no Pulsar
+              {regraNova && (c!.ja_no_pulsar ?? 0) > 0 && ` · ${c!.ja_no_pulsar} já foram criadas no Pulsar (ficam como estão)`}
+              {c!.vinculos > 0 && ` · ${c!.vinculos} repetições automáticas ganham o id do TiTa`}
+              {!regraNova && c!.ignorados ? ` · ${c!.ignorados} ignoradas por série excluída no Pulsar` : ""} · {c!.lidas} sessões lidas.
             </p>
 
-            {c!.sumidos > 0 && (
+            {regraNova && (c!.desfaz_pulsar ?? 0) > 0 && (
+              <p className={aviso("amber")}>
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                <span>
+                  {c!.desfaz_pulsar} sessão(ões) excluída(s) aqui voltam, porque o TiTa manda nelas. Para mudar de verdade, mude no TiTa
+                  ou crie a sessão aqui no Pulsar.
+                </span>
+              </p>
+            )}
+
+            {!regraNova && c!.sumidos > 0 && (
               <div className="space-y-2 rounded-lg border border-rose-300 p-3 dark:border-rose-800">
                 <p className="text-sm font-semibold text-rose-700 dark:text-rose-400">{c!.sumidos} sessões que vieram do TiTa não estão mais lá</p>
                 <label className="flex items-start gap-2 text-sm text-foreground">
                   <input type="checkbox" checked={excluirSumidos} onChange={e => setExcluirSumidos(e.target.checked)} className="mt-0.5 h-5 w-5 accent-primary" />
                   Excluir no Pulsar também (fica registrado; série que acabou no TiTa é encerrada)
                 </label>
-                <Lista titulo="Ver as sessões" itens={previa.sumidos.map(s => `${dataBR(s.data)} ${s.hora} · ${s.paciente} × ${s.profissional} (${s.terapia})`)} />
               </div>
             )}
 
+            {(previa.alterados?.length ?? 0) > 0 && (
+              <Lista titulo={`Alteradas no TiTa (${c!.alterados})`}
+                itens={previa.alterados!.map(s => `${s.paciente}: ${s.de} → ${dataBR(s.data)} ${s.hora}${s.sala ? ` · ${s.sala}` : ""} · ${s.profissional}`)} />
+            )}
+            {previa.sumidos.length > 0 && (
+              <Lista titulo={`${regraNova ? "Saem" : "Não estão mais no TiTa"} (${c!.sumidos})`}
+                itens={previa.sumidos.map(s => `${dataBR(s.data)} ${s.hora} · ${s.paciente} × ${s.profissional} (${s.terapia})`)} />
+            )}
+            {(previa.restaurados?.length ?? 0) > 0 && (
+              <Lista titulo={`Voltam (${c!.restaurados})`}
+                itens={previa.restaurados!.map(s => `${dataBR(s.data)} ${s.hora} · ${s.paciente} × ${s.profissional}${s.desfaz_pulsar ? " — excluída aqui por alguém" : ""}`)} />
+            )}
             {previa.pendencias.length > 0 && (
               <Lista titulo={`Pendências de cadastro (${previa.pendencias.length})`} aberta
                 itens={previa.pendencias.map(p => `${ROTULO_PENDENCIA[p.motivo]}: ${p.nome ?? "?"}${p.tita_id ? ` (id TiTa ${p.tita_id})` : ""} — ${p.sessoes} sessão(ões)`)} />
@@ -170,14 +242,14 @@ export function PainelImportarTita({ onFechar, onImportado }: { onFechar: () => 
                 apoio="As sessões entram, mas a grade não sabe o que é horário livre. Cadastre em Profissionais → Disponibilidade."
                 itens={previa.sem_disponibilidade.map(p => `${p.nome} — ${p.sessoes} sessão(ões)`)} />
             )}
-            {previa.ignorados.length > 0 && (
-              <Lista titulo="Ignoradas (série excluída no Pulsar)" itens={previa.ignorados.map(s => `${dataBR(s.data)} ${s.hora} · ${s.paciente} × ${s.profissional}`)} />
+            {(previa.ignorados?.length ?? 0) > 0 && (
+              <Lista titulo="Ignoradas (série excluída no Pulsar)" itens={previa.ignorados!.map(s => `${dataBR(s.data)} ${s.hora} · ${s.paciente} × ${s.profissional}`)} />
             )}
             {previa.novos.length > 0 && (
               <Lista titulo="Exemplos do que entra" itens={previa.novos.map(s => `${dataBR(s.data)} ${s.hora} · ${s.paciente} × ${s.profissional} (${s.terapia})`)} />
             )}
 
-            {nada && <p className="rounded-lg bg-muted px-3 py-3 text-sm text-foreground">Nada novo: a agenda do Pulsar já está igual ao TiTa nesse período.</p>}
+            {nada && <p className="rounded-lg bg-muted px-3 py-3 text-sm text-foreground">Nada a mudar: a agenda do Pulsar já está igual ao TiTa nesse período.</p>}
             {erro && <p role="alert" className="text-sm text-destructive">{erro}</p>}
           </>
         )}

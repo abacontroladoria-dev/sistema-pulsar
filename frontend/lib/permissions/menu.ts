@@ -4,6 +4,7 @@ import {
   ArrowRightLeft,
   BarChart3,
   Bot,
+  CloudDownload,
   BriefcaseBusiness,
   Building2,
   Calendar,
@@ -158,6 +159,7 @@ export const MENU_ITENS: MenuItemDef[] = [
   { codigo: 'permissoes', label: 'Permissões', grupo: G.administracao.nome, path: '/admin/permissoes', icon: KeyRound },
   { codigo: 'api_integracao', label: 'API', grupo: G.administracao.nome, path: '/admin/api', icon: Plug },
   { codigo: 'robo_sharepoint', label: 'Robô SharePoint', grupo: G.administracao.nome, path: '/admin/robo-sharepoint', icon: Bot },
+  { codigo: 'carregar_tita', label: 'Carregar do TiTa', grupo: G.administracao.nome, path: '/admin/carregar-tita', icon: CloudDownload },
 
   { codigo: 'connect', label: 'Pulsar Connect', grupo: G.geral.nome, path: '/connect', icon: Zap },
 ]
