@@ -9,6 +9,7 @@ import { AuditRepository } from '../repositories/audit.repository'
 import { TagDefinitionRepository } from '../repositories/tag-definition.repository'
 import { CampaignPhraseRepository } from '../repositories/campaign-phrase.repository'
 import { resolverOrigem, type FraseCadastrada } from '../agente/origem-campanha'
+import { TAG_TRABALHE_CONOSCO, pareceTrabalheConosco } from '../agente/tipo-contato'
 import { montarContexto, LIMITE_HISTORICO } from '../agente/contexto'
 import { montarFerramentaRegistrarTags } from '../agente/tags'
 import { executarTurno } from '../agente/orquestrador'
@@ -223,6 +224,16 @@ export async function processarSugestoesEvolution(
           }
         } catch (err) {
           console.warn('[sugestao evolution] ORIGEM não aplicada; seguindo', { conversationId: conv.id, err })
+        }
+      }
+
+      // TIPO DE CONTATO "Trabalhe conosco" pelo sistema (agente/tipo-contato.ts),
+      // pelas mensagens deste turno; também no rascunho. Falha não cala o turno.
+      if (porGrupoTags && pareceTrabalheConosco(doTurno)) {
+        try {
+          await conversationService.aplicarTipoContatoSeVazio(conv.id, TAG_TRABALHE_CONOSCO, porGrupoTags)
+        } catch (err) {
+          console.warn('[sugestao evolution] tag Trabalhe conosco não aplicada; seguindo', { conversationId: conv.id, err })
         }
       }
 

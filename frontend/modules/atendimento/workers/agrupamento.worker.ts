@@ -17,6 +17,7 @@ import { FerramentasAgente } from '../agente/ferramentas'
 import { lerVagasGuardadas, paraGuardar, mesclarAiContext } from '../agente/vagas-oferecidas'
 import { montarFerramentaRegistrarTags } from '../agente/tags'
 import { resolverOrigem } from '../agente/origem-campanha'
+import { TAG_TRABALHE_CONOSCO, pareceTrabalheConosco } from '../agente/tipo-contato'
 import { openAiProvider } from '../llm/openai.provider'
 import { lerAgentSettings } from '../agente/agent-settings'
 import { resolverModoEfetivo } from '../agente/modo-efetivo'
@@ -263,6 +264,17 @@ async function processarContato(
       )
     } catch (err) {
       console.warn('[worker agrupamento] ORIGEM não aplicada; seguindo', err)
+    }
+  }
+
+  // 4.6. TIPO DE CONTATO "Trabalhe conosco" pelo sistema (agente/tipo-contato.ts):
+  // currículo, estágio, processo seletivo. Em qualquer turno, enquanto a
+  // conversa não tiver tipo. Falha isolada, como a ORIGEM.
+  if (pareceTrabalheConosco(textos)) {
+    try {
+      await conversationService.aplicarTipoContatoSeVazio(conversation.id, TAG_TRABALHE_CONOSCO, porGrupoTags)
+    } catch (err) {
+      console.warn('[worker agrupamento] tag Trabalhe conosco não aplicada; seguindo', err)
     }
   }
 

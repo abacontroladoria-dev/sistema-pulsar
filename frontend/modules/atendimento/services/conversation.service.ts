@@ -678,6 +678,22 @@ export class ConversationService {
     await this.atualizarTags(conversationId, { origem: origem.origemTag }, porGrupo, 'sistema', null)
   }
 
+  // TIPO DE CONTATO decidido pelo sistema (agente/tipo-contato.ts) — só quando
+  // a conversa ainda não tem nenhum: não sobrescreve paciente_ativo/inativo nem
+  // a escolha da atendente. Devolve se aplicou.
+  async aplicarTipoContatoSeVazio(
+    conversationId: string,
+    tag:            string,
+    porGrupo:       Map<string, TagDefinition[]>,
+  ): Promise<boolean> {
+    const doGrupo = new Set((porGrupo.get('tipo_de_contato') ?? []).map((t) => t.key))
+    if (!doGrupo.has(tag)) return false
+    const conv = await this.getById(conversationId)
+    if ((conv.tags ?? []).some((t) => doGrupo.has(t))) return false
+    await this.atualizarTags(conversationId, { tipo_de_contato: tag }, porGrupo, 'sistema', null)
+    return true
+  }
+
   // -------------------------------------------------------------------------
   // atualizarObjecao
   //
