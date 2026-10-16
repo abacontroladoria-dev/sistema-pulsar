@@ -15,3 +15,5 @@ jobs:
           node-version: 20
       - name: Verifica se toda tabela criada tem RLS habilitado
         run: node scripts/check-rls.js
+      - name: Verifica padrões de risco nas migrations novas (anon, search_path, views, using true)
+        run: node scripts/check-seguranca-migrations.js
