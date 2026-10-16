@@ -1,17 +1,16 @@
 'use client'
 
 import React, { useState } from 'react'
-import { MessageSquare, Users, LayoutDashboard, Kanban, Calendar, Settings as SettingsIcon, LogOut, ArrowLeft, ChevronLeft, Inbox as InboxIcon, AtSign } from 'lucide-react'
+import { MessageSquare, MessagesSquare, Users, LayoutDashboard, Kanban, Calendar, Settings as SettingsIcon, LogOut, ArrowLeft, ChevronLeft, Inbox as InboxIcon } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import { useAuth } from '@/hooks/nina/useAuth'
 import { useUsuarioAtual } from '@/hooks/useUsuarioAtual'
-import { useMencoesNaoLidas } from '@/hooks/nina/useMencoesNaoLidas'
+import { useChatEquipe, useContadoresChatEquipe } from '@/contexts/ChatEquipeContext'
+import BolinhaNaoLidas from '@/components/chat-equipe/BolinhaNaoLidas'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { ThemeSwitcher } from '@/components/sidebar/ThemeSwitcher'
 
-// `contador`: o item mostra o número de não lidas ao lado. Hoje só "Menções a
-// mim" tem — as notas internas em que alguém marcou quem está logado.
 const menuItems = [
   { id: 'crm',       label: 'Dashboard',     icon: LayoutDashboard },
   { id: 'inbox',     label: 'Inbox',         icon: MessageSquare },
@@ -20,13 +19,47 @@ const menuItems = [
   { id: 'pipeline',  label: 'Funil',         icon: Kanban },
   { id: 'analytics', label: 'Agendamentos',  icon: Calendar },
   { id: 'settings',  label: 'Configurações', icon: SettingsIcon },
-  { id: 'mencoes',   label: 'Menções a mim', icon: AtSign, contador: true },
 ]
+
+const ItemChatEquipe = ({ collapsed, naoLidas: n, aberto, aoClicar }: {
+  collapsed: boolean
+  naoLidas: number
+  aberto: boolean
+  aoClicar: () => void
+}) => {
+  const rotuloN = n > 99 ? '99+' : String(n)
+  const rotulo = 'Chat da equipe'
+  return (
+    <button
+      type="button"
+      onClick={aoClicar}
+      aria-expanded={aberto}
+      title={collapsed ? (n > 0 ? `${rotulo} (${rotuloN} não lidas)` : rotulo) : undefined}
+      aria-label={n > 0 ? `${rotulo}, ${rotuloN} não lidas` : undefined}
+      // Sem o fundo de "página atual": o painel aberto não é página, e com ele
+      // o item da tela em que a pessoa está e o do chat apareciam os dois marcados.
+      className={`relative flex w-full items-center gap-3 px-3 py-2.5 rounded-lg transition-colors hover:bg-sidebar-accent/60 ${
+        aberto
+          ? 'text-sidebar-primary'
+          : 'text-sidebar-foreground/60 hover:text-sidebar-foreground'
+      }`}
+    >
+      <MessagesSquare className="h-5 w-5 shrink-0" />
+      {!collapsed && (
+        <span className="text-sm font-medium truncate">{rotulo}</span>
+      )}
+      {/* Canto superior direito do item, aberto ou recolhido (menor). */}
+      <BolinhaNaoLidas n={n} compacta={collapsed} />
+    </button>
+  )
+}
 
 const SidebarContent = ({ collapsed }: { collapsed: boolean }) => {
   const { signOut } = useAuth()
   const usuario = useUsuarioAtual()
-  const naoLidas = useMencoesNaoLidas()
+  // Quem está no Connect tem as duas: as menções e as conversas (todo usuário).
+  const naoLidas = useContadoresChatEquipe({ conversas: true, mencoes: true }).total
+  const chat = useChatEquipe()
   const pathname = usePathname()
   const currentPath = pathname.replace('/connect/', '')
 
@@ -49,45 +82,38 @@ const SidebarContent = ({ collapsed }: { collapsed: boolean }) => {
         <nav className="flex flex-col gap-0.5">
           {menuItems.map((item) => {
             const isActive = currentPath.startsWith(item.id)
-            const n = item.contador ? naoLidas : 0
-            const rotuloN = n > 99 ? '99+' : String(n)
             return (
               <Link
                 key={item.id}
                 href={`/connect/${item.id}`}
-                title={collapsed ? (n > 0 ? `${item.label} (${rotuloN} não lidas)` : item.label) : undefined}
-                aria-label={n > 0 ? `${item.label}, ${rotuloN} não lidas` : undefined}
+                title={collapsed ? item.label : undefined}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
                   isActive
                     ? 'bg-sidebar-accent text-sidebar-accent-foreground'
                     : 'text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/60'
                 }`}
               >
-                <span className="relative shrink-0">
-                  <item.icon className="h-5 w-5" />
-                  {/* Recolhido, o número não cabe: vira um ponto sobre o ícone. */}
-                  {collapsed && n > 0 && (
-                    <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-rose-500 ring-2 ring-sidebar" aria-hidden />
-                  )}
-                </span>
+                <item.icon className="h-5 w-5 shrink-0" />
                 {!collapsed && (
                   <span className="text-sm font-medium truncate">{item.label}</span>
-                )}
-                {!collapsed && n > 0 && (
-                  <span className="ml-auto min-w-[20px] rounded-full bg-rose-500 px-1.5 py-0.5 text-center text-xs font-semibold leading-none text-white tabular-nums" aria-hidden>
-                    {rotuloN}
-                  </span>
                 )}
               </Link>
             )
           })}
+
+          {/* Chat da equipe: não navega — abre o painel lateral do layout raiz,
+              o mesmo que o item do sidebar do Pulsar abre. "Menções a mim"
+              (/connect/mencoes) era um item de página aqui; a página continua
+              existindo para quem tem o link salvo. */}
+          <ItemChatEquipe collapsed={collapsed} naoLidas={naoLidas} aberto={chat.aberto} aoClicar={chat.alternar} />
         </nav>
       </div>
 
-      {/* Voltar ao Pulsar */}
+      {/* Voltar ao Pulsar — Link, e não window.location: recarregar a página
+          desmontaria o layout raiz e fecharia o Chat da equipe aberto. */}
       <div className="px-2">
-        <button
-          onClick={() => (window.location.href = '/')}
+        <Link
+          href="/"
           title={collapsed ? 'Voltar ao Pulsar' : undefined}
           className="flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors w-full text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent/60"
         >
@@ -95,7 +121,7 @@ const SidebarContent = ({ collapsed }: { collapsed: boolean }) => {
           {!collapsed && (
             <span className="text-sm font-medium">Voltar ao Pulsar</span>
           )}
-        </button>
+        </Link>
       </div>
 
       {/* User footer — mesma identidade do sidebar do Pulsar: nome e papel.
