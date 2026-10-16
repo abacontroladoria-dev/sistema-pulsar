@@ -1,9 +1,9 @@
 import type { MencaoVista } from '@/modules/atendimento/services/mencao.service'
-import { avisarMencoesAlteradas } from '@/hooks/nina/useMencoesNaoLidas'
+import { avisarMencoesAlteradas } from '@/lib/central/mencoes-evento'
 
 // ============================================================================
-// Chamadas do navegador às rotas de menções — usadas por "Menções a mim"
-// (/connect/mencoes) e pela janela da página inicial do Pulsar.
+// Chamadas do navegador às rotas de menções — usadas pelo painel do Chat da
+// equipe, por /connect/mencoes e pela janela da página inicial do Pulsar.
 //
 // Toda URL termina em barra: `trailingSlash: true` responde 308 sem ela, e o
 // corpo de um POST/PATCH não sobrevive ao redirecionamento.

@@ -9,14 +9,18 @@ import {
   listarMencoes, marcarMencao, marcarTodasComoLidas, quandoRelativo, linkDaConversa,
   type FiltroMencoes, type MencaoVista,
 } from '@/lib/central/mencoes-cliente'
-import { useMencoesNaoLidas } from '@/hooks/nina/useMencoesNaoLidas'
+import { useChatEquipe, useMencoesNaoLidas } from '@/contexts/ChatEquipeContext'
 
 // ============================================================================
-// "Menções a mim" — /connect/mencoes
+// "Menções a mim" — o conteúdo do painel do Chat da equipe, e também a página
+// /connect/mencoes (mantida para quem tem o link salvo).
 //
 // As notas internas em que alguém da equipe marcou quem está logado. Lida /
 // não lida e nada além disso: a conversa se atende no inbox, para onde
 // "Abrir conversa" leva (e onde abrir já marca como lida).
+//
+// `noPainel`: sem o título grande (o painel tem o seu) e "Abrir conversa"
+// fecha o painel — senão ele ficaria por cima do detalhamento do inbox.
 // ============================================================================
 
 const ABAS: { id: FiltroMencoes; rotulo: string }[] = [
@@ -31,8 +35,9 @@ const VAZIO: Record<FiltroMencoes, string> = {
   todas:     'Ninguém marcou você em nota interna ainda.',
 }
 
-const MencoesAMim: React.FC = () => {
+const MencoesAMim: React.FC<{ noPainel?: boolean }> = ({ noPainel = false }) => {
   const naoLidas = useMencoesNaoLidas()
+  const { fechar } = useChatEquipe()
   const [aba, setAba] = useState<FiltroMencoes>('nao_lidas')
   const [mencoes, setMencoes] = useState<MencaoVista[]>([])
   const [temMais, setTemMais] = useState(false)
@@ -124,53 +129,67 @@ const MencoesAMim: React.FC = () => {
     }
   }
 
+  const botaoMarcarTodas = naoLidas > 0 && (
+    <button
+      type="button"
+      onClick={() => void marcarTodas()}
+      disabled={marcandoTodas}
+      className={`inline-flex items-center gap-1.5 rounded-lg border border-border bg-card font-medium text-foreground hover:bg-muted transition-colors disabled:opacity-60 disabled:cursor-wait ${
+        noPainel ? 'px-2.5 py-1.5 text-xs' : 'px-3 py-2 text-sm'
+      }`}
+    >
+      {marcandoTodas ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCheck className="w-4 h-4" />}
+      {noPainel ? 'Marcar todas' : 'Marcar todas como lidas'}
+    </button>
+  )
+
   return (
     <div className="h-full flex flex-col bg-background text-foreground">
-      <header className="px-4 sm:px-6 pt-6 pb-4 border-b border-border shrink-0">
-        <div className="flex flex-wrap items-start gap-3">
-          <div className="min-w-0 flex-1">
-            <h1 className="text-xl font-semibold flex items-center gap-2">
-              <AtSign className="w-5 h-5 text-amber-500" aria-hidden />
-              Menções a mim
-            </h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Notas internas em que alguém da equipe marcou você. O contato não vê nada disto.
-            </p>
+      <header className={`border-b border-border shrink-0 ${noPainel ? 'px-4 py-3' : 'px-4 sm:px-6 pt-6 pb-4'}`}>
+        {!noPainel && (
+          <div className="mb-4 flex flex-wrap items-start gap-3">
+            <div className="min-w-0 flex-1">
+              <h1 className="text-xl font-semibold flex items-center gap-2">
+                <AtSign className="w-5 h-5 text-amber-500" aria-hidden />
+                Menções a mim
+              </h1>
+              <p className="text-sm text-muted-foreground mt-1">
+                Notas internas em que alguém da equipe marcou você. O contato não vê nada disto.
+              </p>
+            </div>
+            {botaoMarcarTodas}
           </div>
-          {naoLidas > 0 && (
-            <button
-              type="button"
-              onClick={() => void marcarTodas()}
-              disabled={marcandoTodas}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-foreground hover:bg-muted transition-colors disabled:opacity-60 disabled:cursor-wait"
-            >
-              {marcandoTodas ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCheck className="w-4 h-4" />}
-              Marcar todas como lidas
-            </button>
-          )}
-        </div>
+        )}
 
-        <div role="tablist" aria-label="Filtrar menções" className="mt-4 inline-flex rounded-lg border border-border bg-muted p-0.5 text-sm font-medium">
-          {ABAS.map(a => (
-            <button
-              key={a.id}
-              type="button"
-              role="tab"
-              aria-selected={aba === a.id}
-              onClick={() => setAba(a.id)}
-              className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 transition-colors ${
-                aba === a.id ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              {a.rotulo}
-              {a.id === 'nao_lidas' && naoLidas > 0 && (
-                <span className="rounded-full bg-rose-500 px-1.5 py-0.5 text-xs font-semibold leading-none text-white tabular-nums">
-                  {naoLidas > 99 ? '99+' : naoLidas}
-                </span>
-              )}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center gap-2">
+          <div role="tablist" aria-label="Filtrar menções" className="inline-flex rounded-lg border border-border bg-muted p-0.5 text-sm font-medium">
+            {ABAS.map(a => (
+              <button
+                key={a.id}
+                type="button"
+                role="tab"
+                aria-selected={aba === a.id}
+                onClick={() => setAba(a.id)}
+                className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 transition-colors ${
+                  aba === a.id ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {a.rotulo}
+                {a.id === 'nao_lidas' && naoLidas > 0 && (
+                  <span className="rounded-full bg-rose-500 px-1.5 py-0.5 text-xs font-semibold leading-none text-white tabular-nums">
+                    {naoLidas > 99 ? '99+' : naoLidas}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+          {noPainel && <div className="ml-auto">{botaoMarcarTodas}</div>}
         </div>
+        {noPainel && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            Notas internas do Connect em que marcaram você. O contato não vê nada disto.
+          </p>
+        )}
 
         {erro && (
           <div className="mt-3 flex items-center gap-2 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-700 dark:text-rose-200">
@@ -180,7 +199,7 @@ const MencoesAMim: React.FC = () => {
         )}
       </header>
 
-      <div className="flex-1 min-h-0 overflow-auto px-4 sm:px-6 py-5">
+      <div className={`flex-1 min-h-0 overflow-auto ${noPainel ? 'p-4' : 'px-4 sm:px-6 py-5'}`}>
         {carregando ? (
           <div className="flex items-center justify-center py-16 text-muted-foreground/70">
             <Loader2 className="w-5 h-5 animate-spin mr-2" />
@@ -196,7 +215,12 @@ const MencoesAMim: React.FC = () => {
         ) : (
           <ul className="mx-auto max-w-3xl space-y-2.5">
             {mencoes.map(m => (
-              <CartaoMencao key={m.id} mencao={m} aoAlternar={() => void alternar(m)} />
+              <CartaoMencao
+                key={m.id}
+                mencao={m}
+                aoAlternar={() => void alternar(m)}
+                aoAbrir={noPainel ? fechar : undefined}
+              />
             ))}
             {temMais && (
               <li className="flex justify-center pt-2">
@@ -218,7 +242,11 @@ const MencoesAMim: React.FC = () => {
   )
 }
 
-const CartaoMencao: React.FC<{ mencao: MencaoVista; aoAlternar: () => void }> = ({ mencao: m, aoAlternar }) => (
+const CartaoMencao: React.FC<{
+  mencao: MencaoVista
+  aoAlternar: () => void
+  aoAbrir?: () => void
+}> = ({ mencao: m, aoAlternar, aoAbrir }) => (
   <li
     className={`rounded-xl border px-4 py-3 transition-colors ${
       m.lida
@@ -276,6 +304,7 @@ const CartaoMencao: React.FC<{ mencao: MencaoVista; aoAlternar: () => void }> = 
             </button>
             <Link
               href={linkDaConversa(m.conversationId)}
+              onClick={aoAbrir}
               className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-cyan-700 transition-colors"
             >
               Abrir conversa

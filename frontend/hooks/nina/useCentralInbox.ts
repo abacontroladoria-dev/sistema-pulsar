@@ -15,7 +15,7 @@ import {
 } from '@/components/nina/adapters/centralToNina'
 import { getSupabaseClient } from '@/lib/supabase/client'
 import type { NotaInternaVista } from '@/modules/atendimento/services/nota-interna.service'
-import { avisarMencoesAlteradas } from '@/hooks/nina/useMencoesNaoLidas'
+import { avisarMencoesAlteradas } from '@/lib/central/mencoes-evento'
 
 // ============================================================================
 // Dados vivos da caixa de entrada

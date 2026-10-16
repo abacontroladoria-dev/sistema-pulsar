@@ -8,6 +8,7 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
 import { useTemPermissao } from '@/hooks/useTemPermissao'
+import { useChatEquipe } from '@/contexts/ChatEquipeContext'
 import {
   listarMencoes, quandoRelativo, linkDaConversa, type MencaoVista,
 } from '@/lib/central/mencoes-cliente'
@@ -23,7 +24,7 @@ import {
 // login começam do zero. Sem storage (aba anônima, bloqueio), aparece uma vez
 // por carregamento.
 //
-// "Fechar" não marca nada como lido — a menção continua em "Menções a mim" até
+// "Fechar" não marca nada como lido — a menção continua no Chat da equipe até
 // a pessoa abrir a conversa.
 //
 // Só para quem tem a tela do Connect (permissão `connect`): sem ela o link
@@ -79,6 +80,7 @@ export default function JanelaMencoesPendentes() {
   const { tem: temConnect, carregando } = useTemPermissao('connect')
   const [aberta, setAberta] = useState(false)
   const [mencoes, setMencoes] = useState<MencaoVista[]>([])
+  const chat = useChatEquipe()
 
   useEffect(() => {
     if (carregando || !temConnect) return
@@ -161,19 +163,20 @@ export default function JanelaMencoesPendentes() {
           ))}
           {resto > 0 && (
             <li className="text-center text-xs text-slate-500 dark:text-muted-foreground pt-1">
-              E mais {resto} {resto === 1 ? 'conversa' : 'conversas'} em “Menções a mim”.
+              E mais {resto} {resto === 1 ? 'conversa' : 'conversas'} no Chat da equipe.
             </li>
           )}
         </ul>
 
         <DialogFooter className="mx-0 mb-0 px-5 py-3">
-          <Link
-            href="/connect/mencoes/"
-            onClick={() => setAberta(false)}
+          {/* Abre o painel do Chat da equipe em vez de ir para outra página. */}
+          <button
+            type="button"
+            onClick={() => { setAberta(false); chat.abrir() }}
             className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors dark:border-border dark:bg-card dark:text-foreground dark:hover:bg-muted"
           >
-            Ver todas as menções
-          </Link>
+            Ver todas no Chat da equipe
+          </button>
           <button
             type="button"
             onClick={() => setAberta(false)}

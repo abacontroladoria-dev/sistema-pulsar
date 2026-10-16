@@ -47,8 +47,11 @@ import {
   Gauge,
   FileSearch,
   ScanText,
+  MessagesSquare,
   type LucideIcon,
 } from "lucide-react"
+import { useChatEquipe, useContadoresChatEquipe } from "@/contexts/ChatEquipeContext"
+import BolinhaNaoLidas from "@/components/chat-equipe/BolinhaNaoLidas"
 import { useEffect, useRef, useState } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
@@ -487,6 +490,18 @@ export default function Sidebar() {
 
   const isDark = theme === 'dark'
 
+  // Chat da equipe: conversas (todo usuário logado — sem código de permissão
+  // desde 16/10/2026) e menções em notas internas do Connect (só para quem tem
+  // o Connect: a rota delas responde 401 a quem não tem papel na Central).
+  // Espera o papel carregar para não consultar nada antes de saber quem é.
+  const fontesChat = { conversas: !!role, mencoes: canAccess("/connect") }
+  const temChatEquipe = fontesChat.conversas
+  const chat = useChatEquipe()
+  const naoLidas = useContadoresChatEquipe(fontesChat).total
+  // Em /chat-equipe o chat já ocupa a tela: o item fica marcado e não abre o painel.
+  const naPaginaChat = pathname.startsWith("/chat-equipe")
+  const chatAtivo = chat.aberto || naPaginaChat
+
   return (
     <>
       <aside
@@ -537,6 +552,37 @@ export default function Sidebar() {
 
           {/* Dashboard */}
           <Item codigo="dashboard" />
+
+          {/* Chat da equipe — não é tela: abre o painel lateral do layout raiz,
+              que continua aberto ao passar para o Connect (lá o item do sidebar
+              abre o mesmo painel). Por isso não tem estrela de favorito. */}
+          {temChatEquipe && (
+            <button
+              type="button"
+              onClick={naPaginaChat ? undefined : chat.alternar}
+              aria-expanded={chatAtivo}
+              aria-label={naoLidas > 0 ? `Chat da equipe, ${naoLidas > 99 ? "99+" : naoLidas} não lidas` : undefined}
+              // O destaque de "página atual" (fundo + borda) só em /chat-equipe.
+              // Painel aberto não é página: com ele, Dashboard e Chat apareciam
+              // os dois marcados. Aberto = só ícone e texto na cor primária.
+              className={`relative flex w-full items-center gap-2.5 py-2 pr-2 rounded-lg text-sm transition-all duration-150 border-l-2 pl-2.5
+              ${
+                naPaginaChat
+                  ? "border-sidebar-primary font-semibold bg-sidebar-accent text-sidebar-accent-foreground"
+                  : chat.aberto
+                    ? "border-transparent font-semibold text-sidebar-primary hover:bg-sidebar-accent/50"
+                    : "border-transparent text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"
+              }`}
+            >
+              <MessagesSquare
+                size={16}
+                className="shrink-0"
+                style={{ color: chatAtivo ? "var(--color-sidebar-primary)" : "var(--color-sidebar-foreground)" }}
+              />
+              <span className="flex-1 text-left">Chat da equipe</span>
+              <BolinhaNaoLidas n={naoLidas} />
+            </button>
+          )}
 
           {/* Favoritos */}
           <div className="pt-2">

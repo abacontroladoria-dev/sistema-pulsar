@@ -4,6 +4,8 @@ import { Geist } from "next/font/google";
 import { cn } from "@/lib/utils";
 import type { Metadata, Viewport } from "next";
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
+import { ChatEquipeProvider } from "@/contexts/ChatEquipeContext";
+import PainelChatEquipe from "@/components/chat-equipe/PainelChatEquipe";
 
 const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
@@ -61,7 +63,14 @@ export default function RootLayout({
       </head>
       <body>
         <ServiceWorkerRegistration />
-        {children}
+        {/* Chat da equipe: aqui, e não em (dashboard) ou connect, porque este é
+            o único layout que os dois lados têm em comum — o painel aberto
+            sobrevive à troca entre Pulsar e Connect. Só abre pelo item do
+            sidebar, que só existe nas telas com login. */}
+        <ChatEquipeProvider>
+          {children}
+          <PainelChatEquipe />
+        </ChatEquipeProvider>
 
         {/* TOAST GLOBAL */}
         <Toaster

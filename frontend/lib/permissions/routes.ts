@@ -170,11 +170,17 @@ export const ABAS_POR_ROTA: Record<string, string[]> = {
   '/auditoria-assim': ['auditoria', 'reconciliacao'],
 }
 
+// Rotas de todo usuário logado, sem código de permissão: o início e o Chat da
+// equipe (tela cheia do chat, liberado para todos por decisão de 16/10/2026 — a
+// RLS de public.chat_* também não pede código, só usuário ativo).
+export const ROTAS_DE_TODOS = ['/', '/chat-equipe']
+
 // Converte um conjunto de códigos de permissão em rotas permitidas,
-// garantindo que '/' esteja sempre presente.
+// garantindo que as ROTAS_DE_TODOS estejam sempre presentes.
 export function codigosToRotas(codigos: Iterable<string>): string[] {
   const rotas = [...codigos].flatMap((c) => CODIGO_PARA_ROTAS[c] ?? [])
   if (!rotas.includes('/')) rotas.unshift('/')
+  for (const r of ROTAS_DE_TODOS) if (!rotas.includes(r)) rotas.push(r)
   return rotas
 }
 
