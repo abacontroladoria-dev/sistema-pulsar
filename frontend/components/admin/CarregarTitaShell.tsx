@@ -316,12 +316,15 @@ export default function CarregarTitaShell() {
       {/* ── A despedida ─────────────────────────────────────────────────── */}
       <section className={`${cartao} space-y-3 p-4 sm:p-5`}>
         <h2 className="flex items-center gap-2 text-base font-semibold text-foreground">
-          <LogOut className="h-4 w-4 text-muted-foreground" aria-hidden /> Despedir do TiTa
+          <LogOut className="h-4 w-4 text-muted-foreground" aria-hidden /> No futuro: a despedida do TiTa
         </h2>
+        <p className="rounded-lg bg-muted px-3 py-2 text-sm font-medium text-foreground">
+          Não é agora. Nada nesta página desliga o TiTa: carregar só copia do TiTa para o Pulsar, e o TiTa continua funcionando
+          normalmente.
+        </p>
         <p className="text-sm text-muted-foreground">
-          Depois da última carga, o corte desliga as rotinas que copiam o TiTa e trava as importações para sempre. Ele é feito pelo
-          arquivo <code className="rounded bg-muted px-1 text-xs">docs/CORTE_TITA.sql</code> (com trava), aplicado no SQL Editor.
-          Ainda dependem do TiTa — e ficariam congeladas no dia do corte:
+          Quando você decidir, o corte é feito à mão pelo arquivo <code className="rounded bg-muted px-1 text-xs">docs/CORTE_TITA.sql</code>,
+          que vem travado. Antes disso, estas telas ainda precisam deixar de ler o TiTa — senão ficariam paradas no dia do corte:
         </p>
         <ul className="divide-y divide-border rounded-lg border border-border">
           {DEPENDENCIAS_TITA.map(d => (
