@@ -146,7 +146,10 @@ export async function importarDaTita(): Promise<ResultadoImportacao> {
     if (ehMigrationPendente(error)) throw new MigrationPendenteError("profissionais")
     throw new Error(mensagem(error))
   }
-  return data as ResultadoImportacao
+  // Falha no meio da importação: o banco desfaz tudo, grava o erro no log e devolve a mensagem.
+  const r = data as ResultadoImportacao & { erro?: string }
+  if (r?.erro) throw new Error(`A importação falhou e nada foi alterado: ${r.erro}`)
+  return r
 }
 
 export async function criarProfissional(input: ProfissionalEdit, terapiaIds: number[]): Promise<Profissional> {

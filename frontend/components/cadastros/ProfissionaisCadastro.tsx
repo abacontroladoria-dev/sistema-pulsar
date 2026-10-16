@@ -4,7 +4,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import toast from "react-hot-toast"
 import {
-  AlertCircle, ArrowDownUp, Check, ChevronLeft, ChevronRight, CloudDownload, Database,
+  AlertCircle, ArrowDownUp, CalendarSync, Check, ChevronLeft, ChevronRight, CloudDownload, Database,
   History, ListFilter, Loader2, Search, UserPlus, X,
 } from "lucide-react"
 import { HistoricoCadastrosModal } from "@/components/cadastros/historico/HistoricoCadastrosModal"
@@ -24,6 +24,11 @@ import { AvatarProfissional, ChipTerapia, corDoCatalogo } from "./profissionais/
 import { estiloTons } from "@/lib/cadastros/tonsTerapia"
 import { dataBR, somarDias } from "@/lib/disponibilidadeProfissional"
 import { NovoCadastroProfissionalModal } from "./profissionais/NovoCadastroProfissionalModal"
+import { PainelDisponibilidadeTita } from "./profissionais/PainelDisponibilidadeTita"
+import { rodadaDeDisponibilidade, rodadaDeProfissionais } from "@/components/tita/adaptadoresRelatorio"
+import { RelatorioSincronizacaoTita, type RodadaRelatorio } from "@/components/tita/RelatorioSincronizacaoTita"
+import { listarImportacoes, listarItensImportacao } from "@/services/titaImportacoes.service"
+import type { AlvoImportacaoTita, ImportacaoTita } from "@/types/titaImportacao"
 import type { SituacaoGrade, SituacaoGradeProfissional } from "@/types/disponibilidadeProfissional"
 import { BarraAlfabeto, SeletorModo, type ModoExibicao } from "./shared/ListaCadastro"
 
@@ -86,6 +91,9 @@ export function ProfissionaisCadastro() {
   const [modalNovo, setModalNovo] = useState(false)
   const [verHistorico, setVerHistorico] = useState(false)
   const [importando, setImportando] = useState(false)
+  const [painelDispTita, setPainelDispTita] = useState(false)
+  // Relatório "Sincronização do TiTa": cadastro (Importar do TiTa) ou disponibilidade.
+  const [relatorio, setRelatorio] = useState<{ alvo: AlvoImportacaoTita; execucoes: ImportacaoTita[] } | null>(null)
 
   const [modo, setModo] = useState<ModoExibicao>("grade")
   useEffect(() => {
@@ -225,6 +233,26 @@ export function ProfissionaisCadastro() {
     window.scrollTo({ top: 0, behavior: "smooth" })
   }
 
+  const abrirRelatorio = useCallback(async (alvo: AlvoImportacaoTita) => {
+    try {
+      setRelatorio({ alvo, execucoes: await listarImportacoes(alvo, 10) })
+    } catch (e) {
+      toast.error(String((e as Error)?.message ?? e))
+    }
+  }, [])
+  const rodadasRelatorio = useMemo<RodadaRelatorio[]>(() => {
+    if (!relatorio) return []
+    const adaptar = relatorio.alvo === "profissionais" ? rodadaDeProfissionais : rodadaDeDisponibilidade
+    return relatorio.execucoes.map(e => adaptar(e))
+  }, [relatorio])
+  // Listas de cada execução só quando ela é aberta.
+  const detalharRelatorio = useCallback(async (r: RodadaRelatorio) => {
+    const exec = relatorio?.execucoes.find(e => e.id === r.id)
+    if (!exec) return r
+    const itens = await listarItensImportacao(exec.id)
+    return exec.alvo === "profissionais" ? rodadaDeProfissionais(exec, itens) : rodadaDeDisponibilidade(exec, itens)
+  }, [relatorio])
+
   const importar = useCallback(async () => {
     setImportando(true)
     try {
@@ -237,12 +265,14 @@ export function ProfissionaisCadastro() {
       ].filter(Boolean)
       toast.success(partes.length ? `TiTa: ${partes.join(" · ")}.` : `TiTa conferido: ${r.vistos_na_tita} profissionais, nada novo.`, { duration: 6000 })
       await recarregar()
+      // Com o log gravado, abre o relatório da execução (Novos · Alterados · No TiTa).
+      if (r.importacao_id) await abrirRelatorio("profissionais")
     } catch (e) {
       toast.error(String((e as Error)?.message ?? e))
     } finally {
       setImportando(false)
     }
-  }, [recarregar])
+  }, [recarregar, abrirRelatorio])
 
   const { setRightContent } = useHeader()
   useEffect(() => {
@@ -314,6 +344,17 @@ export function ProfissionaisCadastro() {
         >
           {importando ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <CloudDownload className="h-4 w-4" aria-hidden="true" />}
           <span className="hidden min-[1680px]:inline">Importar do TiTa</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setPainelDispTita(true)}
+          disabled={migrationPendente}
+          title="Disponibilidade do TiTa — grava no Pulsar a disponibilidade de todos conforme a grade do TiTa, com prévia antes."
+          aria-label="Disponibilidade do TiTa"
+          className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-md border border-border px-2.5 text-sm font-semibold text-foreground hover:bg-muted disabled:opacity-50 min-[1680px]:px-3 ${foco}`}
+        >
+          <CalendarSync className="h-4 w-4" aria-hidden="true" />
+          <span className="hidden min-[1680px]:inline">Disponibilidade do TiTa</span>
         </button>
         <button
           type="button"
@@ -456,6 +497,27 @@ export function ProfissionaisCadastro() {
           subtitulo="Todas as alterações em profissionais — mais recentes primeiro."
           entidades={["profissional"]}
           onClose={() => setVerHistorico(false)}
+        />
+      )}
+      {painelDispTita && (
+        <PainelDisponibilidadeTita
+          catalogo={catalogo}
+          onFechar={() => setPainelDispTita(false)}
+          onGravado={() => void recarregar()}
+          onVerHistorico={() => { setPainelDispTita(false); void abrirRelatorio("disponibilidade") }}
+        />
+      )}
+      {relatorio && (
+        <RelatorioSincronizacaoTita
+          subtitulo={relatorio.alvo === "profissionais"
+            ? "Cadastro de profissionais trazido da cópia da grade do TiTa."
+            : "Disponibilidade gravada a partir da cópia da grade do TiTa."}
+          rodadas={rodadasRelatorio}
+          detalhar={detalharRelatorio}
+          vazio={relatorio.alvo === "profissionais"
+            ? "Nenhuma importação registrada ainda. Use o botão \"Importar do TiTa\"."
+            : "Nenhuma gravação registrada ainda. Use o botão \"Disponibilidade do TiTa\"."}
+          onClose={() => setRelatorio(null)}
         />
       )}
     </div>
