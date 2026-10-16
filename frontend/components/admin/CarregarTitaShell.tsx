@@ -1,6 +1,7 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import {
   AlertCircle, AlertTriangle, CalendarDays, CalendarSync, CheckCircle2, CircleDashed, CloudDownload, History, Loader2,
   LogOut, RefreshCw, ShieldCheck, UserRound, Users, type LucideIcon,
@@ -10,7 +11,7 @@ import { useHeader } from "@/contexts/HeaderContext"
 import { useCadastroTerapias } from "@/hooks/useCadastroTerapias"
 import { InlineNotice } from "@/components/cronograma/ui/InlineNotice"
 import { btnPrimario, btnSecundario, cartao } from "@/components/cronograma/grade/estilo"
-import { useConfirmacao } from "@/components/ui/pastel/confirmacao"
+import { useModalLayer, Z_MODAL } from "@/components/cronograma/ui/useModalLayer"
 import {
   rodadaDeDisponibilidade, rodadaDeGrade, rodadaDePacientes, rodadaDeProfissionais,
 } from "@/components/tita/adaptadoresRelatorio"
@@ -75,7 +76,7 @@ export default function CarregarTitaShell() {
   }, [setHeader])
 
   const { terapias: catalogo } = useCadastroTerapias()
-  const { confirmar, dialogo } = useConfirmacao()
+  const [confirmando, setConfirmando] = useState(false)
   const janela = useMemo(() => janelaImportacaoTita(), [])
   const [estados, setEstados] = useState<Record<Etapa, Estado>>(INICIAL)
   const [rodando, setRodando] = useState(false)
@@ -229,19 +230,7 @@ export default function CarregarTitaShell() {
     }
   }
 
-  const iniciar = async () => {
-    if (!(await confirmar({
-      titulo: "Carregar o Pulsar segundo o TiTa?",
-      texto: "Traz, nesta ordem: pacientes, profissionais, disponibilidades e agendamentos da cópia do TiTa. "
-        + "Nas disponibilidades e nos agendamentos que vieram do TiTa, o TiTa prevalece (o que está diferente aqui é trocado, e fica no histórico). "
-        + "O que foi criado no Pulsar não é tocado. Nada é enviado ao TiTa.",
-      confirmar: "Carregar agora",
-      cancelar: "Ainda não",
-      t: "aco",
-      Icone: CloudDownload,
-    }))) return
-    await rodar("pacientes")
-  }
+  const iniciar = () => setConfirmando(true)
 
   const pedirCopia = async () => {
     setPedindoCopia(true)
@@ -353,8 +342,66 @@ export default function CarregarTitaShell() {
           onClose={() => setRelatorio(null)}
         />
       )}
-      {dialogo}
+      {confirmando && (
+        <ConfirmarCarga
+          onCancelar={() => setConfirmando(false)}
+          onConfirmar={() => { setConfirmando(false); void rodar("pacientes") }}
+        />
+      )}
     </div>
+  )
+}
+
+/** Confirmação no design padrão do Pulsar (mesmos tokens da Grade e desta página). */
+function ConfirmarCarga({ onCancelar, onConfirmar }: { onCancelar: () => void; onConfirmar: () => void }) {
+  const cartaoRef = useRef<HTMLDivElement | null>(null)
+  useModalLayer(cartaoRef, onCancelar)
+  return createPortal(
+    <div
+      className="fixed inset-0 flex items-center justify-center bg-black/45 p-4 animate-in fade-in duration-150 motion-reduce:animate-none"
+      style={{ zIndex: Z_MODAL }}
+      onClick={e => { if (e.target === e.currentTarget) onCancelar() }}
+    >
+      <div
+        ref={cartaoRef}
+        tabIndex={-1}
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="carregar-tita-titulo"
+        className={`${cartao} w-full max-w-md space-y-4 p-5 outline-none`}
+      >
+        <div className="flex items-start gap-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted text-foreground" aria-hidden>
+            <CloudDownload className="h-5 w-5" />
+          </span>
+          <div className="min-w-0 space-y-1">
+            <h2 id="carregar-tita-titulo" className="text-base font-semibold text-foreground">Carregar o Pulsar segundo o TiTa?</h2>
+            <p className="text-sm text-muted-foreground">Traz da cópia do TiTa, nesta ordem: pacientes, profissionais, disponibilidades e agendamentos.</p>
+          </div>
+        </div>
+        <ul className="space-y-2 text-sm text-foreground">
+          <li className="flex gap-2">
+            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+            Nas disponibilidades e nos agendamentos que vieram do TiTa, o TiTa prevalece: o que está diferente aqui é trocado e fica no histórico.
+          </li>
+          <li className="flex gap-2">
+            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" aria-hidden />
+            O que foi criado no Pulsar não é tocado.
+          </li>
+          <li className="flex gap-2">
+            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" aria-hidden />
+            Nada é enviado ao TiTa, e ele continua funcionando normalmente.
+          </li>
+        </ul>
+        <div className="flex flex-wrap justify-end gap-2 border-t border-border pt-4">
+          <button type="button" onClick={onCancelar} className={btnSecundario}>Ainda não</button>
+          <button type="button" onClick={onConfirmar} className={btnPrimario}>
+            <CloudDownload className="h-4 w-4" aria-hidden /> Carregar agora
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   )
 }
 
