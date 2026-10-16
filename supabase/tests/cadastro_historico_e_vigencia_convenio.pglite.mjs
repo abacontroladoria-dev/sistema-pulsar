@@ -82,6 +82,7 @@ await db.exec(arquivo('20261016140000'))
 const mig = arquivo('20261016150000')
 await db.exec(mig)
 await db.exec(mig)
+await db.exec(arquivo('20261016160000'))
 ok(true, 'migrations rodam e reroda')
 
 console.log('1. vigências da carga inicial')

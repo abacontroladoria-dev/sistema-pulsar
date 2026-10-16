@@ -75,7 +75,9 @@ insert into public.agenda_tita (paciente_id, paciente_nome, data_atendimento, co
 const mig = arquivo('20261016140000')
 await db.exec(mig)
 await db.exec(mig)
-ok(true, 'roda e reroda')
+await db.exec(arquivo('20261016160000'))
+await db.exec(arquivo('20261016160000'))
+ok(true, 'roda e reroda (com a correção de desempenho 20261016160000)')
 ok(Number((await conv(4)).convenio_catalogo_id) === 2, 'preenchimento inicial: "leve saude" ligado a LEVE SAUDE do catálogo')
 ok(Number((await conv(1)).convenio_catalogo_id) === 3, 'preenchimento inicial: Ana ligada a Particular')
 
@@ -111,7 +113,22 @@ const det = (await um(`select detalhes from public.pacientes_importacoes_log whe
 const ana = det.atualizados.find(a => a.nome === 'Ana')
 ok(ana?.mudancas.some(m => m.campo === 'Convênio' && m.de === 'Particular' && m.para === 'ASSIM Saúde'), 'log: Ana Particular → ASSIM Saúde')
 
-console.log('3. segurança')
+console.log('3. volume (o estouro de tempo de 16/10/2026)')
+await db.exec(`
+insert into public.agenda_tita (paciente_id, paciente_nome, data_atendimento, convenio_id, convenio_nome)
+select 1000 + (g % 600), 'Paciente ' || (g % 600), current_date - (g % 90), 100 + (g % 15), 'Convênio ' || (g % 15)
+from generate_series(1, 40000) g;
+insert into public.tita_favorecidos_cadastro (tita_favorecido_id, nome, situacao, plano_saude)
+select 1000 + g, 'Paciente ' || g, 'Ativo', 'Convênio ' || (g % 15) from generate_series(0, 599) g
+on conflict do nothing;
+`)
+const t0 = Date.now()
+const rv = (await um(`select public.pacientes_importar_tita('cron') r`)).r
+const ms = Date.now() - t0
+ok(rv.sucesso && ms < 20000, `40 mil linhas de agenda × 600 pacientes no cadastro em ${ms} ms (antes: uma varredura da agenda por paciente)`)
+ok(Number((await um(`select convenio_id from public.pacientes where tita_paciente_id = 1007`)).convenio_id) === 107, 'id do convênio no TiTa continua coerente com o nome')
+
+console.log('4. segurança')
 await db.exec(`set role anon`)
 let e = null; try { await db.query(`select * from public.tita_favorecidos_cadastro`) } catch (x) { e = x }
 ok(e, 'anon não lê a cópia do cadastro')
