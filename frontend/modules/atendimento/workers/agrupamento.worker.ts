@@ -15,7 +15,7 @@ import { montarContexto, LIMITE_HISTORICO } from '../agente/contexto'
 import { executarTurno } from '../agente/orquestrador'
 import { FerramentasAgente } from '../agente/ferramentas'
 import { lerVagasGuardadas, paraGuardar, mesclarAiContext } from '../agente/vagas-oferecidas'
-import { montarFerramentaRegistrarTags } from '../agente/tags'
+import { classificarConversa, falasDoHistorico } from '../agente/classificacao'
 import { resolverOrigem } from '../agente/origem-campanha'
 import { TAG_TRABALHE_CONOSCO, pareceTrabalheConosco } from '../agente/tipo-contato'
 import { openAiProvider } from '../llm/openai.provider'
@@ -435,7 +435,9 @@ async function processarContato(
       // que decide o bloco de contexto, de propósito: a ferramenta e a
       // informação sobre o que falta precisam aparecer e sumir juntas.
       coletaDeCadastro: ficha !== null,
-      ferramentaTags:   montarFerramentaRegistrarTags(porGrupoTags),
+      // Sem `ferramentaTags`: classificar é uma chamada própria, depois da
+      // resposta (agente/classificacao.ts, no `case 'responder'` abaixo).
+      // Opcional no turno, a Maia não a chamava (1 vez em 156 respostas).
       modoPaciente,
       aoChamarFerramenta: (registro) => {
         void auditoria.insert({
@@ -502,10 +504,22 @@ async function processarContato(
         // recepcionista lê, corrige se quiser, e envia pela Central. É o que
         // 'assisted' promete, e é o modo com que se deve estrear em produção.
         await gravarRascunho(supabase, orgId, conversation.id, resultado.texto)
-        return { tipo: 'respondido' }
+      } else {
+        await enfileirarEnvio(supabase, orgId, conversation.id, contato.id, resultado.texto)
       }
 
-      await enfileirarEnvio(supabase, orgId, conversation.id, contato.id, resultado.texto)
+      // Classificação da conversa, DEPOIS da resposta já estar na fila: ela não
+      // atrasa a família. Paciente vinculado fica de fora (o tipo vem do
+      // sistema, e a taxonomia é comercial). Falha só vira aviso.
+      if (!modoPaciente && porGrupoTags.size > 0) {
+        const r = await classificarConversa(
+          conversation.id,
+          falasDoHistorico(historico, resultado.texto),
+          { provider: openAiProvider, porGrupo: porGrupoTags, conversas: conversationService },
+        )
+        if (!r.ok) console.warn('[worker agrupamento] classificação não aplicada', { conversationId: conversation.id, motivo: r.motivo })
+        else if (r.aplicado) await ferramentas.moverCardPorClassificacao()
+      }
       return { tipo: 'respondido' }
 
     case 'aguardar':

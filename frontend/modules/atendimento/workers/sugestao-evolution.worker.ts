@@ -11,7 +11,7 @@ import { CampaignPhraseRepository } from '../repositories/campaign-phrase.reposi
 import { resolverOrigem, type FraseCadastrada } from '../agente/origem-campanha'
 import { TAG_TRABALHE_CONOSCO, pareceTrabalheConosco } from '../agente/tipo-contato'
 import { montarContexto, LIMITE_HISTORICO } from '../agente/contexto'
-import { montarFerramentaRegistrarTags } from '../agente/tags'
+import { classificarConversa, falasDoHistorico } from '../agente/classificacao'
 import { executarTurno } from '../agente/orquestrador'
 import { FerramentasAgente } from '../agente/ferramentas'
 import { openAiProvider } from '../llm/openai.provider'
@@ -272,9 +272,6 @@ export async function processarSugestoesEvolution(
         pacientesVinculados: vinculados.map(v => v.nome),
       })
 
-      // Classificação só onde ela envia: no rascunho quem atende é a atendente.
-      const catalogoTags = automatica ? porGrupoTags : null
-
       const ferramentas = new FerramentasAgente(
         createAppointmentSystemService(),
         new AppointmentRepository(supabase),
@@ -286,9 +283,9 @@ export async function processarSugestoesEvolution(
         // responde já é gente — não há de quem transferir.
         automatica ? conversationService : null,
         null,
-        // Para `registrar_tags` — validação e merge por grupo usam o mesmo
-        // catálogo que monta o schema abaixo.
-        catalogoTags,
+        // Sem catálogo: `registrar_tags` saiu do turno. Classificar é a chamada
+        // própria depois da resposta (agente/classificacao.ts, abaixo).
+        null,
         [],
         null,
         // Para `consultar_sessoes_do_paciente` (modo paciente).
@@ -304,8 +301,6 @@ export async function processarSugestoesEvolution(
           agendamentoHabilitado: settings.ai_scheduling_enabled,
           somenteLeitura: true,
           permitirEscalada: automatica,
-          ferramentaTags: catalogoTags ? montarFerramentaRegistrarTags(catalogoTags) : undefined,
-          permitirTags: catalogoTags !== null,
           modoPaciente,
           // O mesmo rastro do worker da Meta. Sem ele, desde 30/09 nenhuma
           // consulta da Maia ficava registrada: em 13/10 ela respondeu "houve um
@@ -331,6 +326,20 @@ export async function processarSugestoesEvolution(
           conversationId: conv.id, tentativa, detalhe: resultado.detalhe ?? null,
         })
         continue
+      }
+
+      // Classificação da conversa (agente/classificacao.ts), depois que a
+      // resposta saiu ou virou rascunho — nos dois modos, como a ORIGEM: é
+      // classificação da conversa, não fala de ninguém. Paciente vinculado
+      // fica de fora (a taxonomia é comercial). Falha só vira aviso.
+      const classificar = async (respostaDoTurno: string | null) => {
+        if (modoPaciente || !porGrupoTags) return
+        const rc = await classificarConversa(
+          conv.id,
+          falasDoHistorico(historico, respostaDoTurno),
+          { provider: openAiProvider, porGrupo: porGrupoTags, conversas: conversationService },
+        )
+        if (!rc.ok) console.warn('[sugestao evolution] classificação não aplicada', { conversationId: conv.id, motivo: rc.motivo })
       }
 
       // Falha de envio sobe para o catch: a mensagem fica como 'failed' na
@@ -375,6 +384,7 @@ export async function processarSugestoesEvolution(
         }
         await messageService.send({ conversationId: conv.id, body: texto, sentByAi: true })
         r.enviadas++
+        await classificar(texto)
         continue
       }
 
@@ -422,6 +432,7 @@ export async function processarSugestoesEvolution(
       })
       if (error) throw error
       r.sugeridas++
+      await classificar(resultado.texto)
     } catch (err) {
       r.falhas++
       const tentativa = marca?.tentativa ?? 1

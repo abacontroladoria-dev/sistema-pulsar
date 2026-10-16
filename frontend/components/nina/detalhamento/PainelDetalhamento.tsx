@@ -209,6 +209,7 @@ export const PainelDetalhamento: React.FC<{
 
           <BlocoTags
             tags={contato?.tags ?? null}
+            tagsConversa={detalhe.tags}
             catalogo={dados.catalogoTags}
             aoSalvar={contato ? acoes.salvarTags : undefined}
           />

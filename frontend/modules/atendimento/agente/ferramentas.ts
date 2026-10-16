@@ -621,6 +621,12 @@ export class FerramentasAgente {
     return this.escalouNesteTurno
   }
 
+  // O mesmo movimento de card que `registrar_tags` fazia ao classificar, agora
+  // que a classificação roda fora do turno (agente/classificacao.ts). Nunca lança.
+  async moverCardPorClassificacao(): Promise<void> {
+    await this.moverCard('em_qualificacao', null)
+  }
+
   // O estado da lista ao fim do turno, para o worker decidir se grava. Lido
   // depois de `executarTurno`, como `escaladaPedida`.
   estadoDasVagas(): { vagas: VagaOferecida[]; mudou: boolean; consultouNesteTurno: boolean } {

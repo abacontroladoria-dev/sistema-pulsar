@@ -188,7 +188,12 @@ export class OpenAIProvider implements LLMProvider {
       // DEFINICOES_FERRAMENTAS já nasce no formato do wire (ver o comentário
       // de STRICT MODE em agente/ferramentas.ts) — passa sem conversão.
       ...(requisicao.ferramentas?.length
-        ? { tools: requisicao.ferramentas, tool_choice: 'auto' }
+        ? {
+            tools: requisicao.ferramentas,
+            tool_choice: requisicao.escolhaFerramenta
+              ? { type: 'function', function: { name: requisicao.escolhaFerramenta } }
+              : 'auto',
+          }
         : {}),
       max_tokens: requisicao.maxTokensSaida ?? MAX_TOKENS_SAIDA_PADRAO,
       temperature: requisicao.temperatura ?? TEMPERATURA_PADRAO,

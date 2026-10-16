@@ -146,6 +146,10 @@ export interface LlmResposta {
 export interface LlmRequisicao {
   mensagens:       LlmMensagem[]
   ferramentas?:    LlmFerramenta[]
+  // Obriga o modelo a chamar ESTA ferramenta (pelo nome), em vez de deixá-lo
+  // escolher. Ausente = ele decide. Usado pela classificação (agente/
+  // classificacao.ts): opcional, a Maia não classificava nunca.
+  escolhaFerramenta?: string
   // Teto de tokens de saída. Obrigatório na prática: sem ele uma resposta longa
   // custa o que quiser. O provider aplica um padrão se vier ausente.
   maxTokensSaida?: number

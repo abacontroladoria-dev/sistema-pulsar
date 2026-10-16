@@ -20,15 +20,21 @@ import { TagChip as Chip } from '../../central/shared/TagChip'
 
 export const BlocoTags: React.FC<{
   tags:      string[] | null
+  // A classificação da CONVERSA (conversations.tags): ORIGEM e TIPO aplicados
+  // pelo sistema e os grupos que a Maia classifica a cada turno
+  // (agente/classificacao.ts). Só leitura — o que a equipe marca continua
+  // indo para o contato. Sem isto, nada do que o sistema classificava aparecia.
+  tagsConversa?: string[] | null
   catalogo:  TagDefinition[]
   // Ausente enquanto a fatia de escrita não existe: sem ele o "+" não aparece
   // e os chips não ganham o X.
   aoSalvar?: (chaves: string[]) => Promise<void>
-}> = ({ tags, catalogo, aoSalvar }) => {
+}> = ({ tags, tagsConversa, catalogo, aoSalvar }) => {
   const [aberto, setAberto]     = useState(false)
   const [salvando, setSalvando] = useState(false)
 
   const atuais   = tags ?? []
+  const daConversa = (tagsConversa ?? []).filter(c => !atuais.includes(c))
   const porChave = new Map(catalogo.map(t => [t.key, t]))
 
   // Substituição total do array, sempre. Um add/remove incremental calculado
@@ -72,22 +78,39 @@ export const BlocoTags: React.FC<{
         ) : undefined
       }
     >
-      {atuais.length === 0 ? (
+      {atuais.length === 0 && daConversa.length === 0 ? (
         <Vazio>Nenhuma tag</Vazio>
       ) : (
-        <div className="flex flex-wrap gap-1.5">
-          {atuais.map(chave => {
-            const def = porChave.get(chave)
-            return (
-              <Chip
-                key={chave}
-                rotulo={def?.label ?? chave}
-                cor={def?.color ?? null}
-                aoRemover={aoSalvar ? () => gravar(atuais.filter(c => c !== chave)) : undefined}
-              />
-            )
-          })}
-        </div>
+        <>
+          {atuais.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {atuais.map(chave => {
+                const def = porChave.get(chave)
+                return (
+                  <Chip
+                    key={chave}
+                    rotulo={def?.label ?? chave}
+                    cor={def?.color ?? null}
+                    aoRemover={aoSalvar ? () => gravar(atuais.filter(c => c !== chave)) : undefined}
+                  />
+                )
+              })}
+            </div>
+          )}
+          {daConversa.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider">
+                Classificação da conversa
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {daConversa.map(chave => {
+                  const def = porChave.get(chave)
+                  return <Chip key={chave} rotulo={def?.label ?? chave} cor={def?.color ?? null} />
+                })}
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {aberto && aoSalvar && (
