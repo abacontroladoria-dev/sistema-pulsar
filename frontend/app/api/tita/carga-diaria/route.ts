@@ -4,7 +4,7 @@ import { supabaseService } from "@/lib/supabase/service"
 import { executarCargaTita } from "@/services/tita/cargaTita.server"
 
 // Rotina diária das 04:00 (Brasília): "Carregar o Pulsar segundo o TiTa" sem
-// ninguém clicar. Chamada pelo pg_cron (docs/ATIVAR_CARGA_TITA_DIARIA.sql) com
+// ninguém clicar. Chamada pelo pg_cron (docs/ATIVAR_CARGA_TITA_DIARIA_1_SEGREDO.sql e _2_LIGAR.sql) com
 // o segredo CARGA_TITA_SEGREDO (Vault: carga_tita_segredo; Coolify: variável
 // de mesmo nome). Responde na hora (202) e roda as 4 etapas depois, com
 // after(): a rotina do banco não fica esperando. O resultado fica em

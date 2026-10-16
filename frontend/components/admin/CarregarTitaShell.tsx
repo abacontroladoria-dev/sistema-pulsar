@@ -434,7 +434,7 @@ function RotinaDiaria({ cargas }: { cargas: CargaTita[] | undefined }) {
         <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Carregando…</p>
       ) : !ultima ? (
         <p className="text-sm text-muted-foreground">
-          Ainda não rodou. Ela é ligada depois que o site for publicado (docs/ATIVAR_CARGA_TITA_DIARIA.sql) e roda as mesmas etapas
+          Ainda não rodou. Ela é ligada depois que o site for publicado (docs/ATIVAR_CARGA_TITA_DIARIA_1_SEGREDO.sql e _2_LIGAR.sql) e roda as mesmas etapas
           do botão acima, todo dia às 04:00.
         </p>
       ) : (

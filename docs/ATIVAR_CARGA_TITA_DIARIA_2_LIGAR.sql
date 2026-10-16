@@ -1,6 +1,7 @@
 -- ═════════════════════════════════════════════════════════════════════════════
--- LIGAR A ROTINA DIÁRIA "Carregar o Pulsar segundo o TiTa" — 04:00 (Brasília)
--- NÃO É MIGRATION: aplicar à mão no SQL Editor, em DUAS PARTES, nesta ordem.
+-- ROTINA DIÁRIA "Carregar o Pulsar segundo o TiTa" — 04:00 (Brasília)
+-- PASSO 2 DE 2: ligar. SÓ DEPOIS do passo 1 e do site publicado com o segredo.
+-- Rode ESTE arquivo inteiro sozinho. Ele vem TRAVADO (ver abaixo).
 -- ═════════════════════════════════════════════════════════════════════════════
 --
 -- O que a rotina faz: às 04:00 o banco chama o site
@@ -8,26 +9,6 @@
 -- etapas da página Administração → Carregar do TiTa: pacientes, profissionais,
 -- disponibilidades e agendamentos. Só LÊ o TiTa. O resultado aparece na mesma
 -- página ("Rotina diária das 04:00"); falha abre o alerta carga_tita_falhou.
---
--- Pré-requisito: migration 20261016170000 aplicada.
---
--- ─────────────────────────────────────────────────────────────────────────────
--- PARTE 1 — segredo (pode rodar a qualquer momento; não liga nada)
--- ─────────────────────────────────────────────────────────────────────────────
--- Cria o segredo no Vault (se ainda não existir) e mostra o valor. Copie o
--- valor para o Coolify como variável de ambiente CARGA_TITA_SEGREDO e
--- publique o site (com as branches desta entrega mescladas).
-
-do $$
-begin
-  if not exists (select 1 from vault.secrets where name = 'carga_tita_segredo') then
-    perform vault.create_secret(encode(extensions.gen_random_bytes(32), 'hex'), 'carga_tita_segredo',
-      'Segredo da rotina diária Carregar do TiTa (04:00). Igual à variável CARGA_TITA_SEGREDO do Coolify.');
-  end if;
-end $$;
-
-select decrypted_secret as copie_para_o_coolify_como_CARGA_TITA_SEGREDO
-from vault.decrypted_secrets where name = 'carga_tita_segredo';
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- PARTE 2 — ligar (SÓ DEPOIS do site publicado com CARGA_TITA_SEGREDO)
