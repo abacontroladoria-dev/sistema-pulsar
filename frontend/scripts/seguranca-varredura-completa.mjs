@@ -38,6 +38,9 @@ const SENSIVEIS = [
   'vw_grade_base', 'vw_grade_atendimentos', 'vw_central_terapeutica',
 ]
 
+// Edge Functions de teste apagadas do repositório (P0). Precisam responder 404.
+const FUNCOES_REMOVIDAS = ['tita-compare-endpoints', 'test_env', 'cco-test-setup', 'cco-conciliation-engine-test']
+
 /** Toda tabela/view do schema public criada nas migrations (a OpenAPI anônima pode estar fechada). */
 function objetosDasMigrations() {
   const pasta = join(raiz, '..', 'supabase', 'migrations')
@@ -124,6 +127,12 @@ async function main() {
       olhar(`Edge Function ${f} responde sem credencial (HTTP ${r.status}) — confirme verify_jwt ou checagem própria`)
     }
     okLog(`${funcoes.length} Edge Function(s) sondada(s) sem credencial.`)
+    // Removidas do repositório: OPTIONS não executa o código, só diz se ainda está publicada.
+    for (const f of FUNCOES_REMOVIDAS) {
+      const r = await fetch(`${url}/functions/v1/${f}`, { method: 'OPTIONS' }).catch(() => null)
+      if (r?.status === 404) okLog(`Edge Function removida ${f}: fora do ar (404).`)
+      else vaza(`Edge Function removida ${f} AINDA PUBLICADA (HTTP ${r?.status ?? 'sem resposta'}) — supabase functions delete ${f}`)
+    }
   } else {
     console.log('(Sondagem das Edge Functions pulada: rode com SONDAR_FUNCOES=1 depois de remover as de teste.)')
   }
