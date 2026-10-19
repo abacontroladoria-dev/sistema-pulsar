@@ -4,7 +4,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Building2, Check, Folder, IdCard, Pointer, Search, UserSearch, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { grupoMotivo, nomeCurtoPrestador } from '@/lib/roboSharepoint/rotulos'
-import { buscarPacientes, listarNomesDePrestadores, vincularPasta } from '@/services/roboSharepoint.service'
+import {
+  buscarPacientes, listarNomesDePrestadores, vincularPasta, vincularPastaAoPaciente, type PacienteParaVinculo,
+} from '@/services/roboSharepoint.service'
 import type { SpPendenciaPasta } from '@/types/roboSharepoint'
 import { abreviar, avisoFeito, confete, iniciais, tom, type Tom } from '@/components/ui/pastel/pecas'
 
@@ -29,7 +31,9 @@ export function categoriaDa(p: SpPendenciaPasta): CategoriaPasta {
   return p.motivo === 'cpf_duplicado_no_pulsar' ? 'cpf' : 'nome'
 }
 
-type Opcao = { nome: string; cpf: string | null }
+// Paciente: id + 4 últimos dígitos do CPF (o CPF inteiro não sai do banco —
+// o vínculo é pelo id). Prestador: só o nome do contrato.
+type Opcao = { nome: string; cpfFinal: string | null; paciente?: PacienteParaVinculo }
 
 function Seletor({ pendencia, categoria, onCancelar, onEscolhido }: {
   pendencia: SpPendenciaPasta
@@ -54,7 +58,9 @@ function Seletor({ pendencia, categoria, onCancelar, onEscolhido }: {
   useEffect(() => {
     if (ehPrestador) return
     const t = setTimeout(() => {
-      buscarPacientes(termo).then(setPacientes).catch(() => setPacientes([]))
+      buscarPacientes(termo)
+        .then(lista => setPacientes(lista.map(p => ({ nome: p.nome, cpfFinal: p.cpf_final, paciente: p }))))
+        .catch(() => setPacientes([]))
     }, 250)
     return () => clearTimeout(t)
   }, [termo, ehPrestador])
@@ -63,19 +69,17 @@ function Seletor({ pendencia, categoria, onCancelar, onEscolhido }: {
     if (!ehPrestador) return pacientes
     const t = termo.trim().toLocaleLowerCase('pt-BR')
     return (t ? prestadores.filter(p => p.toLocaleLowerCase('pt-BR').includes(t)) : prestadores)
-      .slice(0, 30).map(nome => ({ nome, cpf: null }))
+      .slice(0, 30).map(nome => ({ nome, cpfFinal: null }))
   }, [ehPrestador, pacientes, prestadores, termo])
 
   async function escolher(o: Opcao, origem: Element) {
     setSalvando(true)
     try {
-      await vincularPasta({
-        pastaId: pendencia.pasta_id,
-        tipo: pendencia.tipo,
-        prestadorNome: ehPrestador ? o.nome : null,
-        pacienteNome: ehPrestador ? null : o.nome,
-        pacienteCpf: ehPrestador ? null : o.cpf ?? null,
-      })
+      if (!ehPrestador && o.paciente) {
+        await vincularPastaAoPaciente(pendencia.pasta_id, o.paciente)
+      } else {
+        await vincularPasta({ pastaId: pendencia.pasta_id, tipo: pendencia.tipo, prestadorNome: o.nome })
+      }
       onEscolhido(o.nome, origem)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Não foi possível salvar o vínculo')
@@ -102,7 +106,7 @@ function Seletor({ pendencia, categoria, onCancelar, onEscolhido }: {
 
       <ul className="flex max-h-64 flex-col gap-2 overflow-y-auto p-0.5">
         {opcoes.map(o => (
-          <li key={`${o.nome}-${o.cpf ?? ''}`}>
+          <li key={`${o.nome}-${o.paciente?.id_paciente ?? o.cpfFinal ?? ''}`}>
             <button type="button" disabled={salvando} onClick={e => escolher(o, e.currentTarget)} className="pp-opcao">
               <span className="pp-avatar" aria-hidden>
                 {categoria === 'cpf' ? <IdCard className="h-4 w-4" /> : iniciais(o.nome)}
@@ -110,7 +114,7 @@ function Seletor({ pendencia, categoria, onCancelar, onEscolhido }: {
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[13px] font-extrabold text-[var(--pp-ink)]">{o.nome}</span>
                 <span className="block truncate text-[11px] font-semibold tabular-nums text-[var(--pp-ink-muted)]">
-                  {o.cpf ? `CPF •••${o.cpf.slice(-4)}` : ehPrestador ? 'Contrato' : 'Sem CPF no cadastro'}
+                  {o.cpfFinal ? `CPF •••${o.cpfFinal}` : ehPrestador ? 'Contrato' : 'Sem CPF no cadastro'}
                 </span>
               </span>
             </button>

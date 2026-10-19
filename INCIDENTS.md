@@ -118,6 +118,7 @@ Criada Edge Function `tita-compare-endpoints` para diagnósticos futuros:
 - `POST /functions/v1/tita-compare-endpoints`
 - Compara os dois endpoints lado a lado
 - Útil para detectar divergências entre JSON e CSV
+- **Removida em 19/10/2026** (segurança): devolvia agendas com nome de paciente a quem tivesse a chave pública. Ver `docs/SEGURANCA_DADOS_AGENDA.md`, P0
 
 ---
 

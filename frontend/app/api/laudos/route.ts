@@ -1,6 +1,22 @@
 import { NextResponse } from "next/server"
-import { AcessoNegado, lerAcessoLaudos } from "@/services/laudos/acesso"
+import { AcessoRecusado, exigirPermissao } from "@/lib/permissions/exigirPermissao"
 import { buscarLaudosDoRelatorio } from "@/services/laudos/relatorio"
+
+/**
+ * Telas que mostram laudos (todas sob CronogramaDataLayout, mais o
+ * Acompanhamento de Laudos). Indicadores, Reposição, Ocupação de Salas e Grade
+ * não usam laudos e não chamam esta rota.
+ */
+const PERMISSOES_LAUDOS = [
+  "cronograma_ocupacao_paciente",
+  "cronograma_saida_profissional",
+  "ocupacao_clinica",
+  "ocupacao_clinica_gaps",
+  "ocupacao_clinica_inconsistencias",
+  "cronograma_solicitacoes",
+  "cronograma_disponibilidade_interna",
+  "acompanhamento_laudos",
+] as const
 
 // GET /api/laudos → { ok, rows: LaudoRow[], meta }
 //
@@ -31,16 +47,17 @@ export async function GET() {
   // checagem TEM de estar aqui. Até 08/10/2026 ela respondia a qualquer pessoa
   // na internet, sem login.
   //
-  // Exige sessão válida e usuário ativo (lerAcessoLaudos → 401 sem sessão ou
-  // inativo). Não exige uma permissão específica de laudos de propósito: o
-  // layout de TODO o Cronograma carrega esta rota ao abrir qualquer tela (ver
-  // CronogramaDataLayout). Restringir por permissão exige antes separar quem
-  // precisa dos laudos de quem só precisa da grade — fica como próximo passo.
+  // Exige usuário ativo e uma das permissões das telas que usam laudos (até
+  // 19/10/2026 bastava estar logado). O layout do Cronograma deixou de chamar
+  // esta rota nas telas que não usam laudos, para não recusar quem só as tem.
   try {
-    await lerAcessoLaudos()
+    await exigirPermissao(PERMISSOES_LAUDOS)
   } catch (e) {
-    if (e instanceof AcessoNegado) {
-      return NextResponse.json({ ok: false, error: "not_authenticated" }, { status: e.status })
+    if (e instanceof AcessoRecusado) {
+      return NextResponse.json(
+        { ok: false, error: e.status === 401 ? "not_authenticated" : "sem_permissao" },
+        { status: e.status },
+      )
     }
     console.error("[api/laudos] falha ao verificar o acesso", e)
     return NextResponse.json({ ok: false, error: "falha_ao_verificar_acesso" }, { status: 500 })

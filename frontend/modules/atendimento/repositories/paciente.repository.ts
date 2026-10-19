@@ -22,10 +22,10 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 //
 // SOBRE RLS
 //
-// `pacientes_select` é `using (true)` para `authenticated` (20260826100500
-// documenta que ela não deve ser tocada: Cronograma, CCO e Central de Pacientes
-// dependem dela). Esta leitura passa por ela como as outras telas passam — não
-// foi preciso abrir nada para o atendimento.
+// Desde 20261019180100 o login comum NÃO lê `public.pacientes` (só quem tem
+// `cadastros_pacientes` ou papel admin/diretoria/cronograma). Quem usa este
+// repositório passa o cliente de serviço: os workers da Central e a rota da
+// ficha (depois de extractUser, que exige a permissão `connect`).
 // ============================================================================
 
 // `sincronizado_em` entra porque `convenio_nome` NÃO é digitado: é cache
