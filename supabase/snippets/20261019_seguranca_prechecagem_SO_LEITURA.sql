@@ -118,7 +118,7 @@ where ct.confirmado_em >= now() - interval '60 days'
 group by 1, 2, 3
 order by 4 desc;
 
--- ── FASE 4 (migration 20261019170000_seguranca_evolucao_coluna) ─────────────
+-- ── FASE 4 (migration 20261019190000_seguranca_evolucao_coluna) ─────────────
 --    O bloco 2.2 já lista views sobre descricao_evolucao (esperado: nenhuma).
 --    O bloco 2.5 lista funções invoker que citam a coluna (esperado: nenhuma).
 
