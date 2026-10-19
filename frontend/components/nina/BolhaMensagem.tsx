@@ -101,6 +101,19 @@ export const BolhaMensagem: React.FC<Props> = ({
           {msg.content && textoWhatsApp(msg.content, claro)}
         </div>
 
+        {/* Reações: selo encostado na base da bolha, como no WhatsApp. */}
+        {msg.reacoes.length > 0 && (
+          <span
+            title={msg.reacoes.map(r => `${r.autor}: ${r.emoji}`).join('\n')}
+            className={`-mt-2 ${isOutgoing ? 'mr-2' : 'ml-2'} relative z-10 inline-flex items-center gap-0.5 rounded-full border border-border bg-background px-1.5 py-0.5 text-xs leading-none shadow-sm`}
+          >
+            {[...new Set(msg.reacoes.map(r => r.emoji))].join('')}
+            {msg.reacoes.length > 1 && (
+              <span className="ml-0.5 text-[10px] text-muted-foreground">{msg.reacoes.length}</span>
+            )}
+          </span>
+        )}
+
         <div className="flex items-center mt-1 gap-1.5 text-[10px] px-1">
           {msg.isAiDraft && (
             <span className="text-violet-400 font-medium">Sugestão da Maia — não enviada</span>

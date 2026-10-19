@@ -57,6 +57,8 @@ export interface NinaMessage extends UIMessage {
   // A mensagem citada, quando esta é uma resposta. `previa` sai da mensagem em
   // mãos; se a citada é mais antiga que o histórico carregado, fica genérica.
   citacao: { id: string; autor: string; previa: string } | null
+  // Reações que ESTA mensagem recebeu. Ver aplicarReacoes.
+  reacoes: { emoji: string; autor: string }[]
   // O lápis aparece? Mesma regra do service (podeEditar).
   podeEditar: boolean
   editada:    boolean
@@ -295,6 +297,7 @@ export function toUIMessage(m: Message): NinaMessage {
     citacao:    m.reply_to_message_id
       ? { id: m.reply_to_message_id, autor: '', previa: 'Mensagem anterior' }
       : null,
+    reacoes:    [],
     podeEditar: podeEditar(m),
     editada:    !!m.edited_at,
     quandoIso:  m.sent_at ?? m.created_at,
@@ -313,6 +316,46 @@ function resolverCitacoes(mensagens: NinaMessage[], nomeContato: string): NinaMe
     const previa = alvo.content || alvo.anexos.map(a => a.nome ?? a.rotulo).join(', ') || 'Mensagem'
     const autor  = alvo.direction === MessageDirection.INCOMING ? nomeContato : 'Você'
     return { ...m, citacao: { id: alvo.id, autor, previa } }
+  })
+}
+
+// ----------------------------------------------------------------------------
+// Reações
+//
+// O provider entrega a reação como mensagem própria: body '[reagiu 💗]',
+// message_type 'reaction' e a mensagem reagida em reply_to_message_id. Desenhada
+// como bolha, virava uma "resposta" citando a mensagem — não é o que aconteceu.
+// Aqui ela sai da lista e vira selo na mensagem-alvo, como no WhatsApp.
+//
+// Cada pessoa tem UMA reação por mensagem: a mais recente vale, e a reação de
+// emoji vazio ('[reagiu]') é a pessoa tirando a dela. Reação cuja alvo não está
+// no histórico carregado some — não há onde pendurá-la.
+// ----------------------------------------------------------------------------
+const CORPO_REACAO = /^\[reagiu\s*(.*?)\]$/
+
+function aplicarReacoes(mensagens: NinaMessage[], tipos: string[], nomeContato: string): NinaMessage[] {
+  // alvo → (autorId → reação), em ordem cronológica: a última escrita vence.
+  const porAlvo = new Map<string, Map<string, { emoji: string; autor: string }>>()
+  const visiveis: NinaMessage[] = []
+
+  mensagens.forEach((m, i) => {
+    if (tipos[i] !== 'reaction') { visiveis.push(m); return }
+    const alvo = m.citacao?.id
+    if (!alvo) return
+    const emoji = CORPO_REACAO.exec(m.content.trim())?.[1]?.trim() ?? ''
+    const doAlvo = porAlvo.get(alvo) ?? new Map()
+    if (emoji) {
+      const autor = m.direction === MessageDirection.INCOMING ? nomeContato : 'Você'
+      doAlvo.set(m.autorId, { emoji, autor })
+    } else {
+      doAlvo.delete(m.autorId)
+    }
+    porAlvo.set(alvo, doAlvo)
+  })
+
+  return visiveis.map(m => {
+    const r = porAlvo.get(m.id)
+    return r && r.size > 0 ? { ...m, reacoes: [...r.values()] } : m
   })
 }
 
@@ -375,7 +418,11 @@ export function toUIConversation(
     // melhor: diz que o contato existe mas não tem nome, não que houve erro.
     || 'Contato sem nome'
 
-  const uiMensagens = resolverCitacoes(mensagens.map(toUIMessage), nome)
+  const uiMensagens = aplicarReacoes(
+    resolverCitacoes(mensagens.map(toUIMessage), nome),
+    mensagens.map(m => m.message_type),
+    nome,
+  )
   const ultima      = uiMensagens.at(-1)
 
   return {
