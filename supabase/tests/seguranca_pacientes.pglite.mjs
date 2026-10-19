@@ -1,4 +1,4 @@
-// Teste das migrations 20261019160000 (RPCs) e 20261019160100 (fecha a
+// Teste das migrations 20261019180000 (RPCs) e 20261019180100 (fecha a
 // leitura de pacientes) no PGlite.
 // Prova: login só com a Grade não lê CPF pela tabela, mas a lista básica
 // responde (sem CPF); login sem nenhuma permissão não recebe nada; Pacientes e
@@ -8,8 +8,8 @@
 // migrations; reroda.
 //
 //   node supabase/tests/seguranca_pacientes.pglite.mjs \
-//     supabase/migrations/20261019160000_seguranca_pacientes_rpcs.sql \
-//     supabase/migrations/20261019160100_seguranca_pacientes_leitura_restrita.sql
+//     supabase/migrations/20261019180000_seguranca_pacientes_rpcs.sql \
+//     supabase/migrations/20261019180100_seguranca_pacientes_leitura_restrita.sql
 import { PGlite } from '@electric-sql/pglite'
 import { readFileSync } from 'fs'
 
@@ -18,7 +18,7 @@ const ok = (c, m) => { console.log(c ? '  ok  ' : '  FALHA', m); if (!c) f++ }
 const migRpcs = readFileSync(process.argv[2], 'utf8')
 const migFechaOriginal = readFileSync(process.argv[3], 'utf8')
 const migFecha = migFechaOriginal.replace('rpcs_aplicadas_e_frontend_publicado boolean := false', 'rpcs_aplicadas_e_frontend_publicado boolean := true')
-ok(migFecha !== migFechaOriginal, 'a trava existe no texto da 20261019160100')
+ok(migFecha !== migFechaOriginal, 'a trava existe no texto da 20261019180100')
 
 const U = {
   grade:     '00000000-0000-0000-0000-000000000001',
@@ -138,8 +138,8 @@ const tentar = async (db, sql) => { try { await db.exec(sql); return '' } catch 
 // ── Ordem e trava ───────────────────────────────────────────────────────────
 {
   const db = await novoBanco()
-  ok(/Pare: aplique a 20261019160000/.test(await tentar(db, migFechaOriginal)), 'trava: a 20261019160100 para sem trocar false → true')
-  ok(/não está aplicada/.test(await tentar(db, migFecha)), 'sem a 20261019160000, a 20261019160100 para')
+  ok(/Pare: aplique a 20261019180000/.test(await tentar(db, migFechaOriginal)), 'trava: a 20261019180100 para sem trocar false → true')
+  ok(/não está aplicada/.test(await tentar(db, migFecha)), 'sem a 20261019180000, a 20261019180100 para')
   ok((await como(db, U.nenhuma, `select cpf from public.pacientes`)).rows?.length === 3, 'e nada foi alterado (hoje qualquer login lê o CPF)')
 }
 
@@ -148,7 +148,7 @@ const tentar = async (db, sql) => { try { await db.exec(sql); return '' } catch 
   const db = await novoBanco()
   await db.exec(migRpcs)
   await db.exec(migRpcs)
-  ok(true, 'a 20261019160000 aplica e reroda')
+  ok(true, 'a 20261019180000 aplica e reroda')
   ok((await como(db, U.nenhuma, `select cpf from public.pacientes`)).rows?.length === 3, 'só com as RPCs a tabela continua como estava (pode ir antes do redeploy)')
 }
 

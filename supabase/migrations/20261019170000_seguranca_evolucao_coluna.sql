@@ -69,4 +69,4 @@ begin
 end $$;
 
 comment on column public.csv_grades_profissionais.descricao_evolucao is
-  'Texto da evolução clínica (dado de saúde). Fora da leitura do login (20261019150000): leia por grade_detalhe_evolucao() ou pela rota de servidor da Auditoria de Evoluções.';
+  'Texto da evolução clínica (dado de saúde). Fora da leitura do login (20261019170000): leia por grade_detalhe_evolucao() ou pela rota de servidor da Auditoria de Evoluções.';

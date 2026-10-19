@@ -30,7 +30,7 @@ type Ctx = { params: Promise<{ id: string }> }
 //
 // O cadastro (`public.pacientes`) é lido com o cliente de serviço, depois de
 // extractUser (usuário ativo + permissão `connect`): o login comum não lê mais
-// a tabela (20261019160100). Só as colunas da ficha saem do repositório, e o
+// a tabela (20261019180100). Só as colunas da ficha saem do repositório, e o
 // vínculo contato → paciente continua recortado pela organização do usuário.
 // ============================================================================
 

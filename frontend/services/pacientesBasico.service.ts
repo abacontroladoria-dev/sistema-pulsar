@@ -6,9 +6,9 @@ import { ehMigrationPendente } from "@/lib/supabase/erro"
 // cadastro (Pacientes): Grade, Ocupação Paciente, Indicadores → Alimentar BD,
 // Connect.
 //
-// Desde a migration 20261019160100 o login comum não lê `public.pacientes`
+// Desde a migration 20261019180100 o login comum não lê `public.pacientes`
 // (CPF, endereço, responsável). A RPC `pacientes_lista_basica` (security
-// definer, 20261019160000) confere se a pessoa tem a permissão de uma dessas
+// definer, 20261019180000) confere se a pessoa tem a permissão de uma dessas
 // telas e devolve só estas colunas.
 //
 // VOLTA AUTOMÁTICA: enquanto a RPC não existir no banco (migration pendente —

@@ -5,7 +5,7 @@ import { filtroExecutadoPor } from './executor'
 
 // Leitura da grade com o TEXTO DA EVOLUÇÃO para a tela de Auditoria de
 // Evoluções. Roda só no servidor, com o cliente de serviço, depois de
-// exigirPermissaoAuditoria(): desde a migration 20261019150000 o login comum
+// exigirPermissaoAuditoria(): desde a migration 20261019170000 o login comum
 // não lê `csv_grades_profissionais.descricao_evolucao` (era dado clínico
 // legível por qualquer login). A tela não muda: mesmos filtros, mesma ordem,
 // mesma paginação de antes — só saiu do navegador.

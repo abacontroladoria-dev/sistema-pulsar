@@ -325,7 +325,7 @@ export async function listarNomesDePrestadores(): Promise<string[]> {
 
 /**
  * Paciente para vincular uma pasta. Sem o CPF inteiro: o login comum não lê
- * `pacientes` (20261019160100). A RPC `pacientes_buscar_para_pep` devolve id,
+ * `pacientes` (20261019180100). A RPC `pacientes_buscar_para_pep` devolve id,
  * nome e os 4 últimos dígitos (para distinguir homônimos), e o vínculo é feito
  * pelo id (`vincularPastaAoPaciente`), com o CPF lido dentro do banco.
  *

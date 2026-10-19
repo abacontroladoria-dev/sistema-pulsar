@@ -3,7 +3,7 @@
 -- parte 2 de 2, branch feat/seguranca-falhas-dados)
 --
 -- TRAVA: aplicar SÓ DEPOIS de
---   1. a 20261019160000 (RPCs da lista básica, busca do PEP, Autorizações
+--   1. a 20261019180000 (RPCs da lista básica, busca do PEP, Autorizações
 --      Avulsas) aplicada, e
 --   2. o redeploy do frontend desta branch (Grade, Ocupação Paciente, Alimentar
 --      BD, PEP e Connect deixam de ler a tabela direto), e
@@ -33,10 +33,10 @@ declare
   rpcs_aplicadas_e_frontend_publicado boolean := false;
 begin
   if not rpcs_aplicadas_e_frontend_publicado then
-    raise exception 'Pare: aplique a 20261019160000, publique o frontend da branch feat/seguranca-falhas-dados, confira a pré-checagem 5.x e troque false por true no topo. Nada foi alterado.';
+    raise exception 'Pare: aplique a 20261019180000, publique o frontend da branch feat/seguranca-falhas-dados, confira a pré-checagem 5.x e troque false por true no topo. Nada foi alterado.';
   end if;
   if to_regprocedure('public.pacientes_lista_basica(bigint[], bigint[])') is null then
-    raise exception 'Pare: a 20261019160000 (pacientes_lista_basica) não está aplicada neste banco. Nada foi alterado.';
+    raise exception 'Pare: a 20261019180000 (pacientes_lista_basica) não está aplicada neste banco. Nada foi alterado.';
   end if;
 end $$;
 

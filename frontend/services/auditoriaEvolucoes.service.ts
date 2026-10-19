@@ -194,7 +194,7 @@ type ResultadoGrade = { linhas: LinhaGrade[] } | { erro: string }
 
 /**
  * A grade com o TEXTO DA EVOLUÇÃO vem da rota de servidor, não do banco direto:
- * o login comum não lê `descricao_evolucao` (migration 20261019150000). A rota
+ * o login comum não lê `descricao_evolucao` (migration 20261019170000). A rota
  * confere a permissão da tela e aplica os mesmos filtros e a mesma paginação
  * de antes (lib/auditoria/gradeAuditoria.ts).
  */

@@ -86,7 +86,7 @@ const COLS_AGENDAMENTO =
 // cadastro não puder ser lido (RLS de quem consulta).
 //
 // O nome do PACIENTE não vem por embed: o login comum não lê `pacientes`
-// (20261019160100). Vem da lista básica, num mapa por id (nomesAtuaisDosPacientes).
+// (20261019180100). Vem da lista básica, num mapa por id (nomesAtuaisDosPacientes).
 const COLS_CADASTRO_ATUAL =
   ", cad_profissional:profissionais!grade_agendamentos_profissional_id_fkey(nome)" +
   ", cad_terapia:cadastro_terapias!grade_agendamentos_terapia_id_fkey(nome)" +

@@ -55,7 +55,7 @@ export interface FalhaAuditoria {
  * Só o que ainda pode ser auditado: ativo e com texto de evolução.
  *
  * `supabase` tem de ser o cliente de SERVIÇO (a fila usa supabaseService): o
- * login comum não lê `descricao_evolucao` (migration 20261019150000).
+ * login comum não lê `descricao_evolucao` (migration 20261019170000).
  */
 export async function buscarGradesPorId(
   supabase: SupabaseClient,

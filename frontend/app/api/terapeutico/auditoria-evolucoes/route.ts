@@ -14,7 +14,7 @@ export async function POST(req: Request) {
 
     // 1. Obter registros de grade para auditar.
     // Com o cliente de serviço, depois da permissão acima: o login não lê o texto
-    // da evolução (migration 20261019150000). A gravação da auditoria continua
+    // da evolução (migration 20261019170000). A gravação da auditoria continua
     // com a sessão do usuário (a RLS de auditoria_evolucoes confere a permissão).
     let query = supabaseService
       .from('csv_grades_profissionais')

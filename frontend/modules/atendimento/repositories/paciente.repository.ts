@@ -22,7 +22,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 //
 // SOBRE RLS
 //
-// Desde 20261019160100 o login comum NÃO lê `public.pacientes` (só quem tem
+// Desde 20261019180100 o login comum NÃO lê `public.pacientes` (só quem tem
 // `cadastros_pacientes` ou papel admin/diretoria/cronograma). Quem usa este
 // repositório passa o cliente de serviço: os workers da Central e a rota da
 // ficha (depois de extractUser, que exige a permissão `connect`).

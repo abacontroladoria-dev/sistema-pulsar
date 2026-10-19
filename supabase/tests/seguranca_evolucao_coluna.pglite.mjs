@@ -1,4 +1,4 @@
-// Teste da migration 20261019150000 (texto da evolução) no PGlite.
+// Teste da migration 20261019170000 (texto da evolução) no PGlite.
 // Prova: trava; sem a 20261019140000 para; login deixa de ler
 // descricao_evolucao e o resto da linha continua; vw_grade_base segue
 // respondendo; função security definer (como grade_detalhe_evolucao) e
@@ -7,7 +7,7 @@
 //
 //   node supabase/tests/seguranca_evolucao_coluna.pglite.mjs \
 //     supabase/migrations/20261019140000_seguranca_correcoes_diretas.sql \
-//     supabase/migrations/20261019150000_seguranca_evolucao_coluna.sql
+//     supabase/migrations/20261019170000_seguranca_evolucao_coluna.sql
 import { PGlite } from '@electric-sql/pglite'
 import { readFileSync } from 'fs'
 
@@ -103,7 +103,7 @@ const tentar = async (db, sql) => { try { await db.exec(sql); return '' } catch 
 
 {
   const db = await novoBanco(`create view public.vw_le_evolucao with (security_invoker = true) as select id, descricao_evolucao from public.csv_grades_profissionais;`)
-  // A 20261019140000 não olha descricao_evolucao: passa. A 20261019150000 para.
+  // A 20261019140000 não olha descricao_evolucao: passa. A 20261019170000 para.
   await db.exec(mig140)
   const erro = await tentar(db, mig150)
   ok(/vw_le_evolucao/.test(erro), 'guarda: view que lê descricao_evolucao para a migration e é nomeada')

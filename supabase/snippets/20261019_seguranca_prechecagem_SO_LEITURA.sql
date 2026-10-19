@@ -118,18 +118,18 @@ where ct.confirmado_em >= now() - interval '60 days'
 group by 1, 2, 3
 order by 4 desc;
 
--- ── FASE 4 (migration 20261019150000_seguranca_evolucao_coluna) ─────────────
+-- ── FASE 4 (migration 20261019170000_seguranca_evolucao_coluna) ─────────────
 --    O bloco 2.2 já lista views sobre descricao_evolucao (esperado: nenhuma).
 --    O bloco 2.5 lista funções invoker que citam a coluna (esperado: nenhuma).
 
--- ── FASE 5 (migrations 20261019160000 e 20261019160100) ─────────────────────
+-- ── FASE 5 (migrations 20261019180000 e 20261019180100) ─────────────────────
 
 -- 5.1 Quem DEIXA de ler o cadastro de pacientes direto (hoje lê tudo pela
 --     policy using (true)). Informativo: as telas de Grade, Ocupação Paciente,
 --     Alimentar BD, Connect, PEP e Autorizações Avulsas continuam pela lista
 --     básica para quem tem a permissão da tela. Confira se alguém aqui precisa
 --     do cadastro INTEIRO (CPF, endereço, responsável): esse recebe
---     `cadastros_pacientes` pelo grupo antes de aplicar a 20261019160100.
+--     `cadastros_pacientes` pelo grupo antes de aplicar a 20261019180100.
 with efetivas as (
   select u.id, e.key as codigo
   from public.usuarios u
@@ -165,7 +165,7 @@ where d.refobjid = 'public.pacientes'::regclass and v.oid <> 'public.pacientes':
 order by 1;
 
 -- 5.3 Funções que NÃO são security definer e leem pacientes (rodam como quem
---     chama). Esperado: só listar_pacientes_assim (a 20261019160000 a
+--     chama). Esperado: só listar_pacientes_assim (a 20261019180000 a
 --     transforma em invólucro com checagem). Qualquer outra, mande.
 select p.oid::regprocedure as funcao
 from pg_proc p
@@ -174,7 +174,7 @@ where p.pronamespace in ('public'::regnamespace, 'central'::regnamespace)
   and p.prosrc ~ '\mpacientes\M'
 order by 1;
 
--- 5.4 Definição de listar_pacientes_assim em produção (a 20261019160000 a
+-- 5.4 Definição de listar_pacientes_assim em produção (a 20261019180000 a
 --     preserva como sp_listar_pacientes_assim_interno). Esperado: o retorno
 --     TABLE(paciente_id bigint, paciente_nome text, numero_carteirinha text,
 --     crm text, crm_uf text, nome_medico text, ultima_sessao date).

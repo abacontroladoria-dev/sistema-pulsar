@@ -5,7 +5,7 @@
 -- SEM TRAVA: só CRIA funções. Pode ser aplicada antes ou depois do redeploy —
 -- o frontend novo usa estas RPCs e, enquanto elas não existem, volta sozinho
 -- para a leitura antiga da tabela. Quem FECHA a tabela é a parte 2
--- (20261019160100, com trava).
+-- (20261019180100, com trava).
 --
 -- Hoje `public.pacientes` tem policy `using (true)`: qualquer login lê CPF,
 -- endereço e responsável de todos. Cinco telas leem a tabela sem ter a
@@ -75,7 +75,7 @@ begin
 end $$;
 
 comment on function public.pacientes_lista_basica(bigint[], bigint[]) is
-  'Lista básica de pacientes (sem CPF, endereço, contato ou responsável) para telas sem a permissão de Pacientes: Grade, Ocupação Paciente, Alimentar BD, Connect. Sem ids = todos. 20261019160000.';
+  'Lista básica de pacientes (sem CPF, endereço, contato ou responsável) para telas sem a permissão de Pacientes: Grade, Ocupação Paciente, Alimentar BD, Connect. Sem ids = todos. 20261019180000.';
 
 revoke all on function public.pacientes_lista_basica(bigint[], bigint[]) from public, anon;
 grant execute on function public.pacientes_lista_basica(bigint[], bigint[]) to authenticated, service_role;
@@ -117,7 +117,7 @@ begin
 end $$;
 
 comment on function public.pacientes_buscar_para_pep(text) is
-  'Busca paciente por nome para vincular pasta do robô PEP: id, nome e só os 4 últimos dígitos do CPF. 20261019160000.';
+  'Busca paciente por nome para vincular pasta do robô PEP: id, nome e só os 4 últimos dígitos do CPF. 20261019180000.';
 
 revoke all on function public.pacientes_buscar_para_pep(text) from public, anon;
 grant execute on function public.pacientes_buscar_para_pep(text) to authenticated;
@@ -153,7 +153,7 @@ begin
 end $$;
 
 comment on function public.sp_pep_vincular_pasta_paciente(text, bigint) is
-  'Vincula a pasta do robô PEP ao paciente pelo id; nome e CPF lidos do cadastro aqui dentro. 20261019160000.';
+  'Vincula a pasta do robô PEP ao paciente pelo id; nome e CPF lidos do cadastro aqui dentro. 20261019180000.';
 
 revoke all on function public.sp_pep_vincular_pasta_paciente(text, bigint) from public, anon;
 grant execute on function public.sp_pep_vincular_pasta_paciente(text, bigint) to authenticated;
@@ -199,7 +199,7 @@ begin
   $f$, v_resultado);
 
   comment on function public.listar_pacientes_assim() is
-    'Autorizações Avulsas: pacientes ASSIM dos últimos 180 dias. Invólucro com checagem de autorizacoes_avulsas (20261019160000); o corpo vive em sp_listar_pacientes_assim_interno.';
+    'Autorizações Avulsas: pacientes ASSIM dos últimos 180 dias. Invólucro com checagem de autorizacoes_avulsas (20261019180000); o corpo vive em sp_listar_pacientes_assim_interno.';
 end $$;
 
 do $$
