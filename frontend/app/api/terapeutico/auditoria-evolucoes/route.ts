@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { exigirPermissaoAuditoria, respostaDeErroAuth } from '@/lib/auditoria/auth'
 import { auditarEPersistir, COLUNAS_GRADE, type GradeParaAuditar } from '@/lib/auditoria/auditarEPersistir'
+import { supabaseService } from '@/lib/supabase/service'
 
 export const dynamic = 'force-dynamic'
 
@@ -11,8 +12,11 @@ export async function POST(req: Request) {
     const body = await req.json()
     const { gradeIds, limite = 10, dataInicio = '2026-09-01', dataFim, reauditar = false } = body
 
-    // 1. Obter registros de grade para auditar
-    let query = supabase
+    // 1. Obter registros de grade para auditar.
+    // Com o cliente de serviço, depois da permissão acima: o login não lê o texto
+    // da evolução (migration 20261019190000). A gravação da auditoria continua
+    // com a sessão do usuário (a RLS de auditoria_evolucoes confere a permissão).
+    let query = supabaseService
       .from('csv_grades_profissionais')
       .select(COLUNAS_GRADE)
       .gte('data', dataInicio)

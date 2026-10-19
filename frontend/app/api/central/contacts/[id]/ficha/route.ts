@@ -1,5 +1,6 @@
 import type { NextRequest } from 'next/server'
 import { extractUser }      from '@/lib/central/auth'
+import { supabaseService }  from '@/lib/supabase/service'
 import { mapCentralError }  from '@/lib/central/errors'
 import { ok, badRequest }   from '@/lib/central/response'
 import { createFichaService } from '@/modules/atendimento/services/ficha.service'
@@ -26,6 +27,11 @@ type Ctx = { params: Promise<{ id: string }> }
 // O que o atendente corrige fica marcado como dele (`fonte: 'atendente'`), e é
 // isso que a tela mostra: a diferença entre "a IA ouviu" e "uma pessoa
 // conferiu" é a diferença entre um palpite e um dado.
+//
+// O cadastro (`public.pacientes`) é lido com o cliente de serviço, depois de
+// extractUser (usuário ativo + permissão `connect`): o login comum não lê mais
+// a tabela (20261019180100). Só as colunas da ficha saem do repositório, e o
+// vínculo contato → paciente continua recortado pela organização do usuário.
 // ============================================================================
 
 export async function GET(_request: NextRequest, ctx: Ctx) {
@@ -33,7 +39,7 @@ export async function GET(_request: NextRequest, ctx: Ctx) {
     const { user, supabase } = await extractUser()
     const { id } = await ctx.params
 
-    const ficha = await createFichaService(supabase).montar(user.orgId, id)
+    const ficha = await createFichaService(supabase, supabaseService).montar(user.orgId, id)
 
     // Sem 404 quando não há nada coletado: "ninguém perguntou nada ainda" é uma
     // resposta legítima, e o painel a desenha como estado vazio. Um 404 faria o
@@ -89,7 +95,7 @@ export async function PATCH(request: NextRequest, ctx: Ctx) {
       return badRequest('Nenhum campo conhecido foi enviado.')
     }
 
-    const service = createFichaService(supabase)
+    const service = createFichaService(supabase, supabaseService)
     const { recusados } = await service.registrar(user.orgId, id, patch, 'atendente')
 
     // Uma data que o atendente digitou errado não pode ser aceita em silêncio: o

@@ -53,7 +53,18 @@ export function terapiaExibicaoIdPorRegraFixa(terapiaId: number): number | null 
  * EXCEÇÃO deliberada ao ponto único de leitura (lib/grade/fonte.ts): precisa de
  * `sala_id`, que vw_grade_base não projeta, e busca UMA linha por chave primária
  * — nada aqui se beneficia da view. Continua na tabela crua.
+ *
+ * Lista explícita (nunca `*`): CPF do profissional e observação da sala não são
+ * legíveis pelo login (migration 20261019140000) e `*` daria "permission denied".
  */
+const COLUNAS_GRADE_POR_ID = [
+  "id", "tita_agendamento_id", "paciente_id", "paciente_nome", "data", "dia_semana",
+  "hora_inicial", "hora_final", "profissional_id", "profissional_nome",
+  "terapia_id", "terapia_nome", "terapia_exibicao_id", "terapia_exibicao_nome",
+  "sala_id", "sala_nome", "unidade_id", "unidade_nome", "convenio_nome",
+  "status_agendamento", "updated_at",
+].join(", ")
+
 export async function buscarGradePorId(
   csvGradeId: string,
   client?: SupabaseClient,
@@ -62,7 +73,7 @@ export async function buscarGradePorId(
 
   const { data, error } = await supabase
     .from(TABELA_GRADE)
-    .select("*")
+    .select(COLUNAS_GRADE_POR_ID)
     .eq("id", csvGradeId)
     // Aqui o filtro é uma trava, não só deduplicação: se o TiTa alterou ou removeu
     // este slot depois que a tela foi montada, o sync o deixou com ativo=false

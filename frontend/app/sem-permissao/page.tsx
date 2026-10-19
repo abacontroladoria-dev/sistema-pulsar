@@ -11,6 +11,8 @@ interface Perfil {
   // Os grupos de permissão da pessoa — é o que decide o acesso e o que ela
   // reconhece. `null` quando não deu para ler: a frase sai sem o parêntese.
   grupos: string | null
+  // 'terapeuta' (app de evoluções) não tem tela no Pulsar web: a página diz onde ele entra.
+  role: string | null
 }
 
 export default function SemPermissaoPage() {
@@ -22,10 +24,10 @@ export default function SemPermissaoPage() {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) return
       Promise.all([
-        supabase.from('usuarios').select('nome').eq('id', user.id).single(),
+        supabase.from('usuarios').select('nome, role').eq('id', user.id).single(),
         carregarGruposDoUsuario(supabase),
       ]).then(([{ data }, grupos]) => {
-        if (data) setPerfil({ nome: data.nome, grupos: rotuloDosGrupos(grupos) })
+        if (data) setPerfil({ nome: data.nome, grupos: rotuloDosGrupos(grupos), role: data.role ?? null })
       })
     })
   }, [])
@@ -111,7 +113,9 @@ export default function SemPermissaoPage() {
               )}
             </p>
             <p className="mt-2 text-sm" style={{ color: '#9ca3af' }}>
-              Fale com o administrador se precisar de acesso.
+              {perfil?.role === 'terapeuta'
+                ? 'Seu acesso é pelo app de evoluções, no celular, com este mesmo e-mail e senha.'
+                : 'Fale com o administrador se precisar de acesso.'}
             </p>
           </div>
 

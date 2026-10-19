@@ -1,6 +1,5 @@
-import { createServerClient } from "@supabase/ssr"
 import { NextResponse } from "next/server"
-import type { NextRequest } from "next/server"
+import { AcessoRecusado, exigirPermissao } from "@/lib/permissions/exigirPermissao"
 import { buscarControlePrazosPdi } from "@/services/pdi/prazos"
 
 // GET /api/pdi-controle-prazos → { ok, itens, meta }
@@ -15,39 +14,24 @@ import { buscarControlePrazosPdi } from "@/services/pdi/prazos"
 // de status/prazo — nunca pode ser assada no build.
 export const dynamic = "force-dynamic"
 
-async function usuarioDaRequisicao(request: NextRequest) {
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll()
-        },
-        setAll() {},
-      },
-    },
-  )
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  return user
-}
+/** As duas telas que chamam esta rota: Prazos PDI e Painel do Analista. */
+const PERMISSOES = ["terapeutico_pdi", "terapeutico_pdi_painel"] as const
 
-export async function GET(request: NextRequest) {
-  // Rota com service_role, devolve nome de paciente e dado clínico — exige
-  // sessão. `DISABLE_AUTH` cobre o desenvolvimento local, sem login (mesma
-  // convenção de /api/acompanhamento-laudos e /api/tita/situacao-favorecidos).
-  //
-  // A autorização FINA (quem tem `terapeutico_pdi`) continua no
-  // Sidebar/canAccess — mesma decisão e mesmo motivo já registrados em
-  // /api/acompanhamento-laudos: repetir a checagem aqui exigiria um segundo
-  // lugar para mantê-la em dia.
-  if (process.env.DISABLE_AUTH !== "true") {
-    const user = await usuarioDaRequisicao(request)
-    if (!user) {
-      return NextResponse.json({ ok: false, error: "not_authenticated" }, { status: 401 })
+export async function GET() {
+  // Rota com service_role, devolve nome de paciente e dado clínico. Até
+  // 19/10/2026 bastava estar logado; agora exige usuário ativo e a permissão de
+  // uma das telas. DISABLE_AUTH (localhost sem login) é tratado em exigirPermissao.
+  try {
+    await exigirPermissao(PERMISSOES)
+  } catch (e) {
+    if (e instanceof AcessoRecusado) {
+      return NextResponse.json(
+        { ok: false, error: e.status === 401 ? "not_authenticated" : "sem_permissao" },
+        { status: e.status },
+      )
     }
+    console.error("[api/pdi-controle-prazos] falha ao verificar o acesso", e)
+    return NextResponse.json({ ok: false, error: "falha_ao_verificar_acesso" }, { status: 500 })
   }
 
   try {

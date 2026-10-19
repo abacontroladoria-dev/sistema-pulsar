@@ -3,6 +3,7 @@
 import Sidebar from "@/components/Sidebar"
 import SinoAlertas from '@/components/alertas/SinoAlertas'
 import { ImpersonationBar } from '@/components/admin/ImpersonationBar'
+import { AvisoSegundoFator } from '@/components/conta/AvisoSegundoFator'
 import { useEffect, useState, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import { getSupabaseClient } from '@/lib/supabase/client'
@@ -90,6 +91,8 @@ function DashboardShellContent({
           veria o sino. Como âncora fixa ele existe em toda página, e o `pr-20` do
           header abaixo reserva o espaço para não cobrir o rightContent. */}
       <SinoAlertas />
+
+      <AvisoSegundoFator />
 
       {/* HEADER — só exibe quando há título */}
       {title && (

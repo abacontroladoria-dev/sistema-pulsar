@@ -2,7 +2,8 @@
 
 import { useState } from "react"
 import { getSupabaseClient } from "@/lib/supabase/client";
-import { Eye, EyeOff, User, Lock, ArrowRight } from "lucide-react";
+import { mensagemDoSegundoFator } from "@/lib/auth/mensagensSegundoFator";
+import { Eye, EyeOff, User, Lock, ArrowRight, Smartphone } from "lucide-react";
 
 export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
@@ -10,7 +11,33 @@ export default function Login() {
   const [senha, setSenha] = useState("");
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState("");
+  // Segundo passo: quem cadastrou o app autenticador digita o código depois da
+  // senha. `destino` guarda para onde ir depois de confirmar.
+  const [etapaCodigo, setEtapaCodigo] = useState<{ factorId: string; destino: string } | null>(null);
+  const [codigo, setCodigo] = useState("");
   const supabase = getSupabaseClient()
+
+  async function handleCodigo(e: React.FormEvent) {
+    e.preventDefault();
+    if (!etapaCodigo || codigo.length !== 6) return;
+    setErro("");
+    setLoading(true);
+    const { error } = await supabase.auth.mfa.challengeAndVerify({ factorId: etapaCodigo.factorId, code: codigo });
+    if (error) {
+      setErro(mensagemDoSegundoFator(error));
+      setLoading(false);
+      return;
+    }
+    window.location.href = etapaCodigo.destino
+  }
+
+  async function voltarParaSenha() {
+    await supabase.auth.signOut();
+    setEtapaCodigo(null);
+    setCodigo("");
+    setSenha("");
+    setErro("");
+  }
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -73,6 +100,20 @@ export default function Login() {
       }
 
       const redirectUrl = perfil.role === 'disponibilidade_terapeuta' ? '/disponibilidade-terapeuta/' : '/'
+
+      // Tem app autenticador cadastrado: a sessão só vale por inteiro (aal2)
+      // depois do código. Sem fator, segue como sempre.
+      const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
+      if (aal?.nextLevel === 'aal2' && aal.currentLevel !== 'aal2') {
+        const { data: fatores } = await supabase.auth.mfa.listFactors()
+        const fator = fatores?.totp?.[0]
+        if (fator) {
+          setEtapaCodigo({ factorId: fator.id, destino: redirectUrl })
+          setLoading(false)
+          return
+        }
+      }
+
       window.location.href = redirectUrl
     } catch (err) {
       setErro("Erro ao fazer login. Tente novamente.");
@@ -199,6 +240,70 @@ export default function Login() {
                 nomeia a clínica, e "Clínica Universo ABA" sozinho não diz a um
                 leitor de tela o que este formulário faz. O h1 segue com o id
                 porque é referência estável da página. */}
+            {etapaCodigo ? (
+            <form onSubmit={handleCodigo} aria-label="Código do app autenticador" className="space-y-5">
+
+              {erro && (
+                <div
+                  id="login-error"
+                  role="alert"
+                  className="border text-sm px-4 py-3 rounded-xl font-medium"
+                  style={{
+                    backgroundColor: '#fef2f2',
+                    borderColor: '#fecaca',
+                    color: '#dc2626',
+                  }}
+                >
+                  {erro}
+                </div>
+              )}
+
+              <div>
+                <label htmlFor="codigo-field" className="text-sm font-semibold" style={{ color: '#1e5a7d' }}>
+                  Código do app autenticador
+                </label>
+                <p className="text-sm text-slate-500 mt-1">Abra o app no celular e digite os 6 números que aparecem agora.</p>
+                <div className="relative mt-2">
+                  <span className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none" style={{ color: '#3a8fb7' }}>
+                    <Smartphone size={18} aria-hidden="true" />
+                  </span>
+                  <input
+                    id="codigo-field"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    autoFocus
+                    maxLength={6}
+                    value={codigo}
+                    onChange={(e) => setCodigo(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    placeholder="000000"
+                    aria-invalid={erro ? true : undefined}
+                    aria-describedby={erro ? "login-error" : undefined}
+                    className="w-full rounded-xl pl-11 pr-4 py-3.5 text-lg tracking-[0.4em] tabular-nums text-slate-800 placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:border-transparent aria-invalid:border-rose-300 transition-all"
+                    style={{ border: '1.5px solid #e0e7ff', backgroundColor: '#f9fbfd' }}
+                  />
+                </div>
+              </div>
+
+              <div className="pt-1 space-y-3">
+                <button
+                  type="submit"
+                  disabled={loading || codigo.length !== 6}
+                  className="w-full h-13 text-white rounded-xl text-base font-semibold flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-offset-2"
+                  style={{ background: 'linear-gradient(135deg, #2a8ba8 0%, #1e5a7d 100%)' }}
+                >
+                  {loading ? "Confirmando…" : (<><span>Confirmar</span><ArrowRight size={18} aria-hidden="true" /></>)}
+                </button>
+                <button
+                  type="button"
+                  onClick={voltarParaSenha}
+                  className="w-full text-sm font-semibold py-2 rounded-xl hover:bg-slate-50 transition"
+                  style={{ color: '#1e5a7d' }}
+                >
+                  Entrar com outro usuário
+                </button>
+              </div>
+            </form>
+            ) : (
             <form onSubmit={handleLogin} aria-label="Acessar o Sistema Pulsar" className="space-y-5">
 
               {erro && (
@@ -329,6 +434,7 @@ export default function Login() {
               </div>
 
             </form>
+            )}
           </div>
         </div>
       </div>

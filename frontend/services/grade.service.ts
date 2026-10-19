@@ -1,6 +1,7 @@
 import { getSupabaseClient } from "@/lib/supabase/client"
 import { ehMigrationPendente } from "@/lib/supabase/erro"
 import { MigrationPendenteError } from "@/services/cadastroTerapias.service"
+import { listarPacientesBasicos } from "@/services/pacientesBasico.service"
 import type {
   AcessoEvolucaoGrade, AgendamentoGrade, BloqueioGrade, DetalheEvolucaoGrade, DisponibilidadePacienteGrade,
   EscopoExclusao, EventoGrade, FaixaGrade, FeriadoGrade, PayloadAgendamento, ProfissionalGrade,
@@ -83,27 +84,43 @@ const COLS_AGENDAMENTO =
 // guarda quem/o quê; nome se lê do cadastro na hora). As colunas *_nome da
 // própria sessão são só a cópia do momento em que foi criada: valem apenas se o
 // cadastro não puder ser lido (RLS de quem consulta).
+//
+// O nome do PACIENTE não vem por embed: o login comum não lê `pacientes`
+// (20261019180100). Vem da lista básica, num mapa por id (nomesAtuaisDosPacientes).
 const COLS_CADASTRO_ATUAL =
-  ", cad_paciente:pacientes!grade_agendamentos_paciente_id_fkey(nome)" +
   ", cad_profissional:profissionais!grade_agendamentos_profissional_id_fkey(nome)" +
   ", cad_terapia:cadastro_terapias!grade_agendamentos_terapia_id_fkey(nome)" +
   ", cad_exibicao:cadastro_terapias!grade_agendamentos_terapia_exibicao_id_fkey(nome)"
 
 type ComCadastro = AgendamentoGrade & {
-  cad_paciente?: { nome: string } | null
   cad_profissional?: { nome: string } | null
   cad_terapia?: { nome: string } | null
   cad_exibicao?: { nome: string } | null
 }
 
-function comNomesDoCadastro(r: ComCadastro): AgendamentoGrade {
-  const { cad_paciente, cad_profissional, cad_terapia, cad_exibicao, ...a } = r
+function comNomesDoCadastro(r: ComCadastro, nomesPacientes: Map<number, string>): AgendamentoGrade {
+  const { cad_profissional, cad_terapia, cad_exibicao, ...a } = r
   return {
     ...a,
-    paciente_nome: cad_paciente?.nome ?? a.paciente_nome,
+    paciente_nome: (a.paciente_id != null ? nomesPacientes.get(a.paciente_id) : undefined) ?? a.paciente_nome,
     profissional_nome: cad_profissional?.nome ?? a.profissional_nome,
     terapia_nome: cad_terapia?.nome ?? a.terapia_nome,
     terapia_exibicao_nome: cad_exibicao?.nome ?? a.terapia_exibicao_nome,
+  }
+}
+
+/**
+ * Nome atual de cada paciente das sessões. Falha de leitura não derruba a
+ * agenda: cai na cópia do nome gravada na sessão.
+ */
+async function nomesAtuaisDosPacientes(linhas: { paciente_id: number | null }[]): Promise<Map<number, string>> {
+  const ids = [...new Set(linhas.map(l => l.paciente_id).filter((id): id is number => id != null))]
+  if (ids.length === 0) return new Map()
+  try {
+    const pacientes = await listarPacientesBasicos({ ids })
+    return new Map(pacientes.map(p => [p.id_paciente, p.nome]))
+  } catch {
+    return new Map()
   }
 }
 
@@ -121,13 +138,16 @@ export async function listarAgendamentos(args: {
     if (args.pacienteId != null) q = q.eq("paciente_id", args.pacienteId)
     return q.order("data").order("hora_inicio").order("id").range(i, f)
   })
-  return linhas.map(comNomesDoCadastro)
+  const nomes = await nomesAtuaisDosPacientes(linhas)
+  return linhas.map(l => comNomesDoCadastro(l, nomes))
 }
 
 export async function buscarAgendamento(id: string): Promise<AgendamentoGrade | null> {
   const { data, error } = await sb().from("grade_agendamentos").select(COLS_AGENDAMENTO + COLS_CADASTRO_ATUAL).eq("id", id).maybeSingle()
   if (error) falha(error)
-  return data ? comNomesDoCadastro(data as unknown as ComCadastro) : null
+  if (!data) return null
+  const linha = data as unknown as ComCadastro
+  return comNomesDoCadastro(linha, await nomesAtuaisDosPacientes([linha]))
 }
 
 /** Quantas sessões "desta em diante" apagaria (prévia do botão). */
@@ -202,13 +222,19 @@ export type PacienteGrade = {
   tita_paciente_id: number | null
 }
 
-/** Pacientes reais (sem fictício), ativos primeiro. */
+/**
+ * Pacientes reais (sem fictício nem falecido), por nome. Pela lista básica:
+ * quem agenda não tem, necessariamente, a permissão do cadastro de pacientes.
+ */
 export async function listarPacientes(): Promise<PacienteGrade[]> {
-  return lerTudo<PacienteGrade>((i, f) =>
-    sb().from("pacientes")
-      .select("id_paciente, nome, convenio_nome, ativo, tita_paciente_id")
-      .eq("ficticio", false).eq("falecido", false)
-      .order("nome").order("id_paciente").range(i, f))
+  const linhas = await listarPacientesBasicos({ somenteReais: true })
+  return linhas.map(p => ({
+    id_paciente: p.id_paciente,
+    nome: p.nome,
+    convenio_nome: p.convenio_nome,
+    ativo: p.ativo,
+    tita_paciente_id: p.tita_paciente_id,
+  }))
 }
 
 export async function disponibilidadePaciente(pacienteId: number): Promise<DisponibilidadePacienteGrade | null> {

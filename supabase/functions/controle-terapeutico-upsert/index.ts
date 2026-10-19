@@ -60,6 +60,13 @@ function jsonResponse(body: unknown, status = 200, corsHeaders: Record<string, s
   });
 }
 
+// Quem grava: a tela Central de Terapeutas (permissão `escala_terapeutica`) e a
+// tela da própria terapeuta, /disponibilidade-terapeuta (papel
+// `disponibilidade_terapeuta`, fora do mapa de permissões — fluxo dedicado).
+// Até 19/10/2026 bastava estar logado.
+const PERMISSAO_GRAVA = "escala_terapeutica";
+const PAPEIS_QUE_GRAVAM = new Set(["admin", "disponibilidade_terapeuta"]);
+
 async function getCurrentUser(req: Request) {
   const authHeader = req.headers.get("authorization") || "";
   const tokenMatch = authHeader.match(/^Bearer\s+(.+)$/i);
@@ -79,7 +86,27 @@ async function getCurrentUser(req: Request) {
 
   if (error || !user) return null;
 
-  return user;
+  return { user, supabase };
+}
+
+/** Usuário ativo, com o papel ou a permissão de uma das telas que gravam. */
+async function podeGravar(userId: string, supabaseDoUsuario: ReturnType<typeof createClient>) {
+  const { data: perfil } = await supabaseAdmin
+    .from("usuarios")
+    .select("role, ativo")
+    .eq("id", userId)
+    .maybeSingle();
+  if (!perfil?.ativo) return false;
+  if (PAPEIS_QUE_GRAVAM.has(String(perfil.role ?? ""))) return true;
+
+  // Mesma resolução do frontend (lib/permissions/carregar.ts): grupos + ajustes
+  // individuais, calculados pelo banco para o usuário do token.
+  const { data: codigos, error } = await supabaseDoUsuario.rpc("permissoes_efetivas", {});
+  if (error) {
+    console.error("[controle-terapeutico-upsert] permissoes_efetivas falhou", error.message);
+    return false;
+  }
+  return Array.isArray(codigos) && codigos.includes(PERMISSAO_GRAVA);
 }
 
 function toBigintValue(value: string | number | null | undefined) {
@@ -102,10 +129,16 @@ serve(async (req: Request) => {
     return jsonResponse({ error: "method_not_allowed" }, 405, corsHeaders);
   }
 
-  const user = await getCurrentUser(req);
+  const sessao = await getCurrentUser(req);
 
-  if (!user) {
+  if (!sessao) {
     return jsonResponse({ error: "not_authenticated" }, 401, corsHeaders);
+  }
+
+  const { user } = sessao;
+
+  if (!(await podeGravar(user.id, sessao.supabase))) {
+    return jsonResponse({ error: "sem_permissao" }, 403, corsHeaders);
   }
 
   const { data: usuarioData } = await supabaseAdmin
