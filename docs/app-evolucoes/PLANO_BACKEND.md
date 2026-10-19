@@ -77,6 +77,21 @@ Produção conferida (só leitura): `profissional_id` existe; 0 inativos com
 
 ## Fase 1 — papel `terapeuta`
 
+**Escrita em 19/10/2026, ensaiada em produção (desfeito), NÃO aplicada:** migration
+`20261019200000_papel_terapeuta_app.sql` + snippets `_APLICAR`/`_REVERTER` + teste
+`papel_terapeuta_app.pglite.mjs` (15/15). Decisões na escrita:
+- Grupo "Terapeuta (App)" (o "Terapêutico" já existe e é outro papel). Prioridade
+  abaixo de todo setor: quem está num setor fica com o setor.
+- **Sem CHECK "terapeuta exige profissional_id"**: o papel chega pelo gatilho do
+  grupo antes de o admin escolher o profissional; o CHECK faria a entrada no grupo
+  falhar. Sem profissional, `app_meu_perfil()` não devolve linha e a tela avisa.
+- `profissional_id` único (índice parcial). Ligação pela rota
+  `/api/admin/user/profissional` (só admin) e campo "Profissional no app" no card.
+- `app_meu_perfil()` antecipada da Fase 4 (terapeuta + gestão).
+- Terapeuta no Pulsar web cai em `/sem-permissao`, que diz que o acesso é pelo app.
+- O app ainda não força a troca da senha temporária (`primeiro_acesso`): o
+  terapeuta define a senha no Pulsar web (`/definir-senha`) antes de usar o app.
+
 - `usuarios_role_check` + `grupos_permissoes` + prioridade em
   `sincronizar_nivel_pelos_grupos` (modelo: `20261008130000_add_role_comercial.sql`)
   e as listas do frontend (memória "papel novo encosta em 6 listas").
