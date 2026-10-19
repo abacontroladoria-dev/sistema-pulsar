@@ -448,7 +448,39 @@ Consequências para o código:
 3. **Sem repetição dentro do TiTa:** `distinct on (tita_agendamento_id)`, ficando a linha mais recente (`updated_at`, depois `id`).
 4. **Assinatura:** hoje todo PDF sai com a linha em branco; o aviso "N profissionais sem assinatura" vai aparecer sempre até o cadastro ser preenchido.
 
-## 15. Fora do escopo
+## 15. Andamento (19/10/2026, branch `feat/exportar-evolucoes`)
+
+| Etapa | Situação |
+|---|---|
+| 0 Branch | criada da main `c5546420` (já tinha `exigirPermissao` e o texto clínico só admin) |
+| 1 Medição | feita — seção 14 |
+| 2 Banco | `20261019200000_exportar_evolucoes.sql` + PGlite (48 verificações). **Já aplicada em produção** (conferido por `migration list` e pela própria tela no localhost) |
+| 3 Menu e permissão | item em Autorização; catálogo `20261019200100_catalogo_permissoes_espelha_sidebar.sql` **pendente** |
+| 4 Rotas `/api` | `listar`, `conteudo`, `assinaturas` |
+| 5 Tela | filtros, cards por paciente, seleção, painel lateral (`Drawer`), barra fixa |
+| 6 PDF | `layout.ts` (paginação pura) + `pdf.ts`; amostra renderizada e conferida |
+| 7 CSV | `csv.ts` |
+| 8 Segurança | ver abaixo |
+| 9 Build | `npm run build` limpo; a suíte completa tem falhas só fora desta branch (`.mts` do atendimento e `services/laudos/equivalencia.test.ts`, que compara com o banco real) |
+| 10 Validação do usuário | em andamento |
+| 11 Merge e deploy | aguardando validação |
+
+Mudanças em relação ao plano:
+
+- **Assinatura:** a rota devolve os **bytes** da imagem (base64), não um link assinado de 120 s. Nenhum link do bucket sai do servidor.
+- **Integridade da imagem:** o decodificador de PNG do `pdf-lib` entra em **laço infinito** com PNG corrompido (visto ao gerar a amostra). A rota só envia PNG com todos os CRCs certos e IEND no fim, ou JPG com início e fim; o resto sai como linha em branco (`lib/exportarEvolucoes/imagem.ts`).
+- **Emoji** na descrição é descartado no PDF (a fonte não tem); outro caractere fora da fonte vira um "?".
+- **Filtro de paciente/terapia** é feito na tela sobre o que o período trouxe (a função do banco aceita os filtros, mas a tela não precisa).
+
+Segurança (seção 9):
+
+- PGlite: `anon` e `authenticated` (inclusive admin) recebem `permission denied` nas 3 funções; nem a service_role chama a fonte interna; registro só admin lê; ninguém grava/apaga pelo REST.
+- Produção, com a chave anon: `exportar_evolucoes_listar`, `exportar_evolucoes_conteudo`, `sp_exportar_evolucoes_fonte` e a tabela `exportar_evolucoes_registro` (select e insert) → **401 / 42501**.
+- Rotas (`rotas.test.ts`): 401 sem sessão e 403 sem permissão, sem tocar no banco nem no storage; o nome de quem leu vem da sessão; caminho de assinatura fora de `profissionais/{id}/assinatura-*` não é baixado.
+- `check-seguranca-migrations.js`: nenhum alerta nas migrations desta branch (os 5 que ele acusa são de migrations já na main: `20261019160000` e `20261019170000`).
+- Falta: Security Advisor do Supabase (painel) e o teste com um login real sem a permissão em produção, depois do deploy.
+
+## 16. Fora do escopo
 
 - Fechar a leitura aberta de `csv_grades_profissionais`.
 - Editar evoluções por esta tela (ela só lê).
