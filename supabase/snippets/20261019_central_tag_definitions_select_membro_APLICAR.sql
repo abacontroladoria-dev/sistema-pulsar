@@ -1,6 +1,6 @@
 -- Central — atendentes da caixa leem o catálogo de tags
 --
--- APLICA a migration 20261019130000 e a registra no livro-caixa. Snippet e não
+-- APLICA a migration 20261019150000 e a registra no livro-caixa. Snippet e não
 -- `db push` (histórico de migrations dessincronizado). Reexecutável.
 --
 -- Pode ser aplicado a qualquer momento: nenhuma mudança de código depende dele.
@@ -27,7 +27,7 @@ create policy tag_definitions_select_membro
 notify pgrst, 'reload schema';
 
 insert into supabase_migrations.schema_migrations (version, name)
-values ('20261019130000', 'central_tag_definitions_select_membro')
+values ('20261019150000', 'central_tag_definitions_select_membro')
 on conflict (version) do nothing;
 
 commit;
