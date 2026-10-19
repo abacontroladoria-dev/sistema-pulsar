@@ -86,7 +86,7 @@ Antes de aplicar qualquer migration desta branch: `supabase/snippets/20261019_se
 | # | Risco | Quem age | Correção proposta |
 |---|---|---|---|
 | P0 | **URGENTE — Edge Function `tita-compare-endpoints` está publicada** (sondado em 16/10/2026 com OPTIONS: HTTP 200). Pelo código, ela consulta o TiTa e devolve agendas com nomes de pacientes a quem tiver a chave anon, que é pública. `test_env` também está no ar. As `cco-*-test*` não foram sondadas (escrevem no banco ao serem chamadas). **19/10: código das 4 apagado do repositório** (branch `feat/seguranca-falhas-dados`); a varredura passa a acusar VAZAMENTO enquanto qualquer uma responder diferente de 404 | você | `supabase functions delete tita-compare-endpoints`, `test_env`, `cco-test-setup`, `cco-conciliation-engine-test`; depois rodar a varredura com `SONDAR_FUNCOES=1` |
-| P1 | **Chave `service_role` exposta no histórico do GitHub.** Quem a tiver lê e escreve tudo, passando por cima da RLS | você (Vault + Coolify + Edge Functions) | Rotacionar a chave no Supabase, atualizar Coolify, Vault (`cron_service_role_key`) e secrets das Edge Functions no mesmo dia |
+| P1 | **Chave `service_role` exposta no histórico do GitHub.** Quem a tiver lê e escreve tudo, passando por cima da RLS | você (Vault + Coolify + Edge Functions) | Roteiro passo a passo: `docs/seguranca/ROTACAO_SERVICE_ROLE.md`. Num dia combinado, depois das Fases 1–7 estáveis |
 | P1b | **Qualquer login lê o cadastro inteiro de pacientes** (CPF, endereço, responsável): policy `pacientes_select` com `using (true)` (`20260817190000_pacientes_canonica.sql:307`). É o maior risco de invasor interno | você aplica | C20 (migrations `20261019160000` + `20261019160100`) |
 | P2 | **Evolução clínica (`csv_grades_profissionais.descricao_evolucao`) legível por qualquer login** (policy de leitura ampla). A tela de Auditoria de Evoluções lia a coluna direto do navegador | você aplica | C19 (migration `20261019150000`) |
 | P4 | `/api/laudos` exige login, mas não permissão: qualquer login lê o relatório de laudos (dado de saúde de criança) | redeploy | C16 |
@@ -98,6 +98,8 @@ Antes de aplicar qualquer migration desta branch: `supabase/snippets/20261019_se
 | P8 | Usuário com permissão pode extrair a lista inteira (sem limite nem trilha de exportação) | próximo esforço | Limite de linhas por chamada nas RPCs de lista e trilha de exportação em massa |
 | P8b | `/api/tita/situacao-favorecidos` devolve nome, situação e convênio de todos os pacientes do TiTa a qualquer login | redeploy | C16 |
 | P9 | Saída de colaborador | rotina | Ao desligar alguém: `usuarios.ativo = false` no mesmo dia (`usuario_tem_permissao` já recusa inativo); conferir o bloco 11 do SQL de auditoria todo mês |
+
+**Fora da branch `feat/seguranca-falhas-dados`** (ficam para outro esforço): assinatura de profissional em bucket próprio (P6c), limite de linhas e trilha de exportação em massa (P8), rotina de saída de colaborador (P9).
 
 ## 5. Matriz de acesso (estado pelas migrations, 16/10/2026)
 
