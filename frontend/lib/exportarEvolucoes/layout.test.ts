@@ -67,6 +67,15 @@ describe("montarLayout", () => {
     expect(ultima.paginaNoGrupo).toBe(partes.at(-1)!.pagina)
   })
 
+  it("cabeçalho mais alto (nome em várias linhas) cresce o bloco e continua sem atravessar a página", () => {
+    const tamanhos = [30, 30, 30, 30]
+    const sem = montarLayout([tamanhos.map(texto)], medir)
+    const com = montarLayout([tamanhos.map(texto)], medir, [[20, 20, 20, 20]])
+    expect(com[0].partes[0].altura).toBe(sem[0].partes[0].altura + 20)
+    expect(com[0].partes[0].extra).toBe(20)
+    for (const p of com) for (const x of p.partes) expect(x.y + x.altura).toBeLessThanOrEqual(AREA_UTIL + 0.001)
+  })
+
   it("troca de paciente abre página nova", () => {
     const paginas = montarLayout([[texto(2)], [texto(2)], [texto(2)]], medir)
     expect(paginas.map(p => p.grupo)).toEqual([0, 1, 2])

@@ -7,7 +7,7 @@
 import type { PDFFont, PDFImage, PDFPage } from "pdf-lib"
 import type { AssinaturaProfissional, EvolucaoConteudo } from "@/types/exportarEvolucoes"
 import { formatarCpf, formatarData, formatarHorario, normalizarDescricao, registroDoProfissional } from "./formato"
-import { MEDIDAS, PAGINA, montarLayout } from "./layout"
+import { MEDIDAS, PAGINA, montarLayout, quebrarTexto } from "./layout"
 
 type Lib = typeof import("pdf-lib")
 
@@ -23,6 +23,9 @@ export type OpcoesPdf = {
 
 const TAM_DESCRICAO = 9.5
 const ASSINATURA = { largura: 150, altura: 40 }
+const LINHA_NOME = 10
+const LINHA_REGISTRO = 9
+const LINHA_TERAPIA = 12
 
 /** Agrupa por paciente mantendo a ordem de chegada. */
 export function agruparPorPaciente(itens: EvolucaoConteudo[]): EvolucaoConteudo[][] {
@@ -81,13 +84,9 @@ export async function gerarPdfEvolucoes(o: OpcoesPdf): Promise<Uint8Array> {
       })
       .join("") ?? ""
 
-  /** Corta o texto com "…" para caber na largura. */
-  const caber = (t: string, f: PDFFont, s: number, largura: number) => {
-    let r = seguro(t)
-    if (f.widthOfTextAtSize(r, s) <= largura) return r
-    while (r.length > 1 && f.widthOfTextAtSize(`${r}…`, s) > largura) r = r.slice(0, -1)
-    return `${r.trimEnd()}…`
-  }
+  /** Quebra em linhas que caibam na largura. Nome nunca é cortado com "…". */
+  const quebrar = (t: string, f: PDFFont, s: number, largura: number) =>
+    t ? quebrarTexto(seguro(t), largura, x => f.widthOfTextAtSize(x, s)) : []
 
   // Assinaturas: embutidas uma vez cada e reaproveitadas em todas as páginas.
   const imagens = new Map<number, PDFImage>()
@@ -99,16 +98,36 @@ export async function gerarPdfEvolucoes(o: OpcoesPdf): Promise<Uint8Array> {
     }
   }
 
+  const { largura: W, altura: H, margem: M } = PAGINA
+  const xTexto = M + MEDIDAS.recuo
+  const xAssin = W - M - MEDIDAS.recuo - ASSINATURA.largura
+  const colHora = M + 92
+  const colTerapia = M + 196
+
+  // Cabeçalho de cada bloco já quebrado em linhas: terapia, nome e registro do
+  // profissional saem inteiros. O cabeçalho padrão comporta 1 linha de nome + 1
+  // de registro (e a terapia até a altura da assinatura); o que passar disso
+  // empurra a descrição para baixo.
+  const cabecalhos = new Map<EvolucaoConteudo, { terapia: string[]; nome: string[]; registro: string[]; extra: number }>()
+  for (const e of o.itens) {
+    const terapia = quebrar(e.terapia, fonte, 10, xAssin - colTerapia - 12)
+    const nome = quebrar(e.profissional_nome, negrito, 8.5, ASSINATURA.largura)
+    const registro = quebrar(registroDoProfissional(e), fonte, 7.5, ASSINATURA.largura)
+    const extraAssinatura = LINHA_NOME * Math.max(0, nome.length - 1) + LINHA_REGISTRO * Math.max(0, registro.length - 1)
+    const extraTerapia = Math.max(0, LINHA_TERAPIA * (terapia.length - 1) - 40)
+    cabecalhos.set(e, { terapia, nome, registro, extra: Math.max(extraAssinatura, extraTerapia) })
+  }
+
   const grupos = agruparPorPaciente(o.itens)
   // Linha a linha: a quebra de linha não existe na fonte e viraria "?".
   const descricoes = grupos.map(g => g.map(e => normalizarDescricao(e.descricao).split("\n").map(seguro).join("\n")))
-  const paginas = montarLayout(descricoes, t => fonte.widthOfTextAtSize(t, TAM_DESCRICAO))
+  const extras = grupos.map(g => g.map(e => cabecalhos.get(e)!.extra))
+  const paginas = montarLayout(descricoes, t => fonte.widthOfTextAtSize(t, TAM_DESCRICAO), extras)
 
   const emitido = o.emitidoEm ?? new Date()
   const textoEmitido = `Emitido em ${doisDigitos(emitido.getDate())}/${doisDigitos(emitido.getMonth() + 1)}/${emitido.getFullYear()} às ${doisDigitos(emitido.getHours())}:${doisDigitos(emitido.getMinutes())}`
   const periodo = `Período: ${formatarData(o.de)} a ${formatarData(o.ate)}`
 
-  const { largura: W, altura: H, margem: M } = PAGINA
   const centro = (p: PDFPage, t: string, y: number, f: PDFFont, s: number, c = COR.texto) => {
     const txt = seguro(t)
     p.drawText(txt, { x: (W - f.widthOfTextAtSize(txt, s)) / 2, y, font: f, size: s, color: c })
@@ -135,16 +154,19 @@ export async function gerarPdfEvolucoes(o: OpcoesPdf): Promise<Uint8Array> {
     rotulo("Paciente", colPac, faixaTopo - 16)
     rotulo("CPF", colCpf, faixaTopo - 16)
     rotulo("Data de nascimento", colNasc, faixaTopo - 16)
-    p.drawText(caber(pac.paciente_nome, negrito, 10.5, colCpf - colPac - 12), { x: colPac, y: faixaTopo - 32, font: negrito, size: 10.5, color: COR.texto })
+    // Nome inteiro sempre: se não couber numa linha, a letra diminui e quebra.
+    const larguraPac = colCpf - colPac - 12
+    let tamPac = 10.5
+    let linhasPac = quebrar(pac.paciente_nome, negrito, tamPac, larguraPac)
+    if (linhasPac.length > 1) linhasPac = quebrar(pac.paciente_nome, negrito, (tamPac = 9.5), larguraPac)
+    if (linhasPac.length > 2) linhasPac = quebrar(pac.paciente_nome, negrito, (tamPac = 8), larguraPac)
+    const yPac = linhasPac.length === 1 ? faixaTopo - 32 : faixaTopo - 28
+    linhasPac.forEach((l, i) => p.drawText(l, { x: colPac, y: yPac - i * (tamPac + 1.5), font: negrito, size: tamPac, color: COR.texto }))
     p.drawText(seguro(formatarCpf(pac.paciente_cpf)), { x: colCpf, y: faixaTopo - 32, font: fonte, size: 10, color: COR.texto })
     p.drawText(seguro(formatarData(pac.paciente_nascimento)), { x: colNasc, y: faixaTopo - 32, font: fonte, size: 10, color: COR.texto })
 
     // ── Blocos ────────────────────────────────────────────────────────────
     const areaTopo = topo - MEDIDAS.topo
-    const xTexto = M + MEDIDAS.recuo
-    const xAssin = W - M - MEDIDAS.recuo - ASSINATURA.largura
-    const colHora = M + 92
-    const colTerapia = M + 196
 
     for (const parte of pl.partes) {
       const e = grupo[parte.indice]
@@ -158,7 +180,8 @@ export async function gerarPdfEvolucoes(o: OpcoesPdf): Promise<Uint8Array> {
         rotulo("Assinatura", xAssin, y0 - 8)
         p.drawText(seguro(formatarData(e.data)), { x: xTexto, y: y0 - 22, font: negrito, size: 10, color: COR.texto })
         p.drawText(seguro(formatarHorario(e.hora_inicio, e.hora_fim)), { x: colHora, y: y0 - 22, font: fonte, size: 10, color: COR.texto })
-        p.drawText(caber(e.terapia, fonte, 10, xAssin - colTerapia - 12), { x: colTerapia, y: y0 - 22, font: fonte, size: 10, color: COR.texto })
+        const cab = cabecalhos.get(e)!
+        cab.terapia.forEach((l, i) => p.drawText(l, { x: colTerapia, y: y0 - 22 - i * LINHA_TERAPIA, font: fonte, size: 10, color: COR.texto }))
 
         // Assinatura: imagem (se houver) sobre a linha; nome e registro embaixo.
         const caixaBase = y0 - 14 - ASSINATURA.altura
@@ -170,17 +193,23 @@ export async function gerarPdfEvolucoes(o: OpcoesPdf): Promise<Uint8Array> {
           p.drawImage(img, { x: xAssin + (ASSINATURA.largura - w) / 2, y: caixaBase + 1, width: w, height: h })
         }
         p.drawLine({ start: { x: xAssin, y: caixaBase }, end: { x: xAssin + ASSINATURA.largura, y: caixaBase }, thickness: 0.7, color: COR.suave })
-        const nome = caber(e.profissional_nome, negrito, 8.5, ASSINATURA.largura)
-        p.drawText(nome, { x: xAssin + (ASSINATURA.largura - negrito.widthOfTextAtSize(nome, 8.5)) / 2, y: caixaBase - 10, font: negrito, size: 8.5, color: COR.texto })
-        const reg = caber(registroDoProfissional(e), fonte, 7.5, ASSINATURA.largura)
-        if (reg) p.drawText(reg, { x: xAssin + (ASSINATURA.largura - fonte.widthOfTextAtSize(reg, 7.5)) / 2, y: caixaBase - 20, font: fonte, size: 7.5, color: COR.suave })
+        // Nome e registro inteiros, centralizados, em quantas linhas precisarem.
+        let yAssin = caixaBase - 10
+        for (const l of cab.nome) {
+          p.drawText(l, { x: xAssin + (ASSINATURA.largura - negrito.widthOfTextAtSize(l, 8.5)) / 2, y: yAssin, font: negrito, size: 8.5, color: COR.texto })
+          yAssin -= LINHA_NOME
+        }
+        for (const l of cab.registro) {
+          p.drawText(l, { x: xAssin + (ASSINATURA.largura - fonte.widthOfTextAtSize(l, 7.5)) / 2, y: yAssin, font: fonte, size: 7.5, color: COR.suave })
+          yAssin -= LINHA_REGISTRO
+        }
 
-        yTitulo = y0 - MEDIDAS.cabecalhoBloco + 4
+        yTitulo = y0 - MEDIDAS.cabecalhoBloco - parte.extra + 4
         p.drawText("Descrição", { x: xTexto, y: yTitulo, font: negrito, size: 9, color: COR.texto })
       } else {
         yTitulo = y0 - 8
         const titulo = `Descrição (continuação) — ${formatarData(e.data)} · ${formatarHorario(e.hora_inicio, e.hora_fim)}`
-        p.drawText(caber(titulo, negrito, 9, W - 2 * xTexto), { x: xTexto, y: yTitulo, font: negrito, size: 9, color: COR.texto })
+        p.drawText(seguro(titulo), { x: xTexto, y: yTitulo, font: negrito, size: 9, color: COR.texto })
       }
 
       parte.linhas.forEach((linha, i) => {

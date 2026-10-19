@@ -330,7 +330,7 @@ export default function ExportarEvolucoesShell() {
                       onChange={() => marcarGrupo(g)}
                       rotulo={`Selecionar todas as evoluções de ${g.nome}`}
                     />
-                    <h2 className="min-w-0 flex-1 truncate text-[16px] font-bold text-foreground">
+                    <h2 className="min-w-0 flex-1 break-words py-2 text-[16px] font-bold text-foreground">
                       {g.nome} <span className="font-medium text-muted-foreground">({g.itens.length})</span>
                     </h2>
                     {g.convenio && <span className="hidden shrink-0 text-[12px] text-muted-foreground sm:inline">{g.convenio}</span>}

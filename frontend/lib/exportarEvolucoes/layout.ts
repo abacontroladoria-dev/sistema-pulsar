@@ -72,8 +72,12 @@ export function quebrarTexto(texto: string, largura: number, medir: Medir): stri
   return linhas
 }
 
-export function alturaDoBloco(qtdLinhas: number, comCabecalho: boolean): number {
-  return (comCabecalho ? MEDIDAS.cabecalhoBloco : 0) + MEDIDAS.tituloDescricao + qtdLinhas * MEDIDAS.linha + MEDIDAS.respiroBloco
+/**
+ * `extra`: altura a mais do cabeçalho do bloco quando o nome do profissional
+ * (ou o registro, ou a terapia) ocupa mais de uma linha — nome nunca é cortado.
+ */
+export function alturaDoBloco(qtdLinhas: number, comCabecalho: boolean, extra = 0): number {
+  return (comCabecalho ? MEDIDAS.cabecalhoBloco + extra : 0) + MEDIDAS.tituloDescricao + qtdLinhas * MEDIDAS.linha + MEDIDAS.respiroBloco
 }
 
 /** Um pedaço de evolução desenhado numa página (normalmente a evolução inteira). */
@@ -83,6 +87,8 @@ export type ParteNaPagina = {
   linhas: string[]
   /** Parte seguinte de uma evolução dividida: sem a linha Data/Horário/Terapia. */
   continuacao: boolean
+  /** Altura a mais do cabeçalho (nome em várias linhas); 0 na continuação. */
+  extra: number
   /** Distância do topo da área útil até o topo do bloco. */
   y: number
   altura: number
@@ -98,9 +104,10 @@ export type PaginaLayout = {
 
 /**
  * Distribui as evoluções nas páginas. `grupos[g][i]` é a descrição já pronta
- * (normalizada e segura para a fonte) da evolução `i` do paciente `g`.
+ * (normalizada e segura para a fonte) da evolução `i` do paciente `g`;
+ * `extras[g][i]`, a altura a mais do cabeçalho dela (ver `alturaDoBloco`).
  */
-export function montarLayout(grupos: string[][], medir: Medir): PaginaLayout[] {
+export function montarLayout(grupos: string[][], medir: Medir, extras: number[][] = []): PaginaLayout[] {
   const paginas: PaginaLayout[] = []
 
   grupos.forEach((descricoes, g) => {
@@ -115,14 +122,16 @@ export function montarLayout(grupos: string[][], medir: Medir): PaginaLayout[] {
       usado = 0
     }
     const colocar = (indice: number, linhas: string[], continuacao: boolean) => {
-      const altura = alturaDoBloco(linhas.length, !continuacao)
-      pagina.partes.push({ indice, linhas, continuacao, y: usado, altura })
+      const extra = continuacao ? 0 : (extras[g]?.[indice] ?? 0)
+      const altura = alturaDoBloco(linhas.length, !continuacao, extra)
+      pagina.partes.push({ indice, linhas, continuacao, extra, y: usado, altura })
       usado += altura
     }
 
     descricoes.forEach((descricao, indice) => {
       const linhas = quebrarTexto(descricao, LARGURA_TEXTO, medir)
-      const altura = alturaDoBloco(linhas.length, true)
+      const extra = extras[g]?.[indice] ?? 0
+      const altura = alturaDoBloco(linhas.length, true, extra)
 
       if (altura <= AREA_UTIL - usado) return colocar(indice, linhas, false)
       if (altura <= AREA_UTIL) {
@@ -132,7 +141,7 @@ export function montarLayout(grupos: string[][], medir: Medir): PaginaLayout[] {
 
       // Maior que uma página inteira: começa numa página vazia e é dividida.
       if (pagina.partes.length > 0) novaPagina()
-      const cabemNaPrimeira = Math.floor((AREA_UTIL - alturaDoBloco(0, true)) / MEDIDAS.linha)
+      const cabemNaPrimeira = Math.floor((AREA_UTIL - alturaDoBloco(0, true, extra)) / MEDIDAS.linha)
       const cabemNasSeguintes = Math.floor((AREA_UTIL - alturaDoBloco(0, false)) / MEDIDAS.linha)
       colocar(indice, linhas.slice(0, cabemNaPrimeira), false)
       for (let i = cabemNaPrimeira; i < linhas.length; i += cabemNasSeguintes) {

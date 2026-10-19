@@ -52,10 +52,20 @@ export const CardEvolucao = memo(function CardEvolucao({
             <StatusChip tone="gray" dense>{ROTULO_ORIGEM[item.origem]}</StatusChip>
             {item.substituicao && <StatusChip tone="blue" dense>substituição</StatusChip>}
           </div>
-          <div className="truncate text-[14px] font-semibold text-[oklch(0.48_0.092_217)] dark:text-sky-300">{item.terapia}</div>
-          <div className="truncate text-[12px] text-muted-foreground">
-            {item.paciente_nome} · por <span className="text-foreground">{item.profissional_nome}</span>
-            {item.convenio ? ` · ${item.convenio}` : ""}
+          <div className="text-[14px] font-semibold text-[oklch(0.48_0.092_217)] dark:text-sky-300">{item.terapia}</div>
+          {/* Nomes inteiros: quebram linha em vez de virar "…". */}
+          <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[12px] text-muted-foreground">
+            <span>
+              Paciente: <span className="text-foreground">{item.paciente_nome}</span>
+            </span>
+            <span>
+              Profissional: <span className="text-foreground">{item.profissional_nome}</span>
+            </span>
+            {item.convenio && (
+              <span>
+                Convênio: <span className="text-foreground">{item.convenio}</span>
+              </span>
+            )}
           </div>
         </div>
         <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
