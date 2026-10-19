@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import {
   Ban,
   ChevronDown,
@@ -11,7 +11,7 @@ import {
   Send,
   Trash2,
 } from 'lucide-react'
-import { AdminUser } from './AdminPageShell'
+import type { AdminUser, ProfissionalOpcao } from './AdminPageShell'
 import CreateUserModal from './CreateUserModal'
 import { UNIDADES_DISPONIVEIS } from '@/lib/admin/unidades'
 import { getAvatarColor } from '@/lib/admin/avatar-color'
@@ -25,6 +25,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { MultiSearchCombobox } from '@/components/cronograma/ui/MultiSearchCombobox'
+import { SearchCombobox } from '@/components/cronograma/ui/SearchCombobox'
 import type { Grupo } from '@/services/grupos.service'
 
 export type GrupoOption = { id: string; nome: string }
@@ -92,6 +93,8 @@ export default function AdminUsersTable({
   gruposPorUsuario,
   onToggleActive,
   onSaveUser,
+  profissionais,
+  onVincularProfissional,
   onResendInvite,
   onDeleteUser,
   onResetPassword,
@@ -114,6 +117,8 @@ export default function AdminUsersTable({
     unidades: string[],
     grupoIds: string[]
   ) => Promise<boolean>
+  profissionais: ProfissionalOpcao[]
+  onVincularProfissional: (userId: string, profissionalId: number | null) => Promise<void>
   onResendInvite: (userId: string, email: string, nome: string, role: string) => Promise<void>
   onDeleteUser: (userId: string) => Promise<void>
   onResetPassword: (userId: string, nome: string, email: string, username: string) => Promise<void>
@@ -124,6 +129,7 @@ export default function AdminUsersTable({
   onGrupoFilterChange: (value: string) => void
 }) {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const rotulosProfissionais = useRotulosProfissionais(profissionais)
 
   const rotuloFiltroGrupo =
     grupoFilter === FILTRO_SEM_GRUPO
@@ -212,6 +218,8 @@ export default function AdminUsersTable({
                 isLoading={loadingId === user.id}
                 onToggleActive={onToggleActive}
                 onSaveUser={onSaveUser}
+                rotulosProfissionais={rotulosProfissionais}
+                onVincularProfissional={onVincularProfissional}
                 onResendInvite={onResendInvite}
                 onResetPassword={onResetPassword}
                 confirmDelete={confirmDeleteId === user.id}
@@ -238,6 +246,8 @@ function UserRow({
   isLoading,
   onToggleActive,
   onSaveUser,
+  rotulosProfissionais,
+  onVincularProfissional,
   onResendInvite,
   onResetPassword,
   confirmDelete,
@@ -257,6 +267,8 @@ function UserRow({
     unidades: string[],
     grupoIds: string[]
   ) => Promise<boolean>
+  rotulosProfissionais: RotulosProfissionais
+  onVincularProfissional: (userId: string, profissionalId: number | null) => Promise<void>
   onResendInvite: (userId: string, email: string, nome: string, role: string) => Promise<void>
   onResetPassword: (userId: string, nome: string, email: string, username: string) => Promise<void>
   confirmDelete: boolean
@@ -494,6 +506,19 @@ function UserRow({
         </div>
       </div>
 
+      {/* Terapeuta do app: o login precisa estar ligado ao cadastro do
+          profissional — é isso que decide de quem é a agenda no app. Grava na
+          hora (rota própria), fora do "Salvar" de grupos/unidades. */}
+      {(user.role === 'terapeuta' || user.profissional_id != null) && (
+        <VinculoProfissional
+          user={user}
+          rotulos={rotulosProfissionais}
+          podeAdministrar={podeAdministrar}
+          disabled={disabled}
+          onVincular={onVincularProfissional}
+        />
+      )}
+
       {/* Rodapés contextuais — a confirmação de exclusão tem prioridade sobre o
           aviso de alterações pendentes por ser uma decisão bloqueante. */}
       {confirmDelete ? (
@@ -534,5 +559,86 @@ function UserRow({
         </div>
       ) : null}
     </li>
+  )
+}
+
+// Rótulo único por profissional: o combobox trabalha com o texto da opção, e
+// dois profissionais com o mesmo nome levariam ao id errado. Nome repetido
+// ganha o número do cadastro.
+type RotulosProfissionais = {
+  lista: string[]
+  porId: Map<number, string>
+  porRotulo: Map<string, number>
+}
+
+function useRotulosProfissionais(profissionais: ProfissionalOpcao[]): RotulosProfissionais {
+  return useMemo(() => {
+    const vezes = new Map<string, number>()
+    for (const p of profissionais) vezes.set(p.nome, (vezes.get(p.nome) ?? 0) + 1)
+
+    const porId = new Map<number, string>()
+    const porRotulo = new Map<string, number>()
+    for (const p of profissionais) {
+      const rotulo = (vezes.get(p.nome) ?? 0) > 1 ? `${p.nome} (nº ${p.id})` : p.nome
+      porId.set(p.id, rotulo)
+      porRotulo.set(rotulo, p.id)
+    }
+    return { lista: [...porRotulo.keys()], porId, porRotulo }
+  }, [profissionais])
+}
+
+function VinculoProfissional({
+  user,
+  rotulos,
+  podeAdministrar,
+  disabled,
+  onVincular,
+}: {
+  user: AdminUser
+  rotulos: RotulosProfissionais
+  podeAdministrar: boolean
+  disabled: boolean
+  onVincular: (userId: string, profissionalId: number | null) => Promise<void>
+}) {
+  const atual = user.profissional_id ?? null
+  // Ligado a alguém que saiu da lista (inativo): mostra o número em vez de sumir.
+  const rotuloAtual = atual === null ? '' : rotulos.porId.get(atual) ?? `Profissional nº ${atual} (inativo)`
+  const nomeUsuario = user.nome || user.email || 'usuário'
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-slate-100 px-5 py-3">
+      <span className="text-sm font-medium text-slate-700">Profissional no app</span>
+
+      <div className="w-full max-w-sm">
+        <SearchCombobox
+          value={rotuloAtual}
+          onChange={(rotulo) => {
+            // "" chega a cada tecla digitada: só uma opção da lista vira vínculo.
+            const id = rotulos.porRotulo.get(rotulo)
+            if (id !== undefined && id !== atual) void onVincular(user.id, id)
+          }}
+          opcoes={rotulos.lista}
+          ariaLabel={`Profissional ligado a ${nomeUsuario}`}
+          disabled={disabled || !podeAdministrar}
+        />
+      </div>
+
+      {atual !== null ? (
+        <button
+          type="button"
+          onClick={() => onVincular(user.id, null)}
+          disabled={disabled || !podeAdministrar}
+          className="inline-flex min-h-11 items-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+        >
+          Desligar
+        </button>
+      ) : (
+        <span className="text-xs font-medium text-amber-700">
+          Sem profissional ligado: o app não abre para este usuário.
+        </span>
+      )}
+
+      {!podeAdministrar && <span className="text-xs text-slate-500">{SO_ADMIN} alteram</span>}
+    </div>
   )
 }
