@@ -124,7 +124,7 @@ e teste `app_agenda_cobertura.pglite.mjs` (36/36). Como ficou:
 - App: agenda do dia (setas de dia), sessão com "Evoluir" e "Marcar falta",
   escolha de profissional para a gestão. Status com a mesma regra do web.
 
-**2b escrita em 19/10/2026, ensaiada em produção (desfeito), NÃO aplicada:**
+**2b APLICADA em produção em 19/10/2026** (ensaiada antes, desfeito; conferência ok):
 migration `20261019220000_app_cobertura_pela_central.sql`, snippets
 `_APLICAR`/`_REVERTER` e teste `app_cobertura_pela_central.pglite.mjs` (29/29).
 Decisões do usuário (19/10/2026):
