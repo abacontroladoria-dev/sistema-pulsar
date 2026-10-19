@@ -323,18 +323,63 @@ export async function listarNomesDePrestadores(): Promise<string[]> {
   return (data ?? []).map(r => r.profissional_nome as string)
 }
 
-export async function buscarPacientes(termo: string): Promise<{ nome: string; cpf: string | null }[]> {
+/**
+ * Paciente para vincular uma pasta. Sem o CPF inteiro: o login comum não lê
+ * `pacientes` (20261019160100). A RPC `pacientes_buscar_para_pep` devolve id,
+ * nome e os 4 últimos dígitos (para distinguir homônimos), e o vínculo é feito
+ * pelo id (`vincularPastaAoPaciente`), com o CPF lido dentro do banco.
+ *
+ * Volta automática: sem a RPC no banco (migration pendente), lê a tabela como
+ * antes.
+ */
+export type PacienteParaVinculo = {
+  id_paciente: number | null
+  nome: string
+  cpf_final: string | null
+  /** Só no caminho antigo (RPC ainda não aplicada). */
+  cpf?: string | null
+}
+
+export async function buscarPacientes(termo: string): Promise<PacienteParaVinculo[]> {
   const t = termo.trim()
   if (t.length < 3) return []
-  const { data, error } = await getSupabaseClient()
+  const sb = getSupabaseClient()
+  const { data, error } = await sb.rpc('pacientes_buscar_para_pep', { p_termo: t })
+  if (!error) return (data ?? []) as PacienteParaVinculo[]
+  if (!ehMigrationPendente(error)) throw error
+
+  const antigo = await sb
     .from('pacientes')
-    .select('nome, cpf')
+    .select('id_paciente, nome, cpf')
     .ilike('nome', `%${t.replace(/[%_]/g, '')}%`)
     .eq('ficticio', false)
     .order('nome')
     .limit(10)
-  if (error) throw error
-  return (data ?? []) as { nome: string; cpf: string | null }[]
+  if (antigo.error) throw antigo.error
+  return ((antigo.data ?? []) as { id_paciente: number; nome: string; cpf: string | null }[]).map(p => ({
+    id_paciente: p.id_paciente,
+    nome: p.nome,
+    cpf_final: p.cpf ? p.cpf.replace(/\D/g, '').slice(-4) : null,
+    cpf: p.cpf,
+  }))
+}
+
+/**
+ * Vincula a pasta ao paciente pelo id; o banco lê nome e CPF do cadastro.
+ * Volta automática: sem a RPC nova, usa o vínculo antigo com o CPF que a busca
+ * antiga trouxe.
+ */
+export async function vincularPastaAoPaciente(pastaId: string, paciente: PacienteParaVinculo) {
+  const sb = getSupabaseClient()
+  if (paciente.id_paciente != null) {
+    const { data, error } = await sb.rpc('sp_pep_vincular_pasta_paciente', {
+      p_pasta_id: pastaId,
+      p_paciente_id: paciente.id_paciente,
+    })
+    if (!error) return data as Record<string, unknown>
+    if (!ehMigrationPendente(error)) throw error
+  }
+  return vincularPasta({ pastaId, tipo: 'paciente', pacienteNome: paciente.nome, pacienteCpf: paciente.cpf ?? null })
 }
 
 export async function obterSaude(): Promise<RoboSaude> {

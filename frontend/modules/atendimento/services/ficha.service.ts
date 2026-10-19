@@ -145,8 +145,15 @@ export class FichaService {
   }
 }
 
-export function createFichaService(supabase: SupabaseClient): FichaService {
-  return new FichaService(new FichaRepository(supabase), new PacienteRepository(supabase))
+// `clientePacientes`: quem lê `public.pacientes`. A rota da ficha passa o
+// cliente de serviço (depois de extractUser, que exige a permissão `connect`):
+// desde 20261019160100 o login comum não lê o cadastro de pacientes, e o
+// repositório só pede as colunas da ficha. Os workers já rodam com o de serviço.
+export function createFichaService(
+  supabase: SupabaseClient,
+  clientePacientes: SupabaseClient = supabase,
+): FichaService {
+  return new FichaService(new FichaRepository(supabase), new PacienteRepository(clientePacientes))
 }
 
 // ----------------------------------------------------------------------------

@@ -68,6 +68,7 @@ Antes de aplicar qualquer migration desta branch: `supabase/snippets/20261019_se
 | C16 | `/api/laudos` (dado de saúde de criança) exige permissão de tela que usa laudo; o layout do Cronograma deixou de buscar laudos em Indicadores, Reposição e Ocupação de Salas. `/api/tita/situacao-favorecidos` exige Ocupação Paciente ou Indicadores → Pacientes/Previsão. `/api/pdi-controle-prazos` exige Prazos PDI ou Painel do Analista | as três rotas + `CronogramaDataLayout.tsx` | no código |
 | C17 | Rotas da Central/Connect (`/api/central/*`, `/api/crm/*`, via `extractUser`) exigem também usuário ativo e a permissão `connect` — antes bastava o papel da Central, e o caminho pelo JWT nem olhava `ativo` | `frontend/lib/central/auth.ts` | no código; pré-checagem 3.1 |
 | C19 | Texto da evolução clínica (`csv_grades_profissionais.descricao_evolucao`) fora da leitura do login. A Auditoria de Evoluções passa a ler pela rota `/api/terapeutico/auditoria-evolucoes/grade` (cliente de serviço, depois da permissão da tela; mesmos filtros e paginação, a tela não mudou); a Grade continua por `grade_detalhe_evolucao()` | migration `20261019150000_seguranca_evolucao_coluna.sql` + teste PGlite; `lib/auditoria/gradeAuditoria.ts` | migration com trava, aplicar depois do redeploy e da `20261019140000` |
+| C20 | Cadastro de pacientes só para quem tem `cadastros_pacientes` (e os papéis admin/diretoria/cronograma). As 5 telas que liam a tabela sem a permissão passam a caminhos estreitos: Grade, Ocupação Paciente, Alimentar BD → `pacientes_lista_basica` (id, id TiTa, nome, convênio, situação, foto); robô PEP → `pacientes_buscar_para_pep` (4 últimos dígitos do CPF) + vínculo por id; Connect → ficha lida no servidor com o cliente de serviço. `listar_pacientes_assim` (Autorizações Avulsas) vira invólucro com checagem, sem reescrever o corpo de produção | migrations `20261019160000_seguranca_pacientes_rpcs.sql` (sem trava, só cria funções) e `20261019160100_seguranca_pacientes_leitura_restrita.sql` (trava) + teste PGlite; `services/pacientesBasico.service.ts` | 160000 a qualquer momento; 160100 depois do redeploy e da pré-checagem 5.x |
 | C18 | Edge Function `controle-terapeutico-upsert` exige `escala_terapeutica` (Central de Terapeutas) ou o papel `disponibilidade_terapeuta`; a rota morta `/api/controle-terapeutico/upsert` (repassava a chave de serviço) foi apagada | `supabase/functions/controle-terapeutico-upsert` | falta publicar a função (você); pré-checagem 3.2 |
 
 **Leitura por coluna — cuidado em toda migration futura:** em `grade_profissionais_tita` e `csv_grades_profissionais` o login lê só as colunas concedidas uma a uma. Coluna nova não fica legível sozinha (precisa de `grant select (nova) … to authenticated`), e `select('*')` do frontend nessas tabelas dá "permission denied".
@@ -78,7 +79,7 @@ Antes de aplicar qualquer migration desta branch: `supabase/snippets/20261019_se
 |---|---|---|---|
 | P0 | **URGENTE — Edge Function `tita-compare-endpoints` está publicada** (sondado em 16/10/2026 com OPTIONS: HTTP 200). Pelo código, ela consulta o TiTa e devolve agendas com nomes de pacientes a quem tiver a chave anon, que é pública. `test_env` também está no ar. As `cco-*-test*` não foram sondadas (escrevem no banco ao serem chamadas). **19/10: código das 4 apagado do repositório** (branch `feat/seguranca-falhas-dados`); a varredura passa a acusar VAZAMENTO enquanto qualquer uma responder diferente de 404 | você | `supabase functions delete tita-compare-endpoints`, `test_env`, `cco-test-setup`, `cco-conciliation-engine-test`; depois rodar a varredura com `SONDAR_FUNCOES=1` |
 | P1 | **Chave `service_role` exposta no histórico do GitHub.** Quem a tiver lê e escreve tudo, passando por cima da RLS | você (Vault + Coolify + Edge Functions) | Rotacionar a chave no Supabase, atualizar Coolify, Vault (`cron_service_role_key`) e secrets das Edge Functions no mesmo dia |
-| P1b | **Qualquer login lê o cadastro inteiro de pacientes** (CPF, endereço, responsável): policy `pacientes_select` com `using (true)` (`20260817190000_pacientes_canonica.sql:307`). É o maior risco de invasor interno | próximo esforço, com cuidado | Vários módulos leem `pacientes` direto do navegador. Mapear quem lê, servir o necessário por RPC/visão enxuta (nome e id) e restringir a tabela a `cadastros_pacientes`. Não foi feito agora porque quebraria telas sem esse mapeamento |
+| P1b | **Qualquer login lê o cadastro inteiro de pacientes** (CPF, endereço, responsável): policy `pacientes_select` com `using (true)` (`20260817190000_pacientes_canonica.sql:307`). É o maior risco de invasor interno | você aplica | C20 (migrations `20261019160000` + `20261019160100`) |
 | P2 | **Evolução clínica (`csv_grades_profissionais.descricao_evolucao`) legível por qualquer login** (policy de leitura ampla). A tela de Auditoria de Evoluções lia a coluna direto do navegador | você aplica | C19 (migration `20261019150000`) |
 | P4 | `/api/laudos` exige login, mas não permissão: qualquer login lê o relatório de laudos (dado de saúde de criança) | redeploy | C16 |
 | P5 | `central.worker_tick_config` criada sem RLS e com permissão total para qualquer login (CI `check-rls.js` acusa) | você aplica | C11 (migration `20261019140000`) |
@@ -96,7 +97,7 @@ Antes de aplicar qualquer migration desta branch: `supabase/snippets/20261019_se
 
 | Tabela / view | Quem lê (authenticated) | Anon | Escrita |
 |---|---|---|---|
-| `pacientes` | **qualquer login** (`using (true)`) — P1b | sem acesso depois da C1 | `cadastros_pacientes` / papéis |
+| `pacientes` | **qualquer login** (`using (true)`) — P1b. Depois da `20261019160100`: `cadastros_pacientes` + papéis admin/diretoria/cronograma; as outras telas pela lista básica | sem acesso depois da C1 | `cadastros_pacientes` / papéis |
 | `pacientes_importacoes_log` | `cadastros_pacientes` (C9) | sem acesso | só RPC |
 | `pacientes_disponibilidade_versoes` | `cadastros_pacientes` | sem acesso | só RPC |
 | `pacientes_convenio_vigencias` | `cadastros_pacientes` (consulta por data via `convenio_do_paciente_em`, só logado) | sem acesso | só gatilho |
@@ -108,10 +109,10 @@ Antes de aplicar qualquer migration desta branch: `supabase/snippets/20261019_se
 | `grade_importacoes_itens` | `cronograma_grade` | sem acesso | só RPC |
 | `sistema_tita_corte` | ninguém direto (só `tita_cortado_em()`) | sem acesso | só o SQL de corte |
 | `cadastros_auditoria` | por entidade (12 permissões), FORCE RLS | sem acesso | insert por permissão |
-| `csv_grades_profissionais` | **qualquer login** — P6 | sem acesso depois da C1 | service_role (sync) |
+| `csv_grades_profissionais` | **qualquer login** — P6. Depois da `20261019140000`/`150000`: leitura por coluna, sem CPF, observação da sala e texto da evolução | sem acesso depois da C1 | service_role (sync) |
 | `agenda_tita` | **qualquer login** — P6 | sem acesso depois da C1 | service_role (sync) |
-| `grade_profissionais_tita` | **qualquer login** — P6 | sem acesso depois da C1 | service_role (sync) |
-| `controle_terapeutico` | papéis terapêutico/terapeuta/admin/diretoria/faturamento | sem acesso depois da C1 | **qualquer login insere** — P6b |
+| `grade_profissionais_tita` | **qualquer login** — P6. Depois da `20261019140000`: leitura por coluna, sem CPF, telefone, registro, `raw_json` e observação da sala | sem acesso depois da C1 | service_role (sync) |
+| `controle_terapeutico` | papéis terapêutico/terapeuta/admin/diretoria/faturamento | sem acesso depois da C1 | **qualquer login insere** — P6b; depois da `20261019140000`, só os papéis (e a Edge Function, que exige `escala_terapeutica`) |
 | `vw_grade_*`, `central.vw_vagas_livres` | herdam a tabela (security_invoker) | sem acesso | — |
 | `vw_central_terapeutica`, `vw_profissionais_disponiveis` | herdam a tabela (security_invoker, C8) | sem acesso | — |
 | `usuarios` | policies do snippet fase 3 (produção) | sem acesso | trava de autopromoção |

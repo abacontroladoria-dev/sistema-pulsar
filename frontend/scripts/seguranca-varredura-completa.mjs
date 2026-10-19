@@ -16,7 +16,9 @@
 // 2. Invasor INTERNO (TOKEN_SEM_PERMISSAO = access_token de um usuário logado
 //    SEM nenhuma permissão de cadastro/agenda, copiado do navegador: DevTools →
 //    Application → Local Storage → sb-…-auth-token): tenta ler 1 linha de cada
-//    tabela sensível. Precisa voltar vazio.
+//    tabela sensível, cada coluna revogada, as RPCs de paciente e — com
+//    SITE_URL=https://… — as rotas /api que exigem permissão. Precisa voltar
+//    vazio/recusado.
 //
 // Só LÊ. Termina com "✔ Nenhum vazamento" ou a lista de "✘ VAZAMENTO".
 // Resultado e matriz: docs/SEGURANCA_DADOS_AGENDA.md.
@@ -47,6 +49,25 @@ const COLUNAS_REVOGADAS = {
     'tipo_registro_profissional', 'uf_registro_profissional', 'raw_json', 'observacoes_sala'],
   csv_grades_profissionais: ['profissional_cpf', 'sala_observacoes'],
 }
+
+// RPCs que devolvem dado de paciente: usuário SEM permissão tem de ser recusado.
+const RPCS_PROTEGIDAS = [
+  ['pacientes_lista_basica', {}],
+  ['pacientes_buscar_para_pep', { p_termo: 'ana' }],
+  ['listar_pacientes_assim', {}],
+]
+
+// Rotas /api do Next que exigem permissão de tela (feat/seguranca-falhas-dados).
+// Testadas com SITE_URL (ex. http://localhost:3000 sem DISABLE_AUTH, ou o
+// endereço de produção) + TOKEN_SEM_PERMISSAO: a sessão vai no cookie do
+// @supabase/ssr. Esperado: 401/403 em todas.
+const ROTAS_PROTEGIDAS = [
+  ['GET', '/api/laudos/'],
+  ['GET', '/api/tita/situacao-favorecidos/'],
+  ['GET', '/api/pdi-controle-prazos/'],
+  ['POST', '/api/terapeutico/auditoria-evolucoes/grade/', { dataInicio: '2026-09-01' }],
+  ['GET', '/api/central/organization/'],
+]
 
 // Edge Functions de teste apagadas do repositório (P0). Precisam responder 404.
 const FUNCOES_REMOVIDAS = ['tita-compare-endpoints', 'test_env', 'cco-test-setup', 'cco-conciliation-engine-test']
@@ -166,6 +187,37 @@ async function main() {
         else if (r.ok) olhar(`${t}.${c}: sem linha, mas a coluna ainda tem GRANT para o login — aplique a migration 20261019140000`)
         else okLog(`${t}.${c}: recusada (HTTP ${r.status})`)
       }
+    }
+    for (const [fn, corpo] of RPCS_PROTEGIDAS) {
+      const r = await fetch(`${url}/rest/v1/rpc/${fn}`, {
+        method: 'POST', headers: { ...h, 'Content-Type': 'application/json' }, body: JSON.stringify(corpo),
+      })
+      const json = r.ok ? await r.json().catch(() => null) : null
+      if (r.ok && Array.isArray(json) && json.length) vaza(`logado sem permissão EXECUTA rpc/${fn} e recebe ${json.length} linha(s)`)
+      else if (r.status === 404) olhar(`rpc/${fn} não existe neste banco (migration pendente?)`)
+      else okLog(`rpc/${fn}: ${r.ok ? 'vazio' : `recusada (HTTP ${r.status})`}`)
+    }
+
+    const site = process.env.SITE_URL?.replace(/\/$/, '')
+    if (site) {
+      // Cookie de sessão no formato do @supabase/ssr: base64-<json da sessão>.
+      const ref = new URL(url).hostname.split('.')[0]
+      const claims = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'))
+      const sessao = { access_token: token, token_type: 'bearer', expires_at: claims.exp, expires_in: 3600, refresh_token: 'varredura', user: { id: claims.sub } }
+      const cookie = `sb-${ref}-auth-token=base64-${Buffer.from(JSON.stringify(sessao)).toString('base64url')}`
+      for (const [metodo, caminho, corpo] of ROTAS_PROTEGIDAS) {
+        const r = await fetch(`${site}${caminho}`, {
+          method: metodo, redirect: 'manual',
+          headers: { cookie, ...(corpo ? { 'Content-Type': 'application/json' } : {}) },
+          body: corpo ? JSON.stringify(corpo) : undefined,
+        }).catch(() => null)
+        if (!r) olhar(`${caminho}: sem resposta de ${site}`)
+        else if (r.status === 401 || r.status === 403) okLog(`${caminho}: recusada (HTTP ${r.status})`)
+        else if (r.ok) vaza(`logado sem permissão recebe ${caminho} (HTTP ${r.status})`)
+        else olhar(`${caminho}: HTTP ${r.status} — confira à mão`)
+      }
+    } else {
+      console.log('(Sem SITE_URL: as rotas /api não foram testadas.)')
     }
   } else {
     console.log('\n(Sem TOKEN_SEM_PERMISSAO: o teste do invasor interno foi pulado.)')

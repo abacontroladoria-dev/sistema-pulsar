@@ -117,3 +117,66 @@ where ct.confirmado_em >= now() - interval '60 days'
   and not exists (select 1 from efetivas e where e.id = u.id and e.codigo = 'escala_terapeutica')
 group by 1, 2, 3
 order by 4 desc;
+
+-- ── FASE 4 (migration 20261019150000_seguranca_evolucao_coluna) ─────────────
+--    O bloco 2.2 já lista views sobre descricao_evolucao (esperado: nenhuma).
+--    O bloco 2.5 lista funções invoker que citam a coluna (esperado: nenhuma).
+
+-- ── FASE 5 (migrations 20261019160000 e 20261019160100) ─────────────────────
+
+-- 5.1 Quem DEIXA de ler o cadastro de pacientes direto (hoje lê tudo pela
+--     policy using (true)). Informativo: as telas de Grade, Ocupação Paciente,
+--     Alimentar BD, Connect, PEP e Autorizações Avulsas continuam pela lista
+--     básica para quem tem a permissão da tela. Confira se alguém aqui precisa
+--     do cadastro INTEIRO (CPF, endereço, responsável): esse recebe
+--     `cadastros_pacientes` pelo grupo antes de aplicar a 20261019160100.
+with efetivas as (
+  select u.id, e.key as codigo
+  from public.usuarios u
+  join public.grupos_permissoes_membros m on m.usuario_id = u.id
+  join public.grupos_permissoes g on g.id = m.grupo_id
+  cross join lateral jsonb_each(g.modelo_permissoes) e(key, value)
+  where e.value = 'true'::jsonb
+  union
+  select up.usuario_id, up.permissao_codigo from public.usuarios_permissoes up where up.permitido
+  except
+  select up.usuario_id, up.permissao_codigo from public.usuarios_permissoes up where not up.permitido
+)
+select u.nome, u.email, u.role,
+       (select string_agg(e.codigo, ', ' order by e.codigo) from efetivas e
+         where e.id = u.id and e.codigo in ('cronograma_grade', 'cronograma_ocupacao_paciente',
+               'indicadores_alimentar_bd', 'connect', 'relacionamento_prestador_pep', 'robo_sharepoint',
+               'autorizacoes_avulsas')) as telas_com_caminho_estreito
+from public.usuarios u
+where u.ativo and u.role not in ('admin', 'diretoria', 'cronograma')
+  and not exists (select 1 from efetivas e where e.id = u.id and e.codigo = 'cadastros_pacientes')
+order by u.nome;
+
+-- 5.2 Views que leem pacientes e rodam como quem consulta (security_invoker):
+--     passam a voltar vazias para quem não tem Pacientes. Esperado (pelas
+--     migrations): vw_paciente_laudos_flat e vw_grade_execucao_pulsar, as duas
+--     sem leitor no frontend. Qualquer outra, mande para conferirmos.
+select distinct v.relname as view
+from pg_depend d
+join pg_rewrite rw on rw.oid = d.objid
+join pg_class v on v.oid = rw.ev_class
+where d.refobjid = 'public.pacientes'::regclass and v.oid <> 'public.pacientes'::regclass
+  and coalesce((select bool_or(o in ('security_invoker=true', 'security_invoker=on')) from unnest(v.reloptions) o), false)
+order by 1;
+
+-- 5.3 Funções que NÃO são security definer e leem pacientes (rodam como quem
+--     chama). Esperado: só listar_pacientes_assim (a 20261019160000 a
+--     transforma em invólucro com checagem). Qualquer outra, mande.
+select p.oid::regprocedure as funcao
+from pg_proc p
+where p.pronamespace in ('public'::regnamespace, 'central'::regnamespace)
+  and not p.prosecdef and p.prokind = 'f'
+  and p.prosrc ~ '\mpacientes\M'
+order by 1;
+
+-- 5.4 Definição de listar_pacientes_assim em produção (a 20261019160000 a
+--     preserva como sp_listar_pacientes_assim_interno). Esperado: o retorno
+--     TABLE(paciente_id bigint, paciente_nome text, numero_carteirinha text,
+--     crm text, crm_uf text, nome_medico text, ultima_sessao date).
+select pg_get_function_result('public.listar_pacientes_assim()'::regprocedure) as retorno,
+       (select prosecdef from pg_proc where oid = 'public.listar_pacientes_assim()'::regprocedure) as security_definer;
