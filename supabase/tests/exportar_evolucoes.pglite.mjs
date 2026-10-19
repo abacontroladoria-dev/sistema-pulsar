@@ -287,6 +287,17 @@ ok(chaves.every(c => /^(tita:[0-9]+|pulsar:[0-9a-f-]{36})$/.test(c)), 'chave do 
   await db.exec(`update public.csv_grades_profissionais set ativo = false where tita_agendamento_id = 1006`)
   ok(!(await naLista()).includes('1006'), 'todas as cópias inativas (sessão excluída no TiTa): sai da exportação')
 
+  // mês antigo: a cópia não tem execução; linha remarcada (inativa) + ativa "não capturada"
+  // não desmentem a carga feita direto do TiTa
+  await db.exec(`insert into public.csv_grades_profissionais (tita_agendamento_id, paciente_id, data, profissional_id, unidade_id, ativo)
+    values (555, 9001, '2026-01-14', 501, 280, false), (555, 9001, '2026-01-15', 501, 280, true)`)
+  await db.exec(`update public.csv_grades_profissionais set status_execucao = null where tita_agendamento_id = 555`)
+  const jan = (await comoPapel('service_role', `select public.exportar_evolucoes_listar('2026-01-01', '2026-01-31') v`)).rows[0].v
+  ok(jan.some(i => i.agendamento_id === '555'), 'mês antigo: remarcação sem dado de execução não marca como desfeita')
+  await db.exec(`update public.csv_grades_profissionais set ativo = false where tita_agendamento_id = 555`)
+  const jan2 = (await comoPapel('service_role', `select public.exportar_evolucoes_listar('2026-01-01', '2026-01-31') v`)).rows[0].v
+  ok(!jan2.some(i => i.agendamento_id === '555'), 'sync inativou todas as linhas da sessão (TiTa não a tem mais): sai')
+
   const longo = 'x'.repeat(25000)
   await db.exec(`insert into public.csv_grades_profissionais (tita_agendamento_id, paciente_id, paciente_nome, data, hora_inicial, hora_final,
     profissional_id, profissional_nome, terapia_nome, unidade_id, status_execucao, possui_tratativa, tratativa_profissional_id, descricao_evolucao)

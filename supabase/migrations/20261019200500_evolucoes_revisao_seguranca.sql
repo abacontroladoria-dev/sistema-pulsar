@@ -21,7 +21,22 @@
 --   6. A listagem (nome do paciente, terapia, convênio de um período) passa a
 --      ficar no registro também (finalidade 'listagem').
 --
+-- Primeira tentativa (19/10, SQL Editor) não entrou: estourou o tempo na parte
+-- E, que conferia cada evolução varrendo a cópia inteira (não havia índice em
+-- csv_grades_profissionais.tita_agendamento_id) e segurava a grade_evolucoes
+-- travada nesse meio-tempo. Agora: índice, parte E num único UPDATE só na
+-- janela que a cópia ainda atualiza, e trava curta (lock_timeout).
+--
+-- E a regra de "desfeita" ficou mais estrita: nos meses antigos a cópia não
+-- tem dado de execução, e uma linha antiga inativada (sessão remarcada) não
+-- pode desmentir o que o TiTa confirmou na carga. Só marca quando a cópia
+-- conhece a sessão e NENHUMA linha ativa dela fica como evoluída ou "ainda não
+-- capturada".
+--
 -- Idempotente: pode rodar de novo.
+
+set lock_timeout = '10s';
+set statement_timeout = '5min';
 
 do $$
 begin
@@ -65,6 +80,9 @@ create policy grade_evolucoes_arquivo_falhas_admin on public.grade_evolucoes_arq
 alter table public.exportar_evolucoes_registro drop constraint if exists exportar_evolucoes_registro_finalidade_check;
 alter table public.exportar_evolucoes_registro add constraint exportar_evolucoes_registro_finalidade_check
   check (finalidade in ('listagem', 'visualizacao', 'pdf', 'csv'));
+
+create index if not exists idx_csv_grades_tita_agendamento
+  on public.csv_grades_profissionais (tita_agendamento_id) where tita_agendamento_id is not null;
 
 -- ═════════════════════════════════════════════════════════════════════════════
 -- B) Chave estável do arquivo
@@ -237,8 +255,9 @@ begin
          excluded.convenio_nome, excluded.evolucao_vinculo);
   get diagnostics v_qtd = row_count;
 
-  -- Deixou de ser evolução no TiTa: marca (só pelo id do agendamento; e só se
-  -- nenhuma linha ativa da cópia com esse id ainda é evolução).
+  -- Deixou de ser evolução no TiTa: marca, pelo id do agendamento, só se a
+  -- cópia conhece a sessão e nenhuma linha ATIVA dela segue evoluída ou "ainda
+  -- não capturada" (status e tratativa vazios = não sei, não é "desfeita").
   update public.grade_evolucoes e
      set removido_tita_em = now()
     from (
@@ -250,13 +269,16 @@ begin
    where e.agendamento_id is null
      and e.chave_tita = 'ag:' || d.tita_ag
      and e.removido_tita_em is null
+     and exists (select 1 from public.csv_grades_profissionais g where g.tita_agendamento_id = d.tita_ag)
      and not exists (
        select 1 from public.csv_grades_profissionais g
         where g.tita_agendamento_id = d.tita_ag
           and g.ativo is true
-          and g.possui_tratativa is true
-          and length(btrim(coalesce(g.descricao_evolucao, ''))) > 0
-          and lower(coalesce(g.status_execucao, '')) !~ '(cancel|nao realizad|não realizad)'
+          and not (
+            g.possui_tratativa is false
+            or lower(coalesce(g.status_execucao, '')) ~ '(cancel|nao realizad|não realizad)'
+            or (g.possui_tratativa is true and length(btrim(coalesce(g.descricao_evolucao, ''))) = 0)
+          )
      );
   get diagnostics v_marcadas = row_count;
 
@@ -331,28 +353,27 @@ create trigger trg_csv_grade_arquivar_evolucoes_upd
   for each statement execute function public.sp_csv_grade_arquivar_evolucoes_cmd();
 
 -- ═════════════════════════════════════════════════════════════════════════════
--- E) Marca, de uma vez, o que já está no arquivo e a cópia mostra que deixou
---    de ser evolução (janela que a cópia ainda tem)
+-- E) Marca, de uma vez, o que já está no arquivo e a cópia mostra desfeito.
+--    Só nos últimos 60 dias: é a janela que o sync atualiza (45 dias); antes
+--    disso a cópia está congelada e quem vale é a carga feita direto do TiTa.
 -- ═════════════════════════════════════════════════════════════════════════════
-do $$
-declare
-  m date;
-begin
-  for m in
-    select distinct date_trunc('month', e.data)::date
-      from public.grade_evolucoes e
-     where e.agendamento_id is null and e.tita_agendamento_id is not null
-     order by 1
-  loop
-    perform public.sp_grade_evolucoes_arquivar_tita(coalesce((
-      select jsonb_agg(to_jsonb(g))
-        from public.csv_grades_profissionais g
-        join public.grade_evolucoes e
-          on e.agendamento_id is null and e.chave_tita = 'ag:' || g.tita_agendamento_id
-       where e.data >= m and e.data < (m + interval '1 month')::date
-    ), '[]'::jsonb));
-  end loop;
-end $$;
+update public.grade_evolucoes e
+   set removido_tita_em = now()
+ where e.agendamento_id is null
+   and e.tita_agendamento_id is not null
+   and e.removido_tita_em is null
+   and e.data >= current_date - 60
+   and exists (select 1 from public.csv_grades_profissionais g where g.tita_agendamento_id = e.tita_agendamento_id)
+   and not exists (
+     select 1 from public.csv_grades_profissionais g
+      where g.tita_agendamento_id = e.tita_agendamento_id
+        and g.ativo is true
+        and not (
+          g.possui_tratativa is false
+          or lower(coalesce(g.status_execucao, '')) ~ '(cancel|nao realizad|não realizad)'
+          or (g.possui_tratativa is true and length(btrim(coalesce(g.descricao_evolucao, ''))) = 0)
+        )
+   );
 
 -- ═════════════════════════════════════════════════════════════════════════════
 -- F) Exportação: fonte ignora o que o TiTa desfez; listagem fica registrada
