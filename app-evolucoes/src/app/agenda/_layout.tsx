@@ -8,8 +8,16 @@ export default function AgendaLayout() {
   const titulo = perfil?.tipo === 'gestao' ? 'Agendas' : 'Minha agenda';
 
   return (
-    <Stack screenOptions={{ headerLargeTitleEnabled: true, headerBackButtonDisplayMode: 'minimal' }}>
-      <Stack.Screen name="index" options={{ title: titulo, headerRight: () => <BotaoSair /> }} />
+    <Stack screenOptions={{ headerBackButtonDisplayMode: 'minimal' }}>
+      <Stack.Screen
+        name="index"
+        options={{ title: titulo, headerLargeTitleEnabled: true, headerRight: () => <BotaoSair /> }}
+      />
+      <Stack.Screen name="sessao/[id]" options={{ title: 'Sessão' }} />
+      <Stack.Screen
+        name="escolher-profissional"
+        options={{ title: 'Escolher profissional', presentation: 'modal' }}
+      />
     </Stack>
   );
 }

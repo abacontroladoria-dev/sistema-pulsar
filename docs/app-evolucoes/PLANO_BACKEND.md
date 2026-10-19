@@ -109,6 +109,23 @@ ser aplicada. Frontend na main (`f28aeb44`), aguardando redeploy. Decisões na e
 
 ## Fase 2 — cobertura e abertura das RPCs de evolução
 
+**2a APLICADA em produção em 19/10/2026** (ensaiada antes, desfeito; conferência ok):
+migration `20261019210000_app_agenda_cobertura.sql`, snippets `_APLICAR`/`_REVERTER`
+e teste `app_agenda_cobertura.pglite.mjs` (36/36). Como ficou:
+
+- Regras do terapeuta em `sp_grade_exigir_evoluir` (porta das 3 RPCs que gravam)
+  e no gatilho `trg_grade_evolucoes_regras_terapeuta` — as RPCs grandes não foram
+  reescritas. Profissional **efetivo** = o da cobertura, senão o agendado; a
+  sessão coberta sai do alcance do agendado original.
+- `app_agenda(p_de, p_ate, p_profissional_id)` (até 31 dias; coluna `efetivo`) e
+  `app_agenda_profissionais()` (só gestão). Ensaio: 7 dias do profissional mais
+  cheio = 62 sessões em ~0,2 s.
+- App: agenda do dia (setas de dia), sessão com "Evoluir" e "Marcar falta",
+  escolha de profissional para a gestão. Status com a mesma regra do web.
+- **2b pendente:** tela na Grade web para a equipe definir/remover cobertura
+  (`grade_definir_cobertura` / `grade_remover_cobertura` já existem). Até lá a
+  cobertura só entra por SQL.
+
 - Tabela nova `grade_coberturas (agendamento_id uuid PK → grade_agendamentos,
   profissional_id bigint, criado_por uuid, criado_em, removido_em)`, gravada pela
   recepção na Grade (modal de cobertura), escrita só por RPC.
