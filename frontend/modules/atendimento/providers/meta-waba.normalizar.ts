@@ -1,4 +1,4 @@
-import type { NormalizedIncomingMessage } from '../types/central.types'
+import type { AnuncioDaMensagem, NormalizedIncomingMessage } from '../types/central.types'
 
 // ============================================================================
 // Normalização do payload da Meta → NormalizedIncomingMessage
@@ -50,6 +50,16 @@ interface MensagemMeta {
   reaction?: { message_id?: string; emoji?: string }
   errors?: { code?: number; title?: string; message?: string }[]
   context?: { id?: string }
+  // Clique num anúncio Click-to-WhatsApp: vem na primeira mensagem que o
+  // clique gera. `source_type` é 'ad' ou 'post'.
+  referral?: {
+    source_url?: string
+    source_id?: string
+    source_type?: string
+    headline?: string
+    body?: string
+    ctwa_clid?: string
+  }
 }
 
 interface MidiaMeta {
@@ -89,6 +99,28 @@ export function normalizarMensagemMeta(raw: unknown): NormalizedIncomingMessage 
     // e é o que permite entender "sim" quando vem citando uma pergunta antiga.
     replyToExternalId: m.context?.id,
     attachments: extrairAnexos(m),
+    anuncio: extrairAnuncio(m),
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Anúncio de origem (referral). Sem ad_id nem ctwa_clid não há o que atribuir.
+// ----------------------------------------------------------------------------
+function extrairAnuncio(m: MensagemMeta): AnuncioDaMensagem | undefined {
+  const r = m.referral
+  if (!r) return undefined
+  const adId = r.source_id ? String(r.source_id) : null
+  const ctwaClid = r.ctwa_clid ?? null
+  if (!adId && !ctwaClid) return undefined
+  const sourceType = r.source_type ?? null
+  return {
+    ad_id: adId,
+    ctwa_clid: ctwaClid,
+    titulo: r.headline?.trim() || null,
+    url: r.source_url ?? null,
+    source_type: sourceType,
+    plataforma: null,
+    pago: sourceType !== 'post',
   }
 }
 

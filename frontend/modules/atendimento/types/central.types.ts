@@ -161,6 +161,10 @@ export interface Conversation {
   // jsonb sem schema no banco, e quem lê valida. Opcional porque nem todo
   // select traz a coluna.
   ai_context?:      unknown
+  // Primeiro anúncio da Meta que trouxe a pessoa (20261019160000). NULL =
+  // conversa que não veio de anúncio, ou anterior à captura. Opcional porque
+  // nem todo select traz a coluna.
+  anuncio?:         AnuncioDaConversa | null
   last_message_at:  string | null
   // Prévia da última mensagem com fala, mantida por gatilho em central.messages
   // (20260928120000). É o que a LISTA mostra, já que ela não carrega histórico.
@@ -382,6 +386,43 @@ export interface NormalizedIncomingMessage {
     fileSize?:    number
     durationSecs?:number
   }[]
+  // Anúncio de onde a pessoa veio (Click-to-WhatsApp). Só na mensagem que o
+  // clique gerou; ausente no resto.
+  anuncio?:           AnuncioDaMensagem
+}
+
+// O que o clique num anúncio da Meta deixa na mensagem. Meta Cloud API manda em
+// `messages[].referral`; Evolution, em `contextInfo.externalAdReply`. Tudo
+// opcional: é dado externo e a Meta nem sempre preenche os dois identificadores.
+export interface AnuncioDaMensagem {
+  ad_id:       string | null   // source_id / sourceId: o ID do anúncio (18 dígitos)
+  ctwa_clid:   string | null   // id do clique, para conversão; existe mesmo sem ad_id
+  titulo:      string | null   // headline / title do anúncio
+  url:         string | null   // link do anúncio ou do post
+  source_type: string | null   // 'ad' (pago) ou 'post' (post orgânico impulsionado ou não)
+  plataforma:  string | null   // 'instagram' / 'facebook' (sourceApp da Evolution; a Meta não manda)
+  // Anúncio PAGO. Post compartilhado não é mídia paga e não vira meta_ads.
+  pago:        boolean
+}
+
+// central.conversations.anuncio (20261019160000): o PRIMEIRO anúncio da conversa.
+export interface AnuncioDaConversa extends AnuncioDaMensagem {
+  provider:     'meta_waba' | 'evolution'
+  capturado_em: string
+}
+
+// central.meta_ad_catalog: nomes do anúncio pela Marketing API (META_ADS_TOKEN).
+export interface AnuncioCatalogado {
+  ad_id:         string
+  ad_name:       string | null
+  ad_status:     string | null
+  adset_id:      string | null
+  adset_name:    string | null
+  campaign_id:   string | null
+  campaign_name: string | null
+  ad_account_id: string | null
+  lookup_error:  string | null
+  fetched_at:    string
 }
 
 export interface MessagingProvider {

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import type {
   AIMode,
+  AnuncioCatalogado,
   Channel,
   Conversation,
   Message,
@@ -153,6 +154,9 @@ export interface DetalheConversa extends Conversation {
   // sem passar pelo ai_mode. Ver mapStatus.
   inbox:           { id: string; name: string; description: string | null; maia_automatica: boolean } | null
   recentMessages:  Message[]
+  // Nomes do anúncio de origem (central.meta_ad_catalog), quando a conversa tem
+  // `anuncio` e ele já foi consultado na Marketing API.
+  anuncioCatalogo: Pick<AnuncioCatalogado, 'ad_name' | 'ad_status' | 'adset_name' | 'campaign_name' | 'lookup_error'> | null
   // Herança já resolvida pelo servidor. `ai_mode` da conversa pode ser NULL
   // ("ninguém decidiu, vale o padrão da clínica") e só o backend enxerga o
   // agent_settings — resolver isso aqui daria uma segunda resposta possível.

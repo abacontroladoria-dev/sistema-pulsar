@@ -10,7 +10,7 @@ import type { TypedEventBus } from '../events/event-bus'
 // `import type` para não criar dependência de runtime entre dois services —
 // mesma convenção de contact.service.ts.
 import type { TagDefinitionService } from './tag-definition.service'
-import type { TagDefinition } from '../types/central.types'
+import type { AnuncioDaMensagem, TagDefinition } from '../types/central.types'
 import {
   ConversationNotFoundError,
   ConversationAlreadyClosedError,
@@ -676,6 +676,18 @@ export class ConversationService {
       return
     }
     await this.atualizarTags(conversationId, { origem: origem.origemTag }, porGrupo, 'sistema', null)
+  }
+
+  // Anúncio da Meta que trouxe a pessoa (20261019160000). Primeiro toque: se a
+  // conversa já tem um, este não sobrescreve. Devolve se gravou.
+  async registrarAnuncio(
+    conversationId: string,
+    anuncio:        AnuncioDaMensagem,
+    provider:       'meta_waba' | 'evolution',
+  ): Promise<boolean> {
+    return this.conv.registrarAnuncioSeVazio(conversationId, {
+      ...anuncio, provider, capturado_em: new Date().toISOString(),
+    })
   }
 
   // TIPO DE CONTATO decidido pelo sistema (agente/tipo-contato.ts) — só quando

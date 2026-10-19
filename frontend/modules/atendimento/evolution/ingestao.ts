@@ -4,6 +4,11 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 import { createSystemServices } from '../services'
 import { ContactRepository } from '../repositories/contact.repository'
+import { TagDefinitionRepository } from '../repositories/tag-definition.repository'
+import { CampaignPhraseRepository } from '../repositories/campaign-phrase.repository'
+import { origemAceitaAnuncio, resolverOrigem } from '../agente/origem-campanha'
+import { catalogarAnuncio } from '../meta/catalogo-anuncios'
+import type { Conversation } from '../types/central.types'
 import type { EventoEvolution } from '../providers/evolution.normalizar'
 import { statusDoEstado } from '../providers/evolution.provider'
 import { variantesBr } from '../utils/telefone-br'
@@ -81,6 +86,7 @@ async function processarMensagem(
       replyToExternalId: m.replyToExternalId,
       attachments: m.attachments,
     })
+    if (m.anuncio) await registrarAnuncio(supabase, orgId, conversation, m)
     return
   }
 
@@ -158,6 +164,35 @@ async function processarMensagem(
 
   // Alguém respondeu pelo celular: com "Maia responde", ela sai da conversa.
   await conversationService.maiaSaiQuandoHumanoResponde(conversation, null)
+}
+
+// Clique num anúncio (contextInfo.externalAdReply): grava o primeiro anúncio da
+// conversa e, sendo pago, a ORIGEM meta_ads (no lugar de contato_direto) — aqui e não no worker de sugestão,
+// porque ele só roda nos números com "Maia sugere" e a origem vale para todos.
+// Os nomes vêm da Marketing API sem segurar o webhook. Falha não perde a
+// mensagem, que já está gravada.
+async function registrarAnuncio(
+  supabase: SupabaseClient,
+  orgId: string,
+  conversation: Conversation,
+  m: Extract<EventoEvolution, { tipo: 'mensagem' }>['mensagem'],
+): Promise<void> {
+  const anuncio = m.anuncio
+  if (!anuncio) return
+  const { conversationService } = createSystemServices()
+  try {
+    const gravou = await conversationService.registrarAnuncio(conversation.id, anuncio, 'evolution')
+    if (!gravou) return
+    void catalogarAnuncio(supabase, anuncio.ad_id)
+    if (!anuncio.pago) return
+
+    const porGrupo = await new TagDefinitionRepository(supabase).porGrupo(orgId)
+    if (!origemAceitaAnuncio(conversation.tags, porGrupo)) return
+    const frases = await new CampaignPhraseRepository(supabase).listar(orgId)
+    await conversationService.aplicarOrigemInicial(conversation.id, resolverOrigem(m.body ?? '', frases, anuncio), porGrupo)
+  } catch (err) {
+    console.warn('[ingestao evolution] anúncio não registrado; seguindo', { conversationId: conversation.id, err })
+  }
 }
 
 async function processarStatus(

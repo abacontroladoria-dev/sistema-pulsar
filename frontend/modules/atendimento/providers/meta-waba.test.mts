@@ -423,6 +423,24 @@ console.log('\n7. identidade ausente lança (sem id não há dedup)')
     'sem from lança — não haveria como saber de quem é')
 }
 
+console.log('\nanúncio (referral)')
+{
+  const base = { id: 'wamid.AD', from: '5511987654321', timestamp: '1758700000', type: 'text', text: { body: 'Olá! Tenho interesse' } }
+  const n = normalizarMensagemMeta({
+    ...base,
+    referral: {
+      source_url: 'https://fb.me/xyz', source_id: '120210000000000002', source_type: 'ad',
+      headline: 'Avaliação ABA', body: 'texto', ctwa_clid: 'ARAk',
+    },
+  })
+  checar(n.anuncio?.ad_id === '120210000000000002' && n.anuncio.ctwa_clid === 'ARAk' && n.anuncio.pago === true,
+    'referral vira anúncio pago com ad_id e ctwa_clid')
+  checar(n.anuncio?.titulo === 'Avaliação ABA' && n.anuncio.url === 'https://fb.me/xyz', 'título e link do anúncio')
+  const post = normalizarMensagemMeta({ ...base, referral: { source_id: '5', source_type: 'post' } })
+  checar(post.anuncio?.pago === false, 'post não é anúncio pago')
+  checar(normalizarMensagemMeta(base).anuncio === undefined, 'sem referral, sem anúncio')
+}
+
 globalThis.fetch = fetchOriginal
 
 // ----------------------------------------------------------------------------

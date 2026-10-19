@@ -16,7 +16,8 @@ import { executarTurno } from '../agente/orquestrador'
 import { FerramentasAgente } from '../agente/ferramentas'
 import { lerVagasGuardadas, paraGuardar, mesclarAiContext } from '../agente/vagas-oferecidas'
 import { classificarConversa, falasDoHistorico } from '../agente/classificacao'
-import { resolverOrigem } from '../agente/origem-campanha'
+import { origemAceitaAnuncio, resolverOrigem } from '../agente/origem-campanha'
+import { catalogarAnuncio } from '../meta/catalogo-anuncios'
 import { TAG_TRABALHE_CONOSCO, pareceTrabalheConosco } from '../agente/tipo-contato'
 import { openAiProvider } from '../llm/openai.provider'
 import { lerAgentSettings } from '../agente/agent-settings'
@@ -26,7 +27,7 @@ import { createFichaService } from '../services/ficha.service'
 import { PacienteRepository } from '../repositories/paciente.repository'
 import { SessoesTitaRepository } from '../repositories/sessoes-tita.repository'
 import { FunilMaiaService } from '../services/funil-maia.service'
-import type { FichaPaciente, TagDefinition } from '../types/central.types'
+import type { AnuncioDaMensagem, FichaPaciente, TagDefinition } from '../types/central.types'
 
 // ============================================================================
 // Worker de agrupamento — o miolo do pipeline
@@ -210,8 +211,10 @@ async function processarContato(
   // 4. Gravar as mensagens recebidas ANTES de chamar a IA. Se a OpenAI falhar,
   //    a conversa já está na Central e um humano pode assumir.
   const textos: string[] = []
+  let anuncio: AnuncioDaMensagem | null = null
   for (const item of itens) {
     const normalizada = normalizarMensagemMeta(item.message_data)
+    anuncio ??= normalizada.anuncio ?? null
     await messageService.receive({
       conversationId: conversation.id,
       orgId,
@@ -227,6 +230,18 @@ async function processarContato(
     // Fica gravada no histórico, mas não provoca resposta.
     if (normalizada.messageType !== 'reaction') {
       textos.push(normalizada.body ?? '')
+    }
+  }
+
+  // 4.1. Anúncio de origem (Click-to-WhatsApp, `referral`): primeiro toque na
+  // conversa, e os nomes pela Marketing API sem segurar o turno. Falha isolada.
+  let anuncioGravado = false
+  if (anuncio) {
+    try {
+      anuncioGravado = await conversationService.registrarAnuncio(conversation.id, anuncio, 'meta_waba')
+      if (anuncioGravado) void catalogarAnuncio(supabase, anuncio.ad_id)
+    } catch (err) {
+      console.warn('[worker agrupamento] anúncio não registrado; seguindo', err)
     }
   }
 
@@ -256,11 +271,15 @@ async function processarContato(
   //
   // Falha isolada, como os demais blocos opcionais deste worker: não achar
   // frase, ou o catálogo estar indisponível, não pode impedir a resposta.
-  if (conversaNova) {
+  //
+  // Anúncio pago (Regra 5: o identificador manda) também decide a ORIGEM de
+  // conversa antiga sem origem ou com contato_direto.
+  const origemPorAnuncio = anuncioGravado && anuncio?.pago === true && origemAceitaAnuncio(conversation.tags, porGrupoTags)
+  if (conversaNova || origemPorAnuncio) {
     try {
       const frases = await new CampaignPhraseRepository(supabase).listar(orgId)
       await conversationService.aplicarOrigemInicial(
-        conversation.id, resolverOrigem(textos[0] ?? '', frases), porGrupoTags,
+        conversation.id, resolverOrigem(textos[0] ?? '', frases, anuncio), porGrupoTags,
       )
     } catch (err) {
       console.warn('[worker agrupamento] ORIGEM não aplicada; seguindo', err)

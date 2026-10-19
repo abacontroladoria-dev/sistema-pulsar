@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- payload externo do Baileys/Evolution, sem tipos publicados; cada campo é lido com ?. e checagem de tipo */
-import type { NormalizedIncomingMessage } from '../types/central.types'
+import type { AnuncioDaMensagem, NormalizedIncomingMessage } from '../types/central.types'
 import { digitosDoJid } from '../utils/telefone-br'
 
 // ============================================================================
@@ -58,6 +58,9 @@ interface DadosMensagem {
   message?: Record<string, any>
   messageType?: string
   messageTimestamp?: number | string | { low?: number }
+  // Texto puro (`message.conversation`) é uma string sem nó onde pendurar
+  // contexto: a Evolution v2 põe o contextInfo aqui, ao lado da mensagem.
+  contextInfo?: Record<string, any>
 }
 
 // Status numérico do Baileys (v1 e alguns eventos da v2).
@@ -164,6 +167,7 @@ function normalizarMensagem(instance: string, d: DadosMensagem): EventoEvolution
           fileName: nomeArquivo,
         }]
       : undefined,
+    anuncio: extrairAnuncio(d, conteudo),
   }
 
   return {
@@ -295,6 +299,43 @@ function primeiroContexto(m: Record<string, any>): string | undefined {
     if (typeof id === 'string' && id) return id
   }
   return undefined
+}
+
+// ----------------------------------------------------------------------------
+// Anúncio de origem (Click-to-WhatsApp): `contextInfo.externalAdReply`.
+//
+// Onde o contextInfo fica depende do tipo da mensagem. Texto puro — o caso
+// comum, "Olá! Tenho interesse..." pré-preenchido pelo anúncio — vem em
+// `data.contextInfo`; tipos com nó (extendedTextMessage, imageMessage...) o
+// carregam no próprio nó. Ler só o nó perdia a maior parte dos leads de anúncio
+// (visto no integra-connect contra a Evolution v2.3.7, 28/09).
+// ----------------------------------------------------------------------------
+function extrairAnuncio(d: DadosMensagem, conteudo: Record<string, any>): AnuncioDaMensagem | undefined {
+  const contextos = [d.contextInfo, ...Object.values(conteudo).map(no => (no as { contextInfo?: unknown } | null)?.contextInfo)]
+  const ctx = contextos.find(c => c && typeof c === 'object' && (c as Record<string, any>).externalAdReply) as Record<string, any> | undefined
+  const ad = ctx?.externalAdReply as Record<string, any> | undefined
+  if (!ad) return undefined
+
+  const sourceUrl = typeof ad.sourceUrl === 'string' && ad.sourceUrl ? ad.sourceUrl : null
+  // ctwaClid às vezes é campo próprio, às vezes só parâmetro da sourceUrl.
+  let ctwaClid: string | null = ad.ctwaClid ?? ctx?.ctwaClid ?? null
+  if (!ctwaClid && sourceUrl) {
+    try { ctwaClid = new URL(sourceUrl).searchParams.get('ctwa_clid') } catch { /* URL ilegível: sem clid */ }
+  }
+  const adId = ad.sourceId ? String(ad.sourceId) : null
+  if (!adId && !ctwaClid) return undefined
+
+  const sourceType = typeof ad.sourceType === 'string' ? ad.sourceType.toLowerCase() : null
+  return {
+    ad_id: adId,
+    ctwa_clid: ctwaClid ? String(ctwaClid) : null,
+    titulo: typeof ad.title === 'string' && ad.title.trim() ? ad.title.trim() : null,
+    url: sourceUrl ?? (typeof ad.mediaUrl === 'string' && ad.mediaUrl ? ad.mediaUrl : null),
+    source_type: sourceType,
+    plataforma: typeof (ad.sourceApp ?? ctx?.entryPointConversionApp) === 'string' ? String(ad.sourceApp ?? ctx?.entryPointConversionApp).toLowerCase() : null,
+    // 'post' é publicação compartilhada, não mídia paga.
+    pago: sourceType !== 'post',
+  }
 }
 
 // Epoch em SEGUNDOS (número, string ou o Long do protobuf serializado).
