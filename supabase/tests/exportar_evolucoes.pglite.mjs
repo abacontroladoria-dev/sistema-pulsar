@@ -7,7 +7,10 @@
 // texto gravada no registro; reroda.
 //
 //   node supabase/tests/exportar_evolucoes.pglite.mjs \
-//     supabase/migrations/20261019200000_exportar_evolucoes.sql //     supabase/migrations/20261019200200_exportar_evolucoes_id_agendamento.sql
+//     supabase/migrations/20261019200000_exportar_evolucoes.sql //     supabase/migrations/20261019200200_exportar_evolucoes_id_agendamento.sql //     supabase/migrations/20261019200300_grade_evolucoes_historico_tita.sql //     supabase/migrations/20261019200400_exportar_evolucoes_le_grade_evolucoes.sql
+//
+// Desde a 200400 a fonte do TiTa é o arquivo na grade_evolucoes (carregado da
+// cópia pela 200300 e, daí em diante, pelo gatilho), não mais a cópia.
 import { PGlite } from '@electric-sql/pglite'
 import { readFileSync } from 'fs'
 
@@ -15,6 +18,8 @@ let f = 0
 const ok = (c, m) => { console.log(c ? '  ok  ' : '  FALHA', m); if (!c) f++ }
 const mig = readFileSync(process.argv[2], 'utf8')
 const migId = readFileSync(process.argv[3], 'utf8')
+const migHist = readFileSync(process.argv[4], 'utf8')
+const migLe = readFileSync(process.argv[5], 'utf8')
 
 {
   const vazio = new PGlite()
@@ -48,13 +53,17 @@ create table public.csv_grades_profissionais (
   data date, hora_inicial time, hora_final time, profissional_id bigint, profissional_nome text,
   terapia_nome text, terapia_exibicao_nome text, unidade_id bigint, convenio_nome text, updated_at timestamptz default now(),
   ativo boolean default true, status_execucao text, possui_tratativa boolean, tratativa_profissional_id bigint,
-  tratativa_profissional_nome text, descricao_evolucao text);
+  tratativa_profissional_nome text, descricao_evolucao text, tratativa_criada_em timestamptz, tratativa_origem text,
+  evolucao_vinculo text);
 create table public.grade_agendamentos (id uuid primary key default gen_random_uuid(), data date, hora_inicio time,
   hora_fim time, paciente_id bigint, paciente_nome text, profissional_id bigint, profissional_nome text,
   terapia_nome text, terapia_exibicao_id bigint, terapia_exibicao_nome text, tita_agendamento_id bigint);
 create table public.grade_evolucoes (agendamento_id uuid primary key references public.grade_agendamentos(id),
   tita_agendamento_id bigint, status_execucao text, descricao_evolucao text, tratativa_profissional_id bigint,
-  tratativa_profissional_nome text, origem text, registrado_por_nome text);
+  tratativa_profissional_nome text, origem text, registrado_por_nome text,
+  possui_tratativa boolean not null default false, tratativa_criada_em timestamptz, tratativa_origem text not null default 'Prontuario',
+  evolucao_vinculo text not null default 'Agendamento ativo', tratativas smallint not null default 0,
+  tratativas_distintas smallint not null default 0);
 
 insert into public.pacientes values
   (1, 'Maria Souza', '12345678900', '2021-05-03', 9001, 'Unimed'),
@@ -122,7 +131,21 @@ await db.exec(mig)
 await db.exec(mig)
 await db.exec(migId)
 await db.exec(migId)
-ok(true, 'aplica as duas e reroda')
+{
+  const vazio = new PGlite()
+  await vazio.exec(`create role anon; create role authenticated; create role service_role bypassrls;
+    create function public.exportar_evolucoes_listar(date, date, bigint[], text[]) returns jsonb language sql as $$ select '[]'::jsonb $$;`)
+  let erro = ''
+  try { await vazio.exec(migLe) } catch (e) { erro = e.message }
+  ok(/20261019200300/.test(erro), 'a 200400 sem a 200300 para e pede a ordem certa')
+}
+await db.exec(migHist)
+await db.exec(migLe)
+await db.exec(migHist)
+await db.exec(migLe)
+ok(true, 'aplica as quatro e reroda')
+ok((await db.query(`select count(*)::int n from public.grade_evolucoes where agendamento_id is null`)).rows[0].n === 7,
+   'carga inicial: 7 evoluções do TiTa no arquivo (as 6 da lista + T7, que perde para o Pulsar só na leitura)')
 
 const comoPapel = async (papel, sql, uid = null) => {
   try {
@@ -224,6 +247,20 @@ const muitas = await comoPapel('service_role', CONTEUDO(Array.from({ length: 501
 ok(!muitas.ok && /500/.test(muitas.erro), 'mais de 500 chaves recusa')
 const fin = await comoPapel('service_role', CONTEUDO([chaves[0]], 'outra'))
 ok(!fin.ok && /Finalidade/.test(fin.erro), 'finalidade inválida recusa')
+
+// ── A fonte é o arquivo, não a cópia ─────────────────────────────────────────
+await db.exec(`select public.sp_grade_evolucoes_arquivar_tita(jsonb_build_array(jsonb_build_object(
+  'tita_agendamento_id', 555, 'paciente_id', 9001, 'paciente_nome', 'MARIA S', 'data', '2026-01-14', 'hora_inicial', '08:00',
+  'hora_final', '08:40', 'profissional_id', 501, 'profissional_nome', 'Sara', 'terapia_nome', 'AE', 'terapia_exibicao_nome', 'Psicologia ABA',
+  'unidade_id', 280, 'convenio_nome', 'Unimed', 'status_execucao', 'Realizado', 'possui_tratativa', true, 'tratativa_profissional_id', 501,
+  'descricao_evolucao', 'Evolução de janeiro, só no arquivo')))`)
+const jan = (await comoPapel('service_role', `select public.exportar_evolucoes_listar('2026-01-01', '2026-01-31') v`)).rows[0].v
+ok(jan.length === 1 && jan[0].agendamento_id === '555' && jan[0].paciente_nome === 'Maria Souza' && jan[0].terapia === 'Psicologia ABA',
+   'evolução de janeiro que só existe no arquivo aparece na lista')
+await db.exec(`delete from public.csv_grades_profissionais where tita_agendamento_id = 1001`)
+const semCopia = (await comoPapel('service_role', LISTAR)).rows[0].v
+ok(semCopia.some(i => i.agendamento_id === '1001'), 'apagar a linha da cópia não tira a evolução da lista (fica guardada)')
+ok(chaves.every(c => /^(tita:[0-9]+|pulsar:[0-9a-f-]{36})$/.test(c)), 'chave do TiTa agora é o id da grade_evolucoes')
 
 // ── Registro: só admin lê; ninguém escreve pelo REST ─────────────────────────
 const regAdmin = await comoPapel('authenticated', `select count(*)::int n from public.exportar_evolucoes_registro`, '00000000-0000-0000-0000-00000000000a')

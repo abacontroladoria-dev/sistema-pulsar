@@ -480,7 +480,28 @@ Segurança (seção 9):
 - `check-seguranca-migrations.js`: nenhum alerta nas migrations desta branch (os 5 que ele acusa são de migrations já na main: `20261019160000` e `20261019170000`).
 - Falta: Security Advisor do Supabase (painel) e o teste com um login real sem a permissão em produção, depois do deploy.
 
-## 16. Fora do escopo
+## 16. Histórico desde 01/01/2026 na grade_evolucoes (19/10/2026)
+
+Pedido do usuário: guardar no Pulsar as evoluções de 01/01/2026 em diante, numa tabela só, com a origem (TiTa/Pulsar).
+
+Medido antes de decidir:
+
+- csv_grades_profissionais **não tem** o histórico: de janeiro a maio, 0 linhas com status, tratativa ou texto (~80 mil agendamentos); junho tem 2.024 evoluídas sem texto; o texto só existe a partir de 27/07/2026.
+- O TiTa devolve qualquer data passada com o texto (14/01: 46; 11/03: 318; 10/06: 454; 15/07: 433 evoluções).
+- A tabela de evoluções do Pulsar já existe: grade_evolucoes (coluna origem pulsar/tita_importacao), mas era 1:1 com sessões da Grade (que começa em outubro) e o espelho do TiTa só roda na importação da Grade (1.861 linhas).
+- auditoria_evolucoes não serve de arquivo (2.436 análises de IA, só setembro).
+
+Decisão do usuário: **estender a grade_evolucoes**.
+
+| Peça | O que faz |
+|---|---|
+| 20261019200300_grade_evolucoes_historico_tita.sql | chave própria (id); agendamento_id opcional e único; linha sem sessão = evolução do TiTa arquivada, com data/horário/paciente/profissional/terapia/convênio na linha e chave_tita estável; função sp_grade_evolucoes_arquivar_tita; gatilho na csv_grades_profissionais (todo dia o que chega é arquivado; erro vira aviso e não derruba o sync); carga inicial do que a cópia já tem |
+| 20261019200400_exportar_evolucoes_le_grade_evolucoes.sql | a exportação lê só da grade_evolucoes (TiTa = arquivo; Pulsar = origem pulsar); chave do card vira tita:<id> |
+| scripts/carga-evolucoes-tita.mjs | carga de 01/01 a 26/07 direto do TiTa, dia a dia, pela mesma função; --seco só conta |
+
+O que não muda: Grade, RP e Central leem grade_evolucoes a partir de grade_agendamentos — linha sem sessão não aparece para elas (teste da Grade: 46 verificações, as 31 antigas incluídas). A csv_grades_profissionais não é tocada.
+
+## 17. Fora do escopo
 
 - Fechar a leitura aberta de `csv_grades_profissionais`.
 - Editar evoluções por esta tela (ela só lê).

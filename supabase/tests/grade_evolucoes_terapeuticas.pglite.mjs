@@ -19,6 +19,10 @@
 //   7. Soberania do Pulsar: reimportação do TiTa (sp_grade_espelhar_evolucoes_tita) NÃO sobrescreve
 //      evolução ou falta registrada no Pulsar (origem = 'pulsar').
 //   8. View vw_grade_execucao_pulsar pronta para RP e Central de Pacientes.
+//   9. 20261019200300: grade_evolucoes guarda o histórico do TiTa sem sessão na
+//      Grade (chave própria, agendamento_id opcional), arquivado por gatilho a
+//      partir da csv_grades_profissionais — e TUDO acima continua valendo com ela
+//      aplicada (ela entra logo depois da 20261019120000).
 
 import { PGlite } from '@electric-sql/pglite'
 import { readFileSync, readdirSync } from 'fs'
@@ -172,6 +176,18 @@ await db.exec(arquivo('20261016180000'))
 ok(true, 'Migration 20261016180000 aplicada com sucesso')
 await db.exec(arquivo('20261019120000'))
 ok(true, 'Migration 20261019120000 (texto clínico só para admin) aplicada com sucesso')
+await db.exec(arquivo('20261019200300'))
+await db.exec(arquivo('20261019200300'))
+ok(true, 'Migration 20261019200300 (histórico do TiTa na grade_evolucoes) aplicada e reaplicada')
+{
+  const arq = await todos(`select * from public.grade_evolucoes where agendamento_id is null`)
+  ok(arq.length === 1 && arq[0].chave_tita === 'ag:70001' && arq[0].descricao_evolucao === 'Evolução importada do TiTa.'
+     && arq[0].origem === 'tita_importacao' && arq[0].tita_paciente_id === 9001 && arq[0].tita_tratativa_profissional_id === 501,
+     'Carga inicial: a evolução que a cópia do TiTa já tinha vira linha do arquivo (sem sessão)')
+  const espelho = await todos(`select * from public.grade_evolucoes where agendamento_id is not null`)
+  ok(espelho.length === 1 && espelho[0].tita_agendamento_id === 70001,
+     'O espelho da Grade (com sessão) continua lá, separado do arquivo')
+}
 
 const ag1 = await um(`select id from public.grade_agendamentos where tita_agendamento_id = 70001`)
 const ag2 = await um(`select id from public.grade_agendamentos where tita_agendamento_id = 70002`)
@@ -338,6 +354,67 @@ await como(ADMIN, async () => {
   ok(vw.length === 1 && vw[0].is_substituicao === true && vw[0].tratativa_profissional_nome === 'Carla Substituta' && vw[0].controle_status === 'presente',
      'vw_grade_execucao_pulsar expõe formato compatível com RP e Central de Pacientes')
 })
+
+console.log('9. Histórico do TiTa (20261019200300)')
+await db.exec(`reset role`)
+{
+  const totalAntes = (await um(`select count(*)::int n from public.grade_evolucoes where agendamento_id is null`)).n
+  await db.exec(`
+insert into public.csv_grades_profissionais
+  (tita_agendamento_id, data, hora_inicial, hora_final, paciente_id, paciente_nome, profissional_id, profissional_nome,
+   terapia_nome, terapia_exibicao_nome, unidade_id, convenio_nome, status_execucao, possui_tratativa,
+   tratativa_profissional_id, tratativa_profissional_nome, tratativa_criada_em, descricao_evolucao)
+values
+  (80001, current_date - 200, '08:00', '08:40', 9002, 'BETO P', 501, 'Pedro', 'AE', 'Psicologia ABA', 280, 'AMIL', 'Realizado', true, 502, 'Carla', now() - interval '200 days', 'Antiga com substituição'),
+  (80002, current_date - 200, '09:00', '09:40', 9002, 'BETO P', 501, 'Pedro', 'AE', 'Psicologia ABA', 280, 'AMIL', 'Cancelado', false, null, null, null, null),
+  (80003, current_date - 200, '10:00', '10:40', 9002, 'BETO P', 501, 'Pedro', 'AE', 'Psicologia ABA', 999, 'AMIL', 'Realizado', true, 501, 'Pedro', now(), 'Outra unidade'),
+  (80004, current_date - 200, '11:00', '11:40', 9002, 'BETO P', 501, 'Pedro', 'AE', 'Psicologia ABA', 280, 'AMIL', 'Em Conflito', true, 501, 'Pedro', now(), 'Em conflito, evoluída'),
+  (null,  current_date - 199, '11:00', '11:40', 9002, 'BETO P', 501, 'Pedro', 'AE', 'Psicologia ABA', 280, 'AMIL', null, true, 501, 'Pedro', now(), 'Sem agendamento');
+`)
+  const arq = await todos(`select * from public.grade_evolucoes where agendamento_id is null order by chave_tita`)
+  const porChave = Object.fromEntries(arq.map(a => [a.chave_tita, a]))
+  ok(arq.length === totalAntes + 3, `Gatilho arquiva só o que é evolução (+3: 80001, 80004, sem agendamento) → ${arq.length - totalAntes}`)
+  ok(porChave['ag:80001']?.tratativa_profissional_id === profCarla.id && porChave['ag:80001']?.tita_profissional_id === 501
+     && porChave['ag:80001']?.tita_tratativa_profissional_id === 502 && porChave['ag:80001']?.terapia_exibicao_nome === 'Psicologia ABA'
+     && porChave['ag:80001']?.convenio_nome === 'AMIL',
+     'Arquivo guarda agendado, executor (substituto), terapia de exibição e convênio')
+  ok(porChave['ag:80004']?.status_tita === 'Em Conflito' && porChave['ag:80004']?.status_execucao === 'Realizado', '"Em Conflito" evoluída entra, com o status original guardado')
+  ok(!porChave['ag:80002'] && !porChave['ag:80003'], 'Falta e outra unidade não entram')
+  const sem = arq.find(a => a.chave_tita.startsWith('sem:'))
+  ok(sem && sem.tita_agendamento_id === null && sem.evolucao_vinculo === 'Sem agendamento', '"Sem agendamento" entra com chave própria')
+
+  await db.exec(`update public.csv_grades_profissionais set descricao_evolucao = 'Texto corrigido no TiTa' where tita_agendamento_id = 80001`)
+  ok((await um(`select descricao_evolucao d from public.grade_evolucoes where chave_tita = 'ag:80001'`)).d === 'Texto corrigido no TiTa',
+     'Edição no TiTa (dentro da janela do sync) atualiza o arquivo, sem duplicar')
+  await db.exec(`update public.csv_grades_profissionais set updated_at = now() where tita_agendamento_id = 80001`)
+  ok((await um(`select count(*)::int n from public.grade_evolucoes where chave_tita = 'ag:80001'`)).n === 1, 'Reenvio sem mudança não duplica')
+
+  const n = (await um(`select public.sp_grade_evolucoes_arquivar_tita(jsonb_build_array(jsonb_build_object(
+    'tita_agendamento_id', 80005, 'paciente_id', 9001, 'paciente_nome', 'ANA', 'data', '2026-01-14', 'hora_inicial', '08:00:00',
+    'hora_final', '08:40:00', 'profissional_id', 501, 'profissional_nome', 'Pedro', 'terapia_nome', 'FONO', 'unidade_id', 280,
+    'status_execucao', 'Realizado', 'possui_tratativa', true, 'tratativa_profissional_id', 501,
+    'tratativa_criada_em', '2026-01-14T09:00:00-03:00', 'descricao_evolucao', 'Carga histórica'))) n`)).n
+  ok(n === 1 && (await um(`select data::text d from public.grade_evolucoes where chave_tita = 'ag:80005'`)).d === '2026-01-14',
+     'Carga histórica (mesma função, chamada direta) grava janeiro')
+
+  const vw = (await um(`select count(*)::int n from public.vw_grade_execucao_pulsar`)).n
+  const ags = (await um(`select count(*)::int n from public.grade_agendamentos`)).n
+  ok(vw === ags, 'vw_grade_execucao_pulsar (RP / Central) não enxerga as linhas do arquivo')
+
+  const semSessaoPulsar = await erro(`insert into public.grade_evolucoes (status_execucao, possui_tratativa, descricao_evolucao, origem) values ('Realizado', true, 'x', 'pulsar')`)
+  ok(semSessaoPulsar !== null, 'Evolução do Pulsar sem sessão é recusada (só o arquivo do TiTa fica sem sessão)')
+
+  // Leitura direta da tabela pelo login: a política da 20261016180000 já barra
+  // (permission denied ou nenhuma linha); o arquivo herda a mesma trava.
+  await db.exec(`select set_config('request.jwt.claim.sub', '${SEM_PERM}', false)`)
+  let leRecepcao
+  try { await db.exec(`set role authenticated`); leRecepcao = (await um(`select count(*)::int n from public.grade_evolucoes where agendamento_id is null`)).n } catch { leRecepcao = 'negado' } finally { await db.exec(`reset role`) }
+  ok(leRecepcao === 'negado' || leRecepcao === 0, `Login comum não lê o arquivo direto da tabela (${leRecepcao})`)
+  await db.exec(`set role authenticated`)
+  const execRec = await erro(`select public.sp_grade_evolucoes_arquivar_tita('[]'::jsonb)`)
+  await db.exec(`reset role`)
+  ok(execRec !== null && /permission denied/.test(execRec.message), 'Login comum não executa a função de arquivo')
+}
 
 if (falhas > 0) {
   console.error(`\n❌ ${falhas} falha(s) no teste PGlite`)
