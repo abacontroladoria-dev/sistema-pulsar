@@ -1,16 +1,18 @@
 import { StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
-import { Spacing } from '@/constants/theme';
-import { COR_STATUS, type InfoStatus } from '@/utils/status-sessao';
+import { Radius, Spacing } from '@/constants/theme';
+import { useColorScheme } from '@/hooks/use-color-scheme';
+import { COR_STATUS, SELO_STATUS, type InfoStatus } from '@/utils/status-sessao';
 
-/** Selo de status da sessão, nas cores da Grade web. */
+/** Selo de status da sessão: as cores da Grade web, com o texto sempre escrito. */
 export function SeloStatus({ status }: { status: InfoStatus }) {
-  const cor = COR_STATUS[status.codigo];
+  const escuro = useColorScheme() === 'dark';
+  const { fundo, texto } = SELO_STATUS[status.codigo][escuro ? 'escuro' : 'claro'];
   return (
-    <View style={[styles.selo, { backgroundColor: `${cor}1A`, borderColor: cor }]}>
-      <View style={[styles.ponto, { backgroundColor: cor }]} />
-      <ThemedText type="smallBold" style={{ color: cor }}>
+    <View style={[styles.selo, { backgroundColor: fundo }]}>
+      <View style={[styles.ponto, { backgroundColor: COR_STATUS[status.codigo] }]} />
+      <ThemedText type="label" style={{ color: texto }} numberOfLines={1}>
         {status.rotulo}
       </ThemedText>
     </View>
@@ -22,15 +24,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'flex-start',
-    gap: Spacing.one,
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: Spacing.two,
-    paddingVertical: Spacing.half,
+    flexShrink: 1,
+    gap: Spacing.one + Spacing.half,
+    borderRadius: Radius.full,
+    paddingHorizontal: Spacing.twoHalf - Spacing.half,
+    paddingVertical: Spacing.one,
   },
   ponto: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 6,
+    height: 6,
+    borderRadius: Radius.full,
   },
 });

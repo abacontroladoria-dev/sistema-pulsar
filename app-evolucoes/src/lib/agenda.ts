@@ -52,6 +52,11 @@ export type ProfissionalApp = { id: number; nome: string };
  */
 export function mensagemErroBanco(erro: unknown): string {
   const e = erro as Partial<PostgrestError> | null;
+  // 42501 também é o "permission denied for function" do próprio Postgres (sem
+  // GRANT), em inglês: esse não vai para a tela.
+  if (e?.code === '42501' && /^permission denied/i.test(e.message ?? '')) {
+    return 'Sem permissão para ver isto. Saia e entre de novo; se continuar, fale com a coordenação.';
+  }
   if (e?.code && ['42501', '22023', 'P0002'].includes(e.code) && e.message) return e.message;
   return 'Não foi possível concluir. Verifique a internet e tente de novo.';
 }

@@ -1,8 +1,15 @@
+import { Geist_400Regular } from '@expo-google-fonts/geist/400Regular';
+import { Geist_500Medium } from '@expo-google-fonts/geist/500Medium';
+import { Geist_600SemiBold } from '@expo-google-fonts/geist/600SemiBold';
+import { Geist_700Bold } from '@expo-google-fonts/geist/700Bold';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { DarkTheme, DefaultTheme, SplashScreen, Stack, ThemeProvider } from 'expo-router';
+import { useFonts } from 'expo-font';
+import { DarkTheme, DefaultTheme, SplashScreen, Stack, ThemeProvider, type Theme } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
-import { useColorScheme } from 'react-native';
-
+import { Colors, Fonte } from '@/constants/theme';
+import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useOpcoesCabecalho } from '@/hooks/use-opcoes-cabecalho';
 import { SessionProvider, useSessao } from '@/providers/session-provider';
 
 SplashScreen.preventAutoHideAsync();
@@ -13,12 +20,36 @@ const queryClient = new QueryClient({
   },
 });
 
+/** Cabeçalhos e fundo da navegação nas cores e na fonte do Pulsar. */
+function temaNavegacao(escuro: boolean): Theme {
+  const base = escuro ? DarkTheme : DefaultTheme;
+  const c = Colors[escuro ? 'dark' : 'light'];
+  return {
+    ...base,
+    colors: {
+      ...base.colors,
+      primary: c.accent,
+      background: c.background,
+      card: c.background,
+      text: c.text,
+      border: c.border,
+    },
+    fonts: {
+      regular: { fontFamily: Fonte.regular, fontWeight: 'normal' },
+      medium: { fontFamily: Fonte.medium, fontWeight: 'normal' },
+      bold: { fontFamily: Fonte.semibold, fontWeight: 'normal' },
+      heavy: { fontFamily: Fonte.bold, fontWeight: 'normal' },
+    },
+  };
+}
+
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
+  const escuro = useColorScheme() === 'dark';
   return (
     <QueryClientProvider client={queryClient}>
       <SessionProvider>
-        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <ThemeProvider value={temaNavegacao(escuro)}>
+          <StatusBar style={escuro ? 'light' : 'dark'} />
           <RootNavigator />
         </ThemeProvider>
       </SessionProvider>
@@ -34,13 +65,16 @@ export default function RootLayout() {
  */
 function RootNavigator() {
   const { session, segundoFatorPendente, perfil, pronto } = useSessao();
+  const cabecalho = useOpcoesCabecalho();
+  // Fonte que falha ao carregar não segura o app: cai na fonte do sistema.
+  const [fontesProntas, erroFontes] = useFonts({ Geist_400Regular, Geist_500Medium, Geist_600SemiBold, Geist_700Bold });
 
   // Só a PRIMEIRA resolução segura o app no splash (sem piscar a tela de login
   // para quem já estava logado). Depois disso o Stack fica montado: no login
   // seguinte, enquanto o perfil chega, `index` mostra o carregando — desmontar o
   // Stack ali deixava a tela em branco e perdia a navegação.
   const [hidratado, setHidratado] = useState(false);
-  if (pronto && !hidratado) setHidratado(true);
+  if (pronto && (fontesProntas || erroFontes) && !hidratado) setHidratado(true);
 
   useEffect(() => {
     if (hidratado) SplashScreen.hide();
@@ -56,7 +90,7 @@ function RootNavigator() {
         <Stack.Screen name="login" />
         <Stack.Screen
           name="verificar-codigo"
-          options={{ headerShown: true, title: 'Código de acesso', headerBackTitle: 'Voltar' }}
+          options={{ ...cabecalho, headerShown: true, title: 'Código de acesso' }}
         />
       </Stack.Protected>
 

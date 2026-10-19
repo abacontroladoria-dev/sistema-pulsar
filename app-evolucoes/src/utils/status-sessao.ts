@@ -31,19 +31,16 @@ export function somarDias(dataIso: string, dias: number): string {
   return dt.toISOString().slice(0, 10);
 }
 
-const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+const DIAS_SEMANA_LONGOS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 
-/** "AAAA-MM-DD" → "Seg, 19/10". */
-export function formatarDiaCurto(dataIso: string): string {
+/** "AAAA-MM-DD" → { semana: "Segunda", data: "19 de outubro" }. */
+export function formatarDiaLongo(dataIso: string): { semana: string; data: string } {
   const [a, m, d] = dataIso.split('-').map(Number);
-  const semana = DIAS_SEMANA[new Date(Date.UTC(a, m - 1, d)).getUTCDay()];
-  return `${semana}, ${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}`;
-}
-
-/** "AAAA-MM-DD" → "19/10/2026". */
-export function formatarData(dataIso: string): string {
-  const [a, m, d] = dataIso.split('-');
-  return d && m && a ? `${d}/${m}/${a}` : dataIso;
+  return {
+    semana: DIAS_SEMANA_LONGOS[new Date(Date.UTC(a, m - 1, d)).getUTCDay()],
+    data: `${d} de ${MESES[m - 1]}`,
+  };
 }
 
 export function horario(sessao: Pick<SessaoAgenda, 'hora_inicio' | 'hora_fim'>): string {
@@ -71,12 +68,12 @@ export function statusDaSessao(sessao: SessaoAgenda, ehAdmin: boolean, agora: Da
       ? {
           codigo: 'inconsistencia',
           rotulo: 'Inconsistência',
-          descricaoCurta: 'Recepção marcou falta, mas consta evolução registrada',
+          descricaoCurta: 'A recepção marcou falta, mas há evolução registrada.',
         }
       : {
           codigo: 'cancelado',
           rotulo: 'Falta informada pela recepção',
-          descricaoCurta: 'A recepção registrou falta neste atendimento',
+          descricaoCurta: 'A recepção registrou falta nesta sessão.',
         };
   }
 
@@ -95,7 +92,7 @@ export function statusDaSessao(sessao: SessaoAgenda, ehAdmin: boolean, agora: Da
       return {
         codigo: 'cancelado',
         rotulo: 'Falta informada pela recepção',
-        descricaoCurta: 'A recepção registrou falta neste atendimento',
+        descricaoCurta: 'A recepção registrou falta nesta sessão.',
       };
     }
     const tipo =
@@ -111,22 +108,35 @@ export function statusDaSessao(sessao: SessaoAgenda, ehAdmin: boolean, agora: Da
     return {
       codigo: 'sem_registro_passado',
       rotulo: 'Sem registro',
-      descricaoCurta: 'Atendimento já passou e está sem evolução ou falta registrada',
+      descricaoCurta: 'Falta registrar a evolução ou a falta.',
     };
   }
 
   return {
     codigo: 'futuro',
-    rotulo: 'Agendamento futuro',
-    descricaoCurta: 'Atendimento agendado (ainda não iniciado)',
+    rotulo: 'Agendada',
+    descricaoCurta: `Começa às ${(sessao.hora_inicio || '').slice(0, 5)}.`,
   };
 }
 
-/** Cores da Grade web (sky-600, amber-500, emerald-600, rose-600, violet-600). */
+/** Cores da Grade web (sky-600, amber-500, emerald-600, rose-600, violet-600): o ponto do selo. */
 export const COR_STATUS: Record<CodigoStatus, string> = {
   futuro: '#0284C7',
   sem_registro_passado: '#F59E0B',
   evoluido: '#059669',
   cancelado: '#E11D48',
   inconsistencia: '#7C3AED',
+};
+
+/**
+ * Selo no padrão do Pulsar (DESIGN.md, correção de contraste de 19/08): fundo
+ * -100 e texto -700 (-800 no âmbar, que no -700 fica abaixo de 4,5:1 nesse
+ * fundo); no escuro, o tom translúcido e texto -300.
+ */
+export const SELO_STATUS: Record<CodigoStatus, { claro: { fundo: string; texto: string }; escuro: { fundo: string; texto: string } }> = {
+  futuro: { claro: { fundo: '#e0f2fe', texto: '#0369a1' }, escuro: { fundo: 'rgba(2, 132, 199, 0.18)', texto: '#7dd3fc' } },
+  sem_registro_passado: { claro: { fundo: '#fef3c7', texto: '#92400e' }, escuro: { fundo: 'rgba(245, 158, 11, 0.16)', texto: '#fcd34d' } },
+  evoluido: { claro: { fundo: '#d1fae5', texto: '#047857' }, escuro: { fundo: 'rgba(5, 150, 105, 0.18)', texto: '#6ee7b7' } },
+  cancelado: { claro: { fundo: '#ffe4e6', texto: '#be123c' }, escuro: { fundo: 'rgba(225, 29, 72, 0.18)', texto: '#fda4af' } },
+  inconsistencia: { claro: { fundo: '#ede9fe', texto: '#6d28d9' }, escuro: { fundo: 'rgba(124, 58, 237, 0.2)', texto: '#c4b5fd' } },
 };

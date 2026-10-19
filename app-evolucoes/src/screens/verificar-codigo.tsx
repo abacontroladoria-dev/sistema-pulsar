@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
 
+import { Aviso } from '@/components/aviso';
 import { Botao } from '@/components/botao';
 import { CampoTexto } from '@/components/campo-texto';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { MaxContentWidth, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { Fonte, MaxContentWidth, Spacing } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
 import { mensagemErroAuth } from '@/utils/mensagem-erro-auth';
 import { formatarCelular } from '@/utils/telefone';
@@ -18,7 +18,6 @@ type VerificarCodigoProps = {
 const TAMANHO_CODIGO = 6;
 
 export function VerificarCodigo({ telefone }: VerificarCodigoProps) {
-  const theme = useTheme();
   const [codigo, setCodigo] = useState('');
   const [verificando, setVerificando] = useState(false);
   const [reenviando, setReenviando] = useState(false);
@@ -90,12 +89,8 @@ export function VerificarCodigo({ telefone }: VerificarCodigoProps) {
             />
             <Botao titulo="Não recebi: enviar por SMS" variante="texto" carregando={reenviando} onPress={reenviar} />
 
-            {erro && (
-              <ThemedText accessibilityRole="alert" style={{ color: theme.danger }}>
-                {erro}
-              </ThemedText>
-            )}
-            {aviso && !erro && <ThemedText themeColor="textSecondary">{aviso}</ThemedText>}
+            {erro && <Aviso tom="erro" texto={erro} />}
+            {aviso && !erro && <Aviso tom="info" icone="ok" texto={aviso} />}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -117,8 +112,10 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
   },
   codigo: {
+    fontFamily: Fonte.semibold,
     fontSize: 24,
     letterSpacing: 8,
     textAlign: 'center',
+    fontVariant: ['tabular-nums'],
   },
 });

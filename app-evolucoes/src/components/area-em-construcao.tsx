@@ -1,5 +1,6 @@
 import { ScrollView, StyleSheet, View } from 'react-native';
 
+import { Cartao } from '@/components/cartao';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
@@ -16,10 +17,12 @@ export function AreaEmConstrucao({ mensagem }: AreaEmConstrucaoProps) {
     <ThemedView style={styles.tela}>
       <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.rolagem}>
         <View style={styles.conteudo}>
-          {perfil?.nome ? <ThemedText type="smallBold">Olá, {perfil.nome}</ThemedText> : null}
-          <ThemedView type="backgroundElement" style={styles.cartao}>
-            <ThemedText themeColor="textSecondary">{mensagem}</ThemedText>
-          </ThemedView>
+          {perfil?.nome ? <ThemedText type="heading">Olá, {perfil.nome}</ThemedText> : null}
+          <Cartao>
+            <ThemedText type="small" themeColor="textSecondary">
+              {mensagem}
+            </ThemedText>
+          </Cartao>
         </View>
       </ScrollView>
     </ThemedView>
@@ -38,9 +41,5 @@ const styles = StyleSheet.create({
     maxWidth: MaxContentWidth,
     alignSelf: 'center',
     gap: Spacing.three,
-  },
-  cartao: {
-    padding: Spacing.three,
-    borderRadius: Spacing.three,
   },
 });

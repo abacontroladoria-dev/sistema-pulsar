@@ -16,6 +16,7 @@ export default function Index() {
   if (erroPerfil) {
     return (
       <EstadoTela
+        icone="aviso"
         titulo="Não foi possível carregar seu acesso"
         mensagem="Verifique a internet e tente de novo."
         acoes={
@@ -31,6 +32,7 @@ export default function Index() {
   if (perfil === null) {
     return (
       <EstadoTela
+        icone="cadeado"
         titulo="Sem acesso ao app"
         mensagem="Sua conta não está liberada para o app. Fale com a clínica."
         acoes={<Botao titulo="Sair" variante="secundario" onPress={sair} />}
