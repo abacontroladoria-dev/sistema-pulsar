@@ -15,27 +15,23 @@
 // não deste módulo: não há nada determinístico para replicar aqui além do
 // que a instrução já cobre.
 //
-// IDENTIFICADOR DE ANÚNCIO (referral/ctwa_clid da Meta, UTM do Google):
-// manda sobre a frase quando disponível (Regra 5). Aceito como parâmetro
-// aqui, mas hoje NENHUM provider deste módulo o extrai —
-// providers/meta-waba.normalizar.ts não lê referral/ctwa_clid do payload do
-// webhook. A pergunta que a aba Leia-me deixa em aberto ("a ferramenta
-// recebe o identificador do anúncio junto com a primeira mensagem?") segue
-// sem resposta no código: até o normalizador do provider passar a extrair
-// esse dado, `identificadorAnuncio` chega sempre `null` na prática, e o
-// matcher decide só pela frase.
+// IDENTIFICADOR DE ANÚNCIO (Regra 5: manda sobre a frase quando existe). Desde
+// 19/10 os dois normalizadores extraem o clique do anúncio — Meta pelo
+// `referral`, Evolution pelo `contextInfo.externalAdReply` — e ele chega aqui
+// como `AnuncioDaMensagem`. Anúncio PAGO fixa a ORIGEM em meta_ads, qualquer
+// que seja o texto; a campanha continua vindo da frase cadastrada quando ela
+// casa. O nome da campanha da Meta (Marketing API) chega depois, pelo
+// catálogo (meta/catalogo-anuncios.ts), que preenche `campanha` se ainda
+// estiver vazia.
 // ============================================================================
+
+import type { AnuncioDaMensagem, TagDefinition } from '../types/central.types'
 
 export interface FraseCadastrada {
   origemTag:       string
   fraseExata:      string | null
   campanha:        string
   prontaParaMatch: boolean
-}
-
-export interface IdentificadorAnuncio {
-  tipo:  'meta_referral' | 'meta_ctwa_clid' | 'google_utm'
-  valor: string
 }
 
 export interface ResultadoMatchCampanha {
@@ -53,18 +49,7 @@ export interface ResultadoMatchCampanha {
 export function casarPrimeiraMensagem(
   textoPrimeiraMensagem:  string,
   frasesCadastradas:      readonly FraseCadastrada[],
-  identificadorAnuncio?:  IdentificadorAnuncio | null,
 ): ResultadoMatchCampanha | null {
-  // Identificador de anúncio manda sobre a frase — mas sem nenhum provider
-  // extraindo isso hoje (ver comentário do topo), este ramo nunca é
-  // exercitado em produção. Fica pronto para quando o normalizador passar a
-  // repassar o dado: por ora, qualquer chamador que já tenha o identificador
-  // deve resolver ORIGEM/campanha por conta própria antes de chegar aqui —
-  // este módulo não tem tabela de UTM→campanha para consultar.
-  if (identificadorAnuncio) {
-    return null
-  }
-
   const texto = textoPrimeiraMensagem.trim()
   if (texto === '') return null
 
@@ -111,12 +96,32 @@ export function origemSemCampanha(textoPrimeiraMensagem: string): OrigemSemCampa
   return 'meta_ads'
 }
 
-// Frase cadastrada primeiro (Regra 5, traz a campanha); sem ela, a regra acima.
+// Anúncio pago primeiro (Regra 5: o identificador manda); depois a frase
+// cadastrada (traz a campanha); sem as duas, a regra acima.
 export function resolverOrigem(
   textoPrimeiraMensagem: string,
   frasesCadastradas:     readonly FraseCadastrada[],
+  anuncio?:              AnuncioDaMensagem | null,
 ): { origemTag: string; campanha: string | null } {
   const casada = casarPrimeiraMensagem(textoPrimeiraMensagem, frasesCadastradas)
+  if (anuncio?.pago) return { origemTag: 'meta_ads', campanha: casada?.campanha ?? null }
   if (casada) return casada
   return { origemTag: origemSemCampanha(textoPrimeiraMensagem), campanha: null }
+}
+
+// A conversa já tem alguma tag do grupo ORIGEM (posta pelo sistema, pela Maia
+// ou pela atendente)? Quem decide a origem só age quando não tem.
+export function temOrigem(tags: readonly string[] | null, porGrupo: Map<string, TagDefinition[]>): boolean {
+  const doGrupo = new Set((porGrupo.get('origem') ?? []).map(t => t.key))
+  return (tags ?? []).some(t => doGrupo.has(t))
+}
+
+// Anúncio pago pode decidir a ORIGEM? Sim quando não há nenhuma, ou quando a
+// que há é contato_direto — o "nenhum sinal" da regra de texto. Até 19/10 todo
+// lead de anúncio da Evolution caía nela (12 de 12 em 14 dias), porque o texto
+// pré-preenchido do anúncio nem sempre começa com os prefixos da Regra 5b.
+// Origem explícita (site, indicação, a escolhida pela atendente) não é tocada.
+export function origemAceitaAnuncio(tags: readonly string[] | null, porGrupo: Map<string, TagDefinition[]>): boolean {
+  const doGrupo = new Set((porGrupo.get('origem') ?? []).map(t => t.key))
+  return (tags ?? []).filter(t => doGrupo.has(t)).every(t => t === 'contato_direto')
 }

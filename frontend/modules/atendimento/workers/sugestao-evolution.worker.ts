@@ -8,7 +8,7 @@ import { AppointmentRepository } from '../repositories/appointment.repository'
 import { AuditRepository } from '../repositories/audit.repository'
 import { TagDefinitionRepository } from '../repositories/tag-definition.repository'
 import { CampaignPhraseRepository } from '../repositories/campaign-phrase.repository'
-import { resolverOrigem, type FraseCadastrada } from '../agente/origem-campanha'
+import { resolverOrigem, temOrigem, type FraseCadastrada } from '../agente/origem-campanha'
 import { TAG_TRABALHE_CONOSCO, pareceTrabalheConosco } from '../agente/tipo-contato'
 import { montarContexto, LIMITE_HISTORICO } from '../agente/contexto'
 import { classificarConversa, falasDoHistorico } from '../agente/classificacao'
@@ -20,7 +20,7 @@ import { CHAVE_MAIA_TRANSFERIU, maiaTransferiu } from '../agente/caixas'
 import { TEXTO_ESCALADA_FALLBACK, TEXTO_SEM_AGENDAMENTO_NO_NUMERO, prometeAgendamento } from '../agente/entrega'
 import { PacienteRepository } from '../repositories/paciente.repository'
 import { SessoesTitaRepository } from '../repositories/sessoes-tita.repository'
-import type { TagDefinition } from '../types/central.types'
+import type { AnuncioDaConversa, TagDefinition } from '../types/central.types'
 
 // ============================================================================
 // Maia sugere — números Evolution com a chave ligada
@@ -107,6 +107,7 @@ interface ConversaCandidata {
   contact_id: string
   ai_context: Record<string, unknown> | null
   tags: string[] | null
+  anuncio: AnuncioDaConversa | null
 }
 
 export async function processarSugestoesEvolution(
@@ -131,7 +132,7 @@ export async function processarSugestoesEvolution(
   const agora = Date.now()
   const { data: conversas, error: e2 } = await db
     .from('conversations')
-    .select('id, inbox_id, contact_id, ai_context, tags')
+    .select('id, inbox_id, contact_id, ai_context, tags, anuncio')
     .eq('organization_id', orgId)
     .in('inbox_id', inboxIds)
     .gte('last_message_at', new Date(agora - JANELA_MS).toISOString())
@@ -220,7 +221,7 @@ export async function processarSugestoesEvolution(
           const primeira = [...historico].reverse().find(m => m.direction === 'inbound' && m.message_type !== 'reaction')
           if (primeira?.body?.trim()) {
             frases ??= await new CampaignPhraseRepository(supabase).listar(orgId)
-            await conversationService.aplicarOrigemInicial(conv.id, resolverOrigem(primeira.body, frases), porGrupoTags)
+            await conversationService.aplicarOrigemInicial(conv.id, resolverOrigem(primeira.body, frases, conv.anuncio), porGrupoTags)
           }
         } catch (err) {
           console.warn('[sugestao evolution] ORIGEM não aplicada; seguindo', { conversationId: conv.id, err })
@@ -505,11 +506,6 @@ async function pacientesDoContato(
     console.warn('[sugestao evolution] vínculo de paciente indisponível; seguindo com o turno', err)
     return []
   }
-}
-
-function temOrigem(tags: string[] | null, porGrupo: Map<string, TagDefinition[]>): boolean {
-  const doGrupo = new Set((porGrupo.get('origem') ?? []).map(t => t.key))
-  return (tags ?? []).some(t => doGrupo.has(t))
 }
 
 async function humanoAssumiu(supabase: SupabaseClient, conversationId: string): Promise<boolean> {
