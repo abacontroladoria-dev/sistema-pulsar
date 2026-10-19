@@ -77,9 +77,12 @@ Produção conferida (só leitura): `profissional_id` existe; 0 inativos com
 
 ## Fase 1 — papel `terapeuta`
 
-**Escrita em 19/10/2026, ensaiada em produção (desfeito), NÃO aplicada:** migration
-`20261019200000_papel_terapeuta_app.sql` + snippets `_APLICAR`/`_REVERTER` + teste
-`papel_terapeuta_app.pglite.mjs` (15/15). Decisões na escrita:
+**APLICADA EM PRODUÇÃO em 19/10/2026** (ensaio desfeito antes; conferência 6/6):
+migration `20261019200000_papel_terapeuta_app.sql`, snippets `_APLICAR`/`_REVERTER`
+e teste `papel_terapeuta_app.pglite.mjs` (15/15). Foi aplicada como 180000, que
+colidia com `20261019180000_seguranca_pacientes_rpcs` (de outra frente, na main);
+a linha do livro de produção foi renumerada para 200000 antes de a da segurança
+ser aplicada. Frontend na main (`f28aeb44`), aguardando redeploy. Decisões na escrita:
 - Grupo "Terapeuta (App)" (o "Terapêutico" já existe e é outro papel). Prioridade
   abaixo de todo setor: quem está num setor fica com o setor.
 - **Sem CHECK "terapeuta exige profissional_id"**: o papel chega pelo gatilho do
