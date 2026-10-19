@@ -46,8 +46,10 @@ export function Sessao({ id }: { id: string }) {
 
   const ehGestao = perfil?.tipo === 'gestao';
   const ehAdmin = ehGestao && !!perfil?.podeEvoluir;
-  // Detalhe (texto, autoria) só onde a pessoa tem alcance: quem atende, ou a gestão.
-  const podeVerDetalhe = !!base && (base.efetivo || ehGestao);
+  // Detalhe (texto, autoria): a agenda só traz sessões da pessoa (agendada ou
+  // cobrindo), e o agendado lê também a da sessão coberta — o paciente é dele.
+  // O banco filtra o texto (grade_detalhe_evolucao); diretoria vem sem ele.
+  const podeVerDetalhe = !!base;
 
   const detalhe = useQuery({
     queryKey: ['detalhe', id],
@@ -127,7 +129,7 @@ export function Sessao({ id }: { id: string }) {
 
             {!sessao.efetivo && !ehGestao && (
               <ThemedText themeColor="textSecondary">
-                Esta sessão está com {sessao.cobertura_profissional_nome ?? 'outro profissional'}: o registro é dele.
+                {sessao.cobertura_profissional_nome ?? 'Outro profissional'} pegou esta sessão: só quem cobre pode evoluir.
               </ThemedText>
             )}
 

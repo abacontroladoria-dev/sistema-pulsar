@@ -115,16 +115,34 @@ e teste `app_agenda_cobertura.pglite.mjs` (36/36). Como ficou:
 
 - Regras do terapeuta em `sp_grade_exigir_evoluir` (porta das 3 RPCs que gravam)
   e no gatilho `trg_grade_evolucoes_regras_terapeuta` — as RPCs grandes não foram
-  reescritas. Profissional **efetivo** = o da cobertura, senão o agendado; a
-  sessão coberta sai do alcance do agendado original.
+  reescritas. Profissional **efetivo** = o da cobertura, senão o agendado. A
+  sessão coberta continua na agenda do agendado ("Coberta por X"), mas só quem
+  cobre evolui.
 - `app_agenda(p_de, p_ate, p_profissional_id)` (até 31 dias; coluna `efetivo`) e
   `app_agenda_profissionais()` (só gestão). Ensaio: 7 dias do profissional mais
   cheio = 62 sessões em ~0,2 s.
 - App: agenda do dia (setas de dia), sessão com "Evoluir" e "Marcar falta",
   escolha de profissional para a gestão. Status com a mesma regra do web.
-- **2b pendente:** tela na Grade web para a equipe definir/remover cobertura
-  (`grade_definir_cobertura` / `grade_remover_cobertura` já existem). Até lá a
-  cobertura só entra por SQL.
+
+**2b escrita em 19/10/2026, ensaiada em produção (desfeito), NÃO aplicada:**
+migration `20261019220000_app_cobertura_pela_central.sql`, snippets
+`_APLICAR`/`_REVERTER` e teste `app_cobertura_pela_central.pglite.mjs` (29/29).
+Decisões do usuário (19/10/2026):
+
+- **A cobertura vem da Central de Terapeutas** (não de uma tela nova na Grade):
+  o substituto marcado lá é quem evolui. Gatilho em `controle_terapeutico`
+  grava/remove `grade_coberturas` (coluna nova `origem`: `grade` | `central`)
+  pela sessão da Grade com o mesmo `tita_agendamento_id`; substituto achado por
+  `profissionais.tita_profissional_id`. Sessão já registrada não muda; erro no
+  gatilho vira WARNING e não derruba a Central. Desde 12/10 as substituições
+  casaram 1:1 com a Grade (32/32); carga inicial = 9 sessões sem registro.
+- **O agendado lê a evolução da sessão coberta** (o paciente é dele):
+  `sp_grade_pode_ler_evolucao` em `grade_detalhe_evolucao`. Gravar continua só
+  com quem cobre.
+- Atenção: marcação errada na Central bloqueia o agendado (em 16/10 o dia do
+  Rafael foi marcado como substituído pela Ingrid e ele mesmo evoluiu as 11
+  sessões no TiTa). Corrigir = desmarcar na Central.
+- `grade_definir_cobertura` (manual) segue existindo, sem tela.
 
 - Tabela nova `grade_coberturas (agendamento_id uuid PK → grade_agendamentos,
   profissional_id bigint, criado_por uuid, criado_em, removido_em)`, gravada pela
