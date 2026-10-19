@@ -56,6 +56,8 @@ export function SecaoEvolucaoSessao({
   const [descricao, setDescricao] = useState("")
   const [tipoFalta, setTipoFalta] = useState<"paciente" | "terapeuta">("paciente")
   const [salvando, setSalvando] = useState(false)
+  // Em edição de uma evolução feita em substituição, mantém quem substituiu (senão o banco regrava como o agendado).
+  const [substitutoId, setSubstitutoId] = useState<number | null>(null)
 
   useEffect(() => {
     setAcessoAtual(acesso)
@@ -66,6 +68,7 @@ export function SecaoEvolucaoSessao({
     setCarregando(true)
     setEditando(false)
     setModo("escolha")
+    setSubstitutoId(null)
     Promise.all([
       buscarDetalheEvolucao(a.id).catch(() => null),
       meuAcessoEvolucao().catch(() => acesso),
@@ -126,7 +129,7 @@ export function SecaoEvolucaoSessao({
     }
     setSalvando(true)
     try {
-      const novo = await registrarEvolucao(a.id, descricao.trim())
+      const novo = await registrarEvolucao(a.id, descricao.trim(), substitutoId)
       setDetalhe(novo)
       setEditando(false)
       setModo("escolha")
@@ -174,7 +177,6 @@ export function SecaoEvolucaoSessao({
       const novo = await limparEvolucao(a.id)
       setDetalhe(novo)
       setDescricao("")
-      setHouveSubstituicao(false)
       setSubstitutoId(null)
       setEditando(false)
       setModo("escolha")
@@ -191,7 +193,6 @@ export function SecaoEvolucaoSessao({
     setEditando(true)
     if (detalhe?.possui_tratativa) {
       setDescricao(detalhe.descricao_evolucao ?? "")
-      setHouveSubstituicao(Boolean(detalhe.substituicao))
       const subId =
         detalhe.tratativa_profissional_id ??
         (detalhe.substituicao && detalhe.tratativa_profissional_nome
@@ -319,7 +320,9 @@ export function SecaoEvolucaoSessao({
           <div className="rounded-lg border border-border bg-card p-3 text-sm leading-relaxed whitespace-pre-wrap text-foreground">
             {detalhe.descricao_evolucao || (
               <span className="italic text-muted-foreground">
-                Evolução registrada sem texto descritivo detalhado.
+                {podeEvoluirEfetivo
+                  ? "Evolução registrada sem texto descritivo detalhado."
+                  : "O texto da evolução só pode ser lido por administradores."}
               </span>
             )}
           </div>
