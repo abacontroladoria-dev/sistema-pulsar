@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { DarkTheme, DefaultTheme, SplashScreen, Stack, ThemeProvider } from 'expo-router';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useColorScheme } from 'react-native';
 
 import { SessionProvider, useSessao } from '@/providers/session-provider';
@@ -33,15 +33,20 @@ export default function RootLayout() {
  * que redireciona para a área certa.
  */
 function RootNavigator() {
-  const { session, perfil, pronto } = useSessao();
+  const { session, segundoFatorPendente, perfil, pronto } = useSessao();
+
+  // Só a PRIMEIRA resolução segura o app no splash (sem piscar a tela de login
+  // para quem já estava logado). Depois disso o Stack fica montado: no login
+  // seguinte, enquanto o perfil chega, `index` mostra o carregando — desmontar o
+  // Stack ali deixava a tela em branco e perdia a navegação.
+  const [hidratado, setHidratado] = useState(false);
+  if (pronto && !hidratado) setHidratado(true);
 
   useEffect(() => {
-    // Splash só sai com sessão e perfil resolvidos: sem piscar a tela de login
-    // para quem já estava logado.
-    if (pronto) SplashScreen.hide();
-  }, [pronto]);
+    if (hidratado) SplashScreen.hide();
+  }, [hidratado]);
 
-  if (!pronto) return null;
+  if (!hidratado) return null;
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
@@ -53,6 +58,10 @@ function RootNavigator() {
           name="verificar-codigo"
           options={{ headerShown: true, title: 'Código de acesso', headerBackTitle: 'Voltar' }}
         />
+      </Stack.Protected>
+
+      <Stack.Protected guard={segundoFatorPendente}>
+        <Stack.Screen name="segundo-fator" />
       </Stack.Protected>
 
       <Stack.Protected guard={perfil?.tipo === 'terapeuta' || perfil?.tipo === 'gestao'}>

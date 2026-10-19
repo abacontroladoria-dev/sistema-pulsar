@@ -19,7 +19,7 @@ export function Login() {
   const theme = useTheme();
   const [modo, setModo] = useState<Modo>('responsavel');
   const [celular, setCelular] = useState('');
-  const [email, setEmail] = useState('');
+  const [usuarioOuEmail, setUsuarioOuEmail] = useState('');
   const [senha, setSenha] = useState('');
   const [enviando, setEnviando] = useState<'codigo' | 'senha' | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -54,15 +54,31 @@ export function Login() {
 
   const entrarComSenha = async () => {
     if (enviando) return;
-    if (!email.trim() || !senha) {
-      setErro('Preencha e-mail e senha.');
+    const identificacao = usuarioOuEmail.trim();
+    if (!identificacao || !senha) {
+      setErro('Preencha usuário (ou e-mail) e senha.');
       return;
     }
     setErro(null);
     setEnviando('senha');
-    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password: senha });
+
+    // Igual ao login do Pulsar web: sem "@" é nome de usuário, traduzido para o
+    // e-mail pela RPC email_por_username (roda antes do login, como anon).
+    let email = identificacao;
+    if (!identificacao.includes('@')) {
+      const { data, error } = await supabase.rpc('email_por_username', { p_username: identificacao });
+      if (error || typeof data !== 'string' || !data) {
+        setEnviando(null);
+        setErro(error ? mensagemErroAuth(error) : 'Usuário não encontrado. Confira e tente de novo.');
+        return;
+      }
+      email = data;
+    }
+
+    const { error } = await supabase.auth.signInWithPassword({ email, password: senha });
     setEnviando(null);
-    // Sucesso não navega daqui: a sessão nova troca as rotas protegidas no _layout.
+    // Sucesso não navega daqui: a sessão nova troca as rotas protegidas no _layout
+    // (com app autenticador, passa antes pela tela do código).
     if (error) setErro(mensagemErroAuth(error));
   };
 
@@ -116,13 +132,13 @@ export function Login() {
                 <View style={styles.formulario}>
                   <ThemedText themeColor="textSecondary">Use o mesmo login do Pulsar.</ThemedText>
                   <CampoTexto
-                    rotulo="E-mail"
-                    value={email}
-                    onChangeText={setEmail}
+                    rotulo="Usuário ou e-mail"
+                    value={usuarioOuEmail}
+                    onChangeText={setUsuarioOuEmail}
                     keyboardType="email-address"
                     autoCapitalize="none"
                     autoCorrect={false}
-                    autoComplete="email"
+                    autoComplete="username"
                     textContentType="username"
                   />
                   <CampoTexto

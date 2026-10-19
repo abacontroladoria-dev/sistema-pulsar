@@ -6,9 +6,10 @@ import { useSessao } from '@/providers/session-provider';
 
 /** Porta de entrada: manda cada pessoa para a área do seu papel. */
 export default function Index() {
-  const { session, perfil, erroPerfil, tentarPerfilDeNovo, sair } = useSessao();
+  const { session, segundoFatorPendente, perfil, erroPerfil, tentarPerfilDeNovo, sair } = useSessao();
 
   if (!session) return <Redirect href="/login" />;
+  if (segundoFatorPendente) return <Redirect href="/segundo-fator" />;
   if (perfil?.tipo === 'terapeuta' || perfil?.tipo === 'gestao') return <Redirect href="/agenda" />;
   if (perfil?.tipo === 'responsavel') return <Redirect href="/responsavel" />;
 

@@ -4,10 +4,16 @@ import { createContext, use, useEffect, useState, type PropsWithChildren } from 
 
 import { buscarPerfil, type Perfil } from '@/lib/perfil';
 import { supabase } from '@/lib/supabase';
+import { precisaSegundoFator } from '@/utils/segundo-fator';
 
 type EstadoSessao = {
   /** `undefined` enquanto a sessão guardada no aparelho ainda está sendo lida. */
   session: Session | null | undefined;
+  /**
+   * Senha certa, mas a conta tem app autenticador e o código ainda não foi
+   * digitado (sessão aal1). Nada do app abre até o código, como no web.
+   */
+  segundoFatorPendente: boolean;
   /** `undefined` enquanto carrega (ou sem sessão); `null` = conta sem acesso ao app. */
   perfil: Perfil | null | undefined;
   /** Falha ao descobrir o perfil (rede, RPC). Distinto de "sem acesso". */
@@ -38,7 +44,9 @@ export function SessionProvider({ children }: PropsWithChildren) {
     return () => data.subscription.unsubscribe();
   }, []);
 
-  const userId = session?.user.id;
+  const segundoFatorPendente = !!session && precisaSegundoFator(session);
+  // Perfil só depois do segundo fator: antes dele a sessão ainda não vale.
+  const userId = session && !segundoFatorPendente ? session.user.id : undefined;
   const consultaPerfil = useQuery({
     queryKey: ['perfil', userId],
     queryFn: buscarPerfil,
@@ -48,7 +56,8 @@ export function SessionProvider({ children }: PropsWithChildren) {
 
   const perfil = userId ? consultaPerfil.data : undefined;
   const erroPerfil = userId && perfil === undefined ? consultaPerfil.error : null;
-  const pronto = session !== undefined && (!session || perfil !== undefined || !!erroPerfil);
+  const pronto =
+    session !== undefined && (!session || segundoFatorPendente || perfil !== undefined || !!erroPerfil);
 
   const sair = async () => {
     await supabase.auth.signOut();
@@ -60,6 +69,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
     <SessaoContext
       value={{
         session,
+        segundoFatorPendente,
         perfil,
         erroPerfil,
         pronto,
