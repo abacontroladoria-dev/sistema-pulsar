@@ -18,6 +18,7 @@ import {
   Database,
   DoorOpen,
   FileClock,
+  FileOutput,
   FileSearch,
   FileSignature,
   Gauge,
@@ -115,6 +116,7 @@ export const MENU_ITENS: MenuItemDef[] = [
   { codigo: 'auditoria_assim', label: 'Conferência ASSIM', grupo: G.autorizacao.nome, path: '/auditoria-assim?tab=auditoria', icon: ClipboardList },
   { codigo: 'reconciliacao_assim', label: 'Reconciliação ASSIM', grupo: G.autorizacao.nome, path: '/auditoria-assim?tab=reconciliacao', icon: Link2 },
   { codigo: 'conferencia_guias', label: 'Conferência de Guias', grupo: G.autorizacao.nome, path: '/conferencia-guias', icon: ClipboardPenLine },
+  { codigo: 'exportar_evolucoes', label: 'Exportar Evoluções', grupo: G.autorizacao.nome, path: '/exportar-evolucoes', icon: FileOutput },
 
   { codigo: 'insumos', label: 'Solicitações', grupo: G.suprimentos.nome, path: '/insumos', icon: Package },
 
