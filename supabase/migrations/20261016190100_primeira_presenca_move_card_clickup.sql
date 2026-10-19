@@ -250,7 +250,7 @@ GRANT EXECUTE ON FUNCTION public.presenca_clickup_casar(jsonb, int, text[]) TO s
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Mesmo guard de segredo ausente de fn_glosa_avisos_disparar: sem ele o header
 -- sai nulo, a função responde 401 e o pg_cron marca SUCESSO.
-CREATE OR REPLACE FUNCTION public.fn_primeira_presenca_clickup_disparar()
+CREATE OR REPLACE FUNCTION public.fn_primeira_presenca_clickup_disparar() -- seguranca: revoke em 20261019130000
 RETURNS void
 LANGUAGE plpgsql
 AS $$

@@ -41,7 +41,7 @@ BEGIN
     RAISE EXCEPTION 'agenda_tita_autorizacao: trecho esperado 1x, achei %: %. Reveja à mão.', v_n, v_alvo;
   END IF;
 
-  EXECUTE 'CREATE OR REPLACE VIEW public.agenda_tita_autorizacao AS '
+  EXECUTE 'CREATE OR REPLACE VIEW public.agenda_tita_autorizacao AS ' -- seguranca: security_invoker é religado logo abaixo (ALTER VIEW)
           || replace(v_def, v_alvo, v_novo);
   -- CREATE OR REPLACE zera reloptions.
   EXECUTE 'ALTER VIEW public.agenda_tita_autorizacao SET (security_invoker = true)';
