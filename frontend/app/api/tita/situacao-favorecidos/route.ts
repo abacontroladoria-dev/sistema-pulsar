@@ -1,6 +1,5 @@
-import { createServerClient } from "@supabase/ssr"
 import { NextResponse } from "next/server"
-import type { NextRequest } from "next/server"
+import { AcessoRecusado, exigirPermissao } from "@/lib/permissions/exigirPermissao"
 import { buscarSituacaoFavorecidos, type FavorecidoSituacao } from "@/services/tita/situacaoFavorecidos"
 
 const LOG_TAG = "[tita:situacao-favorecidos]"
@@ -13,27 +12,31 @@ const LOG_TAG = "[tita:situacao-favorecidos]"
 const TTL_MS = 5 * 60 * 1000
 let cache: { em: number; favorecidos: FavorecidoSituacao[] } | null = null
 
-async function getCurrentUser(request: NextRequest) {
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return request.cookies.getAll() },
-        setAll() {},
-      },
-    }
-  )
-  const { data: { user } } = await supabase.auth.getUser()
-  return user
-}
+/**
+ * Telas que chamam esta rota: Ocupação Paciente (Criar Novo Cronograma) e
+ * Indicadores → Pacientes / Previsão de Receitas (useConvenioCadastroPacientes).
+ * Devolve nome, situação e convênio de todos os pacientes do TiTa: até
+ * 19/10/2026 bastava estar logado.
+ */
+const PERMISSOES = [
+  "cronograma_ocupacao_paciente",
+  "indicadores_pacientes",
+  "indicadores_previsao_receitas",
+] as const
 
-export async function GET(request: NextRequest) {
-  // DISABLE_AUTH cobre o desenvolvimento local, onde não há sessão (mesma
-  // convenção já usada no restante do app).
-  if (process.env.DISABLE_AUTH !== "true") {
-    const user = await getCurrentUser(request)
-    if (!user) return NextResponse.json({ ok: false, error: "not_authenticated" }, { status: 401 })
+export async function GET() {
+  // DISABLE_AUTH (desenvolvimento local, sem sessão) é tratado em exigirPermissao.
+  try {
+    await exigirPermissao(PERMISSOES)
+  } catch (e) {
+    if (e instanceof AcessoRecusado) {
+      return NextResponse.json(
+        { ok: false, error: e.status === 401 ? "not_authenticated" : "sem_permissao" },
+        { status: e.status },
+      )
+    }
+    console.error(`${LOG_TAG} falha ao verificar o acesso`, e)
+    return NextResponse.json({ ok: false, error: "falha_ao_verificar_acesso" }, { status: 500 })
   }
 
   const agora = Date.now()

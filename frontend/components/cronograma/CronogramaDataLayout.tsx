@@ -122,6 +122,11 @@ function CronogramaLayoutInner({ children }: { children: React.ReactNode }) {
   // "Importar do TiTa" da própria página. Aqui ela não dispara nenhuma carga nem
   // ocupa o lado direito do header (a página usa o espaço).
   const isGradePage = !!pathname && /\/cronograma\/grade(\/|$)/.test(pathname)
+  // Telas que não usam laudos não os buscam. Além de mais rápido, /api/laudos
+  // exige permissão de tela que usa laudo (19/10/2026): quem só tem Indicadores,
+  // Reposição ou Ocupação de Salas receberia 403 e veria um erro sem sentido.
+  // Navegar depois para uma tela com laudos dispara a carga (o efeito reroda).
+  const semLaudos = isGradePage || isIndicadoresPage || isReposicaoPage || isOcupacaoSalasPage
   const gradeFetchedRef = useRef(false)
   const laudosFetchedRef = useRef(false)
 
@@ -162,7 +167,7 @@ function CronogramaLayoutInner({ children }: { children: React.ReactNode }) {
   // se dá por executado e o badge fica preso no erro sem permitir nova
   // tentativa.
   useEffect(() => {
-    if (isGradePage || laudosFetchedRef.current || lRows.length > 0) return
+    if (semLaudos || laudosFetchedRef.current || lRows.length > 0) return
     laudosFetchedRef.current = true
     setUploading(true)
     setUploadError(null)
@@ -182,7 +187,7 @@ function CronogramaLayoutInner({ children }: { children: React.ReactNode }) {
         setUploadError(e instanceof Error ? e.message : "Erro ao carregar os laudos.")
       })
       .finally(() => setUploading(false))
-  }, [isGradePage, lRows.length, setLRows])
+  }, [semLaudos, lRows.length, setLRows])
 
   const handleLaudosFile = useCallback(async (file: File) => {
     const rw = getRefWeek()
