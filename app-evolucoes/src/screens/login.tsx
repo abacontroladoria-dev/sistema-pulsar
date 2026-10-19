@@ -1,13 +1,18 @@
+import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { Aviso } from '@/components/aviso';
 import { Botao } from '@/components/botao';
+import { BotaoTema } from '@/components/botao-tema';
 import { CampoTexto } from '@/components/campo-texto';
+import { Cartao } from '@/components/cartao';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { Radius, Shadow, Spacing, Toque } from '@/constants/theme';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
 import { supabase } from '@/lib/supabase';
 import { mensagemErroAuth } from '@/utils/mensagem-erro-auth';
@@ -17,7 +22,9 @@ type Modo = 'responsavel' | 'equipe';
 
 export function Login() {
   const theme = useTheme();
-  const [modo, setModo] = useState<Modo>('responsavel');
+  const escuro = useColorScheme() === 'dark';
+  // Equipe primeiro: o acesso do responsável só abre na Fase 3.
+  const [modo, setModo] = useState<Modo>('equipe');
   const [celular, setCelular] = useState('');
   const [usuarioOuEmail, setUsuarioOuEmail] = useState('');
   const [senha, setSenha] = useState('');
@@ -85,85 +92,102 @@ export function Login() {
   return (
     <ThemedView style={styles.tela}>
       <SafeAreaView style={styles.tela}>
+        <View style={styles.topo}>
+          <BotaoTema />
+        </View>
         <KeyboardAvoidingView style={styles.tela} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <ScrollView contentContainerStyle={styles.rolagem} keyboardShouldPersistTaps="handled">
             <View style={styles.conteudo}>
-              <ThemedText type="subtitle">Entrar</ThemedText>
+              <View style={styles.marca}>
+                <Image
+                  source={escuro ? LOGO_ESCURO : LOGO_CLARO}
+                  style={styles.logo}
+                  contentFit="contain"
+                  accessibilityLabel="Pulsar"
+                />
+                <ThemedText type="small" themeColor="textSecondary">
+                  Clínica Universo ABA
+                </ThemedText>
+              </View>
 
               <View style={[styles.abas, { backgroundColor: theme.backgroundElement }]} accessibilityRole="tablist">
-                {(['responsavel', 'equipe'] as const).map((m) => {
+                {(['equipe', 'responsavel'] as const).map((m) => {
                   const ativo = modo === m;
                   return (
-                    <Botao
+                    <Pressable
                       key={m}
                       accessibilityRole="tab"
                       accessibilityState={{ selected: ativo }}
-                      titulo={m === 'responsavel' ? 'Sou responsável' : 'Sou da equipe'}
-                      variante={ativo ? 'primario' : 'texto'}
                       onPress={() => trocarModo(m)}
-                      style={styles.aba}
-                    />
+                      style={[styles.aba, ativo && [styles.abaAtiva, { backgroundColor: theme.surfaceRaised }]]}>
+                      <ThemedText type="smallBold" themeColor={ativo ? 'accent' : 'textSecondary'}>
+                        {m === 'responsavel' ? 'Sou responsável' : 'Sou da equipe'}
+                      </ThemedText>
+                    </Pressable>
                   );
                 })}
               </View>
 
-              {modo === 'responsavel' ? (
-                <View style={styles.formulario}>
-                  <ThemedText themeColor="textSecondary">
-                    Use o celular cadastrado na clínica. Enviaremos um código de acesso por WhatsApp ou SMS.
-                  </ThemedText>
-                  <CampoTexto
-                    rotulo="Celular com DDD"
-                    value={celular}
-                    onChangeText={setCelular}
-                    placeholder="(11) 98765-4321"
-                    keyboardType="phone-pad"
-                    autoComplete="tel"
-                    textContentType="telephoneNumber"
-                  />
-                  <Botao
-                    titulo="Receber código"
-                    carregando={enviando === 'codigo'}
-                    disabled={!!enviando}
-                    onPress={pedirCodigo}
-                  />
-                </View>
-              ) : (
-                <View style={styles.formulario}>
-                  <ThemedText themeColor="textSecondary">Use o mesmo login do Pulsar.</ThemedText>
-                  <CampoTexto
-                    rotulo="Usuário ou e-mail"
-                    value={usuarioOuEmail}
-                    onChangeText={setUsuarioOuEmail}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    autoComplete="username"
-                    textContentType="username"
-                  />
-                  <CampoTexto
-                    rotulo="Senha"
-                    value={senha}
-                    onChangeText={setSenha}
-                    secureTextEntry
-                    autoComplete="current-password"
-                    textContentType="password"
-                    onSubmitEditing={entrarComSenha}
-                  />
-                  <Botao
-                    titulo="Entrar"
-                    carregando={enviando === 'senha'}
-                    disabled={!!enviando}
-                    onPress={entrarComSenha}
-                  />
-                </View>
-              )}
+              <Cartao style={styles.formulario}>
+                {modo === 'responsavel' ? (
+                  <>
+                    <ThemedText type="small" themeColor="textSecondary">
+                      Use o celular cadastrado na clínica. Enviaremos um código de acesso por WhatsApp ou SMS.
+                    </ThemedText>
+                    <CampoTexto
+                      rotulo="Celular com DDD"
+                      icone="celular"
+                      value={celular}
+                      onChangeText={setCelular}
+                      placeholder="(11) 98765-4321"
+                      keyboardType="phone-pad"
+                      autoComplete="tel"
+                      textContentType="telephoneNumber"
+                    />
+                    <Botao
+                      titulo="Receber código"
+                      carregando={enviando === 'codigo'}
+                      disabled={!!enviando}
+                      onPress={pedirCodigo}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <ThemedText type="small" themeColor="textSecondary">
+                      Use o mesmo login do Pulsar.
+                    </ThemedText>
+                    <CampoTexto
+                      rotulo="Usuário ou e-mail"
+                      icone="pessoa"
+                      value={usuarioOuEmail}
+                      onChangeText={setUsuarioOuEmail}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      autoComplete="username"
+                      textContentType="username"
+                    />
+                    <CampoTexto
+                      rotulo="Senha"
+                      icone="cadeado"
+                      value={senha}
+                      onChangeText={setSenha}
+                      secureTextEntry
+                      autoComplete="current-password"
+                      textContentType="password"
+                      onSubmitEditing={entrarComSenha}
+                    />
+                    <Botao
+                      titulo="Entrar"
+                      carregando={enviando === 'senha'}
+                      disabled={!!enviando}
+                      onPress={entrarComSenha}
+                    />
+                  </>
+                )}
 
-              {erro && (
-                <ThemedText accessibilityRole="alert" style={{ color: theme.danger }}>
-                  {erro}
-                </ThemedText>
-              )}
+                {erro && <Aviso tom="erro" texto={erro} />}
+              </Cartao>
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
@@ -172,9 +196,17 @@ export function Login() {
   );
 }
 
+const LOGO_CLARO = require('@/assets/images/pulsar-lockup.png');
+const LOGO_ESCURO = require('@/assets/images/pulsar-lockup-escuro.png');
+
 const styles = StyleSheet.create({
   tela: {
     flex: 1,
+  },
+  topo: {
+    alignItems: 'flex-end',
+    paddingHorizontal: Spacing.three,
+    paddingTop: Spacing.two,
   },
   rolagem: {
     flexGrow: 1,
@@ -183,21 +215,39 @@ const styles = StyleSheet.create({
   },
   conteudo: {
     width: '100%',
-    maxWidth: MaxContentWidth,
+    maxWidth: 440,
     alignSelf: 'center',
     gap: Spacing.four,
   },
+  marca: {
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  logo: {
+    width: 196,
+    // Proporção do arquivo recortado (720 × 294).
+    aspectRatio: 720 / 294,
+  },
   abas: {
     flexDirection: 'row',
-    borderRadius: Spacing.three,
+    borderRadius: Radius.md,
+    borderCurve: 'continuous',
     padding: Spacing.one,
     gap: Spacing.one,
   },
   aba: {
     flex: 1,
-    paddingHorizontal: Spacing.two,
+    minHeight: Toque.minimo,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: Radius.md - Spacing.one,
+    borderCurve: 'continuous',
+  },
+  abaAtiva: {
+    boxShadow: Shadow.card,
   },
   formulario: {
     gap: Spacing.three,
+    padding: Spacing.four - Spacing.one,
   },
 });

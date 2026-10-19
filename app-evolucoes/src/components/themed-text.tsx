@@ -1,57 +1,72 @@
-import { Platform, StyleSheet, Text, type TextProps } from 'react-native';
+import { StyleSheet, Text, type TextProps } from 'react-native';
 
-import { Fonts, ThemeColor } from '@/constants/theme';
+import { Fonte, Fonts, ThemeColor } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 export type ThemedTextProps = TextProps & {
-  type?: 'default' | 'title' | 'small' | 'smallBold' | 'subtitle' | 'link' | 'linkPrimary' | 'code';
+  /**
+   * title: tela sem cabeçalho (login) · subtitle: nome em destaque (paciente) ·
+   * heading: título de bloco · default: texto corrido · small / smallBold: linhas
+   * de cartão e rótulos · label: selo · caption: carimbo de autoria · code: códigos.
+   */
+  type?: 'default' | 'title' | 'subtitle' | 'heading' | 'small' | 'smallBold' | 'label' | 'caption' | 'code';
   themeColor?: ThemeColor;
 };
 
 export function ThemedText({ style, type = 'default', themeColor, ...rest }: ThemedTextProps) {
   const theme = useTheme();
+  const corPadrao = type === 'caption' ? 'textMuted' : 'text';
 
-  return <Text style={[{ color: theme[themeColor ?? 'text'] }, styles[type], style]} {...rest} />;
+  return <Text style={[{ color: theme[themeColor ?? corPadrao] }, styles[type], style]} {...rest} />;
 }
 
+// Peso pela família (um arquivo por peso), sem fontWeight: senão o Android
+// sintetiza o negrito ou cai na fonte do sistema.
 const styles = StyleSheet.create({
-  small: {
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: 500,
-  },
-  smallBold: {
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: 700,
-  },
-  default: {
-    fontSize: 16,
-    lineHeight: 24,
-    fontWeight: 500,
-  },
   title: {
-    fontSize: 48,
-    fontWeight: 600,
-    lineHeight: 52,
+    fontFamily: Fonte.bold,
+    fontSize: 28,
+    lineHeight: 34,
+    letterSpacing: -0.4,
   },
   subtitle: {
-    fontSize: 32,
-    lineHeight: 44,
-    fontWeight: 600,
+    fontFamily: Fonte.semibold,
+    fontSize: 22,
+    lineHeight: 28,
+    letterSpacing: -0.2,
   },
-  link: {
-    lineHeight: 30,
-    fontSize: 14,
+  heading: {
+    fontFamily: Fonte.semibold,
+    fontSize: 17,
+    lineHeight: 22,
   },
-  linkPrimary: {
-    lineHeight: 30,
+  default: {
+    fontFamily: Fonte.regular,
+    fontSize: 16,
+    lineHeight: 24,
+  },
+  small: {
+    fontFamily: Fonte.medium,
     fontSize: 14,
-    color: '#3c87f7',
+    lineHeight: 20,
+  },
+  smallBold: {
+    fontFamily: Fonte.semibold,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  label: {
+    fontFamily: Fonte.semibold,
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  caption: {
+    fontFamily: Fonte.regular,
+    fontSize: 12,
+    lineHeight: 16,
   },
   code: {
     fontFamily: Fonts.mono,
-    fontWeight: Platform.select({ android: 700 }) ?? 500,
     fontSize: 12,
   },
 });

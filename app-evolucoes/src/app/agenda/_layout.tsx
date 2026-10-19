@@ -1,17 +1,19 @@
 import { Stack } from 'expo-router/stack';
 
-import { BotaoSair } from '@/components/botao-sair';
+import { AcoesCabecalho } from '@/components/acoes-cabecalho';
+import { useOpcoesCabecalho } from '@/hooks/use-opcoes-cabecalho';
 import { useSessao } from '@/providers/session-provider';
 
 export default function AgendaLayout() {
   const { perfil } = useSessao();
+  const cabecalho = useOpcoesCabecalho();
   const titulo = perfil?.tipo === 'gestao' ? 'Agendas' : 'Minha agenda';
 
   return (
-    <Stack screenOptions={{ headerBackButtonDisplayMode: 'minimal' }}>
+    <Stack screenOptions={cabecalho}>
       <Stack.Screen
         name="index"
-        options={{ title: titulo, headerLargeTitleEnabled: true, headerRight: () => <BotaoSair /> }}
+        options={{ title: titulo, headerLargeTitleEnabled: true, headerRight: () => <AcoesCabecalho /> }}
       />
       <Stack.Screen name="sessao/[id]" options={{ title: 'Sessão' }} />
       <Stack.Screen

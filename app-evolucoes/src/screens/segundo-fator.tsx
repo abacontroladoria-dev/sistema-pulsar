@@ -2,12 +2,12 @@ import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { Aviso } from '@/components/aviso';
 import { Botao } from '@/components/botao';
 import { CampoTexto } from '@/components/campo-texto';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { MaxContentWidth, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { Fonte, MaxContentWidth, Spacing } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
 import { useSessao } from '@/providers/session-provider';
 import { mensagemErroAuth } from '@/utils/mensagem-erro-auth';
@@ -21,7 +21,6 @@ const TAMANHO_CODIGO = 6;
  * as rotas protegidas do _layout levam à área da pessoa.
  */
 export function SegundoFator() {
-  const theme = useTheme();
   const { session, sair } = useSessao();
   const [codigo, setCodigo] = useState('');
   const [verificando, setVerificando] = useState(false);
@@ -78,11 +77,7 @@ export function SegundoFator() {
               />
               <Botao titulo="Usar outra conta" variante="texto" onPress={sair} />
 
-              {erro && (
-                <ThemedText accessibilityRole="alert" style={{ color: theme.danger }}>
-                  {erro}
-                </ThemedText>
-              )}
+              {erro && <Aviso tom="erro" texto={erro} />}
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
@@ -107,8 +102,10 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
   },
   codigo: {
+    fontFamily: Fonte.semibold,
     fontSize: 24,
     letterSpacing: 8,
     textAlign: 'center',
+    fontVariant: ['tabular-nums'],
   },
 });

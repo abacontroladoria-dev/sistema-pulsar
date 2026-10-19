@@ -2,15 +2,17 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
 
+import { Aviso } from '@/components/aviso';
 import { Botao } from '@/components/botao';
 import { CampoTexto } from '@/components/campo-texto';
+import { Cartao, DivisorCartao } from '@/components/cartao';
 import { EstadoTela } from '@/components/estado-tela';
+import { Icone, type NomeIcone } from '@/components/icone';
 import { SeloStatus } from '@/components/selo-status';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useAgora } from '@/hooks/use-agora';
-import { useTheme } from '@/hooks/use-theme';
 import {
   buscarDetalheEvolucao,
   mensagemErroBanco,
@@ -19,7 +21,7 @@ import {
   type SessaoAgenda,
 } from '@/lib/agenda';
 import { useSessao } from '@/providers/session-provider';
-import { formatarData, horario, statusDaSessao } from '@/utils/status-sessao';
+import { formatarDiaLongo, horario, statusDaSessao } from '@/utils/status-sessao';
 
 type Acao = 'nenhuma' | 'evoluir' | 'falta';
 
@@ -36,7 +38,6 @@ function useSessaoDaAgenda(id: string): SessaoAgenda | undefined {
 }
 
 export function Sessao({ id }: { id: string }) {
-  const theme = useTheme();
   const queryClient = useQueryClient();
   const agora = useAgora();
   const { perfil } = useSessao();
@@ -74,6 +75,7 @@ export function Sessao({ id }: { id: string }) {
   if (!base) {
     return (
       <EstadoTela
+        icone="aviso"
         titulo="Sessão não encontrada"
         mensagem="Volte para a agenda e abra a sessão de novo."
       />
@@ -104,6 +106,12 @@ export function Sessao({ id }: { id: string }) {
   const gravando = evoluir.isPending || falta.isPending;
   const erroGravar = evoluir.error ?? falta.error;
 
+  const local = [sessao.sala_nome, sessao.unidade_nome].filter(Boolean).join(', ');
+  const dia = formatarDiaLongo(sessao.data);
+  // A descrição do status só aparece quando acrescenta algo: com o registro na
+  // tela (cartão abaixo) ou igual ao selo, ela só repetiria.
+  const mostrarDescricao = !d?.registrado && status.descricaoCurta !== status.rotulo;
+
   return (
     <ThemedView style={styles.tela}>
       <KeyboardAvoidingView style={styles.tela} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -112,94 +120,125 @@ export function Sessao({ id }: { id: string }) {
           contentContainerStyle={styles.rolagem}
           keyboardShouldPersistTaps="handled">
           <View style={styles.conteudo}>
-            <ThemedText type="small" themeColor="textSecondary">
-              Planejamento do dia {formatarData(sessao.data)} · {horario(sessao)} · {sessao.terapia_nome}
-            </ThemedText>
-            <ThemedText type="subtitle">{sessao.paciente_nome}</ThemedText>
-            <SeloStatus status={status} />
-            <ThemedText themeColor="textSecondary">{status.descricaoCurta}</ThemedText>
-
-            <ThemedView type="backgroundElement" style={styles.bloco}>
-              <Linha rotulo="Profissional agendado" valor={sessao.profissional_nome} />
-              {sessao.cobertura_profissional_nome && (
-                <Linha rotulo="Cobertura" valor={sessao.cobertura_profissional_nome} />
+            <View style={styles.identidade}>
+              <View style={styles.quando}>
+                <Icone nome="relogio" tamanho={16} cor="textMuted" />
+                <ThemedText type="small" themeColor="textSecondary" style={styles.numeros}>
+                  {`${dia.semana}, ${dia.data}, das ${horario(sessao)}`}
+                </ThemedText>
+              </View>
+              <ThemedText type="subtitle" selectable>
+                {sessao.paciente_nome}
+              </ThemedText>
+              {!!sessao.terapia_nome && (
+                <ThemedText type="smallBold" themeColor="accent">
+                  {sessao.terapia_nome}
+                </ThemedText>
               )}
-              <Linha rotulo="Local" valor={[sessao.sala_nome, sessao.unidade_nome].filter(Boolean).join(' · ') || '—'} />
-            </ThemedView>
+              <View style={styles.status}>
+                <SeloStatus status={status} />
+                {mostrarDescricao && (
+                  <ThemedText type="small" themeColor="textSecondary">
+                    {status.descricaoCurta}
+                  </ThemedText>
+                )}
+              </View>
+            </View>
 
             {!sessao.efetivo && !ehGestao && (
-              <ThemedText themeColor="textSecondary">
-                {sessao.cobertura_profissional_nome ?? 'Outro profissional'} pegou esta sessão: só quem cobre pode evoluir.
-              </ThemedText>
+              <Aviso
+                tom="info"
+                icone="cobertura"
+                texto={`${sessao.cobertura_profissional_nome ?? 'Outro profissional'} pegou esta sessão: só quem cobre pode evoluir.`}
+              />
             )}
+
+            <Cartao>
+              <Linha icone="pessoa" rotulo="Profissional agendado" valor={sessao.profissional_nome} />
+              {sessao.cobertura_profissional_nome && (
+                <Linha icone="cobertura" rotulo="Cobertura" valor={sessao.cobertura_profissional_nome} />
+              )}
+              <Linha icone="local" rotulo="Local" valor={local || '—'} />
+            </Cartao>
 
             {d && d.registrado && (
-              <ThemedView type="backgroundElement" style={styles.bloco}>
+              <Cartao>
+                <View style={styles.tituloBloco}>
+                  <Icone nome={d.possui_tratativa ? 'evolucao' : 'falta'} tamanho={20} />
+                  <ThemedText type="heading">{d.possui_tratativa ? 'Evolução' : 'Registro'}</ThemedText>
+                </View>
                 {d.possui_tratativa ? (
                   <>
-                    <Linha
-                      rotulo="Realizado por"
-                      valor={`${d.tratativa_profissional_nome ?? '—'}${d.substituicao ? ' (Substituição)' : ''}`}
-                    />
-                    {d.tratativa_criada_em_brasilia && <Linha rotulo="Evoluído em" valor={d.tratativa_criada_em_brasilia} />}
-                    {d.descricao_evolucao && (
-                      <View style={styles.descricao}>
-                        <ThemedText type="small" themeColor="textSecondary">
-                          Descrição
-                        </ThemedText>
+                    <ThemedText type="caption">
+                      {d.tratativa_profissional_nome ?? '—'}
+                      {d.substituicao ? ' (substituição)' : ''}
+                      {d.tratativa_criada_em_brasilia ? `, em ${d.tratativa_criada_em_brasilia}` : ''}
+                    </ThemedText>
+                    {d.descricao_evolucao ? (
+                      <>
+                        <DivisorCartao />
                         <ThemedText selectable>{d.descricao_evolucao}</ThemedText>
-                      </View>
-                    )}
+                      </>
+                    ) : null}
                   </>
                 ) : (
-                  <>
-                    {d.registrado_por_nome && <Linha rotulo="Registrado por" valor={d.registrado_por_nome} />}
-                    {d.atualizado_em_brasilia && <Linha rotulo="Em" valor={d.atualizado_em_brasilia} />}
-                  </>
+                  <ThemedText type="caption">
+                    {d.registrado_por_nome ?? '—'}
+                    {d.atualizado_em_brasilia ? `, em ${d.atualizado_em_brasilia}` : ''}
+                  </ThemedText>
                 )}
-              </ThemedView>
+              </Cartao>
             )}
 
-            {detalhe.error && (
-              <ThemedText style={{ color: theme.danger }}>{mensagemErroBanco(detalhe.error)}</ThemedText>
-            )}
+            {detalhe.error && <Aviso tom="erro" texto={mensagemErroBanco(detalhe.error)} />}
 
             {podeAgir && acao === 'nenhuma' && (
               <View style={styles.acoes}>
-                <ThemedText type="smallBold">Qual ação deseja fazer?</ThemedText>
-                <Botao titulo="Evoluir" onPress={() => setAcao('evoluir')} />
-                <Botao titulo="Marcar falta" variante="secundario" onPress={() => setAcao('falta')} />
+                <Botao titulo="Evoluir" icone="evolucao" onPress={() => setAcao('evoluir')} />
+                <Botao titulo="Marcar falta" icone="falta" variante="secundario" onPress={() => setAcao('falta')} />
               </View>
             )}
 
             {podeAgir && acao === 'evoluir' && (
-              <View style={styles.acoes}>
-                <Linha rotulo="Realizado por" valor={perfil?.nome || 'Você'} />
+              <Cartao>
+                <View style={styles.tituloBloco}>
+                  <Icone nome="evolucao" tamanho={20} />
+                  <ThemedText type="heading">Nova evolução</ThemedText>
+                </View>
+                <ThemedText type="caption">Realizado por {perfil?.nome || 'você'}</ThemedText>
                 <CampoTexto
-                  rotulo="Descrição *"
+                  rotulo="Descrição da sessão"
                   value={descricao}
                   onChangeText={setDescricao}
                   multiline
                   textAlignVertical="top"
                   maxLength={20000}
+                  placeholder="O que foi trabalhado, como o paciente respondeu…"
                   style={styles.areaTexto}
                   editable={!gravando}
                 />
                 <Botao
-                  titulo="Salvar"
+                  titulo="Salvar evolução"
                   carregando={evoluir.isPending}
                   disabled={descricao.trim().length < 3 || gravando}
                   onPress={() => evoluir.mutate()}
                 />
                 <Botao titulo="Cancelar" variante="texto" disabled={gravando} onPress={() => setAcao('nenhuma')} />
-              </View>
+              </Cartao>
             )}
 
             {podeAgir && acao === 'falta' && (
-              <View style={styles.acoes}>
-                <ThemedText type="smallBold">Confirmar falta</ThemedText>
+              <Cartao>
+                <View style={styles.tituloBloco}>
+                  <Icone nome="falta" tamanho={20} />
+                  <ThemedText type="heading">Marcar falta</ThemedText>
+                </View>
+                <ThemedText type="small" themeColor="textSecondary">
+                  A falta fica registrada nesta sessão. Para corrigir depois, fale com a coordenação.
+                </ThemedText>
                 <Botao
                   titulo="Falta do paciente"
+                  variante="perigo"
                   carregando={falta.isPending && falta.variables === 'paciente'}
                   disabled={gravando}
                   onPress={() => falta.mutate('paciente')}
@@ -215,14 +254,10 @@ export function Sessao({ id }: { id: string }) {
                   />
                 )}
                 <Botao titulo="Cancelar" variante="texto" disabled={gravando} onPress={() => setAcao('nenhuma')} />
-              </View>
+              </Cartao>
             )}
 
-            {erroGravar && (
-              <ThemedText accessibilityRole="alert" style={{ color: theme.danger }}>
-                {mensagemErroBanco(erroGravar)}
-              </ThemedText>
-            )}
+            {erroGravar && <Aviso tom="erro" texto={mensagemErroBanco(erroGravar)} />}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -230,13 +265,16 @@ export function Sessao({ id }: { id: string }) {
   );
 }
 
-function Linha({ rotulo, valor }: { rotulo: string; valor: string }) {
+function Linha({ icone, rotulo, valor }: { icone: NomeIcone; rotulo: string; valor: string }) {
   return (
     <View style={styles.linha}>
-      <ThemedText type="small" themeColor="textSecondary">
-        {rotulo}
-      </ThemedText>
-      <ThemedText>{valor}</ThemedText>
+      <Icone nome={icone} tamanho={20} cor="textMuted" />
+      <View style={styles.flex}>
+        <ThemedText type="caption">{rotulo}</ThemedText>
+        <ThemedText type="small" selectable>
+          {valor}
+        </ThemedText>
+      </View>
     </View>
   );
 }
@@ -245,8 +283,12 @@ const styles = StyleSheet.create({
   tela: {
     flex: 1,
   },
+  flex: {
+    flex: 1,
+  },
   rolagem: {
     padding: Spacing.three,
+    paddingBottom: Spacing.five,
   },
   conteudo: {
     width: '100%',
@@ -254,22 +296,35 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     gap: Spacing.three,
   },
-  bloco: {
-    borderRadius: Spacing.three,
-    padding: Spacing.three,
+  identidade: {
+    gap: Spacing.one,
+  },
+  quando: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.one + Spacing.half,
+  },
+  numeros: {
+    fontVariant: ['tabular-nums'],
+  },
+  status: {
+    gap: Spacing.one + Spacing.half,
+    marginTop: Spacing.two,
+  },
+  tituloBloco: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: Spacing.two,
   },
   linha: {
-    gap: Spacing.half,
-  },
-  descricao: {
-    gap: Spacing.one,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.twoHalf,
   },
   acoes: {
-    gap: Spacing.two,
+    gap: Spacing.twoHalf,
   },
   areaTexto: {
     minHeight: 160,
-    paddingVertical: Spacing.two,
   },
 });
