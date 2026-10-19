@@ -938,6 +938,14 @@ export default function Sidebar() {
                   Alterar senha
                 </button>
 
+                <Link
+                  href="/conta/seguranca"
+                  onClick={() => setOpen(false)}
+                  className={`block w-full text-left px-3 py-2 rounded-lg transition ${isDark ? "hover:bg-white/10 active:bg-white/20" : "hover:bg-slate-50 active:bg-slate-100"}`}
+                >
+                  Segurança da conta
+                </Link>
+
                 <div className={`border-t my-2 ${isDark ? "border-white/10" : "border-slate-100"}`} />
 
                 <div className={`px-3 py-2 text-xs flex justify-between mb-1 ${isDark ? "text-white/50" : "text-slate-400"}`}>

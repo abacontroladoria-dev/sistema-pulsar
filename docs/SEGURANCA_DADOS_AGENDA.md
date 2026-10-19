@@ -71,6 +71,14 @@ Antes de aplicar qualquer migration desta branch: `supabase/snippets/20261019_se
 | C20 | Cadastro de pacientes só para quem tem `cadastros_pacientes` (e os papéis admin/diretoria/cronograma). As 5 telas que liam a tabela sem a permissão passam a caminhos estreitos: Grade, Ocupação Paciente, Alimentar BD → `pacientes_lista_basica` (id, id TiTa, nome, convênio, situação, foto); robô PEP → `pacientes_buscar_para_pep` (4 últimos dígitos do CPF) + vínculo por id; Connect → ficha lida no servidor com o cliente de serviço. `listar_pacientes_assim` (Autorizações Avulsas) vira invólucro com checagem, sem reescrever o corpo de produção | migrations `20261019160000_seguranca_pacientes_rpcs.sql` (sem trava, só cria funções) e `20261019160100_seguranca_pacientes_leitura_restrita.sql` (trava) + teste PGlite; `services/pacientesBasico.service.ts` | 160000 a qualquer momento; 160100 depois do redeploy e da pré-checagem 5.x |
 | C18 | Edge Function `controle-terapeutico-upsert` exige `escala_terapeutica` (Central de Terapeutas) ou o papel `disponibilidade_terapeuta`; a rota morta `/api/controle-terapeutico/upsert` (repassava a chave de serviço) foi apagada | `supabase/functions/controle-terapeutico-upsert` | falta publicar a função (você); pré-checagem 3.2 |
 
+| C21 | Segundo fator (app autenticador, TOTP): tela **Segurança da conta** (`/conta/seguranca`, menu do usuário) para cadastrar com QR e código; o login pede o código de 6 dígitos de quem cadastrou; o `proxy.ts` não deixa a sessão sem o código passar da Segurança da conta (quem tem o app sempre; admin/diretoria a partir da data). Aviso nos 7 dias antes da data | `lib/auth/segundoFator.ts` (+ teste), `components/conta/*`, `app/login/page.tsx`, `proxy.ts` | falta ligar no Supabase e definir a data |
+
+**Segundo fator — o que você faz:**
+1. Supabase → Authentication → Sign In / Providers → **Multi-Factor Authentication** → ligar **TOTP (App Authenticator)**.
+2. Testar: entrar, menu do usuário → Segurança da conta → Cadastrar app autenticador → sair e entrar de novo (o login pede o código).
+3. Coolify: `NEXT_PUBLIC_MFA_OBRIGATORIO_DESDE=AAAA-MM-DD` (data em que admin e diretoria passam a ser obrigados) → **rebuild** (variável `NEXT_PUBLIC_` entra no build). Sem a variável, ninguém é obrigado. Nos 7 dias antes, admin/diretoria sem o app veem a faixa de aviso.
+4. **Plano B — perdeu o celular:** Supabase → Authentication → Users → a pessoa → seção *Multi-Factor Authentication* → apagar o fator. Ela entra só com a senha e cadastra de novo na Segurança da conta. Antes de apagar, confirme por outro canal que é a própria pessoa pedindo.
+
 **Leitura por coluna — cuidado em toda migration futura:** em `grade_profissionais_tita` e `csv_grades_profissionais` o login lê só as colunas concedidas uma a uma. Coluna nova não fica legível sozinha (precisa de `grant select (nova) … to authenticated`), e `select('*')` do frontend nessas tabelas dá "permission denied".
 
 ## 4. Pendências (por gravidade)
@@ -86,7 +94,7 @@ Antes de aplicar qualquer migration desta branch: `supabase/snippets/20261019_se
 | P6 | Cópias do TiTa legíveis por qualquer login: `agenda_tita` (CPF, nascimento, carteirinha, contato do responsável), `grade_profissionais_tita` (CPF e telefone de profissional), `csv_grades_profissionais` (agenda com nome de paciente e evolução) | Etapa 4 / corte | Ao repontar os módulos para a agenda do Pulsar, fechar a leitura por permissão; no corte, elas viram arquivo morto (ou são apagadas depois do prazo de guarda) |
 | P6b | `controle_terapeutico`: qualquer login pode INSERIR (`with check (true)`, `20260518140500`). Risco de integridade, não de leitura | você aplica | C12 (migration `20261019140000`) |
 | P6c | Assinaturas de profissional ficam no mesmo bucket das fotos de paciente, e quem tem `cadastros_profissionais` lê todas | próximo esforço | Bucket próprio para assinatura, leitura só pela própria pessoa e por quem emite documento |
-| P7 | Admin e diretoria sem segundo fator | você | Ligar MFA (TOTP) no Supabase Auth para esses papéis |
+| P7 | Admin e diretoria sem segundo fator | você | C21: ligar o TOTP no Supabase e definir a data em `NEXT_PUBLIC_MFA_OBRIGATORIO_DESDE` (ver abaixo) |
 | P8 | Usuário com permissão pode extrair a lista inteira (sem limite nem trilha de exportação) | próximo esforço | Limite de linhas por chamada nas RPCs de lista e trilha de exportação em massa |
 | P8b | `/api/tita/situacao-favorecidos` devolve nome, situação e convênio de todos os pacientes do TiTa a qualquer login | redeploy | C16 |
 | P9 | Saída de colaborador | rotina | Ao desligar alguém: `usuarios.ativo = false` no mesmo dia (`usuario_tem_permissao` já recusa inativo); conferir o bloco 11 do SQL de auditoria todo mês |
