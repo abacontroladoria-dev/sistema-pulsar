@@ -27,7 +27,7 @@ describe("quebrarTexto", () => {
 
 describe("montarLayout", () => {
   it("nenhum bloco atravessa a página (exceto o maior que a página)", () => {
-    const tamanhos = [3, 20, 35, 8, 39, 2, 30, 30, 30, 12, 40, 5] // até 41 linhas cabem numa página
+    const tamanhos = [3, 20, 35, 8, 39, 2, 30, 30, 30, 12, 38, 5] // até 39 linhas cabem numa página
     const paginas = montarLayout([tamanhos.map(texto)], medir)
     const vistos = new Map<number, number>()
     for (const p of paginas) {

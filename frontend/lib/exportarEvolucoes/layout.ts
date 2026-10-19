@@ -18,13 +18,13 @@ export const MEDIDAS = {
   /** "Emitido em…" e "Página X de Y". */
   rodape: 28,
   /** Linha Data/Horário/Terapia + caixa da assinatura + nome + registro. */
-  cabecalhoBloco: 76,
+  cabecalhoBloco: 102,
   /** Título "Descrição" (ou "Descrição (continuação) — …"). */
   tituloDescricao: 16,
   /** Altura de cada linha da descrição. */
   linha: 12.5,
   /** Respiro de cima e de baixo do bloco, com o separador. */
-  respiroBloco: 18,
+  respiroBloco: 14,
   /** Recuo do texto dentro do bloco, de cada lado. */
   recuo: 8,
 } as const

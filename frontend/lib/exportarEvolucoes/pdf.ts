@@ -23,6 +23,8 @@ export type OpcoesPdf = {
 
 const TAM_DESCRICAO = 9.5
 const ASSINATURA = { largura: 150, altura: 40 }
+/** Altura da linha de cima em grade (Data/Horário/Terapia/Assinatura), sem o extra. */
+const HEADER_LINHA = 96
 const LINHA_NOME = 10
 const LINHA_REGISTRO = 9
 const LINHA_TERAPIA = 12
@@ -55,6 +57,7 @@ export async function gerarPdfEvolucoes(o: OpcoesPdf): Promise<Uint8Array> {
     texto: rgb(0.12, 0.16, 0.23),
     suave: rgb(0.39, 0.45, 0.55),
     linha: rgb(0.85, 0.88, 0.92),
+    borda: rgb(0.55, 0.61, 0.69),
     fundo: rgb(0.96, 0.97, 0.99),
   }
 
@@ -114,7 +117,7 @@ export async function gerarPdfEvolucoes(o: OpcoesPdf): Promise<Uint8Array> {
     const nome = quebrar(e.profissional_nome, negrito, 8.5, ASSINATURA.largura)
     const registro = quebrar(registroDoProfissional(e), fonte, 7.5, ASSINATURA.largura)
     const extraAssinatura = LINHA_NOME * Math.max(0, nome.length - 1) + LINHA_REGISTRO * Math.max(0, registro.length - 1)
-    const extraTerapia = Math.max(0, LINHA_TERAPIA * (terapia.length - 1) - 40)
+    const extraTerapia = Math.max(0, LINHA_TERAPIA * (terapia.length - 1) - 52)
     cabecalhos.set(e, { terapia, nome, registro, extra: Math.max(extraAssinatura, extraTerapia) })
   }
 
@@ -170,21 +173,34 @@ export async function gerarPdfEvolucoes(o: OpcoesPdf): Promise<Uint8Array> {
 
     for (const parte of pl.partes) {
       const e = grupo[parte.indice]
-      const y0 = areaTopo - parte.y - 6
+      const yTop = areaTopo - parte.y - 2
+      const yBase = areaTopo - parte.y - parte.altura + 4
+      const larguraCaixa = W - 2 * M
+      const borda = { borderColor: COR.borda, borderWidth: 0.8 }
+      const linhaV = (x: number, y1: number, y2: number) =>
+        p.drawLine({ start: { x, y: y1 }, end: { x, y: y2 }, thickness: 0.8, color: COR.borda })
       let yTitulo: number
 
+      // Moldura do atendimento inteiro.
+      p.drawRectangle({ x: M, y: yBase, width: larguraCaixa, height: yTop - yBase, ...borda })
+
       if (!parte.continuacao) {
-        rotulo("Data", xTexto, y0 - 8)
-        rotulo("Horário", colHora, y0 - 8)
-        rotulo("Terapia", colTerapia, y0 - 8)
-        rotulo("Assinatura", xAssin, y0 - 8)
-        p.drawText(seguro(formatarData(e.data)), { x: xTexto, y: y0 - 22, font: negrito, size: 10, color: COR.texto })
-        p.drawText(seguro(formatarHorario(e.hora_inicio, e.hora_fim)), { x: colHora, y: y0 - 22, font: fonte, size: 10, color: COR.texto })
+        // Linha de cima em grade: Data | Horário | Terapia | Assinatura.
+        const yGrade = yTop - (HEADER_LINHA + parte.extra)
+        p.drawRectangle({ x: M, y: yGrade, width: larguraCaixa, height: yTop - yGrade, color: COR.fundo, ...borda })
+        for (const x of [colHora - 8, colTerapia - 8, xAssin - 8]) linhaV(x, yGrade, yTop)
+
+        rotulo("Data", xTexto, yTop - 12)
+        rotulo("Horário", colHora, yTop - 12)
+        rotulo("Terapia", colTerapia, yTop - 12)
+        rotulo("Assinatura", xAssin, yTop - 12)
+        p.drawText(seguro(formatarData(e.data)), { x: xTexto, y: yTop - 26, font: negrito, size: 10, color: COR.texto })
+        p.drawText(seguro(formatarHorario(e.hora_inicio, e.hora_fim)), { x: colHora, y: yTop - 26, font: fonte, size: 10, color: COR.texto })
         const cab = cabecalhos.get(e)!
-        cab.terapia.forEach((l, i) => p.drawText(l, { x: colTerapia, y: y0 - 22 - i * LINHA_TERAPIA, font: fonte, size: 10, color: COR.texto }))
+        cab.terapia.forEach((l, i) => p.drawText(l, { x: colTerapia, y: yTop - 26 - i * LINHA_TERAPIA, font: fonte, size: 10, color: COR.texto }))
 
         // Assinatura: imagem (se houver) sobre a linha; nome e registro embaixo.
-        const caixaBase = y0 - 14 - ASSINATURA.altura
+        const caixaBase = yTop - 58
         const img = e.profissional_id != null ? imagens.get(e.profissional_id) : undefined
         if (img) {
           const escala = Math.min((ASSINATURA.largura - 6) / img.width, (ASSINATURA.altura - 2) / img.height)
@@ -204,10 +220,10 @@ export async function gerarPdfEvolucoes(o: OpcoesPdf): Promise<Uint8Array> {
           yAssin -= LINHA_REGISTRO
         }
 
-        yTitulo = y0 - MEDIDAS.cabecalhoBloco - parte.extra + 4
+        yTitulo = yGrade - 14
         p.drawText("Descrição", { x: xTexto, y: yTitulo, font: negrito, size: 9, color: COR.texto })
       } else {
-        yTitulo = y0 - 8
+        yTitulo = yTop - 12
         const titulo = `Descrição (continuação) — ${formatarData(e.data)} · ${formatarHorario(e.hora_inicio, e.hora_fim)}`
         p.drawText(seguro(titulo), { x: xTexto, y: yTitulo, font: negrito, size: 9, color: COR.texto })
       }
@@ -216,9 +232,6 @@ export async function gerarPdfEvolucoes(o: OpcoesPdf): Promise<Uint8Array> {
         if (!linha) return
         p.drawText(linha, { x: xTexto, y: yTitulo - 14 - i * MEDIDAS.linha, font: fonte, size: TAM_DESCRICAO, color: COR.texto })
       })
-
-      const base = areaTopo - parte.y - parte.altura + 4
-      p.drawLine({ start: { x: M, y: base }, end: { x: W - M, y: base }, thickness: 0.6, color: COR.linha })
     }
 
     // ── Rodapé ────────────────────────────────────────────────────────────
