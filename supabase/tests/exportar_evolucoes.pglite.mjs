@@ -7,7 +7,8 @@
 // texto gravada no registro; reroda.
 //
 //   node supabase/tests/exportar_evolucoes.pglite.mjs \
-//     supabase/migrations/20261019200000_exportar_evolucoes.sql //     supabase/migrations/20261019200200_exportar_evolucoes_id_agendamento.sql //     supabase/migrations/20261019200300_grade_evolucoes_historico_tita.sql //     supabase/migrations/20261019200400_exportar_evolucoes_le_grade_evolucoes.sql
+//     supabase/migrations/20261019200000_exportar_evolucoes.sql //     supabase/migrations/20261019200200_exportar_evolucoes_id_agendamento.sql //     supabase/migrations/20261019200300_grade_evolucoes_historico_tita.sql //     supabase/migrations/20261019200400_exportar_evolucoes_le_grade_evolucoes.sql \
+//     supabase/migrations/20261019200500_evolucoes_revisao_seguranca.sql
 //
 // Desde a 200400 a fonte do TiTa é o arquivo na grade_evolucoes (carregado da
 // cópia pela 200300 e, daí em diante, pelo gatilho), não mais a cópia.
@@ -20,6 +21,7 @@ const mig = readFileSync(process.argv[2], 'utf8')
 const migId = readFileSync(process.argv[3], 'utf8')
 const migHist = readFileSync(process.argv[4], 'utf8')
 const migLe = readFileSync(process.argv[5], 'utf8')
+const migRev = readFileSync(process.argv[6], 'utf8')
 
 {
   const vazio = new PGlite()
@@ -143,7 +145,9 @@ await db.exec(migHist)
 await db.exec(migLe)
 await db.exec(migHist)
 await db.exec(migLe)
-ok(true, 'aplica as quatro e reroda')
+await db.exec(migRev)
+await db.exec(migRev)
+ok(true, 'aplica as cinco e reroda')
 ok((await db.query(`select count(*)::int n from public.grade_evolucoes where agendamento_id is null`)).rows[0].n === 7,
    'carga inicial: 7 evoluções do TiTa no arquivo (as 6 da lista + T7, que perde para o Pulsar só na leitura)')
 
@@ -158,7 +162,7 @@ const comoPapel = async (papel, sql, uid = null) => {
   }
 }
 
-const LISTAR = `select public.exportar_evolucoes_listar('2026-08-01', '2026-08-31') v`
+const LISTAR = `select public.exportar_evolucoes_listar('2026-08-01', '2026-08-31', null, null, '00000000-0000-0000-0000-00000000000b', 'Recepção') v`
 const CONTEUDO = (chaves, fin = 'pdf') =>
   `select public.exportar_evolucoes_conteudo(array[${chaves.map(c => `'${c}'`).join(',') || ''}]::text[], '00000000-0000-0000-0000-00000000000b', 'Recepção', '${fin}') v`
 
@@ -236,13 +240,13 @@ ok(c1.tipo_registro === 'CRP' && c1.codigo_registro === '06/12345' && c1.uf_regi
 const cp1 = cont.find(i => i.data === '2026-08-11')
 ok(cp1.descricao === 'texto Pulsar P1' && cp1.registrado_por_nome === 'Admin Fulano', 'Pulsar: texto do Pulsar, "registrado por" só como informação interna')
 
-const reg = (await db.query(`select * from public.exportar_evolucoes_registro order by id`)).rows
+const reg = (await db.query(`select * from public.exportar_evolucoes_registro where finalidade <> 'listagem' order by id`)).rows
 ok(reg.length === 1 && reg[0].finalidade === 'pdf' && reg[0].quantidade === chaves.length && reg[0].usuario_nome === 'Recepção', 'leitura gravada no registro')
 ok(String(reg[0].periodo_de?.toISOString?.() ?? reg[0].periodo_de).startsWith('2026-08-05') && reg[0].paciente_ids.length === 2 && reg[0].chaves.length === chaves.length, 'registro com período, pacientes e chaves')
 
 const nada = await comoPapel('service_role', CONTEUDO(['tita:lixo']))
 ok(nada.ok && nada.rows[0].v.length === 0, 'só chave inválida → lista vazia')
-ok((await db.query(`select count(*)::int n from public.exportar_evolucoes_registro`)).rows[0].n === 1, 'pedido sem nada lido não grava registro')
+ok((await db.query(`select count(*)::int n from public.exportar_evolucoes_registro where finalidade <> 'listagem'`)).rows[0].n === 1, 'pedido sem nada lido não grava registro')
 const muitas = await comoPapel('service_role', CONTEUDO(Array.from({ length: 501 }, (_, i) => `tita:${String(i).padStart(8, '0')}-0000-0000-0000-000000000000`)))
 ok(!muitas.ok && /500/.test(muitas.erro), 'mais de 500 chaves recusa')
 const fin = await comoPapel('service_role', CONTEUDO([chaves[0]], 'outra'))
@@ -262,9 +266,65 @@ const semCopia = (await comoPapel('service_role', LISTAR)).rows[0].v
 ok(semCopia.some(i => i.agendamento_id === '1001'), 'apagar a linha da cópia não tira a evolução da lista (fica guardada)')
 ok(chaves.every(c => /^(tita:[0-9]+|pulsar:[0-9a-f-]{36})$/.test(c)), 'chave do TiTa agora é o id da grade_evolucoes')
 
+// ── Revisão de segurança (20261019200500) ────────────────────────────────────
+{
+  const listagens = (await db.query(`select * from public.exportar_evolucoes_registro where finalidade = 'listagem' order by id`)).rows
+  ok(listagens.length > 0 && listagens[0].usuario_nome === 'Recepção' && listagens[0].chaves.length === 0 && listagens[0].quantidade > 0,
+     'listagem fica registrada (quem, período, quantidade; sem as chaves)')
+
+  const naLista = async () => (await comoPapel('service_role', LISTAR)).rows[0].v.map(i => i.agendamento_id)
+  ok((await naLista()).includes('1002'), 'T2 está na lista antes de o TiTa cancelar')
+  await db.exec(`update public.csv_grades_profissionais set status_execucao = 'Cancelado', possui_tratativa = false where tita_agendamento_id = 1002`)
+  ok(!(await naLista()).includes('1002'), 'TiTa cancelou depois: a evolução sai da exportação')
+  ok((await db.query(`select removido_tita_em is not null r, descricao_evolucao d from public.grade_evolucoes where chave_tita = 'ag:1002'`)).rows[0].r,
+     'o arquivo marca removido_tita_em (o texto fica guardado)')
+  await db.exec(`update public.csv_grades_profissionais set status_execucao = 'Realizado', possui_tratativa = true where tita_agendamento_id = 1002`)
+  ok((await naLista()).includes('1002'), 'TiTa voltou a mostrar evoluída: volta para a exportação')
+
+  // duplicata: uma cópia inativa não apaga a evolução da cópia ativa
+  await db.exec(`update public.csv_grades_profissionais set ativo = false where id = (select id from public.csv_grades_profissionais where tita_agendamento_id = 1006 limit 1)`)
+  ok((await naLista()).includes('1006'), 'duplicata inativada não tira a evolução que outra cópia ainda mostra')
+  await db.exec(`update public.csv_grades_profissionais set ativo = false where tita_agendamento_id = 1006`)
+  ok(!(await naLista()).includes('1006'), 'todas as cópias inativas (sessão excluída no TiTa): sai da exportação')
+
+  const longo = 'x'.repeat(25000)
+  await db.exec(`insert into public.csv_grades_profissionais (tita_agendamento_id, paciente_id, paciente_nome, data, hora_inicial, hora_final,
+    profissional_id, profissional_nome, terapia_nome, unidade_id, status_execucao, possui_tratativa, tratativa_profissional_id, descricao_evolucao)
+    values (1020, 9001, 'MARIA S', '2026-08-25', '08:00', '08:40', 501, 'Sara', 'AE', 280, 'Realizado', true, 501, '${longo}')`)
+  ok((await db.query(`select length(descricao_evolucao)::int n from public.grade_evolucoes where chave_tita = 'ag:1020'`)).rows[0]?.n === 25000,
+     'evolução do TiTa com mais de 20 mil caracteres é guardada inteira')
+  const pulsarLongo = await tentar(`update public.grade_evolucoes set descricao_evolucao = '${longo}' where origem = 'pulsar' and agendamento_id = '11111111-1111-1111-1111-111111111111'`)
+  ok(/grade_evol_descricao_check/.test(pulsarLongo), 'o limite de 20 mil continua valendo para o que se digita no Pulsar')
+
+  const chaveSem = (await db.query(`select chave_tita c from public.grade_evolucoes where chave_tita like 'sem:%' order by c`)).rows.map(r => r.c)
+  ok(chaveSem.length === 2 && chaveSem.every(c => /^sem:\d+:\d{4}-\d{2}-\d{2}:\d{4}:\d+:(-|\d{14})$/.test(c)), `chave "Sem agendamento" estável (${chaveSem.join(' | ')})`)
+
+  // falha do arquivamento não derruba o sync e fica registrada
+  await db.exec(`alter table public.grade_evolucoes add constraint teste_falha check (descricao_evolucao <> 'FALHA') not valid`)
+  const sync = await tentar(`insert into public.csv_grades_profissionais (tita_agendamento_id, paciente_id, data, profissional_id, unidade_id,
+    status_execucao, possui_tratativa, descricao_evolucao) values (1030, 9001, '2026-08-26', 501, 280, 'Realizado', true, 'FALHA')`)
+  await db.exec(`alter table public.grade_evolucoes drop constraint teste_falha`)
+  ok(sync === '' && (await db.query(`select count(*)::int n from public.csv_grades_profissionais where tita_agendamento_id = 1030`)).rows[0].n === 1,
+     'falha ao arquivar não derruba a gravação da cópia (sync segue)')
+  const falhas = (await db.query(`select * from public.grade_evolucoes_arquivo_falhas`)).rows
+  ok(falhas.length === 1 && /teste_falha/.test(falhas[0].mensagem) && falhas[0].linhas === 1, 'a falha fica em grade_evolucoes_arquivo_falhas')
+  const falhaRec = await comoPapel('authenticated', `select count(*)::int n from public.grade_evolucoes_arquivo_falhas`, '00000000-0000-0000-0000-00000000000b')
+  const falhaAdm = await comoPapel('authenticated', `select count(*)::int n from public.grade_evolucoes_arquivo_falhas`, '00000000-0000-0000-0000-00000000000a')
+  ok(falhaRec.ok && falhaRec.rows[0].n === 0 && falhaAdm.ok && falhaAdm.rows[0].n === 1, 'só admin lê as falhas')
+
+  // gatilho por comando: um UPDATE de várias linhas sem mudança relevante não arquiva nada
+  const antes = (await db.query(`select max(arquivado_em) m from public.grade_evolucoes`)).rows[0].m
+  await db.exec(`update public.csv_grades_profissionais set updated_at = now()`)
+  ok(String((await db.query(`select max(arquivado_em) m from public.grade_evolucoes`)).rows[0].m) === String(antes), 'update em massa sem mudança de evolução não reescreve o arquivo')
+  for (const papel of ['anon', 'authenticated']) {
+    const r = await comoPapel(papel, `select public.sp_grade_evolucoes_chave_tita(1, 1, '2026-01-01', '08:00', 1, now())`)
+    ok(!r.ok && /permission denied/.test(r.erro), `${papel} não executa a função de chave`)
+  }
+}
+
 // ── Registro: só admin lê; ninguém escreve pelo REST ─────────────────────────
 const regAdmin = await comoPapel('authenticated', `select count(*)::int n from public.exportar_evolucoes_registro`, '00000000-0000-0000-0000-00000000000a')
-ok(regAdmin.ok && regAdmin.rows[0].n === 1, 'admin lê o registro')
+ok(regAdmin.ok && regAdmin.rows[0].n > 1, 'admin lê o registro')
 const regRec = await comoPapel('authenticated', `select count(*)::int n from public.exportar_evolucoes_registro`, '00000000-0000-0000-0000-00000000000b')
 ok(regRec.ok && regRec.rows[0].n === 0, 'login comum não vê o registro')
 const regAnon = await comoPapel('anon', `select count(*) from public.exportar_evolucoes_registro`)

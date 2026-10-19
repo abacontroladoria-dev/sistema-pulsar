@@ -232,8 +232,8 @@ export default function ExportarEvolucoesShell() {
         baixarArquivo(gerarCsv(conteudo), "text/csv;charset=utf-8", nome)
       } else {
         setProgresso({ texto: "Buscando assinaturas…", feito: 0, total: 1 })
-        const ids = [...new Set(conteudo.filter(c => c.tem_assinatura && c.profissional_id != null).map(c => c.profissional_id as number))]
-        const assinaturas = await lerAssinaturas(ids)
+        const comAssinatura = conteudo.filter(c => c.tem_assinatura).map(c => c.chave)
+        const assinaturas = comAssinatura.length ? await lerAssinaturas(comAssinatura) : []
         const bytes = await gerarPdfEvolucoes({
           itens: conteudo,
           de: periodo.inicio,

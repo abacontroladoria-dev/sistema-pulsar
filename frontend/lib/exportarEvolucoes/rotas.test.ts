@@ -30,11 +30,11 @@ const req = (body: unknown) => new Request("http://x", { method: "POST", body: J
 const ROTAS = [
   ["listar", () => listar.POST(req({ de: "2026-08-01", ate: "2026-08-31" }))],
   ["conteudo", () => conteudo.POST(req({ chaves: ["tita:00000000-0000-0000-0000-000000000001"], finalidade: "pdf" }))],
-  ["assinaturas", () => assinaturas.POST(req({ profissional_ids: [10] }))],
+  ["assinaturas", () => assinaturas.POST(req({ chaves: ["tita:1"] }))],
 ] as const
 
 beforeEach(() => {
-  vi.clearAllMocks()
+  vi.resetAllMocks()
 })
 
 describe("rotas /api/exportar-evolucoes", () => {
@@ -73,31 +73,57 @@ describe("rotas /api/exportar-evolucoes", () => {
 
   it("listar: função ausente no banco (migration pendente) vira 503 com mensagem clara", async () => {
     exigir.mockResolvedValueOnce({ usuarioId: null, usuarioNome: "Dev" })
-    rpc.mockResolvedValueOnce({ data: null, error: { code: "PGRST202", message: "not found" } })
+    // assinatura nova e a antiga ausentes
+    rpc.mockResolvedValue({ data: null, error: { code: "PGRST202", message: "not found" } })
     const r = await listar.POST(req({ de: "2026-08-01", ate: "2026-08-31" }))
     expect(r.status).toBe(503)
     expect((await r.json()).codigo).toBe("migration_pendente")
+  })
+
+  it("listar: passa quem listou (registro) e cai na assinatura antiga se o banco não tiver a 200500", async () => {
+    exigir.mockResolvedValueOnce({ usuarioId: "u-1", usuarioNome: "Ana" })
+    rpc.mockResolvedValueOnce({ data: null, error: { code: "PGRST202", message: "not found" } })
+    rpc.mockResolvedValueOnce({ data: [], error: null })
+    const r = await listar.POST(req({ de: "2026-08-01", ate: "2026-08-31" }))
+    expect(r.status).toBe(200)
+    expect(rpc.mock.calls[0][1]).toMatchObject({ p_usuario_id: "u-1", p_usuario_nome: "Ana" })
+    expect(rpc.mock.calls[1][1]).not.toHaveProperty("p_usuario_id")
+  })
+
+  // Tabelas falsas: o que cada consulta da rota de assinaturas devolve.
+  function bancoFalso(tabelas: Record<string, unknown[]>) {
+    from.mockImplementation((t: string) => {
+      const fim = async () => ({ data: tabelas[t] ?? [], error: null })
+      const q: Record<string, unknown> = {}
+      for (const m of ["select", "in", "is", "eq", "not"]) q[m] = () => q
+      q.then = (ok: (v: unknown) => unknown, erro: (e: unknown) => unknown) => fim().then(ok, erro)
+      return q
+    })
+  }
+
+  it("assinaturas: profissional vem das evoluções pedidas, não do navegador", async () => {
+    exigir.mockResolvedValueOnce({ usuarioId: "u-1", usuarioNome: "Ana" })
+    const download = vi.fn()
+    storage.from.mockReturnValue({ download })
+    bancoFalso({ grade_evolucoes: [], profissionais: [] })
+    const r = await assinaturas.POST(req({ chaves: ["tita:1"], profissional_ids: [10, 11, 12] }))
+    expect((await r.json()).assinaturas).toEqual([])
+    expect(download).not.toHaveBeenCalled()
   })
 
   it("assinaturas: caminho fora de profissionais/{id}/assinatura-* não é baixado", async () => {
     exigir.mockResolvedValueOnce({ usuarioId: "u-1", usuarioNome: "Ana" })
     const download = vi.fn()
     storage.from.mockReturnValue({ download })
-    from.mockReturnValue({
-      select: () => ({
-        in: () => ({
-          not: async () => ({
-            data: [
-              { id: 10, assinatura_path: "profissionais/11/assinatura-1.png" },
-              { id: 12, assinatura_path: "profissionais/12/../../pacientes/1/foto.png" },
-              { id: 13, assinatura_path: "pacientes/13/assinatura-1.png" },
-            ],
-            error: null,
-          }),
-        }),
-      }),
+    bancoFalso({
+      grade_evolucoes: [{ tita_tratativa_profissional_id: 501 }],
+      profissionais: [
+        { id: 10, assinatura_path: "profissionais/11/assinatura-1.png" },
+        { id: 12, assinatura_path: "profissionais/12/../../pacientes/1/foto.png" },
+        { id: 13, assinatura_path: "pacientes/13/assinatura-1.png" },
+      ],
     })
-    const r = await assinaturas.POST(req({ profissional_ids: [10, 12, 13] }))
+    const r = await assinaturas.POST(req({ chaves: ["tita:1", "tita:2"] }))
     expect((await r.json()).assinaturas).toEqual([])
     expect(download).not.toHaveBeenCalled()
   })

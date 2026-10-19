@@ -62,11 +62,18 @@ export async function lerConteudo(
   return todos.sort((a, b) => (ordem.get(a.chave) ?? 0) - (ordem.get(b.chave) ?? 0))
 }
 
-export async function lerAssinaturas(profissionalIds: number[]): Promise<AssinaturaProfissional[]> {
-  if (profissionalIds.length === 0) return []
-  const { assinaturas } = await postJson<{ assinaturas: AssinaturaProfissional[] }>(
-    "/api/exportar-evolucoes/assinaturas",
-    { profissional_ids: profissionalIds },
-  )
-  return assinaturas
+/**
+ * Assinaturas de quem executou as evoluções do PDF. Vão as CHAVES das evoluções
+ * (o servidor descobre os profissionais), em lotes de até 5.000.
+ */
+export async function lerAssinaturas(chaves: string[]): Promise<AssinaturaProfissional[]> {
+  const porProfissional = new Map<number, AssinaturaProfissional>()
+  for (let i = 0; i < chaves.length; i += 5000) {
+    const { assinaturas } = await postJson<{ assinaturas: AssinaturaProfissional[] }>(
+      "/api/exportar-evolucoes/assinaturas",
+      { chaves: chaves.slice(i, i + 5000) },
+    )
+    for (const a of assinaturas) porProfissional.set(a.profissional_id, a)
+  }
+  return [...porProfissional.values()]
 }

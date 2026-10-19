@@ -27,12 +27,22 @@ export async function POST(request: Request) {
     ? body.terapias.filter((v): v is string => typeof v === "string" && v.length > 0 && v.length <= 200)
     : []
 
-  const { data, error } = await supabaseService.rpc("exportar_evolucoes_listar", {
+  const filtros = {
     p_de: de,
     p_ate: ate,
     p_paciente_ids: pacienteIds.length ? pacienteIds : null,
     p_terapias: terapias.length ? terapias : null,
+  }
+  // Desde a 20261019200500 a listagem fica no registro (quem listou).
+  let { data, error } = await supabaseService.rpc("exportar_evolucoes_listar", {
+    ...filtros,
+    p_usuario_id: acesso.usuarioId,
+    p_usuario_nome: acesso.usuarioNome,
   })
+  // Banco ainda sem a 200500 (o localhost usa o de produção): assinatura antiga.
+  if (error?.code === "PGRST202") {
+    ;({ data, error } = await supabaseService.rpc("exportar_evolucoes_listar", filtros))
+  }
   if (error) return respostaDeErroDoBanco("listar", error)
 
   return NextResponse.json({ itens: Array.isArray(data) ? data : [] })

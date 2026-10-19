@@ -5,6 +5,7 @@ import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { temPermissao } from "@/lib/permissions/resolver"
 import { carregarPermissoesEfetivas } from "@/lib/permissions/carregar"
+import { papelPrecisaDeSegundoFator, situacaoExigencia } from "@/lib/auth/segundoFator"
 
 // Porta única das rotas /api que exigem permissão de tela.
 //
@@ -43,7 +44,9 @@ export class AcessoRecusado extends Error {
 export async function exigirPermissao(codigos: string | readonly string[]): Promise<ContextoPermissao> {
   const supabase = await createClient()
 
-  if (process.env.DISABLE_AUTH === "true") {
+  // Só no `next dev`: no build de produção a variável, mesmo definida por engano
+  // no Coolify, não abre as rotas.
+  if (process.env.DISABLE_AUTH === "true" && process.env.NODE_ENV !== "production") {
     return { supabase, usuarioId: null, usuarioNome: "Desenvolvimento local", role: "admin" }
   }
 
@@ -55,12 +58,25 @@ export async function exigirPermissao(codigos: string | readonly string[]): Prom
 
   const { data: perfil } = await supabase
     .from("usuarios")
-    .select("role, nome, ativo")
+    .select("role, nome, ativo, primeiro_acesso, username")
     .eq("id", user.id)
     .maybeSingle()
   if (!perfil || !perfil.ativo) throw new AcessoRecusado(401, "Usuário não encontrado ou inativo.")
 
   const role = (perfil.role as string | null) ?? ""
+
+  // As mesmas portas do proxy.ts, que não cobre /api: sem elas, quem tivesse só
+  // a SENHA de alguém (sem o app autenticador) chamava a rota direto.
+  if (perfil.primeiro_acesso === true || !perfil.username) {
+    throw new AcessoRecusado(403, "Conclua o primeiro acesso antes de usar esta tela.")
+  }
+  const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
+  const confirmado = aal?.currentLevel === "aal2"
+  const temApp = aal?.nextLevel === "aal2"
+  const exigido = papelPrecisaDeSegundoFator(role) && situacaoExigencia().tipo === "obrigatoria"
+  if (!confirmado && (temApp || exigido)) {
+    throw new AcessoRecusado(401, "Confirme o código do app autenticador para continuar.")
+  }
   const efetivas = await carregarPermissoesEfetivas(supabase)
   const lista = typeof codigos === "string" ? [codigos] : codigos
   if (!lista.some(c => temPermissao(role, efetivas, c))) {
