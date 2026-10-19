@@ -38,6 +38,16 @@ const SENSIVEIS = [
   'vw_grade_base', 'vw_grade_atendimentos', 'vw_central_terapeutica',
 ]
 
+// Leitura por coluna (migration 20261019140000 e seguintes): NENHUM login lê
+// estas colunas, tenha a permissão que tiver. `select=*` nessas tabelas dá
+// "permission denied" pelo `*`, não pela RLS — por isso cada coluna é pedida
+// sozinha.
+const COLUNAS_REVOGADAS = {
+  grade_profissionais_tita: ['cpf_profissional', 'numero_telefone', 'cbo_profissional', 'registro_profissional',
+    'tipo_registro_profissional', 'uf_registro_profissional', 'raw_json', 'observacoes_sala'],
+  csv_grades_profissionais: ['profissional_cpf', 'sala_observacoes'],
+}
+
 // Edge Functions de teste apagadas do repositório (P0). Precisam responder 404.
 const FUNCOES_REMOVIDAS = ['tita-compare-endpoints', 'test_env', 'cco-test-setup', 'cco-conciliation-engine-test']
 
@@ -147,6 +157,15 @@ async function main() {
       const corpo = r.ok ? await r.json().catch(() => null) : null
       if (r.ok && Array.isArray(corpo) && corpo.length) vaza(`logado sem permissão LÊ ${t}`)
       else okLog(`${t}: ${r.ok ? 'vazio' : `HTTP ${r.status}`}`)
+    }
+    for (const [t, colunas] of Object.entries(COLUNAS_REVOGADAS)) {
+      for (const c of colunas) {
+        const r = await fetch(`${url}/rest/v1/${t}?select=${c}&limit=1`, { headers: h })
+        const corpo = r.ok ? await r.json().catch(() => null) : null
+        if (r.ok && Array.isArray(corpo) && corpo.length) vaza(`logado LÊ a coluna ${t}.${c}`)
+        else if (r.ok) olhar(`${t}.${c}: sem linha, mas a coluna ainda tem GRANT para o login — aplique a migration 20261019140000`)
+        else okLog(`${t}.${c}: recusada (HTTP ${r.status})`)
+      }
     }
   } else {
     console.log('\n(Sem TOKEN_SEM_PERMISSAO: o teste do invasor interno foi pulado.)')

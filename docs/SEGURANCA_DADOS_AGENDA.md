@@ -53,6 +53,20 @@
 | C8 | O que só existia em produção por snippet manual agora está em migration, sem recriar definições: `security_invoker` em `vw_central_terapeutica` e `vw_profissionais_disponiveis`, RLS em `usuarios`. Um banco reconstruído não nasce mais aberto | mesma migration |
 | C9 | Log da importação de pacientes legível só com `cadastros_pacientes` (era qualquer login) | migration `20261016110000` |
 
+### 3b. Branch `feat/seguranca-falhas-dados` (19/10/2026)
+
+Antes de aplicar qualquer migration desta branch: `supabase/snippets/20261019_seguranca_prechecagem_SO_LEITURA.sql`, bloco a bloco (só leitura).
+
+| # | Correção | Onde | Estado |
+|---|---|---|---|
+| C10 | Edge Functions de teste apagadas do repositório; a varredura acusa vazamento enquanto alguma responder ≠ 404 | `supabase/functions/*` + `seguranca-varredura-completa.mjs` | falta `supabase functions delete` (você) |
+| C11 | `central.worker_tick_config` com RLS e sem permissão para login (dava para trocar a URL do disparo e capturar o segredo do worker) | migration `20261019140000_seguranca_correcoes_diretas.sql` + teste PGlite | migration com trava, aplicar depois do redeploy |
+| C12 | `controle_terapeutico`: some a policy `with check (true)`; fica a inserção por papel | mesma migration | idem |
+| C13 | Cópias do TiTa com **leitura por coluna**: o login não lê CPF, telefone, CBO, registro, `raw_json` nem observação da sala (`grade_profissionais_tita`) e não lê `profissional_cpf`/`sala_observacoes` (`csv_grades_profissionais`). `vw_profissionais_disponiveis` recriada sem essas colunas. Guarda: a migration para se alguma view de produção ler coluna revogada | mesma migration; frontend com listas explícitas (`mappings.ts`, `controle-terapeutico.service.ts`) | idem |
+| C14 | CI: coluna nova em tabela com leitura por coluna exige `grant select (coluna)` no mesmo arquivo | `scripts/check-seguranca-migrations.js` (regra 6) | ativo |
+
+**Leitura por coluna — cuidado em toda migration futura:** em `grade_profissionais_tita` e `csv_grades_profissionais` o login lê só as colunas concedidas uma a uma. Coluna nova não fica legível sozinha (precisa de `grant select (nova) … to authenticated`), e `select('*')` do frontend nessas tabelas dá "permission denied".
+
 ## 4. Pendências (por gravidade)
 
 | # | Risco | Quem age | Correção proposta |
@@ -62,9 +76,9 @@
 | P1b | **Qualquer login lê o cadastro inteiro de pacientes** (CPF, endereço, responsável): policy `pacientes_select` com `using (true)` (`20260817190000_pacientes_canonica.sql:307`). É o maior risco de invasor interno | próximo esforço, com cuidado | Vários módulos leem `pacientes` direto do navegador. Mapear quem lê, servir o necessário por RPC/visão enxuta (nome e id) e restringir a tabela a `cadastros_pacientes`. Não foi feito agora porque quebraria telas sem esse mapeamento |
 | P2 | **Evolução clínica (`csv_grades_profissionais.descricao_evolucao`) legível por qualquer login** (policy de leitura ampla). A tela de Auditoria de Evoluções lê a coluna direto do navegador | decisão sua (tema Evoluções, adiado) | Tirar a coluna do GRANT de `authenticated` e servir a tela por RPC com permissão `auditoria-evolucoes`. Mexe na tela de auditoria, por isso não foi feito agora |
 | P4 | `/api/laudos` exige login, mas não permissão: qualquer login lê o relatório de laudos (dado de saúde de criança) | próximo esforço | Separar quem precisa dos laudos de quem só usa a grade (o layout do Cronograma carrega a rota); depois exigir permissão |
-| P5 | `central.worker_tick_config` criada sem RLS (CI `check-rls.js` acusa) | próximo esforço | `alter table central.worker_tick_config enable row level security` (só service_role usa) |
+| P5 | `central.worker_tick_config` criada sem RLS e com permissão total para qualquer login (CI `check-rls.js` acusa) | você aplica | C11 (migration `20261019140000`) |
 | P6 | Cópias do TiTa legíveis por qualquer login: `agenda_tita` (CPF, nascimento, carteirinha, contato do responsável), `grade_profissionais_tita` (CPF e telefone de profissional), `csv_grades_profissionais` (agenda com nome de paciente e evolução) | Etapa 4 / corte | Ao repontar os módulos para a agenda do Pulsar, fechar a leitura por permissão; no corte, elas viram arquivo morto (ou são apagadas depois do prazo de guarda) |
-| P6b | `controle_terapeutico`: qualquer login pode INSERIR (`with check (true)`, `20260518140500`). Risco de integridade, não de leitura | próximo esforço | Remover a policy `controle_terapeutico_insert_authenticated` depois de conferir que só a Edge Function (service_role) grava |
+| P6b | `controle_terapeutico`: qualquer login pode INSERIR (`with check (true)`, `20260518140500`). Risco de integridade, não de leitura | você aplica | C12 (migration `20261019140000`) |
 | P6c | Assinaturas de profissional ficam no mesmo bucket das fotos de paciente, e quem tem `cadastros_profissionais` lê todas | próximo esforço | Bucket próprio para assinatura, leitura só pela própria pessoa e por quem emite documento |
 | P7 | Admin e diretoria sem segundo fator | você | Ligar MFA (TOTP) no Supabase Auth para esses papéis |
 | P8 | Usuário com permissão pode extrair a lista inteira (sem limite nem trilha de exportação) | próximo esforço | Limite de linhas por chamada nas RPCs de lista e trilha de exportação em massa |

@@ -61,6 +61,8 @@ order by 1;
 
 -- 5. Colunas sensíveis legíveis por authenticated (CPF, telefone, evolução).
 --    Esperado: só em tabelas cuja RLS restringe por permissão (bloco 4).
+--    Depois de 20261019140000: nenhuma linha de grade_profissionais_tita nem de
+--    csv_grades_profissionais com cpf/telefone (leitura por coluna).
 select table_name, column_name
 from information_schema.column_privileges
 where grantee = 'authenticated' and privilege_type = 'SELECT' and table_schema = 'public'

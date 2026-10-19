@@ -94,6 +94,23 @@ export async function atualizarStatusAtendimentosEmLote(
   }
 }
 
+// Listas explícitas (nunca `*`): nas cópias do TiTa o login não lê CPF, telefone,
+// registro do profissional, raw_json nem observação da sala (migration
+// 20261019140000), e `*` daria "permission denied". Telefone do profissional,
+// quando a cobertura precisar, vem do cadastro `profissionais`.
+const COLUNAS_PROFISSIONAIS_DISPONIVEIS =
+  'id, grade_terapeuta_id, grade_clinica_id, profissional_id, nome_profissional, id_unidade, nome_unidade, ' +
+  'dia_semana, data, hora_inicial, hora_final, status_agendamento, terapia_id, nome_terapia, ' +
+  'terapia_exibicao_id, terapia_exibicao, id_sala, sala, created_at, updated_at'
+
+const COLUNAS_GRADE_COBERTURA = `${COLUNAS_PROFISSIONAIS_DISPONIVEIS}, paciente_nome, convenio_nome`
+
+const COLUNAS_AGENDA_COBERTURA =
+  'id, tita_agendamento_id, data_atendimento, hora_inicial, hora_final, atividade, ativo, origem, ' +
+  'motivo_inativacao, clinica_id, clinica_nome, convenio_id, convenio_nome, paciente_id, paciente_nome, ' +
+  'profissional_id, profissional_nome, terapia_id, terapia_nome, terapia_exibicao_id, terapia_exibicao_nome, ' +
+  'sala_id, sala_nome, created_at, updated_at'
+
 /**
  * Busca profissionais disponíveis para cobertura
  */
@@ -111,7 +128,7 @@ export async function listarProfissionaisDisponiveis(
   try {
     let query = supabase
 	  .from('vw_profissionais_disponiveis')
-	  .select('*')
+	  .select(COLUNAS_PROFISSIONAIS_DISPONIVEIS)
 
 	  .eq('data', dataAtendimento)
 
@@ -203,10 +220,10 @@ export async function buscarGradeCobertura(
   try {
     const { data, error } = await supabase
       .from('grade_profissionais_tita')
-      .select('*')
+      .select(COLUNAS_GRADE_COBERTURA)
       .eq('data', dataAtendimento)
       .eq('id_unidade', idUnidade)
-      .order('profissional_nome', { ascending: true })
+      .order('nome_profissional', { ascending: true })
 
     if (error) {
       console.error('Erro ao buscar grade:', error)
@@ -221,18 +238,17 @@ export async function buscarGradeCobertura(
 }
 
 /**
- * Busca itens da agenda para cobertura
+ * Busca itens da agenda para cobertura.
+ * agenda_tita não tem id_unidade: o sync (sync_tita_agenda) só traz a unidade 280.
  */
 export async function buscarItensAgenda(
-  dataAtendimento: string,
-  idUnidade: number = 280
+  dataAtendimento: string
 ): Promise<Record<string, any>[]> {
   try {
     const { data, error } = await supabase
       .from('agenda_tita')
-      .select('*')
+      .select(COLUNAS_AGENDA_COBERTURA)
       .eq('data_atendimento', dataAtendimento)
-      .eq('id_unidade', idUnidade)
       .order('hora_inicial', { ascending: true })
 
     if (error) {

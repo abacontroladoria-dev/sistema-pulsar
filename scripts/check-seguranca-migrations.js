@@ -10,6 +10,10 @@
 //      foi o caso das 5 tabelas de 2026-07-23).
 //   5. Função criada sem `revoke ... from public` no mesmo arquivo (função
 //      nasce com EXECUTE para PUBLIC, e anon é PUBLIC).
+//   6. Coluna nova em tabela com LEITURA POR COLUNA (TABELAS_LEITURA_POR_COLUNA)
+//      sem `grant select (<coluna>)` no mesmo arquivo: o login não a enxerga, e
+//      a tela que pedir a coluna recebe "permission denied". Coluna sensível
+//      que deve ficar fechada leva a exceção consciente.
 //
 // Exceção consciente: escreva `-- seguranca: <motivo>` na MESMA linha (ou na
 // linha de cima) do trecho. O motivo fica no código para quem revisar.
@@ -26,6 +30,13 @@ const MIGRATIONS_DIR = path.join(__dirname, "..", "supabase", "migrations")
 const BASE = "20261016000000"
 
 const EXCECAO = /--\s*seguranca:/i
+
+// O login (authenticated) lê estas tabelas só pelas colunas concedidas uma a
+// uma (migration 20261019140000 e seguintes). Ver docs/SEGURANCA_DADOS_AGENDA.md.
+const TABELAS_LEITURA_POR_COLUNA = ["grade_profissionais_tita", "csv_grades_profissionais"]
+// Antes desta migration a leitura era pela tabela inteira: colunas criadas antes
+// entram no grant que ela calcula pelo catálogo.
+const LEITURA_POR_COLUNA_DESDE = "20261019140000"
 
 /** Linha (1-based) de um índice no texto. */
 const linhaDe = (texto, i) => texto.slice(0, i).split("\n").length
@@ -72,6 +83,17 @@ function verificar(arquivo, sql) {
     const nome = f[1]
     const revogada = new RegExp(`revoke\\s+all\\s+on\\s+function\\s+(?:public\\.)?${nome}\\b[^;]*from[^;]*\\bpublic\\b`, "i").test(limpo)
     if (!revogada) add(f.index, `função ${nome} sem "revoke all ... from public"`)
+  }
+
+  for (const tabela of arquivo.slice(0, 14) > LEITURA_POR_COLUNA_DESDE ? TABELAS_LEITURA_POR_COLUNA : []) {
+    const alter = new RegExp(`alter\\s+table\\s+(?:if\\s+exists\\s+)?(?:only\\s+)?(?:"?public"?\\.)?"?${tabela}"?\\s([^;]*);`, "gi")
+    for (const m of limpo.matchAll(alter)) {
+      for (const c of m[1].matchAll(/add\s+column\s+(?:if\s+not\s+exists\s+)?"?(\w+)"?/gi)) {
+        const coluna = c[1]
+        const grant = new RegExp(`grant\\s+select\\s*\\([^)]*\\b${coluna}\\b[^)]*\\)\\s*on\\s+(?:table\\s+)?(?:"?public"?\\.)?"?${tabela}\\b`, "i")
+        if (!grant.test(limpo)) add(m.index, `coluna nova ${tabela}.${coluna} sem "grant select (${coluna})" (leitura por coluna)`)
+      }
+    }
   }
 
   return achados

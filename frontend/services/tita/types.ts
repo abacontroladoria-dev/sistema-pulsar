@@ -18,14 +18,12 @@ export interface GradeProfissionalRow {
   hora_final: string | null
   profissional_id: number | null
   profissional_nome: string | null
-  profissional_cpf: string | null
   terapia_id: number | null
   terapia_nome: string | null
   terapia_exibicao_id: number | null
   terapia_exibicao_nome: string | null
   sala_id: number | null
   sala_nome: string | null
-  sala_observacoes: string | null
   unidade_id: number | null
   unidade_nome: string | null
   convenio_nome: string | null
