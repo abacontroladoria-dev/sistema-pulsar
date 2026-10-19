@@ -1,14 +1,15 @@
 "use client"
 
 import { createContext, useContext, type ReactNode } from "react"
-import { Lock, Plus } from "lucide-react"
+import { AlertTriangle, CheckCircle2, Clock, ClockAlert, Lock, Plus, XCircle, type LucideIcon } from "lucide-react"
 import { foco } from "@/components/cadastros/pacientes/ui/campos"
 import type { Tone } from "@/components/cronograma/ui/tones"
 import { IconeTerapia } from "@/lib/cadastros/iconesTerapia"
 import { estiloTons } from "@/lib/cadastros/tonsTerapia"
 import { deMin, horaCurta, paraMin } from "@/lib/disponibilidadeProfissional"
+import type { InfoStatusVisualEvolucao } from "@/lib/grade/evolucaoStatus"
 import { rotuloVagas } from "@/lib/grade/motor"
-import type { AgendamentoGrade, EstadoHorario, HorarioGrade } from "@/types/grade"
+import type { AgendamentoGrade, EstadoHorario, HorarioGrade, StatusVisualEvolucao } from "@/types/grade"
 import { LISTRAS_BLOQUEIO, selo } from "./estilo"
 
 // Peças visuais da Grade no design PADRÃO do Pulsar (receitas da Agenda do
@@ -56,6 +57,65 @@ export function grupoDoEstado(e: EstadoHorario): keyof typeof TOM_ESTADO {
   return e
 }
 
+// ── Selo de Evolução Terapêutica (exclusivo para visao=profissional) ──────────
+
+export const VISUAL_STATUS_EVOLUCAO: Record<
+  StatusVisualEvolucao,
+  { Icone: LucideIcon; pilula: string; ponto: string }
+> = {
+  evoluido: {
+    Icone: CheckCircle2,
+    pilula: "bg-emerald-600 text-white dark:bg-emerald-500",
+    ponto: "bg-emerald-600",
+  },
+  sem_registro_passado: {
+    Icone: ClockAlert,
+    pilula: "bg-amber-400 text-amber-950 dark:bg-amber-400 dark:text-amber-950",
+    ponto: "bg-amber-400",
+  },
+  cancelado: {
+    Icone: XCircle,
+    pilula: "bg-rose-600 text-white dark:bg-rose-500",
+    ponto: "bg-rose-600",
+  },
+  futuro: {
+    Icone: Clock,
+    pilula: "bg-sky-600 text-white dark:bg-sky-500",
+    ponto: "bg-sky-600",
+  },
+  inconsistencia: {
+    Icone: AlertTriangle,
+    pilula: "bg-violet-600 text-white dark:bg-violet-500",
+    ponto: "bg-violet-600",
+  },
+}
+
+/**
+ * Ícone colorido de alto contraste com anel neutro (`ring-2 ring-background`)
+ * para conciliar qualquer cor de terapia do cartão com a cor do status da evolução.
+ */
+export function SeloStatusEvolucao({
+  status,
+  grande = false,
+}: {
+  status: InfoStatusVisualEvolucao
+  grande?: boolean
+}) {
+  const cfg = VISUAL_STATUS_EVOLUCAO[status.codigo]
+  const Icone = cfg.Icone
+  return (
+    <span
+      title={`${status.rotulo}: ${status.descricaoCurta}`}
+      aria-label={`${status.rotulo}: ${status.descricaoCurta}`}
+      className={`inline-flex shrink-0 items-center justify-center rounded-full shadow-xs ring-2 ring-background ${
+        grande ? "h-5 w-5" : "h-4 w-4"
+      } ${cfg.pilula}`}
+    >
+      <Icone className={grande ? "h-3.5 w-3.5" : "h-2.5 w-2.5"} strokeWidth={2.5} aria-hidden />
+    </span>
+  )
+}
+
 // ── Sessão ────────────────────────────────────────────────────────────────────
 
 /** Cor e ícone de uma terapia (cadastro_terapias.cor_hex / icone). */
@@ -68,7 +128,15 @@ export type VisualTerapia = { cor: string | null; icone: string | null }
  * 3 (+ terapia de exibição, só quando difere da terapia principal).
  */
 export function CartaoSessao({
-  a, visual, titulo, linhas: linhasFixas, altura, alerta, tituloPorUltimo = false, onClick,
+  a,
+  visual,
+  titulo,
+  linhas: linhasFixas,
+  altura,
+  alerta,
+  statusEvolucao,
+  tituloPorUltimo = false,
+  onClick,
 }: {
   a: AgendamentoGrade
   visual: VisualTerapia
@@ -80,6 +148,8 @@ export function CartaoSessao({
   altura?: number
   /** Selo pequeno (fora da grade, reposição…). */
   alerta?: { t: Tone; rotulo: string } | null
+  /** Status da evolução terapêutica (exibido apenas em visao=profissional). */
+  statusEvolucao?: InfoStatusVisualEvolucao | null
   onClick: () => void
 }) {
   const grande = useGradeGrande()
@@ -93,19 +163,25 @@ export function CartaoSessao({
   const contorno = alerta?.t === "amber" ? "ring-amber-400 dark:ring-amber-500"
     : alerta?.t === "red" ? "ring-rose-400 dark:ring-rose-500"
     : "ring-[var(--t-300)] hover:ring-[var(--t-500)]"
+  const dicaEvolucao = statusEvolucao ? ` · ${statusEvolucao.rotulo} (${statusEvolucao.descricaoCurta})` : ""
   return (
     <button
       type="button"
       onClick={e => { e.stopPropagation(); onClick() }}
       style={estiloTons(visual.cor)}
-      title={`${hora} · ${a.paciente_nome} × ${a.profissional_nome} · ${a.terapia_nome}${exibicao ? ` (exibição: ${exibicao})` : ""}${a.sala_nome ? ` · ${a.sala_nome}` : ""}`}
+      title={`${hora} · ${a.paciente_nome} × ${a.profissional_nome} · ${a.terapia_nome}${exibicao ? ` (exibição: ${exibicao})` : ""}${a.sala_nome ? ` · ${a.sala_nome}` : ""}${dicaEvolucao}`}
       className={`ua-tons block h-full w-full min-w-0 overflow-hidden rounded-md bg-[var(--t-50)] text-left ${grande ? "px-2.5" : "px-2"} py-0.5 text-[var(--t-700)] ring-1 ring-inset transition-shadow ${contorno} ${foco}`}
     >
       {!tituloPorUltimo || linhas < 2 ? (
         <>
           <span className="flex min-w-0 items-center gap-1">
             <span className={`truncate font-semibold ${tam("titulo", grande)}`}>{titulo}</span>
-            {alerta && <span className={`${selo(alerta.t)} ml-auto shrink-0`}>{alerta.rotulo}</span>}
+            {(alerta || statusEvolucao) && (
+              <span className="ml-auto flex shrink-0 items-center gap-1">
+                {alerta && <span className={selo(alerta.t)}>{alerta.rotulo}</span>}
+                {statusEvolucao && <SeloStatusEvolucao status={statusEvolucao} grande={grande} />}
+              </span>
+            )}
           </span>
           {linhas >= 2 && (
             <span className={`flex min-w-0 items-center gap-1 opacity-80 ${tam("linha", grande)}`}>
@@ -120,7 +196,12 @@ export function CartaoSessao({
           <span className="flex min-w-0 items-center gap-1">
             <IconeTerapia chave={visual.icone} className={`${tam("icone", grande)} shrink-0`} strokeWidth={2} />
             <span className={`truncate font-semibold ${tam("titulo", grande)}`}>{terapia}</span>
-            {alerta && <span className={`${selo(alerta.t)} ml-auto shrink-0`}>{alerta.rotulo}</span>}
+            {(alerta || statusEvolucao) && (
+              <span className="ml-auto flex shrink-0 items-center gap-1">
+                {alerta && <span className={selo(alerta.t)}>{alerta.rotulo}</span>}
+                {statusEvolucao && <SeloStatusEvolucao status={statusEvolucao} grande={grande} />}
+              </span>
+            )}
           </span>
           {linhas >= 3 && exibicao && <span className={`block truncate opacity-70 ${tam("linha", grande)}`}>({exibicao})</span>}
           <span className={`block truncate opacity-80 ${tam("linha", grande)}`}>{titulo}</span>
@@ -138,11 +219,12 @@ export const linhasQueCabem = (altura: number, grande = false): 1 | 2 | 3 =>
 
 /** Um horário da grade na visão do profissional. A altura vem da duração. */
 export function BlocoHorario({
-  h, altura, visualDe, onSessao, onLivre, onFechado, onVerTodos,
+  h, altura, visualDe, statusEvolucaoDe, onSessao, onLivre, onFechado, onVerTodos,
 }: {
   h: HorarioGrade
   altura: number
   visualDe: (terapiaId: number) => VisualTerapia
+  statusEvolucaoDe?: (a: AgendamentoGrade) => InfoStatusVisualEvolucao | null
   onSessao: (a: AgendamentoGrade) => void
   /** Clique no espaço livre: novo agendamento já preenchido. */
   onLivre?: (h: HorarioGrade) => void
@@ -189,7 +271,7 @@ export function BlocoHorario({
         {h.ocupados.map(a => (
           <div key={a.id} className="min-h-0 flex-1">
             <CartaoSessao a={a} visual={visualDe(a.terapia_id)} titulo={a.paciente_nome} linhas={1}
-              alerta={{ t: "amber", rotulo: "no bloqueio" }} onClick={() => onSessao(a)} />
+              alerta={{ t: "amber", rotulo: "no bloqueio" }} statusEvolucao={statusEvolucaoDe?.(a)} onClick={() => onSessao(a)} />
           </div>
         ))}
       </div>
@@ -212,7 +294,7 @@ export function BlocoHorario({
       {visiveis.map((a, i) => (
         <div key={a.id} className="min-h-0 flex-1">
           <CartaoSessao a={a} visual={visualDe(a.terapia_id)} titulo={a.paciente_nome} linhas={linhas}
-            alerta={i === 0 ? alerta : null} onClick={() => onSessao(a)} />
+            alerta={i === 0 ? alerta : null} statusEvolucao={statusEvolucaoDe?.(a)} onClick={() => onSessao(a)} />
         </div>
       ))}
       {(emGrupo || escondidos > 0) && (

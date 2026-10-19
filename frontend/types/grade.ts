@@ -139,6 +139,7 @@ export type DisponibilidadePacienteGrade = {
 export type AcaoEventoGrade =
   | "criado" | "excluido" | "serie_encerrada" | "estendido"
   | "importado" | "bloqueio_criado" | "bloqueio_excluido" | "inativacao_profissional"
+  | "evoluido" | "evolucao_editada" | "falta_registrada" | "evolucao_removida"
 
 export type EventoGrade = {
   id: number
@@ -223,3 +224,70 @@ export type PayloadAgendamento = {
   permitir_paciente_simultaneo?: boolean
   observacao?: string | null
 }
+
+// ── Evoluções Terapêuticas e Faltas ─────────────────────────────────────────
+
+export type StatusVisualEvolucao =
+  | "evoluido"             // verde — possui tratativa (sem falta da recepção)
+  | "sem_registro_passado" // amarelo — sem registro e horário já passou (ex.: 10:01 p/ sessão 10:00)
+  | "cancelado"            // vermelho — falta do paciente ou falta do profissional
+  | "futuro"               // azul — sem registro e horário ainda não passou (ex.: 09:59 p/ sessão 10:00)
+  | "inconsistencia"       // roxo/violeta (SOMENTE ADMIN) — recepção marcou falta, mas profissional evoluiu
+
+export type AcessoEvolucaoGrade = {
+  eh_admin: boolean
+  pode_evoluir: boolean
+  usuario_id: string | null
+  usuario_nome: string
+  profissional_id: number | null
+}
+
+export type ResumoEvolucaoGrade = {
+  agendamento_id: string
+  status_execucao: "Realizado" | "Cancelado" | string | null
+  justificativa: string | null
+  tipo_falta: "paciente" | "terapeuta" | string | null
+  possui_tratativa: boolean
+  tratativa_profissional_id: number | null
+  tratativa_profissional_nome: string | null
+  tratativa_criada_em: string | null
+  origem: OrigemGrade | null
+  substituicao: boolean
+  falta_recepcao: boolean
+  tipo_falta_recepcao: string | null
+  inconsistencia: boolean
+}
+
+export type CarimboProfissionalGrade = {
+  profissional_id: number | null
+  profissional_nome: string | null
+  assinatura_path: string | null
+  tipo_registro: string | null
+  uf_registro: string | null
+  codigo_registro: string | null
+}
+
+export type DetalheEvolucaoGrade = {
+  agendamento_id: string
+  registrado: boolean
+  status_execucao: "Realizado" | "Cancelado" | string | null
+  justificativa: string | null
+  tipo_falta: "paciente" | "terapeuta" | string | null
+  possui_tratativa: boolean
+  descricao_evolucao: string | null
+  tratativa_profissional_id: number | null
+  tratativa_profissional_nome: string | null
+  tratativa_criada_em: string | null
+  tratativa_criada_em_brasilia: string | null
+  tratativa_origem: string | null
+  evolucao_vinculo: string | null
+  origem: OrigemGrade | null
+  substituicao: boolean
+  registrado_por_nome: string | null
+  atualizado_em_brasilia: string | null
+  falta_recepcao: boolean
+  tipo_falta_recepcao: string | null
+  inconsistencia: boolean
+  carimbo: CarimboProfissionalGrade
+}
+
