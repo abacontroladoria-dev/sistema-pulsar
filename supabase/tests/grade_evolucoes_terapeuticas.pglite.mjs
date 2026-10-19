@@ -170,6 +170,8 @@ values
 // Aplica a migration 20261016180000
 await db.exec(arquivo('20261016180000'))
 ok(true, 'Migration 20261016180000 aplicada com sucesso')
+await db.exec(arquivo('20261019120000'))
+ok(true, 'Migration 20261019120000 (texto clínico só para admin) aplicada com sucesso')
 
 const ag1 = await um(`select id from public.grade_agendamentos where tita_agendamento_id = 70001`)
 const ag2 = await um(`select id from public.grade_agendamentos where tita_agendamento_id = 70002`)
@@ -266,8 +268,27 @@ await como(EDITOR, async () => {
      'Não-admin NÃO vê inconsistência no resumo: inconsistencia = false e falta_recepcao = true')
 
   const det = (await um(`select public.grade_detalhe_evolucao($1) as r`, [ag2.id])).r
-  ok(det.inconsistencia === false && det.falta_recepcao === true && det.possui_tratativa === true && det.descricao_evolucao !== null,
-     'Não-admin vê a evolução normalmente mesmo com falta da recepção (inconsistencia = false, falta_recepcao = true, possui_tratativa = true)')
+  ok(det.inconsistencia === false && det.falta_recepcao === true && det.possui_tratativa === true,
+     'Não-admin vê o status (inconsistencia = false, falta_recepcao = true, possui_tratativa = true)')
+  ok(det.descricao_evolucao === null && det.carimbo === null,
+     'Não-admin NÃO recebe o texto clínico da evolução nem o carimbo')
+})
+
+// O ajudante `como` usa `set local role`, que não vale fora de transação; por isso as
+// permissões de função são conferidas direto no catálogo, sem depender do papel da sessão.
+const privFn = async (papel, assinatura) =>
+  (await um(`select has_function_privilege($1, $2, 'execute') as p`, [papel, assinatura])).p
+const interna = 'public.sp_grade_detalhe_evolucao_interno(uuid)'
+const publica = 'public.grade_detalhe_evolucao(uuid)'
+ok(!(await privFn('authenticated', interna)) && !(await privFn('anon', interna)),
+   'Função interna que devolve o texto completo: sem EXECUTE para authenticated e anon')
+ok((await privFn('authenticated', publica)) && !(await privFn('anon', publica)),
+   'grade_detalhe_evolucao (com máscara): authenticated executa, anon não')
+
+await como(ADMIN, async () => {
+  const det = (await um(`select public.grade_detalhe_evolucao($1) as r`, [ag2.id])).r
+  ok(det.descricao_evolucao === 'Atendimento realizado em substituição.' && det.carimbo && det.carimbo.profissional_nome,
+     'Admin continua recebendo o texto clínico e o carimbo')
 })
 
 console.log('7. Registro de Falta (paciente / profissional) e reversão pelo Admin')
