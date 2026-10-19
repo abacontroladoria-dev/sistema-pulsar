@@ -128,7 +128,7 @@ export async function gerarPdfEvolucoes(o: OpcoesPdf): Promise<Uint8Array> {
   const paginas = montarLayout(descricoes, t => fonte.widthOfTextAtSize(t, TAM_DESCRICAO), extras)
 
   const emitido = o.emitidoEm ?? new Date()
-  const textoEmitido = `Emitido em ${doisDigitos(emitido.getDate())}/${doisDigitos(emitido.getMonth() + 1)}/${emitido.getFullYear()} às ${doisDigitos(emitido.getHours())}:${doisDigitos(emitido.getMinutes())}`
+  const textoEmitido = `Emitido em ${doisDigitos(emitido.getDate())}/${doisDigitos(emitido.getMonth() + 1)}/${emitido.getFullYear()}`
   const periodo = `Período: ${formatarData(o.de)} a ${formatarData(o.ate)}`
 
   const centro = (p: PDFPage, t: string, y: number, f: PDFFont, s: number, c = COR.texto) => {
