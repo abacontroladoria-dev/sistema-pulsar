@@ -7,6 +7,12 @@ export type EvolucaoItem = {
   /** `tita:<uuid>` ou `pulsar:<uuid>` — identifica a evolução nos pedidos de conteúdo. */
   chave: string
   origem: OrigemEvolucao
+  /**
+   * ID do agendamento (o do TiTa; sessão só do Pulsar mostra o id da Grade).
+   * Vazio na evolução "Sem agendamento" — e ausente enquanto a migration
+   * 20261019200200 não estiver aplicada (o localhost usa o banco de produção).
+   */
+  agendamento_id?: string | null
   /** AAAA-MM-DD */
   data: string
   /** HH:MM */

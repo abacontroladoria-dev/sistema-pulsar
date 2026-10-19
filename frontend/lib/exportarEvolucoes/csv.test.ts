@@ -5,6 +5,7 @@ import { gerarCsv, protegerFormula } from "./csv"
 const base: EvolucaoConteudo = {
   chave: "tita:00000000-0000-0000-0000-000000000001",
   origem: "tita",
+  agendamento_id: "3654133",
   data: "2026-10-05",
   hora_inicio: "07:30",
   hora_fim: "08:00",
@@ -32,17 +33,25 @@ describe("gerarCsv", () => {
     expect(csv.startsWith("﻿")).toBe(true)
     const cabecalho = csv.slice(1).split("\r\n")[0]
     expect(cabecalho).toBe(
-      '"Data";"Horário início";"Horário fim";"Paciente";"CPF";"Data de nascimento";"Convênio";"Terapia";"Profissional";"Registro";"Descrição"',
+      '"ID do agendamento";"Data";"Horário início";"Horário fim";"Paciente";"CPF";"Data de nascimento";"Convênio";"Terapia";"Profissional";"Registro";"Descrição"',
     )
   })
 
   it("formata data, CPF e registro; mantém a quebra de linha dentro da célula", () => {
-    expect(csv).toContain('"05/10/2026";"07:30";"08:00";"Maria Souza";"123.456.789-00";"03/05/2021";"Unimed";"Psicologia ABA";"Sara Sousa";"CRP 06/12345 · SP"')
+    expect(csv).toContain('"3654133";"05/10/2026";"07:30";"08:00";"Maria Souza";"123.456.789-00";"03/05/2021";"Unimed";"Psicologia ABA";"Sara Sousa";"CRP 06/12345 · SP"')
     expect(csv).toContain('"Primeira linha;\ncom ""aspas""\nterceira"')
   })
 
   it("linhas separadas por CRLF, uma por evolução", () => {
     expect(gerarCsv([base, base]).slice(1).trimEnd().split("\r\n")).toHaveLength(3)
+  })
+
+  it("ID do agendamento vazio quando não há (ou antes da migration)", () => {
+    const linhaSemId = (csv: string) => csv.slice(1).split(String.fromCharCode(13, 10))[1]
+    expect(linhaSemId(gerarCsv([{ ...base, agendamento_id: null }])).startsWith('"";"05/10/2026"')).toBe(true)
+    const semId: EvolucaoConteudo = { ...base }
+    delete semId.agendamento_id
+    expect(linhaSemId(gerarCsv([semId])).startsWith('"";"05/10/2026"')).toBe(true)
   })
 
   it("protege contra fórmula", () => {

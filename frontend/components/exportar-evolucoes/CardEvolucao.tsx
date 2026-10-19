@@ -51,6 +51,9 @@ export const CardEvolucao = memo(function CardEvolucao({
             <span className="text-[14px] font-semibold tabular-nums text-foreground">{quando}</span>
             <StatusChip tone="gray" dense>{ROTULO_ORIGEM[item.origem]}</StatusChip>
             {item.substituicao && <StatusChip tone="blue" dense>substituição</StatusChip>}
+            {item.agendamento_id && (
+              <span className="text-[12px] tabular-nums text-muted-foreground">ID {item.agendamento_id}</span>
+            )}
           </div>
           <div className="text-[14px] font-semibold text-[oklch(0.48_0.092_217)] dark:text-sky-300">{item.terapia}</div>
           {/* Nomes inteiros: quebram linha em vez de virar "…". */}

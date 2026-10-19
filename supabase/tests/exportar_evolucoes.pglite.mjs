@@ -7,13 +7,21 @@
 // texto gravada no registro; reroda.
 //
 //   node supabase/tests/exportar_evolucoes.pglite.mjs \
-//     supabase/migrations/20261019200000_exportar_evolucoes.sql
+//     supabase/migrations/20261019200000_exportar_evolucoes.sql //     supabase/migrations/20261019200200_exportar_evolucoes_id_agendamento.sql
 import { PGlite } from '@electric-sql/pglite'
 import { readFileSync } from 'fs'
 
 let f = 0
 const ok = (c, m) => { console.log(c ? '  ok  ' : '  FALHA', m); if (!c) f++ }
 const mig = readFileSync(process.argv[2], 'utf8')
+const migId = readFileSync(process.argv[3], 'utf8')
+
+{
+  const vazio = new PGlite()
+  let erro = ''
+  try { await vazio.exec(migId) } catch (e) { erro = e.message }
+  ok(/20261019200000/.test(erro), 'a 200200 sozinha para e pede a 200000 antes')
+}
 
 const db = new PGlite()
 await db.exec(`
@@ -112,7 +120,9 @@ const tentar = async (sql) => { try { await db.exec(sql); return '' } catch (e) 
 
 await db.exec(mig)
 await db.exec(mig)
-ok(true, 'aplica e reroda')
+await db.exec(migId)
+await db.exec(migId)
+ok(true, 'aplica as duas e reroda')
 
 const comoPapel = async (papel, sql, uid = null) => {
   try {
@@ -169,7 +179,11 @@ ok(t2.profissional_nome === 'Pedro Alves' && t2.substituicao === true, 'TiTa: ex
 const p1 = itens.find(i => i.data === '2026-08-11')
 ok(p1.origem === 'pulsar' && p1.profissional_nome === 'Ana Costa' && p1.substituicao === false, 'Pulsar: profissional é o do cadastro, não o admin que digitou')
 ok(p1.terapia === 'Psicologia ABA', 'Pulsar: terapia de exibição pelo cadastro_terapias')
+ok(t1.agendamento_id === '1001', 'ID do agendamento: o do TiTa')
+ok(itens.filter(i => i.data === '2026-08-12' || i.data === '2026-08-13').every(i => i.agendamento_id === null), '"Sem agendamento" sai sem ID')
+ok(p1.agendamento_id === '1007', 'Pulsar com par no TiTa: o ID do TiTa')
 const p3 = itens.find(i => i.data === '2026-08-20')
+ok(p3.agendamento_id === '33333333-3333-3333-3333-333333333333', 'Pulsar sem par no TiTa: o id da Grade')
 ok(p3.profissional_nome === 'Pedro Alves' && p3.substituicao === true, 'Pulsar: substituto quando houve troca')
 ok(itens[0].paciente_nome === 'João Lima' && itens.at(-1).paciente_nome === 'Maria Souza', 'ordem por paciente')
 
@@ -193,6 +207,7 @@ ok(conteudo.ok, 'service_role lê o conteúdo')
 const cont = conteudo.rows[0].v
 ok(cont.length === chaves.length, `chave inválida, falta e tita_importacao são ignoradas sem erro (${cont.length}/${chaves.length})`)
 const c1 = cont.find(i => i.data === '2026-08-05')
+ok(c1.agendamento_id === '1001', 'conteúdo traz o ID do agendamento')
 ok(c1.descricao === 'texto T1' && c1.paciente_cpf === '12345678900' && c1.paciente_nascimento === '2021-05-03', 'conteúdo traz texto, CPF e nascimento')
 ok(c1.tipo_registro === 'CRP' && c1.codigo_registro === '06/12345' && c1.uf_registro === 'SP', 'conteúdo traz o registro do executor')
 const cp1 = cont.find(i => i.data === '2026-08-11')

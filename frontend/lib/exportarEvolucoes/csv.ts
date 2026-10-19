@@ -10,6 +10,7 @@ import { formatarCpf, formatarData, normalizarDescricao, registroDoProfissional 
 const BOM = "﻿"
 
 const COLUNAS: [string, (e: EvolucaoConteudo) => string][] = [
+  ["ID do agendamento", e => e.agendamento_id ?? ""],
   ["Data", e => formatarData(e.data)],
   ["Horário início", e => e.hora_inicio ?? ""],
   ["Horário fim", e => e.hora_fim ?? ""],

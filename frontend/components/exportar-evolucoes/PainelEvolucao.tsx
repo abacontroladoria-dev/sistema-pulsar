@@ -43,6 +43,12 @@ export function PainelEvolucao({ item, onClose }: { item: EvolucaoItem; onClose:
     >
       <div className="space-y-4">
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-[14px]">
+          {item.agendamento_id && (
+            <>
+              <dt className="text-muted-foreground">ID do agendamento</dt>
+              <dd className="break-all tabular-nums text-foreground">{item.agendamento_id}</dd>
+            </>
+          )}
           <dt className="text-muted-foreground">Terapia</dt>
           <dd className="font-semibold text-foreground">{item.terapia}</dd>
           <dt className="text-muted-foreground">Profissional</dt>
