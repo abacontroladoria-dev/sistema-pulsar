@@ -2,6 +2,7 @@ import { getSupabaseClient } from "@/lib/supabase/client"
 import { getUsuarioAtual } from "@/lib/supabase/usuarioAtual"
 import { registrarAuditoria } from "@/services/cadastrosAuditoria.service"
 import { mensagemDeErroBanco } from "@/lib/cadastros/erroBanco"
+import { listarPacientesBasicos, type PacienteBasico } from "@/services/pacientesBasico.service"
 import type { Paciente, PacienteEdit, PacienteFichaMedica } from "@/types/paciente"
 import type {
   PacienteImportacaoLog,
@@ -140,6 +141,9 @@ export async function getPacientePorTitaId(
  * Pulsar). Para cruzar uma grade inteira (centenas de linhas) com dado do
  * Pulsar sem fazer uma chamada por paciente — mesmo motivo/uso de
  * `getPacientePorTitaId`, só que em lote.
+ *
+ * Pela lista básica (pacientes_lista_basica): quem chama é a Ocupação Paciente,
+ * que não tem a permissão do cadastro (ver services/pacientesBasico.service.ts).
  */
 export async function getPacientesPorTitaIds(
   titaIds: number[]
@@ -147,18 +151,15 @@ export async function getPacientesPorTitaIds(
   const mapa = new Map<number, number>()
   if (titaIds.length === 0) return mapa
 
-  const supabase = getSupabaseClient()
-  const { data, error } = await supabase
-    .from(TABLE)
-    .select("id_paciente, tita_paciente_id")
-    .in("tita_paciente_id", titaIds)
-
-  if (error) {
-    console.error("Erro ao resolver pacientes por tita_paciente_id:", error)
+  let linhas: PacienteBasico[]
+  try {
+    linhas = await listarPacientesBasicos({ titaIds })
+  } catch (e) {
+    console.error("Erro ao resolver pacientes por tita_paciente_id:", e)
     return mapa
   }
 
-  for (const linha of (data ?? []) as { id_paciente: number; tita_paciente_id: number | null }[]) {
+  for (const linha of linhas) {
     if (linha.tita_paciente_id != null) mapa.set(linha.tita_paciente_id, linha.id_paciente)
   }
   return mapa

@@ -17,7 +17,7 @@ import { SearchCombobox } from "@/components/cronograma/ui/SearchCombobox"
 import { ConfirmDialog } from "@/components/cronograma/ui/ConfirmDialog"
 import { DatePicker } from "@/components/ui/date-picker"
 import { SeletorMesPrevisao } from "./SeletorMesPrevisao"
-import { getPacientes } from "@/services/pacientes.service"
+import { listarPacientesBasicos, type PacienteBasico } from "@/services/pacientesBasico.service"
 import {
   listarFaturamento,
   salvarFaturamento,
@@ -26,7 +26,20 @@ import {
 } from "@/services/previsaoReceitasFaturamento.service"
 import { fmtReal } from "@/lib/cronograma/helpers"
 import { maskMoedaBR, formatMoedaBRTexto, parseNumeroBR } from "@/lib/remuneracao/formatacao"
-import type { Paciente } from "@/types/paciente"
+
+// Só id e nome: a tela não tem a permissão do cadastro de pacientes, e a lista
+// básica (pacientes_lista_basica) não traz CPF, endereço nem responsável.
+type Paciente = PacienteBasico
+
+/** Pacientes para o seletor (sem fictícios; inativos entram, como antes). */
+async function carregarPacientes(): Promise<{ data: Paciente[]; error: string | null }> {
+  try {
+    const todos = await listarPacientesBasicos()
+    return { data: todos.filter(p => !p.ficticio), error: null }
+  } catch (e) {
+    return { data: [], error: e instanceof Error ? e.message : "Erro ao buscar pacientes" }
+  }
+}
 
 function anoMesParaCompetencia(ano: number, mes: number): string {
   return `${ano}-${String(mes).padStart(2, "0")}`
@@ -94,7 +107,7 @@ export function AlimentarBdReceitasShell() {
   async function recarregar() {
     setLoading(true)
     const [resPacientes, resFaturamento] = await Promise.all([
-      getPacientes(),
+      carregarPacientes(),
       listarFaturamento({ competencia: competenciaFiltro }),
     ])
     setPacientes(resPacientes.data)

@@ -4,6 +4,7 @@ import type { NextRequest } from 'next/server'
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit'
 import { abaPadraoLiberada, isSuperRole, podeAcessarRota } from '@/lib/permissions/resolver'
 import { carregarPermissoesEfetivas } from '@/lib/permissions/carregar'
+import { papelPrecisaDeSegundoFator, ROTA_SEGURANCA_CONTA, situacaoExigencia } from '@/lib/auth/segundoFator'
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next()
@@ -110,6 +111,23 @@ export async function proxy(request: NextRequest) {
   }
 
   const role = perfil?.role ?? ''
+
+  // Segundo fator (lib/auth/segundoFator.ts). Só a Segurança da conta abre até a
+  // sessão estar confirmada pelo app autenticador (aal2) quando:
+  //   • a pessoa JÁ cadastrou o app (nextLevel aal2) e entrou só com a senha —
+  //     recarregar a página no passo do código não pode pular o código;
+  //   • é admin/diretoria e a data de exigência chegou. Antes da data, nada
+  //     muda para quem não cadastrou (a tela mostra o aviso).
+  // A checagem do nível lê a sessão do cookie, sem ida ao servidor.
+  if (pathname.replace(/\/+$/, '') !== ROTA_SEGURANCA_CONTA) {
+    const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
+    const confirmado = aal?.currentLevel === 'aal2'
+    const temApp = aal?.nextLevel === 'aal2'
+    const exigido = papelPrecisaDeSegundoFator(role) && situacaoExigencia().tipo === 'obrigatoria'
+    if (!confirmado && (temApp || exigido)) {
+      return NextResponse.redirect(new URL(ROTA_SEGURANCA_CONTA, request.url))
+    }
+  }
 
   // Admin acessa tudo — decidido dentro de `podeAcessarRota`, não aqui. Este
   // retorno antecipado existia solto e o Sidebar não o tinha: era a divergência

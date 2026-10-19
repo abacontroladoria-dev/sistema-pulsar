@@ -6,7 +6,9 @@ import type {
   StatusCobrancaEvolucao,
   StatusRiscoEvolucao
 } from '@/types/auditoriaEvolucoes'
-import { executorDaSessao, filtroExecutadoPor } from '@/lib/auditoria/executor'
+import { executorDaSessao } from '@/lib/auditoria/executor'
+// Só o tipo (apagado na compilação): o módulo em si é server-only.
+import type { LinhaGradeAuditoria } from '@/lib/auditoria/gradeAuditoria'
 
 export interface FiltrosAuditoriaEvolucoes {
   dataInicio?: string
@@ -77,23 +79,6 @@ async function paginarEmParalelo<T>(
   }
 }
 
-const COLUNAS_GRADE = `
-  id,
-  tita_agendamento_id,
-  data,
-  profissional_id,
-  profissional_nome,
-  tratativa_profissional_id,
-  tratativa_profissional_nome,
-  paciente_id,
-  paciente_nome,
-  terapia_nome,
-  unidade_id,
-  unidade_nome,
-  descricao_evolucao,
-  status_execucao
-`
-
 /**
  * Busca evoluções de `csv_grades_profissionais` e seus resultados de auditoria em `auditoria_evolucoes`
  * Restrito por padrão a partir de 01/09/2026.
@@ -116,7 +101,7 @@ export async function buscarEvolucoesComAuditoria(
   try {
     const gradeRows = filtraRisco || filtraCobranca
       ? await buscarGradePelaAuditoria(supabase, dataInicio, filtros)
-      : await buscarGradePaginada(supabase, dataInicio, filtros)
+      : await buscarGradePaginada(dataInicio, filtros)
 
     if ('erro' in gradeRows) {
       return { data: [], error: gradeRows.erro }
@@ -203,54 +188,40 @@ export async function buscarEvolucoesComAuditoria(
   }
 }
 
-type LinhaGrade = {
-  id: string
-  tita_agendamento_id: number | null
-  data: string
-  profissional_id: number | null
-  profissional_nome: string | null
-  tratativa_profissional_id: number | null
-  tratativa_profissional_nome: string | null
-  paciente_id: number | null
-  paciente_nome: string | null
-  terapia_nome: string | null
-  unidade_id: number | null
-  unidade_nome: string | null
-  descricao_evolucao: string | null
-  status_execucao: string | null
-}
+type LinhaGrade = LinhaGradeAuditoria
 
 type ResultadoGrade = { linhas: LinhaGrade[] } | { erro: string }
 
 /**
- * Percorre a grade em páginas de 1000 até a última, para o período inteiro
- * caber no resultado. Sem isto o PostgREST devolve só a primeira página e não
- * avisa — ver o comentário de TAMANHO_PAGINA.
+ * A grade com o TEXTO DA EVOLUÇÃO vem da rota de servidor, não do banco direto:
+ * o login comum não lê `descricao_evolucao` (migration 20261019170000). A rota
+ * confere a permissão da tela e aplica os mesmos filtros e a mesma paginação
+ * de antes (lib/auditoria/gradeAuditoria.ts).
  */
+async function buscarGradeNoServidor(corpo: Record<string, unknown>): Promise<ResultadoGrade> {
+  // Barra final: trailingSlash:true responde 308 sem ela.
+  const res = await fetch('/api/terapeutico/auditoria-evolucoes/grade/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(corpo),
+    cache: 'no-store'
+  })
+  const json = (await res.json().catch(() => null)) as ResultadoGrade | null
+  if (!json) return { erro: `Erro ao buscar grade (HTTP ${res.status})` }
+  return json
+}
+
+/** O período inteiro (a rota pagina até a última página — ver TAMANHO_PAGINA). */
 async function buscarGradePaginada(
-  supabase: ReturnType<typeof getSupabaseClient>,
   dataInicio: string,
   filtros: FiltrosAuditoriaEvolucoes
 ): Promise<ResultadoGrade> {
-  const r = await paginarEmParalelo<LinhaGrade>(pagina => {
-    let query = supabase
-      .from('csv_grades_profissionais')
-      .select(COLUNAS_GRADE)
-      .gte('data', dataInicio)
-      .eq('ativo', true)
-      .not('descricao_evolucao', 'is', null)
-      .neq('descricao_evolucao', '')
-      .order('data', { ascending: false })
-      .order('id', { ascending: false }) // desempate estável entre páginas
-      .range(pagina * TAMANHO_PAGINA, (pagina + 1) * TAMANHO_PAGINA - 1)
-
-    if (filtros.dataFim) query = query.lte('data', filtros.dataFim)
-    if (filtros.profissionalId) query = query.or(filtroExecutadoPor(filtros.profissionalId))
-    if (filtros.unidadeId) query = query.eq('unidade_id', filtros.unidadeId)
-    return query as unknown as PromiseLike<{ data: LinhaGrade[] | null; error: { message: string } | null }>
+  return buscarGradeNoServidor({
+    dataInicio,
+    dataFim: filtros.dataFim ?? null,
+    profissionalId: filtros.profissionalId ?? null,
+    unidadeId: filtros.unidadeId ?? null
   })
-
-  return 'erro' in r ? { erro: `Erro ao buscar grade: ${r.erro}` } : r
 }
 
 /**
@@ -293,30 +264,13 @@ async function buscarGradePelaAuditoria(
 
   if (idsAlvo.length === 0) return { linhas: [] }
 
-  // Buscar as sessões dessas auditorias, em blocos para não estourar a URL.
-  const linhas: LinhaGrade[] = []
-  const blocos: string[][] = []
-  for (let i = 0; i < idsAlvo.length; i += 200) blocos.push(idsAlvo.slice(i, i + 200))
-
-  const respostas = await emParalelo(
-    blocos.map(chunk => () => {
-      let query = supabase
-        .from('csv_grades_profissionais')
-        .select(COLUNAS_GRADE)
-        .in('id', chunk)
-        .eq('ativo', true)
-      if (filtros.profissionalId) query = query.or(filtroExecutadoPor(filtros.profissionalId))
-      if (filtros.unidadeId) query = query.eq('unidade_id', filtros.unidadeId)
-      return query
-    })
-  )
-  for (const { data, error } of respostas) {
-    if (error) return { erro: `Erro ao buscar grade: ${error.message}` }
-    if (data) linhas.push(...(data as unknown as LinhaGrade[]))
-  }
-
-  linhas.sort((a, b) => (a.data < b.data ? 1 : a.data > b.data ? -1 : 0))
-  return { linhas }
+  // As sessões dessas auditorias, pelo servidor (blocos de 200 lá dentro), já
+  // ordenadas da mais recente para a mais antiga.
+  return buscarGradeNoServidor({
+    ids: idsAlvo,
+    profissionalId: filtros.profissionalId ?? null,
+    unidadeId: filtros.unidadeId ?? null
+  })
 }
 
 /**
