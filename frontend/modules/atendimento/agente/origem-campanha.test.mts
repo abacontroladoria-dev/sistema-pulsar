@@ -2,7 +2,7 @@
 //
 //   npx tsx modules/atendimento/agente/origem-campanha.test.mts
 
-import { casarPrimeiraMensagem, origemSemCampanha, resolverOrigem, type FraseCadastrada } from './origem-campanha.js'
+import { casarPrimeiraMensagem, origemAceitaAnuncio, origemSemCampanha, resolverOrigem, type FraseCadastrada } from './origem-campanha.js'
 
 let falhas = 0
 function checar(condicao: boolean, descricao: string, extra?: unknown) {
@@ -42,14 +42,17 @@ console.log('\n3. placeholder pronta_para_match=false nunca casa')
   checar(r === null, 'texto vazio não casa com placeholder', r)
 }
 
-console.log('\n4. identificador de anúncio presente — não decide sozinho (nenhum provider extrai isso hoje)')
+console.log('\n4. anúncio pago manda sobre a frase (Regra 5)')
 {
-  const r = casarPrimeiraMensagem(
-    'Gostaria de agendar pelo plano FUSEX.',
-    FRASES,
-    { tipo: 'meta_referral', valor: 'abc123' },
-  )
-  checar(r === null, 'com identificador, o módulo devolve null (ver comentário do arquivo)', r)
+  const pago = { ad_id: '120210000000000001', ctwa_clid: 'clid', titulo: null, url: null, source_type: 'ad', plataforma: null, pago: true }
+  const a = resolverOrigem('Olá! Vim do site e quero saber mais sobre a Terapia Aba.', FRASES, pago)
+  checar(a.origemTag === 'meta_ads' && a.campanha === 'Site | Terapia ABA', 'origem meta_ads; campanha ainda vem da frase', a)
+  const b = resolverOrigem('Oi', FRASES, pago)
+  checar(b.origemTag === 'meta_ads' && b.campanha === null, 'texto qualquer + anúncio = meta_ads sem campanha', b)
+  const c = resolverOrigem('Oi', FRASES, { ...pago, source_type: 'post', pago: false })
+  checar(c.origemTag === 'contato_direto', 'post compartilhado não é anúncio pago', c)
+  const d = resolverOrigem('Oi', FRASES, null)
+  checar(d.origemTag === 'contato_direto', 'sem anúncio, regra de sempre', d)
 }
 
 // ORIGEM sem campanha (15/10/2026): texto de anúncio pela Regra 5b, o resto
@@ -70,6 +73,14 @@ for (const [texto, esperado] of [
   checar(c.origemTag === 'meta_ads' && c.campanha === 'FUSEX', 'frase cadastrada vence e traz a campanha', c)
   const d = resolverOrigem('Oi', frases)
   checar(d.origemTag === 'contato_direto' && d.campanha === null, 'sem frase: contato_direto sem campanha', d)
+}
+
+{
+  // Grupo origem do catálogo, só com o que o teste usa.
+  const porGrupo = new Map([['origem', ['meta_ads', 'site', 'contato_direto'].map(key => ({ key }))]]) as never
+  checar(origemAceitaAnuncio(null, porGrupo), 'sem tags: anúncio decide')
+  checar(origemAceitaAnuncio(['contato_direto', 'outra'], porGrupo), 'contato_direto: anúncio substitui')
+  checar(!origemAceitaAnuncio(['site'], porGrupo), 'origem explícita não é tocada')
 }
 
 if (falhas > 0) {

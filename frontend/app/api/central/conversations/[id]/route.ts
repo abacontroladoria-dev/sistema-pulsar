@@ -37,7 +37,8 @@ export async function GET(_request: NextRequest, ctx: Ctx) {
     if (conversation.organization_id !== user.orgId) return forbidden()
 
     // Carrega dados relacionados em paralelo
-    const [contact, channelResult, inboxResult, settings] = await Promise.all([
+    const adId = conversation.anuncio?.ad_id ?? null
+    const [contact, channelResult, inboxResult, settings, catalogoResult] = await Promise.all([
       contactService.getById(user.orgId, conversation.contact_id).catch(() => null),
 
       (supabase as any)
@@ -60,6 +61,16 @@ export async function GET(_request: NextRequest, ctx: Ctx) {
       // manda é o agent_settings, e um botão que resolvesse isso sozinho no
       // cliente mostraria "Atendente" numa conversa que a Maia está atendendo.
       lerAgentSettings(supabase, user.orgId, conversation.inbox_id).catch(() => null),
+
+      // Nomes do anúncio de origem (Marketing API), quando já catalogado.
+      adId
+        ? (supabase as any)
+            .schema('central')
+            .from('meta_ad_catalog')
+            .select('ad_name, ad_status, adset_name, campaign_name, lookup_error')
+            .eq('ad_id', adId)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
     ])
 
     const efetivo = resolverModoEfetivo(
@@ -75,6 +86,7 @@ export async function GET(_request: NextRequest, ctx: Ctx) {
       contact:        contact ?? null,
       channel:        channelResult.data  ?? null,
       inbox:          inboxResult.data    ?? null,
+      anuncioCatalogo: catalogoResult.data ?? null,
       recentMessages: messages,
     })
   } catch (err) {

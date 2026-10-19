@@ -18,6 +18,7 @@ import { BlocoFicha }        from './BlocoFicha'
 import { BlocoSentimento }   from './BlocoSentimento'
 import { BlocoCanal }        from './BlocoCanal'
 import { BlocoOrigem }       from './BlocoOrigem'
+import { BlocoAnuncio }      from './BlocoAnuncio'
 import { BlocoResponsavel, type UsuarioAtribuivel } from './BlocoResponsavel'
 import { BlocoTags }         from './BlocoTags'
 import { BlocoAgendamento }  from './BlocoAgendamento'
@@ -197,6 +198,12 @@ export const PainelDetalhamento: React.FC<{
           <BlocoOrigem
             origem={contato?.source ?? null}
             aoSalvar={contato ? acoes.salvarOrigem : undefined}
+          />
+
+          <BlocoAnuncio
+            anuncio={detalhe.anuncio}
+            catalogo={detalhe.anuncioCatalogo}
+            campanha={detalhe.campanha ?? null}
           />
 
           <BlocoResponsavel

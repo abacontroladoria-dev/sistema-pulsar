@@ -188,6 +188,58 @@ console.log('conexão')
   checar(r?.tipo === 'ignorado', 'estado desconhecido ignorado', r)
 }
 
+console.log('anúncio (externalAdReply)')
+{
+  // Texto puro: a Evolution v2 põe o contextInfo em data, ao lado da mensagem.
+  const [a] = normalizarWebhookEvolution(upsert({
+    key: { remoteJid: '5511987654321@s.whatsapp.net', fromMe: false, id: 'AD1' },
+    message: { conversation: 'Olá! Tenho interesse e queria mais informações, por favor.' },
+    contextInfo: {
+      externalAdReply: {
+        title: 'Terapia ABA em Goiânia', sourceType: 'ad', sourceId: '120210000000000001',
+        sourceUrl: 'https://fb.me/abc?ctwa_clid=CLID123', mediaType: 'IMAGE',
+      },
+      entryPointConversionSource: 'ctwa_ad',
+    },
+  }))
+  const an = a?.tipo === 'mensagem' ? a.mensagem.anuncio : undefined
+  checar(an?.ad_id === '120210000000000001' && an.pago === true, 'texto puro: ad_id em data.contextInfo', an)
+  checar(an?.ctwa_clid === 'CLID123', 'ctwa_clid tirado da sourceUrl', an)
+  checar(an?.titulo === 'Terapia ABA em Goiânia', 'título do anúncio', an)
+
+  // Tipo com nó: o contextInfo vem no próprio nó.
+  const [b] = normalizarWebhookEvolution(upsert({
+    key: { remoteJid: '5511987654321@s.whatsapp.net', fromMe: false, id: 'AD2' },
+    message: { extendedTextMessage: { text: 'Oi', contextInfo: { externalAdReply: { sourceId: 999, sourceType: 'AD', ctwaClid: 'C2' } } } },
+  }))
+  const bn = b?.tipo === 'mensagem' ? b.mensagem.anuncio : undefined
+  checar(bn?.ad_id === '999' && bn.ctwa_clid === 'C2' && bn.pago, 'extendedTextMessage: ad_id no nó, número vira texto', bn)
+
+  // Post compartilhado não é mídia paga.
+  const [c] = normalizarWebhookEvolution(upsert({
+    key: { remoteJid: '5511987654321@s.whatsapp.net', fromMe: false, id: 'AD3' },
+    message: { conversation: 'Oi' },
+    contextInfo: { externalAdReply: { sourceId: '777', sourceType: 'post' } },
+  }))
+  const cn = c?.tipo === 'mensagem' ? c.mensagem.anuncio : undefined
+  checar(cn?.ad_id === '777' && cn.pago === false, 'post: capturado, mas não pago', cn)
+
+  // Sem identificador nenhum: nada a atribuir.
+  const [d] = normalizarWebhookEvolution(upsert({
+    key: { remoteJid: '5511987654321@s.whatsapp.net', fromMe: false, id: 'AD4' },
+    message: { conversation: 'Oi' },
+    contextInfo: { externalAdReply: { title: 'sem id' } },
+  }))
+  checar(d?.tipo === 'mensagem' && d.mensagem.anuncio === undefined, 'externalAdReply sem id nem clid é ignorado', d)
+
+  // Mensagem comum segue sem anúncio.
+  const [e] = normalizarWebhookEvolution(upsert({
+    key: { remoteJid: '5511987654321@s.whatsapp.net', fromMe: false, id: 'AD5' },
+    message: { conversation: 'Oi' },
+  }))
+  checar(e?.tipo === 'mensagem' && e.mensagem.anuncio === undefined, 'mensagem comum sem anúncio', e)
+}
+
 console.log('9º dígito')
 {
   checar(JSON.stringify(variantesBr('551187654321')) === JSON.stringify(['551187654321', '5511987654321']), 'sem 9 → com 9')

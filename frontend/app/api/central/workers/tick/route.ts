@@ -7,6 +7,7 @@ import { processarEnvios } from '@/modules/atendimento/workers/envio.worker'
 import { processarSugestoesEvolution } from '@/modules/atendimento/workers/sugestao-evolution.worker'
 import { processarSentimento } from '@/modules/atendimento/workers/sentimento.worker'
 import { processarAvatares } from '@/modules/atendimento/workers/avatar.worker'
+import { catalogarPendentes } from '@/modules/atendimento/meta/catalogo-anuncios'
 
 // ============================================================================
 // Tique dos workers — chamado pelo pg_cron a cada ~10 segundos
@@ -83,6 +84,10 @@ export async function POST(req: NextRequest) {
   // Foto de perfil: enfeite, por último de tudo. Orçamento próprio e curto.
   const avatar = await tentar('avatar', () => processarAvatares(supabaseService, orgId))
 
+  // Nomes dos anúncios (Marketing API) que o caminho ao vivo não pegou. Também
+  // enfeite: no máximo um lote de 50 IDs, e nada sem META_ADS_TOKEN.
+  const anuncios = await tentar('anuncios', () => catalogarPendentes(supabaseService, orgId))
+
   return NextResponse.json({
     ok: true,
     duracaoMs: Date.now() - inicio,
@@ -91,6 +96,7 @@ export async function POST(req: NextRequest) {
     sugestao,
     sentimento,
     avatar,
+    anuncios,
   })
 }
 
@@ -121,5 +127,6 @@ export async function GET(req: NextRequest) {
     organizacaoConfigurada: Boolean(process.env.CENTRAL_ORGANIZATION_ID),
     openAiConfigurada: Boolean(process.env.OPENAI_API_KEY),
     metaTokenConfigurado: Boolean(process.env.META_WABA_TOKEN),
+    metaAdsTokenConfigurado: Boolean(process.env.META_ADS_TOKEN),
   })
 }

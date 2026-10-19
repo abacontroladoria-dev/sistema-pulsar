@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type {
   AIMode,
+  AnuncioDaConversa,
   Conversation,
   ConversationStatus,
   PaginatedResult,
@@ -372,6 +373,21 @@ export class ConversationRepository {
       .eq('id', id)
 
     if (error) throw error
+  }
+
+  // Anúncio de origem (20261019160000): PRIMEIRO toque — só grava quando a
+  // coluna está nula. Devolve se gravou.
+  async registrarAnuncioSeVazio(id: string, anuncio: AnuncioDaConversa): Promise<boolean> {
+    const { data, error } = await (this.supabase as any)
+      .schema('central')
+      .from('conversations')
+      .update({ anuncio })
+      .eq('id', id)
+      .is('anuncio', null)
+      .select('id')
+
+    if (error) throw error
+    return (data ?? []).length > 0
   }
 
   // Campo, não tag (aba Regras, item 8) — coluna própria (20260922100200),
