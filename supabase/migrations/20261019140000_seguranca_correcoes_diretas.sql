@@ -86,7 +86,7 @@ begin
   if to_regclass('public.vw_profissionais_disponiveis') is null then
     return;
   end if;
-  v_def := pg_get_viewdef('public.vw_profissionais_disponiveis'::regclass, true);
+  v_def := pg_get_viewdef(to_regclass('public.vw_profissionais_disponiveis'), true);
   if v_def !~ $re$status_agendamento = 'Livre'$re$ or v_def !~ 'id_unidade = 280' then
     raise exception E'Pare: vw_profissionais_disponiveis em produção não tem o filtro esperado (Livre, unidade 280). Nada foi alterado. Definição atual:\n%', v_def;
   end if;
@@ -121,7 +121,12 @@ end $$;
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 2. controle_terapeutico: sem inserção livre
 -- ─────────────────────────────────────────────────────────────────────────────
-drop policy if exists controle_terapeutico_insert_authenticated on public.controle_terapeutico;
+do $$
+begin
+  if to_regclass('public.controle_terapeutico') is not null then
+    drop policy if exists controle_terapeutico_insert_authenticated on public.controle_terapeutico;
+  end if;
+end $$;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 3 e 4. Leitura por coluna nas cópias do TiTa
@@ -164,9 +169,11 @@ end $$;
 --     tem cpf_profissional e fica.
 do $$
 begin
-  if to_regclass('public.vw_profissionais_disponiveis') is not null
-     and pg_get_viewdef('public.vw_profissionais_disponiveis'::regclass, true) ~ 'cpf_profissional' then
-    drop view public.vw_profissionais_disponiveis;
+  -- Dois `if` de propósito: o PL/pgSQL não garante curto-circuito no `and`.
+  if to_regclass('public.vw_profissionais_disponiveis') is not null then
+    if pg_get_viewdef(to_regclass('public.vw_profissionais_disponiveis'), true) ~ 'cpf_profissional' then
+      drop view public.vw_profissionais_disponiveis;
+    end if;
   end if;
 end $$;
 
