@@ -14,6 +14,7 @@ import { useHeader } from "@/contexts/HeaderContext"
 import { useCadastroTerapias } from "@/hooks/useCadastroTerapias"
 import { useDadosPeriodo, useGradeBase } from "@/hooks/useGrade"
 import { dataBR, hojeBrasilia, somarDias } from "@/lib/disponibilidadeProfissional"
+import { resolverStatusVisualEvolucao, type InfoStatusVisualEvolucao } from "@/lib/grade/evolucaoStatus"
 import {
   DIAS_CURTOS, diaDaSemana, foraDaJanelaDoPaciente, janelaDoPaciente, montarPeriodo, precisaReposicao,
   resumir, rotuloDia, rotuloMes, rotuloSemana, semanaDe, semanasDoMes,
@@ -27,7 +28,7 @@ import { PainelNovoBloqueio, PainelVerBloqueio } from "./PainelBloqueio"
 import { PainelNovoAgendamento, type InicialNovo } from "./PainelNovoAgendamento"
 import { PainelRegistro } from "./PainelRegistro"
 import {
-  BlocoHorario, CartaoSessao, INICIOS_PADRAO, PX_POR_MIN, TOM_ESTADO, grupoDoEstado, minutos, montarEscala, type FiltroEstados, type ItemColuna, type VisualTerapia,
+  BlocoHorario, CartaoSessao, INICIOS_PADRAO, PX_POR_MIN, SeloStatusEvolucao, TOM_ESTADO, grupoDoEstado, minutos, montarEscala, type FiltroEstados, type ItemColuna, type VisualTerapia,
 } from "./pecas"
 import { AvisoFeriado, CabecalhoDia, GradeColunas, GradeMes, type ColunaGrade, type NumerosDia } from "./visoes"
 import { btnIcone, btnPrimario, btnSecundario, cartao, seletorOpcao, seletorTrilha } from "./estilo"
@@ -94,6 +95,14 @@ export function GradeShell() {
   // 13:00–17:40, o maior bloco) cabem numa tela; manhã e tarde se veem rolando.
   // Nunca menor que a reduzida.
   const [alturaLivre, setAlturaLivre] = useState<number | null>(null)
+  // Relógio atualizado a cada 30s para que o ícone mude de azul (09:59) para amarelo (10:01) em tempo real.
+  const [agoraRelogio, setAgoraRelogio] = useState(() => new Date())
+  useEffect(() => {
+    if (visao !== "profissional") return
+    const timer = window.setInterval(() => setAgoraRelogio(new Date()), 30_000)
+    return () => window.clearInterval(timer)
+  }, [visao])
+
   useEffect(() => {
     if (!telaCheia || painel) return
     const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setTelaCheia(false) }
@@ -105,7 +114,11 @@ export function GradeShell() {
   const base = useGradeBase(visao === "paciente" || painel?.tipo === "novo")
   const { terapias: catalogo } = useCadastroTerapias()
   const semana = useMemo(() => semanaDe(data), [data])
-  const dadosSemana = useDadosPeriodo({ de: semana[0], ate: semana[6] })
+  const dadosSemana = useDadosPeriodo({
+    de: semana[0],
+    ate: semana[6],
+    incluirEvolucoes: visao === "profissional",
+  })
   const semanasMes = useMemo(() => semanasDoMes(data), [data])
   const datasMes = useMemo(() => semanasMes.flat(), [semanasMes])
   const dadosMes = useDadosPeriodo({
@@ -136,6 +149,16 @@ export function GradeShell() {
     const t = catalogoPorId.get(terapiaId)
     return { cor: t?.cor_hex ?? null, icone: t?.icone ?? null }
   }, [catalogoPorId])
+  const statusEvolucaoDe = useCallback((a: AgendamentoGrade): InfoStatusVisualEvolucao | null => {
+    if (visao !== "profissional") return null
+    return resolverStatusVisualEvolucao({
+      data: a.data,
+      horaInicio: a.hora_inicio,
+      resumo: dadosSemana.evolucoes.get(a.id) ?? null,
+      ehAdmin: base.acessoEvolucao.eh_admin,
+      agora: agoraRelogio,
+    })
+  }, [visao, dadosSemana.evolucoes, base.acessoEvolucao.eh_admin, agoraRelogio])
   const profPorId = useMemo(() => new Map(base.profissionais.map(p => [p.id, p])), [base.profissionais])
   const focal = useCallback((p: ProfissionalGrade) => {
     const t = catalogoPorId.get(p.terapia_focal_id ?? p.terapias[0] ?? -1)
@@ -188,13 +211,13 @@ export function GradeShell() {
         ini: minutos(h.inicio),
         fim: minutos(h.fim),
         conteudo: (altura: number) => (
-          <BlocoHorario h={h} altura={altura} visualDe={visualDe}
+          <BlocoHorario h={h} altura={altura} visualDe={visualDe} statusEvolucaoDe={statusEvolucaoDe}
             onSessao={a => abrirSessao(a, h.estado === "fora_da_grade")}
             onLivre={h.data >= hoje ? hh => abrirLivre(hh, profissionalId) : undefined}
             onFechado={hh => abrirFechado(hh, bloqueios)}
             onVerTodos={hh => setPainel({ tipo: "horario", h: hh, profissionalId })} />
         ),
-      })), [ocultos, visualDe, abrirSessao, abrirLivre, abrirFechado, hoje])
+      })), [ocultos, visualDe, statusEvolucaoDe, abrirSessao, abrirLivre, abrirFechado, hoje])
 
   // ── Lista lateral ───────────────────────────────────────────────────────────
   const diasPorProf = useMemo(() => {
@@ -535,6 +558,34 @@ export function GradeShell() {
 
           {painelResumo}
 
+          {visao === "profissional" && conteudo.tipo === "colunas" && (
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
+              <span className="font-semibold text-foreground">Evolução:</span>
+              <span className="inline-flex items-center gap-1.5">
+                <SeloStatusEvolucao status={{ codigo: "evoluido", rotulo: "Evoluído", descricaoCurta: "Atendimento evoluído" }} />
+                <span>Evoluído</span>
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <SeloStatusEvolucao status={{ codigo: "sem_registro_passado", rotulo: "Sem registro", descricaoCurta: "Atendimento já passou sem registro" }} />
+                <span>Sem registro (já passou)</span>
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <SeloStatusEvolucao status={{ codigo: "cancelado", rotulo: "Cancelado / Falta", descricaoCurta: "Falta do paciente ou do profissional" }} />
+                <span>Cancelado / Falta</span>
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <SeloStatusEvolucao status={{ codigo: "futuro", rotulo: "Agendamento futuro", descricaoCurta: "Horário ainda não iniciou" }} />
+                <span>Agendamento futuro</span>
+              </span>
+              {base.acessoEvolucao.eh_admin && (
+                <span className="inline-flex items-center gap-1.5 font-medium text-violet-700 dark:text-violet-300">
+                  <SeloStatusEvolucao status={{ codigo: "inconsistencia", rotulo: "Inconsistência", descricaoCurta: "Recepção marcou falta, mas consta evolução" }} />
+                  <span>Inconsistência (falta × evoluído)</span>
+                </span>
+              )}
+            </div>
+          )}
+
           {semDisponibilidade && (
             <InlineNotice tone="amber" icon={<CalendarPlus className="h-4 w-4" />}>
               {profSel?.nome} não tem Disponibilidade cadastrada nesta semana, então a Grade não sabe quais horários estão livres.
@@ -598,7 +649,8 @@ export function GradeShell() {
           <ul className="space-y-2">
             {painel.h.ocupados.map(a => (
               <li key={a.id} className="h-14">
-                <CartaoSessao a={a} visual={visualDe(a.terapia_id)} titulo={a.paciente_nome} linhas={3} onClick={() => abrirSessao(a)} />
+                <CartaoSessao a={a} visual={visualDe(a.terapia_id)} titulo={a.paciente_nome} linhas={3}
+                  statusEvolucao={statusEvolucaoDe(a)} onClick={() => abrirSessao(a)} />
               </li>
             ))}
           </ul>
@@ -613,6 +665,8 @@ export function GradeShell() {
         <PainelAgendamento a={painel.a} cor={visualDe(painel.a.terapia_id).cor}
           reposicao={precisaReposicao(painel.a, profPorId)} foraDaGrade={painel.foraDaGrade}
           foraDaJanela={visao === "paciente" && foraDaJanelaDoPaciente(dispPac, painel.a)}
+          exibirEvolucao={visao === "profissional"} acessoEvolucao={base.acessoEvolucao}
+          profissionais={base.profissionais}
           onFechar={() => setPainel(null)} onMudou={recarregar} />
       )}
       {painel?.tipo === "novo" && (

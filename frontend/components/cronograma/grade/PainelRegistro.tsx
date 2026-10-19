@@ -1,7 +1,9 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { CalendarPlus, CloudDownload, Lock, LockOpen, Repeat, Trash2, UserRoundX, type LucideIcon } from "lucide-react"
+import {
+  CalendarPlus, CheckCircle2, CloudDownload, FilePenLine, Lock, LockOpen, Repeat, RotateCcw, Trash2, UserRoundX, XCircle, type LucideIcon,
+} from "lucide-react"
 import { Drawer } from "@/components/cronograma/ui/Drawer"
 import { DateRangePicker } from "@/components/ui/date-range-picker"
 import { hojeBrasilia, somarDias } from "@/lib/disponibilidadeProfissional"
@@ -23,9 +25,14 @@ const ACAO: Record<AcaoEventoGrade, { cor: string; Icone: LucideIcon; rotulo: st
   bloqueio_criado: { cor: "text-muted-foreground", Icone: Lock, rotulo: "Bloqueio" },
   bloqueio_excluido: { cor: "text-muted-foreground", Icone: LockOpen, rotulo: "Bloqueio removido" },
   inativacao_profissional: { cor: "text-amber-700 dark:text-amber-400", Icone: UserRoundX, rotulo: "Profissional inativado" },
+  evoluido: { cor: "text-emerald-700 dark:text-emerald-400", Icone: CheckCircle2, rotulo: "Evoluído" },
+  evolucao_editada: { cor: "text-emerald-700 dark:text-emerald-400", Icone: FilePenLine, rotulo: "Evolução editada" },
+  falta_registrada: { cor: "text-rose-700 dark:text-rose-400", Icone: XCircle, rotulo: "Falta registrada" },
+  evolucao_removida: { cor: "text-muted-foreground", Icone: RotateCcw, rotulo: "Registro limpo" },
 }
 
 const FILTROS: { chave: string; rotulo: string; acoes: AcaoEventoGrade[] }[] = [
+  { chave: "evolucao", rotulo: "Evoluções e faltas", acoes: ["evoluido", "evolucao_editada", "falta_registrada", "evolucao_removida"] },
   { chave: "criado", rotulo: "Criações", acoes: ["criado"] },
   { chave: "excluido", rotulo: "Exclusões", acoes: ["excluido", "serie_encerrada", "inativacao_profissional"] },
   { chave: "bloqueio", rotulo: "Bloqueios", acoes: ["bloqueio_criado", "bloqueio_excluido"] },

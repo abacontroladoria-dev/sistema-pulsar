@@ -1,30 +1,41 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import {
   AlertTriangle, CalendarClock, CloudDownload, History, Loader2, MapPin, Repeat, Stethoscope, Trash2, UserRound, UserRoundX,
 } from "lucide-react"
 import toast from "react-hot-toast"
-import { Drawer } from "@/components/cronograma/ui/Drawer"
+import { ScheduleModal } from "@/components/cronograma/ui/ScheduleModal"
 import { useConfirmacao } from "@/components/ui/pastel/confirmacao"
 import { campo } from "@/components/cadastros/pacientes/ui/campos"
 import type { Tone } from "@/components/cronograma/ui/tones"
 import { estiloTons } from "@/lib/cadastros/tonsTerapia"
 import { dataBR, horaCurta, hojeBrasilia } from "@/lib/disponibilidadeProfissional"
+import { formatarPlanejamentoSessao } from "@/lib/grade/evolucaoStatus"
 import { descreverSerie, rotuloDia } from "@/lib/grade/motor"
 import { buscarSerie, contarDestaEmDiante, excluir, listarEventosDaSessao } from "@/services/grade.service"
-import type { AgendamentoGrade, EventoGrade, SerieGrade } from "@/types/grade"
+import type { AcessoEvolucaoGrade, AgendamentoGrade, EventoGrade, ProfissionalGrade, SerieGrade } from "@/types/grade"
 import { aviso, btnPerigo, btnPerigoCheio, btnSecundario, rotuloCampo } from "./estilo"
+import { SecaoEvolucaoSessao } from "./PainelEvolucaoSessao"
 import { ListaEventos } from "./PainelRegistro"
 
-// Detalhe de uma sessão (painel lateral): dados, série, histórico e as duas
-// exclusões — só esta, ou desta em diante. Motivo obrigatório; nada do passado
-// é excluído (o banco também recusa). Nada vai ao TiTa.
+// Detalhe de uma sessão (modal centralizado): evolução terapêutica/falta, dados,
+// série, histórico e as duas exclusões — só esta, ou desta em diante. Motivo
+// obrigatório; nada do passado é excluído (o banco também recusa). Nada vai ao TiTa.
 
 type Escopo = "somente_esta" | "desta_em_diante"
 
 export function PainelAgendamento({
-  a, cor, reposicao, foraDaGrade, foraDaJanela, onFechar, onMudou,
+  a,
+  cor,
+  reposicao,
+  foraDaGrade,
+  foraDaJanela,
+  exibirEvolucao = false,
+  acessoEvolucao,
+  profissionais = [],
+  onFechar,
+  onMudou,
 }: {
   a: AgendamentoGrade
   cor: string | null
@@ -32,6 +43,10 @@ export function PainelAgendamento({
   reposicao: boolean
   foraDaGrade: boolean
   foraDaJanela: boolean
+  /** Ativo apenas em ?visao=profissional (visao=paciente mantém como está). */
+  exibirEvolucao?: boolean
+  acessoEvolucao?: AcessoEvolucaoGrade
+  profissionais?: ProfissionalGrade[]
   onFechar: () => void
   onMudou: () => void
 }) {
@@ -47,12 +62,23 @@ export function PainelAgendamento({
   const passado = a.data < hoje
   const temSerie = !!a.serie_id && serie?.frequencia === "semanal"
 
+  const recarregarEventos = useCallback(() => {
+    listarEventosDaSessao(a.id, a.serie_id)
+      .then(e => setEventos(e))
+      .catch(() => setEventos([]))
+  }, [a.id, a.serie_id])
+
   useEffect(() => {
     let vivo = true
     if (a.serie_id) buscarSerie(a.serie_id).then(s => vivo && setSerie(s)).catch(() => {})
     listarEventosDaSessao(a.id, a.serie_id).then(e => vivo && setEventos(e)).catch(() => vivo && setEventos([]))
     return () => { vivo = false }
   }, [a.id, a.serie_id])
+
+  const aoSalvarEvolucao = useCallback(() => {
+    recarregarEventos()
+    onMudou()
+  }, [recarregarEventos, onMudou])
 
   useEffect(() => {
     setPrevia(null)
@@ -90,12 +116,15 @@ export function PainelAgendamento({
 
   const terapia = a.terapia_exibicao_nome ?? a.terapia_nome
   const exibicaoDiferente = a.terapia_exibicao_nome && a.terapia_exibicao_nome !== a.terapia_nome
+  const subtituloModal = exibirEvolucao
+    ? formatarPlanejamentoSessao(a.data, a.hora_inicio, a.hora_fim, a.terapia_nome)
+    : `${rotuloDia(a.data)} · ${horaCurta(a.hora_inicio)}–${horaCurta(a.hora_fim)}`
 
   return (
-    <Drawer
+    <ScheduleModal
       title={a.paciente_nome}
-      subtitle={`${rotuloDia(a.data)} · ${horaCurta(a.hora_inicio)}–${horaCurta(a.hora_fim)}`}
-      width={460}
+      subtitle={subtituloModal}
+      maxWidth={620}
       onClose={onFechar}
       footer={!passado && (
         escopo ? (
@@ -122,6 +151,15 @@ export function PainelAgendamento({
       )}
     >
       <div className="space-y-4">
+        {exibirEvolucao && acessoEvolucao && (
+          <SecaoEvolucaoSessao
+            a={a}
+            acesso={acessoEvolucao}
+            profissionais={profissionais}
+            onSalvo={aoSalvarEvolucao}
+          />
+        )}
+
         {/* Cartão na cor da terapia */}
         <div style={estiloTons(cor)} className="ua-tons rounded-lg bg-[var(--t-50)] p-3 ring-1 ring-inset ring-[var(--t-300)]">
           <p className="flex items-center gap-2 text-base font-bold text-[var(--t-700)]">
@@ -179,7 +217,7 @@ export function PainelAgendamento({
         </section>
       </div>
       {dialogo}
-    </Drawer>
+    </ScheduleModal>
   )
 }
 

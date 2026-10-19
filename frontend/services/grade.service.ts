@@ -2,8 +2,9 @@ import { getSupabaseClient } from "@/lib/supabase/client"
 import { ehMigrationPendente } from "@/lib/supabase/erro"
 import { MigrationPendenteError } from "@/services/cadastroTerapias.service"
 import type {
-  AgendamentoGrade, BloqueioGrade, DisponibilidadePacienteGrade, EscopoExclusao, EventoGrade, FaixaGrade,
-  FeriadoGrade, PayloadAgendamento, ProfissionalGrade, SerieGrade, SimulacaoData, TipoBloqueio,
+  AcessoEvolucaoGrade, AgendamentoGrade, BloqueioGrade, DetalheEvolucaoGrade, DisponibilidadePacienteGrade,
+  EscopoExclusao, EventoGrade, FaixaGrade, FeriadoGrade, PayloadAgendamento, ProfissionalGrade,
+  ResumoEvolucaoGrade, SerieGrade, SimulacaoData, TipoBloqueio,
 } from "@/types/grade"
 
 // Grade (Cronograma) — leitura e escrita da agenda própria do Pulsar.
@@ -26,6 +27,7 @@ export class GradeNaoInstaladaError extends MigrationPendenteError {
 
 function mensagem(e: ErroPg): string {
   const m = e.message ?? ""
+  if (/Apenas administradores/i.test(m)) return m
   if (e.code === "42501" || /permission denied|row-level security|Sem permissão/i.test(m)) {
     return "Você não tem permissão para a Grade. Peça a permissão 'Grade' (Cronograma) a um administrador."
   }
@@ -482,3 +484,144 @@ export async function inativarProfissional(args: { profissionalId: number; dataS
   if (error) falha(error)
   return data as { sessoes: number; pacientes: number; series_encerradas: number; agendamentos: string; data_saida: string }
 }
+
+// ── Evoluções Terapêuticas e Registro de Faltas ──────────────────────────────
+
+const ACESSO_PADRAO_EVOLUCAO: AcessoEvolucaoGrade = {
+  eh_admin: false,
+  pode_evoluir: false,
+  usuario_id: null,
+  usuario_nome: "Usuário do Pulsar",
+  profissional_id: null,
+}
+
+async function fallbackAcessoEvolucaoDireto(): Promise<AcessoEvolucaoGrade> {
+  try {
+    const client = sb()
+    const { data: userRes } = await client.auth.getUser()
+    const user = userRes?.user ?? (await client.auth.getSession()).data.session?.user ?? null
+    if (!user) return ACESSO_PADRAO_EVOLUCAO
+
+    const [{ data: perfil }, { data: grupos }, { data: isAdminRpc }] = await Promise.all([
+      client.from("usuarios").select("id, nome, role, profissional_id").eq("id", user.id).maybeSingle(),
+      client.rpc("grupos_do_usuario").then(r => r, () => ({ data: null })),
+      client.rpc("is_admin").then(r => r, () => ({ data: false })),
+    ])
+
+    const listaGrupos = Array.isArray(grupos) ? (grupos as string[]) : []
+    const ehAdmin = Boolean(
+      perfil?.role === "admin" ||
+      isAdminRpc === true ||
+      listaGrupos.some(g => g.trim().toLowerCase() === "administrador"),
+    )
+
+    return {
+      eh_admin: ehAdmin,
+      pode_evoluir: ehAdmin,
+      usuario_id: user.id,
+      usuario_nome: perfil?.nome?.trim() || user.email || "Usuário do Pulsar",
+      profissional_id: (perfil as { profissional_id?: number | null } | null)?.profissional_id ?? null,
+    }
+  } catch {
+    return ACESSO_PADRAO_EVOLUCAO
+  }
+}
+
+/**
+ * Consulta se o usuário logado pode evoluir/marcar falta (por enquanto apenas `admin`,
+ * sequer `diretoria`) e obtém automaticamente o nome que constará em "Realizado por".
+ * Tolera banco sem a migration 20261016180000 aplicada ou cache do PostgREST ainda atualizando.
+ */
+export async function meuAcessoEvolucao(): Promise<AcessoEvolucaoGrade> {
+  const { data, error } = await sb().rpc("grade_meu_acesso_evolucao")
+  const ac = (!error && data ? (Array.isArray(data) ? data[0] : data) : null) as Partial<AcessoEvolucaoGrade> | null
+  if (ac?.pode_evoluir && ac.usuario_id) {
+    return {
+      eh_admin: Boolean(ac.eh_admin),
+      pode_evoluir: Boolean(ac.pode_evoluir),
+      usuario_id: ac.usuario_id,
+      usuario_nome: ac.usuario_nome || "Usuário do Pulsar",
+      profissional_id: ac.profissional_id ?? null,
+    }
+  }
+  const fb = await fallbackAcessoEvolucaoDireto()
+  const ehAdmin = Boolean(ac?.eh_admin || fb.eh_admin)
+  const podeEvoluir = Boolean(ac?.pode_evoluir || fb.pode_evoluir || ehAdmin)
+  return {
+    eh_admin: ehAdmin,
+    pode_evoluir: podeEvoluir,
+    usuario_id: ac?.usuario_id ?? fb.usuario_id,
+    usuario_nome:
+      (ac?.usuario_nome && ac.usuario_nome !== "Usuário do Pulsar" ? ac.usuario_nome : null) ??
+      fb.usuario_nome,
+    profissional_id: ac?.profissional_id ?? fb.profissional_id,
+  }
+}
+
+/**
+ * Resumo das evoluções e faltas de um período para pintar os ícones ao lado de
+ * cada sessão em `/cronograma/grade?visao=profissional`.
+ * Tolera banco sem a migration 20261016180000 aplicada (retorna lista vazia).
+ */
+export async function listarResumoEvolucoesPeriodo(
+  de: string,
+  ate: string,
+  profissionais?: number[],
+): Promise<ResumoEvolucaoGrade[]> {
+  const { data, error } = await sb().rpc("grade_resumo_evolucoes_periodo", {
+    p_de: de,
+    p_ate: ate,
+    p_profissionais: profissionais?.length ? profissionais : null,
+  })
+  if (error) {
+    if (ehMigrationPendente(error)) return []
+    falha(error)
+  }
+  return (data ?? []) as ResumoEvolucaoGrade[]
+}
+
+export async function buscarDetalheEvolucao(agendamentoId: string): Promise<DetalheEvolucaoGrade | null> {
+  const { data, error } = await sb().rpc("grade_detalhe_evolucao", {
+    p_agendamento_id: agendamentoId,
+  })
+  if (error) {
+    if (ehMigrationPendente(error)) return null
+    falha(error)
+  }
+  return (data as DetalheEvolucaoGrade | null) ?? null
+}
+
+export async function registrarEvolucao(
+  agendamentoId: string,
+  descricao: string,
+  profissionalSubstitutoId?: number | null,
+): Promise<DetalheEvolucaoGrade> {
+  const { data, error } = await sb().rpc("grade_registrar_evolucao", {
+    p_agendamento_id: agendamentoId,
+    p_descricao: descricao,
+    p_profissional_substituto_id: profissionalSubstitutoId ?? null,
+  })
+  if (error) falha(error)
+  return data as DetalheEvolucaoGrade
+}
+
+export async function registrarFalta(
+  agendamentoId: string,
+  tipoFalta: "paciente" | "terapeuta",
+): Promise<DetalheEvolucaoGrade> {
+  const { data, error } = await sb().rpc("grade_registrar_falta", {
+    p_agendamento_id: agendamentoId,
+    p_tipo_falta: tipoFalta,
+  })
+  if (error) falha(error)
+  return data as DetalheEvolucaoGrade
+}
+
+export async function limparEvolucao(agendamentoId: string): Promise<DetalheEvolucaoGrade> {
+  const { data, error } = await sb().rpc("grade_limpar_evolucao", {
+    p_agendamento_id: agendamentoId,
+  })
+  if (error) falha(error)
+  return data as DetalheEvolucaoGrade
+}
+
