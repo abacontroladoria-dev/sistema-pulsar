@@ -1112,7 +1112,7 @@ const ChaveAtendimento: React.FC<{
 
   const ativa = modo.modo === 'autonomous' || modo.modo === 'assisted'
 
-  const base = 'px-3 py-1 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors disabled:cursor-wait'
+  const base = 'px-2 2xl:px-3 py-1 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors disabled:cursor-wait'
 
   return (
     <div className="flex items-center gap-2 shrink-0">
@@ -1136,7 +1136,8 @@ const ChaveAtendimento: React.FC<{
           onClick={() => !ativa && aoTrocar(true)}
           disabled={salvando}
           aria-pressed={ativa}
-          title="A Maia responde esta conversa automaticamente."
+          aria-label="Maia"
+          title="Maia: responde esta conversa automaticamente."
           className={`${base} ${
             ativa
               ? 'bg-violet-500/25 text-violet-700 dark:text-violet-200'
@@ -1146,7 +1147,7 @@ const ChaveAtendimento: React.FC<{
           {salvando && !ativa
             ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
             : <Bot className="w-3.5 h-3.5" />}
-          Maia
+          <span className="hidden 2xl:inline">Maia</span>
         </button>
 
         <button
@@ -1154,7 +1155,8 @@ const ChaveAtendimento: React.FC<{
           onClick={() => ativa && aoTrocar(false)}
           disabled={salvando}
           aria-pressed={!ativa}
-          title="A Maia para. O atendimento passa a ser humano."
+          aria-label="Humano"
+          title="Humano: a Maia para. O atendimento passa a ser humano."
           className={`${base} ${
             !ativa
               ? 'bg-emerald-500/25 text-emerald-700 dark:text-emerald-200'
@@ -1164,7 +1166,7 @@ const ChaveAtendimento: React.FC<{
           {salvando && ativa
             ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
             : <User className="w-3.5 h-3.5" />}
-          Humano
+          <span className="hidden 2xl:inline">Humano</span>
         </button>
       </div>
     </div>
