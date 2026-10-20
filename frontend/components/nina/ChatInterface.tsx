@@ -764,6 +764,7 @@ const ChatInterface: React.FC = () => {
                     modo={modoNoNumero}
                     salvando={salvandoModo}
                     aoTrocar={handleTrocarModo}
+                    soIcones={showProfileInfo}
                   />
                 ) : canalHumano ? (
                   <span
@@ -778,6 +779,7 @@ const ChatInterface: React.FC = () => {
                     modo={modoIa}
                     salvando={salvandoModo}
                     aoTrocar={handleTrocarModo}
+                    soIcones={showProfileInfo}
                   />
                 )}
 
@@ -1104,15 +1106,17 @@ const ChatInterface: React.FC = () => {
 const ChaveAtendimento: React.FC<{
   modo:     ModoIa | null
   salvando: boolean
+  // Com o detalhamento aberto o cabeçalho encolhe: ficam só os ícones.
+  soIcones: boolean
   aoTrocar: (ligar: boolean) => void
-}> = ({ modo, salvando, aoTrocar }) => {
+}> = ({ modo, salvando, aoTrocar, soIcones }) => {
   // Enquanto o detalhe não chegou não há o que mostrar. Um trilho desenhado com
   // palpite pisca para o outro lado quando a resposta chega.
   if (!modo) return null
 
   const ativa = modo.modo === 'autonomous' || modo.modo === 'assisted'
 
-  const base = 'px-2 2xl:px-3 py-1 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors disabled:cursor-wait'
+  const base = `${soIcones ? 'px-2' : 'px-3'} py-1 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors disabled:cursor-wait`
 
   return (
     <div className="flex items-center gap-2 shrink-0">
@@ -1147,7 +1151,7 @@ const ChaveAtendimento: React.FC<{
           {salvando && !ativa
             ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
             : <Bot className="w-3.5 h-3.5" />}
-          <span className="hidden 2xl:inline">Maia</span>
+          {!soIcones && 'Maia'}
         </button>
 
         <button
@@ -1166,7 +1170,7 @@ const ChaveAtendimento: React.FC<{
           {salvando && ativa
             ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
             : <User className="w-3.5 h-3.5" />}
-          <span className="hidden 2xl:inline">Humano</span>
+          {!soIcones && 'Humano'}
         </button>
       </div>
     </div>
