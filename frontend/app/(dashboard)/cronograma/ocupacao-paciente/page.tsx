@@ -10,7 +10,7 @@ import { OrcamentoPacMode } from "@/components/cronograma/solicitacoes/Orcamento
 import { WorkspaceEmptyState } from "@/components/cronograma/ui/CronogramaWorkspace"
 import { buscarGradeComoCSVRows } from "@/lib/cronograma/gradeService"
 import { medirFrescorGrade } from "@/lib/grade/fonte"
-import { filtrarLivresSemGradeAberta } from "@/lib/cronograma/gradeTitaOcupacao"
+import { buscarGradeTitaAoVivo, filtrarLivresSemGradeAberta } from "@/lib/cronograma/gradeTitaOcupacao"
 import { reconciliarAgendadosComAgendaTita } from "@/lib/cronograma/reconciliarAgendaTita"
 import { construirSuspensaoTemporaria, type SuspensaoLinkInfo } from "@/lib/cronograma/suspensaoTemporaria"
 import { getJanelaOcupacaoPaciente } from "@/lib/cronograma/helpers"
@@ -99,9 +99,17 @@ export default function OcupacaoPacientePage() {
     // Aplicado aqui, na origem da cópia, para valer nas três modalidades sem
     // alterar assinatura de nenhuma função do módulo — e sem alcançar a
     // Simulação de Novo Prestador, que lê o cRows do CronogramaDataProvider.
+    //
+    // A grade em que a filtragem se apoia é pedida ao TiTa NA HORA, e já aqui,
+    // antes da grade e da agenda: são ~7s que correm em paralelo em vez de se
+    // somarem. A cópia do banco é de madrugada, e o TiTa muda durante o dia —
+    // caso Lívia dos Santos Barboza, 19/10/2026: quarta refeita na Fazendinha
+    // às 14:10, ofertada como Realengo até a madrugada seguinte. Se o TiTa não
+    // responder, a filtragem usa a cópia, como antes. Ver gradeTitaOcupacao.ts.
+    const gradeAoVivo = buscarGradeTitaAoVivo(janela.inicio, janela.fim)
     buscarGradeComoCSVRows(janela.inicio, janela.fim)
       .then(rows => reconciliarAgendadosComAgendaTita(rows, janela.inicio, janela.fim))
-      .then(rows => filtrarLivresSemGradeAberta(rows, janela.inicio, janela.fim))
+      .then(rows => filtrarLivresSemGradeAberta(rows, janela.inicio, janela.fim, gradeAoVivo))
       .then(rows => setCRows(rows))
       .catch(e => {
         fetchedRef.current = false

@@ -133,6 +133,29 @@ const MENSAGENS_AMIGAVEIS: Record<string, string> = {
   grade_terapeuta_sem_sala_ou_exibicao: "Este horário ainda não está totalmente configurado para implantação. Tente novamente mais tarde.",
   indisponivel_na_tita: "Este horário não está mais disponível para implantação. Gere uma nova sugestão.",
   erro_ao_verificar_disponibilidade: "Não foi possível verificar a disponibilidade deste horário agora. Tente novamente em instantes.",
+  // Texto genérico: a rota troca pela frase com a unidade (mensagemUnidadeDivergente).
+  unidade_divergente_na_tita: "Este horário mudou de unidade no TiTa. Nada foi gravado. Recarregue a página para ver os horários atualizados.",
+  horario_alterado_no_tita: "A grade deste horário foi refeita no TiTa hoje, e ele só poderá ser implantado depois da atualização da madrugada. Nada foi gravado. Escolha outro horário.",
+}
+
+/**
+ * Frase da recusa por unidade divergente, com quem, quando e onde — a genérica
+ * de MENSAGENS_AMIGAVEIS não diz qual das sessões do pacote mudou, e a
+ * atendente precisa disso para explicar à família.
+ */
+export function mensagemUnidadeDivergente(p: {
+  profissional: string | null
+  diaSemana: string | null
+  hora: string | null
+  unidadePulsar: string
+  unidadeTita: string
+  salaTita: string
+}): string {
+  const quem = p.profissional?.trim() || "este profissional"
+  const quando = [p.diaSemana?.trim().toLowerCase(), p.hora ? `às ${p.hora.slice(0, 5)}` : null].filter(Boolean).join(" ")
+  const onde = p.salaTita ? `${p.unidadeTita} (${p.salaTita})` : p.unidadeTita
+  return `No TiTa, o horário de ${quem}${quando ? ` na ${quando}` : ""} agora é na unidade ${onde}, não em ${p.unidadePulsar}. `
+    + "Nada foi gravado. Recarregue a página para ver os horários atualizados."
 }
 
 export function mensagemAmigavel(codigoErro: string | undefined): string {

@@ -16,6 +16,9 @@ let linhasGrade: Array<{
   data: string | null
   hora_inicial: string | null
   status_agendamento: string | null
+  id_sala?: number | null
+  sala?: string | null
+  grade_terapeuta_id?: number | null
 }> = []
 
 // Mock do cliente: só precisa honrar o encadeamento usado por buscarGrade
@@ -199,5 +202,87 @@ describe("fail-open", () => {
       SEGUNDA,
     )
     expect(out).toEqual([])
+  })
+})
+
+describe("C4 — Livre no TiTa, mas em outra unidade (caso Lívia, 19/10/2026)", () => {
+  // A cópia de 19/10 tinha a quarta da Lívia dos Santos Barboza (18987) em
+  // Realengo, Sala 23, toda Livre; o TiTa já a tinha na Fazendinha, Sala 8, com
+  // só 10:40 e 11:20 livres. Controle: Elisangela Motta Do Valle (8670), Realengo
+  // Sala 5, 10:40 Livre nos dois lados (CSV oficial do TiTa de 19/10).
+  const LIVIA = 18987
+  const ELISANGELA = 8670
+  const QUARTA = "2026-11-04"
+
+  const vaga = (prof: number, nome: string, hora: string, sala: string) => ({
+    ProfissionalId: prof,
+    Data: QUARTA,
+    HI_str: hora,
+    "Hora Inicial": hora,
+    "Status do Agendamento": "Livre",
+    Profissional: nome,
+    Terapia: "Fonoaudiologia",
+    "Dia da Semana": "Quarta-feira",
+    Sala: sala,
+    Unidade: sala.includes("Fazendinha") ? "Fazendinha" : "Realengo",
+  } as unknown as CsvRow)
+
+  const daGrade = (prof: number, hora: string, status: string, idSala: number, sala: string) => ({
+    profissional_id: prof, data: QUARTA, hora_inicial: `${hora}:00`, status_agendamento: status,
+    id_sala: idSala, sala, grade_terapeuta_id: prof * 10 + Number(hora.slice(0, 2)),
+  })
+
+  const TITA = [
+    daGrade(LIVIA, "10:00", "Agendado", 1434, "Unid. Fazendinha - Sala 8"),
+    daGrade(LIVIA, "10:40", "Livre", 1434, "Unid. Fazendinha - Sala 8"),
+    daGrade(LIVIA, "11:20", "Livre", 1434, "Unid. Fazendinha - Sala 8"),
+    daGrade(ELISANGELA, "10:40", "Livre", 1489, "Unid. Realengo - Sala 5"),
+  ]
+
+  const telaDe19_10 = [
+    vaga(LIVIA, "Lívia dos Santos Barboza", "10:40", "Unid. Realengo - Sala 23"),
+    vaga(LIVIA, "Lívia dos Santos Barboza", "11:20", "Unid. Realengo - Sala 23"),
+    vaga(ELISANGELA, "Elisangela Motta Do Valle", "10:40", "Unid. Realengo - Sala 5"),
+  ]
+
+  const silenciar = () => vi.spyOn(console, "info").mockImplementation(() => {})
+
+  it("pela grade do TiTa ao vivo: a Lívia não aparece como Realengo; a vaga coerente fica", async () => {
+    linhasGrade = []   // a cópia nem é consultada
+    const info = silenciar()
+    const out = await filtrarLivresSemGradeAberta(telaDe19_10, QUARTA, QUARTA, Promise.resolve(TITA))
+    expect(out.map(r => r.Profissional)).toEqual(["Elisangela Motta Do Valle"])
+    info.mockRestore()
+  })
+
+  it("pela cópia, quando o TiTa não responde: mesma regra", async () => {
+    linhasGrade = TITA
+    const info = silenciar()
+    const out = await filtrarLivresSemGradeAberta(telaDe19_10, QUARTA, QUARTA, Promise.resolve(null))
+    expect(out.map(r => r.Profissional)).toEqual(["Elisangela Motta Do Valle"])
+    info.mockRestore()
+  })
+
+  it("a grade ao vivo vence a cópia velha", async () => {
+    // A cópia ainda diz Realengo (como em 19/10); o TiTa diz Fazendinha.
+    linhasGrade = [
+      daGrade(LIVIA, "10:40", "Livre", 1467, "Unid. Realengo - Sala 23"),
+      daGrade(LIVIA, "11:20", "Livre", 1467, "Unid. Realengo - Sala 23"),
+      daGrade(ELISANGELA, "10:40", "Livre", 1489, "Unid. Realengo - Sala 5"),
+    ]
+    const info = silenciar()
+    const semAoVivo = await filtrarLivresSemGradeAberta(telaDe19_10, QUARTA, QUARTA)
+    expect(semAoVivo).toHaveLength(3)   // o bug: a cópia sozinha não vê a mudança
+    const comAoVivo = await filtrarLivresSemGradeAberta(telaDe19_10, QUARTA, QUARTA, Promise.resolve(TITA))
+    expect(comAoVivo.map(r => r.Profissional)).toEqual(["Elisangela Motta Do Valle"])
+    info.mockRestore()
+  })
+
+  it("leitura ao vivo que falha (promessa rejeitada) cai na cópia sem derrubar a tela", async () => {
+    linhasGrade = TITA
+    const info = silenciar()
+    const out = await filtrarLivresSemGradeAberta(telaDe19_10, QUARTA, QUARTA, Promise.reject(new Error("TiTa fora")))
+    expect(out.map(r => r.Profissional)).toEqual(["Elisangela Motta Do Valle"])
+    info.mockRestore()
   })
 })

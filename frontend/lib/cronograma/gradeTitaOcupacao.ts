@@ -83,9 +83,37 @@
 // reference_desligamento_inativo_tita) — e nada mais neste módulo barra o
 // prefixo: isProfBloqueadoTemp é uma lista fixa de dois nomes, não um filtro de
 // desligado. Por isso a trava vive aqui.
+//
+// ── Regra C4: Livre no TiTa, mas em OUTRA unidade ──
+//
+// Medido em 19 e 20/10/2026 — caso Lívia dos Santos Barboza (profissional_id
+// 18987), quarta-feira: a grade dela foi refeita no TiTa às 14:10 de 19/10 na
+// Fazendinha (Sala 8), e a cópia seguia com Realengo (Sala 23) até a madrugada
+// seguinte. "Criar Novo Cronograma" com unidade Realengo ofereceu 10:40 e 11:20
+// com selo "Realengo": o horário estava mesmo Livre no TiTa, só que na
+// Fazendinha. Nenhuma das regras acima pega isso — o slot existe (C2) e está
+// livre (C1). A unidade de uma vaga sai do nome da sala (exU), então a regra é:
+// se a grade tem o horário Livre e nenhuma linha dele é da unidade que o CSV
+// diz, a vaga sai. Troca de sala DENTRO da unidade não tira a vaga — a escrita
+// já usa a sala da grade, não a do CSV. Detalhes em conferenciaTita.ts.
+//
+// ── A fonte: o TiTa ao vivo, com a cópia como reserva ──
+//
+// As quatro regras valem tanto quanto a grade em que se apoiam. A cópia
+// (grade_profissionais_tita) é refeita uma vez por dia, de madrugada, e o TiTa
+// muda ao longo do dia (medido em 20/10/2026: 61 linhas novas na semana de
+// 02–06/11 entre a cópia das 11:52 e as 15:30, horário de Brasília). Por isso a tela pede a grade ao
+// TiTa na hora (/api/tita/grade-ao-vivo, ~7s para a janela, em paralelo com a
+// leitura da grade) e só cai na cópia quando o TiTa não responde. A
+// implantação confere de novo, sem cache, antes de gravar
+// (app/api/tita/confirmar-agendamento).
 
 import { getSupabaseClient } from "@/lib/supabase/client"
 import type { CsvRow } from "@/types/cronograma"
+import {
+  chaveGradeTita, conferirVaga, indexarGradeTita,
+  type LinhaGradeTita,
+} from "./conferenciaTita"
 
 const PAGE = 1000
 const UNIDADE = 280
@@ -100,6 +128,9 @@ interface LinhaGrade {
   data: string | null
   hora_inicial: string | null
   status_agendamento: string | null
+  id_sala?: number | null
+  sala?: string | null
+  grade_terapeuta_id?: number | null
 }
 
 // Dia da semana derivado da DATA, não do texto `dia_semana`. As duas tabelas
@@ -131,8 +162,75 @@ interface Grade {
   naGrade: Set<ChaveData>
   /** C2 — profissionais para os quais a grade trouxe ALGUMA linha. */
   profissionaisLidos: Set<number>
+  /** C4 — as linhas de cada slot (profissional/data/hora), para conferir a unidade. */
+  porSlot: Map<string, LinhaGradeTita[]>
   /** Total de linhas lidas — distingue "nada comprometido" de "não consegui ler". */
   linhas: number
+  /** De onde vieram as linhas — só para o log. */
+  fonte: "tita" | "copia"
+}
+
+/** Monta os índices das quatro regras a partir de linhas já lidas. */
+function indexarGrade(linhas: LinhaGrade[], fonte: Grade["fonte"]): Grade {
+  const grade: Grade = {
+    comprometidos: new Set<ChaveSlot>(),
+    naGrade: new Set<ChaveData>(),
+    profissionaisLidos: new Set<number>(),
+    porSlot: new Map(),
+    linhas: 0,
+    fonte,
+  }
+  const validas: LinhaGradeTita[] = []
+  for (const l of linhas) {
+    if (l.profissional_id == null || !l.data || !l.hora_inicial) continue
+    grade.linhas++
+    grade.profissionaisLidos.add(l.profissional_id)
+    grade.naGrade.add(chaveData(l.profissional_id, l.data, l.hora_inicial))
+    if (l.status_agendamento === "Agendado") {
+      grade.comprometidos.add(chaveSlot(l.profissional_id, dowDe(l.data), l.hora_inicial))
+    }
+    validas.push({
+      profissional_id: l.profissional_id,
+      data: dia(l.data),
+      hora_inicial: l.hora_inicial,
+      status_agendamento: l.status_agendamento,
+      id_sala: l.id_sala ?? null,
+      sala: l.sala ?? null,
+      grade_terapeuta_id: l.grade_terapeuta_id ?? null,
+    })
+  }
+  grade.porSlot = indexarGradeTita(validas)
+  return grade
+}
+
+/**
+ * Pede a grade do TiTa ao vivo para a janela (ver /api/tita/grade-ao-vivo).
+ *
+ * Devolve null em qualquer falha — sessão expirada, TiTa fora, período longo
+ * demais. Null não é erro para a tela: `filtrarLivresSemGradeAberta` cai na
+ * cópia do banco, que é exatamente o comportamento de antes desta leitura.
+ *
+ * Feita para ser disparada CEDO, em paralelo com a leitura da grade, e a
+ * promessa entregue a `filtrarLivresSemGradeAberta`: a ida ao TiTa (~7s) corre
+ * enquanto a grade e a agenda são lidas, em vez de se somar a elas.
+ */
+export async function buscarGradeTitaAoVivo(desde: string, ate: string): Promise<LinhaGradeTita[] | null> {
+  try {
+    const resp = await fetch("/api/tita/grade-ao-vivo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ desde, ate }),
+    })
+    const body = await resp.json().catch(() => null) as { ok?: boolean; linhas?: LinhaGradeTita[]; error?: string } | null
+    if (!resp.ok || !body?.ok || !Array.isArray(body.linhas)) {
+      console.warn("[gradeTitaOcupacao] grade do TiTa ao vivo indisponível — usando a cópia do banco", resp.status, body?.error)
+      return null
+    }
+    return body.linhas
+  } catch (e) {
+    console.warn("[gradeTitaOcupacao] grade do TiTa ao vivo indisponível — usando a cópia do banco", e)
+    return null
+  }
 }
 
 /**
@@ -174,21 +272,16 @@ interface Grade {
  * virar dezenas de idas e voltas em série.
  */
 async function buscarGrade(desde: string, ate: string, profissionaisIds: number[]): Promise<Grade> {
-  const grade: Grade = {
-    comprometidos: new Set<ChaveSlot>(),
-    naGrade: new Set<ChaveData>(),
-    profissionaisLidos: new Set<number>(),
-    linhas: 0,
-  }
-  if (profissionaisIds.length === 0) return grade
+  if (profissionaisIds.length === 0) return indexarGrade([], "copia")
 
   const sb = getSupabaseClient()
+  const lidas: LinhaGrade[] = []
 
   const pagina = (from: number, comTotal: boolean) => {
     const q = sb
       .from("grade_profissionais_tita")
       .select(
-        "profissional_id, data, hora_inicial, status_agendamento",
+        "profissional_id, data, hora_inicial, status_agendamento, id_sala, sala, grade_terapeuta_id",
         comTotal ? { count: "exact" } : undefined,
       )
       .eq("id_unidade", UNIDADE)
@@ -200,17 +293,7 @@ async function buscarGrade(desde: string, ate: string, profissionaisIds: number[
     return q
   }
 
-  const indexar = (linhas: LinhaGrade[]) => {
-    for (const l of linhas) {
-      if (l.profissional_id == null || !l.data || !l.hora_inicial) continue
-      grade.linhas++
-      grade.profissionaisLidos.add(l.profissional_id)
-      grade.naGrade.add(chaveData(l.profissional_id, l.data, l.hora_inicial))
-      if (l.status_agendamento === "Agendado") {
-        grade.comprometidos.add(chaveSlot(l.profissional_id, dowDe(l.data), l.hora_inicial))
-      }
-    }
-  }
+  const indexar = (linhas: LinhaGrade[]) => { lidas.push(...linhas) }
 
   const { data, error, count } = await pagina(0, true)
   if (error) throw new Error(`grade_profissionais_tita: ${error.message}`)
@@ -229,7 +312,7 @@ async function buscarGrade(desde: string, ate: string, profissionaisIds: number[
         if (linhas.length < PAGE) break
       }
     }
-    return grade
+    return indexarGrade(lidas, "copia")
   }
 
   const restantes: number[] = []
@@ -242,12 +325,13 @@ async function buscarGrade(desde: string, ate: string, profissionaisIds: number[
     }
   }
 
-  return grade
+  return indexarGrade(lidas, "copia")
 }
 
 /**
  * Remove de `cRows` as linhas 'Livre' que a grade do TiTa não sustenta:
- * as que ela dá como comprometidas (C1) e as que não existem nela (C2).
+ * as que ela dá como comprometidas (C1), as que não existem nela (C2) e as que
+ * ela dá como livres em outra unidade (C4).
  *
  * REMOVE em vez de virar o status para 'Agendado' de propósito: meia dúzia de
  * funções conta linhas 'Agendado' como sessão real (sessoesDaCategoria em
@@ -273,6 +357,9 @@ export async function filtrarLivresSemGradeAberta(
   // é derivado da maior data presente em `cRows` — que é o fim real da janela,
   // já que nenhuma linha fora dela é consultada. Ver a nota em `buscarGrade`.
   ate?: string,
+  // A grade do TiTa ao vivo (buscarGradeTitaAoVivo), já disparada pelo
+  // chamador. Ausente, null ou vazia → a cópia do banco, como antes.
+  gradeAoVivo?: Promise<LinhaGradeTita[] | null>,
 ): Promise<CsvRow[]> {
   const idsComVaga = new Set<number>()
   let maiorData = ""
@@ -286,7 +373,15 @@ export async function filtrarLivresSemGradeAberta(
   if (idsComVaga.size === 0) return cRows
 
   const teto = ate || maiorData || desde
-  const grade = await buscarGrade(desde, teto, [...idsComVaga])
+  const aoVivo = gradeAoVivo ? await gradeAoVivo.catch(() => null) : null
+  // O TiTa devolve a unidade inteira; recorta para a janela e para quem tem
+  // vaga, o mesmo recorte que a consulta à cópia faz no banco.
+  const aoVivoNaJanela = (aoVivo ?? []).filter(l =>
+    idsComVaga.has(l.profissional_id) && l.data >= desde && l.data <= teto,
+  )
+  const grade = aoVivoNaJanela.length > 0
+    ? indexarGrade(aoVivoNaJanela, "tita")
+    : await buscarGrade(desde, teto, [...idsComVaga])
 
   // A policy de grade_profissionais_tita só libera SELECT para `authenticated`
   // (ver 20260524120000_grade_profissionais_rls_policy.sql). Sessão anônima não
@@ -298,14 +393,15 @@ export async function filtrarLivresSemGradeAberta(
   // que diferencia "não havia nada comprometido" de "não consegui ler".
   if (grade.linhas === 0) {
     console.warn(
-      "[gradeTitaOcupacao] Nenhuma linha lida de grade_profissionais_tita — regras C1/C2 desligadas. "
+      "[gradeTitaOcupacao] Nenhuma linha lida da grade (TiTa ao vivo nem grade_profissionais_tita) — regras C1/C2/C4 desligadas. "
       + "Se a tela está oferecendo horário ocupado ou sem grade, verifique se a sessão está autenticada (RLS).",
       JSON.stringify({ desde, ate: teto, profissionais: idsComVaga.size }),
     )
     return cRows
   }
 
-  return cRows.filter(r => {
+  const divergentes: string[] = []
+  const filtradas = cRows.filter(r => {
     if (r["Status do Agendamento"] !== "Livre") return true
     const id = r.ProfissionalId
     if (typeof id !== "number") return true
@@ -339,7 +435,23 @@ export async function filtrarLivresSemGradeAberta(
     // barra o prefixo — isProfBloqueadoTemp é uma lista fixa de dois nomes, não
     // um filtro de desligado — então a trava tem de estar aqui.
     if (isDesligado(r.Profissional)) return false
-    if (!grade.profissionaisLidos.has(id)) return true
-    return grade.naGrade.has(chaveData(id, data, r.HI_str))
+    if (grade.profissionaisLidos.has(id) && !grade.naGrade.has(chaveData(id, data, r.HI_str))) return false
+
+    // C4 — Livre na grade, mas em outra unidade. Só a divergência de unidade
+    // tira a vaga: "ausente" já foi decidido pela C2 (com a abstenção dela), e
+    // "ocupado" pela C1.
+    const conferencia = conferirVaga(
+      { profissionalId: id, data, horaInicial: String(r.HI_str ?? ""), salaNome: r["Sala"] ?? null },
+      grade.porSlot.get(chaveGradeTita(id, data, r.HI_str)),
+    )
+    if (conferencia.situacao === "unidade_divergente") {
+      divergentes.push(`${r.Profissional} ${data} ${r.HI_str}: ${conferencia.unidadePulsar} → ${conferencia.unidadeTita}`)
+      return false
+    }
+    return true
   })
+  if (divergentes.length) {
+    console.info(`[gradeTitaOcupacao] C4 (fonte: ${grade.fonte}) tirou ${divergentes.length} vaga(s) de unidade divergente`, divergentes)
+  }
+  return filtradas
 }
