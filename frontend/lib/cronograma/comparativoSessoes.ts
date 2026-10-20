@@ -32,6 +32,28 @@ export function excluirPacientesFicticios(sessoes: SessaoComparativo[]): SessaoC
   return sessoes.filter(s => s.idFavorecido === null || !PACIENTES_FICTICIOS_IDS.has(s.idFavorecido))
 }
 
+/**
+ * Terapias fora do Comparativo de Sessões (Tratamento Multidisciplinar):
+ * atendimentos pontuais, de entrada ou de avaliação, cujos pacientes
+ * costumam aparecer num mês e sumir no seguinte — distorciam a leitura de
+ * quem ganhou e quem perdeu sessão (decisão do usuário, 20/10/2026). Saem na
+ * normalização, então valem para paciente e profissional; paciente cuja
+ * agenda no período era só isso deixa de existir na análise.
+ */
+export const TERAPIAS_FORA_DO_COMPARATIVO = new Map<number, string>([
+  [2800, "Avaliação Neuropsicopedagógica"],
+  [2695, "Psiquiatra/Neurologista"],
+  [2270, "Triagem"],
+  [2604, "Visita Guiada"],
+])
+const NOMES_FORA_DO_COMPARATIVO = new Set([...TERAPIAS_FORA_DO_COMPARATIVO.values()].map(normTxt))
+
+/** A sessão é de uma terapia fora do comparativo? Pelo id; pelo nome quando o id não veio. */
+export function terapiaForaDoComparativo(idTerapia: number | null, terapia: string): boolean {
+  if (idTerapia !== null) return TERAPIAS_FORA_DO_COMPARATIVO.has(idTerapia)
+  return NOMES_FORA_DO_COMPARATIVO.has(normTxt(terapia))
+}
+
 export const UNIDADE_CONSERTAR = "Consertar Unidade no Sistema"
 export const UNIDADE_AMBIENTE_NATURAL = "Ambiente Natural - Casa ou Escola"
 
@@ -219,6 +241,13 @@ export function normalizarLinhasUpload(raw: Record<string, unknown>[]): SessaoCo
     const sala = pick(row, ["Sala", "sala"])
     const data = normalizarDataAgendamento(pick(row, ["Data do Agendamento", "Data", "data"]))
     const diaSemanaTexto = pick(row, ["Dia da Semana", "Dia Semana", "dia_semana"])
+    const idTerapiaUp = (() => {
+      const s = pick(row, ["Id Especialidade", "IdEspecialidade", "Id_Especialidade", "Id Terapia", "IdTerapia", "Id_Terapia"])
+      const n = s ? Number(s.replace(/\D/g, "")) : NaN
+      return isNaN(n) ? null : n
+    })()
+    const terapiaUp = decodeEntidadesHtml(pick(row, ["Especialidade", "especialidade", "Terapia", "terapia"]))
+    if (terapiaForaDoComparativo(idTerapiaUp, terapiaUp)) continue
     out.push({
       idFavorecido: idFavorecido !== null && !isNaN(idFavorecido) ? idFavorecido : null,
       paciente: decodeEntidadesHtml(pick(row, ["Favorecido", "Nome Favorecido", "Paciente", "paciente"])),
@@ -227,12 +256,8 @@ export function normalizarLinhasUpload(raw: Record<string, unknown>[]): SessaoCo
       convenio: decodeEntidadesHtml(pick(row, ["Convênio", "Convenio", "convenio"])),
       data,
       hora: parseHoraAgendamento(pick(row, ["Hora Inicial", "Hora", "hora"])),
-      idTerapia: (() => {
-        const s = pick(row, ["Id Especialidade", "IdEspecialidade", "Id_Especialidade", "Id Terapia", "IdTerapia", "Id_Terapia"])
-        const n = s ? Number(s.replace(/\D/g, "")) : NaN
-        return isNaN(n) ? null : n
-      })(),
-      terapia: decodeEntidadesHtml(pick(row, ["Especialidade", "especialidade", "Terapia", "terapia"])),
+      idTerapia: idTerapiaUp,
+      terapia: terapiaUp,
       idProfissional: (() => {
         const s = pick(row, ["Id Profissional", "IdProfissional", "Id_Profissional"])
         const n = s ? Number(s.replace(/\D/g, "")) : NaN
@@ -266,6 +291,7 @@ export function normalizarLinhasApi(raw: GradeComparativoRaw[]): SessaoComparati
   const out: SessaoComparativo[] = []
   for (const row of raw) {
     if (!isAgendado(row.status_agendamento)) continue
+    if (terapiaForaDoComparativo(row.terapia_id, row.terapia_nome ?? "")) continue
     const data = normalizarDataAgendamento(row.data ?? "")
     out.push({
       idFavorecido: row.paciente_id,
