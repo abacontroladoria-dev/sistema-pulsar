@@ -9,8 +9,11 @@ import {
   interpretarResultadoCriacao,
   mensagemAmigavel,
   mensagemResumoCriacao,
+  mensagemUnidadeDivergente,
 } from "@/services/tita/confirmar"
 import { verificarDisponibilidade, criarAgendamento } from "@/services/tita/client"
+import { buscarGradeTitaAoVivoNosDias } from "@/services/tita/gradeAoVivo"
+import { chaveGradeTita, conferirEscrita, indexarGradeTita } from "@/lib/cronograma/conferenciaTita"
 import { registrarInclusaoTerapia } from "@/services/tita/inclusaoTerapia"
 import { acaoDaCriacao, registrarAuditoriaImplantacao } from "@/services/tita/auditoriaImplantacao"
 import type { AceiteSessao } from "@/types/acompanhamento"
@@ -148,6 +151,96 @@ export async function POST(request: NextRequest) {
     })
     return NextResponse.json({
       ok: false, etapa: "preparacao", mensagem: mensagemAmigavel(falhasPreparo[0].preparo.erro), resultados,
+    })
+  }
+
+  // Fase 1b: confere cada horário contra a grade do TiTa LIDA AGORA.
+  //
+  // A Fase 1 trabalha com cópias de madrugada: a linha da tela vem de
+  // csv_grades_profissionais e a grade/sala do payload de
+  // grade_profissionais_tita. E a Fase 2 não cobre o que falta: get_disponibilidade
+  // recebe só o id_grade_terapeuta — não sabe em que sala nem em que unidade a
+  // tela disse que o paciente ficaria. Caso real de 19/10/2026 (ver
+  // lib/cronograma/conferenciaTita.ts): a quarta da Lívia dos Santos Barboza foi
+  // refeita no TiTa às 14:10 na Fazendinha, e até a madrugada seguinte a tela a
+  // oferecia como Realengo. Nada nesta rota conferia unidade nem sala.
+  //
+  // Tudo ou nada, como as outras fases: uma sessão que não confere cancela o
+  // pacote, antes de qualquer escrita. Se o TiTa não responder, também cancela —
+  // a mesma decisão da Fase 2 para "erro_verificacao".
+  const inicioConferencia = Date.now()
+  const aoVivo = await buscarGradeTitaAoVivoNosDias(preparos.map(p => p.preparo.grade!.data))
+  const indiceAoVivo = aoVivo.ok ? indexarGradeTita(aoVivo.linhas) : null
+  const conferencias = preparos.map(p => {
+    const grade = p.preparo.grade!
+    const payload = p.preparo.payload!
+    if (!indiceAoVivo) return { p, codigoErro: "erro_ao_verificar_disponibilidade", mensagem: mensagemAmigavel("erro_ao_verificar_disponibilidade") }
+    const c = conferirEscrita(
+      {
+        profissionalId: grade.profissional_id!,
+        data: grade.data,
+        horaInicial: grade.hora_inicial!,
+        salaId: grade.sala_id,
+        salaNome: grade.sala_nome,
+      },
+      indiceAoVivo.get(chaveGradeTita(grade.profissional_id!, grade.data, grade.hora_inicial)),
+      { gradeTerapeutaId: payload.id_grade_terapeuta, idSala: payload.id_sala },
+    )
+    switch (c.situacao) {
+      case "confere":
+        return { p, codigoErro: undefined, mensagem: undefined }
+      case "ocupado":
+      case "ausente":
+        return { p, codigoErro: "indisponivel_na_tita", mensagem: mensagemAmigavel("indisponivel_na_tita"), detalhe: c.situacao }
+      case "alterado":
+        return { p, codigoErro: "horario_alterado_no_tita", mensagem: mensagemAmigavel("horario_alterado_no_tita") }
+      case "unidade_divergente":
+        return {
+          p,
+          codigoErro: "unidade_divergente_na_tita",
+          mensagem: mensagemUnidadeDivergente({
+            profissional: grade.profissional_nome,
+            diaSemana: grade.dia_semana,
+            hora: grade.hora_inicial,
+            unidadePulsar: c.unidadePulsar,
+            unidadeTita: c.unidadeTita,
+            salaTita: c.salaTita,
+          }),
+          detalhe: `${c.unidadePulsar} → ${c.salaTita || c.unidadeTita}`,
+        }
+    }
+  })
+  const divergentes = conferencias.filter(c => c.codigoErro)
+  console.log(
+    `${LOG_TAG} etapa=conferencia_tita ok=${conferencias.length - divergentes.length} divergentes=${divergentes.length} `
+      + `leitura=${aoVivo.ok ? "ok" : `falhou(${aoVivo.erro})`} duracaoMs=${Date.now() - inicioConferencia}`,
+  )
+  if (divergentes.length > 0) {
+    const resultados: ResultadoSessao[] = conferencias.map(c => ({
+      csvGradeId: c.p.sessao.csvGradeId,
+      ok: !c.codigoErro,
+      codigoErro: c.codigoErro,
+      mensagem: c.mensagem,
+    }))
+    console.error(`${LOG_TAG} cancelado na conferência com o TiTa`, JSON.stringify(
+      conferencias.map(c => ({ csvGradeId: c.p.sessao.csvGradeId, codigoErro: c.codigoErro, detalhe: "detalhe" in c ? c.detalhe : undefined })),
+    ))
+    await registrarAuditoriaImplantacao({
+      pac: body.pac,
+      userId,
+      userEmail,
+      modalidade: body.modalidade,
+      linhas: conferencias.map(c => ({
+        sessao: c.p.sessao,
+        grade: c.p.preparo.grade,
+        acao: c.codigoErro ? "falha_disponibilidade" : "cancelada",
+        detalhe: c.codigoErro
+          ? [c.codigoErro, "detalhe" in c ? c.detalhe : null].filter(Boolean).join(": ")
+          : "outra sessão do pacote não conferiu com o TiTa",
+      })),
+    })
+    return NextResponse.json({
+      ok: false, etapa: "conferencia_tita", mensagem: divergentes[0].mensagem, resultados,
     })
   }
 
