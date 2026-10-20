@@ -5,6 +5,7 @@ import { getPacientes } from "@/services/pacientes.service"
 import { getResumoEscolarPorPaciente } from "@/services/pacienteDadosEscolares.service"
 import type { ResumoEscolar } from "@/services/pacienteDadosEscolares.service"
 import { getPacientesComContrato } from "@/services/pacienteContratos.service"
+import { getUltimaDisponibilidadePorPaciente } from "@/services/pacienteDisponibilidade.service"
 import { getTelefonesDosResponsaveis } from "@/services/responsaveis.service"
 import type { Paciente } from "@/types/paciente"
 
@@ -34,6 +35,12 @@ type PacientesState = {
    */
   pacientesComContrato: Set<number>
   contratosIndisponivel: boolean
+  /**
+   * `id_paciente` -> data (ISO) da disponibilidade atual. Ausência = nunca
+   * preenchida. Mesma lógica das fichas para a falha de leitura.
+   */
+  disponibilidades: Map<number, string>
+  disponibilidadesIndisponivel: boolean
   loading: boolean
   error: string | null
 }
@@ -45,6 +52,8 @@ const INITIAL_STATE: PacientesState = {
   fichasEscolaresIndisponivel: false,
   pacientesComContrato: new Set(),
   contratosIndisponivel: false,
+  disponibilidades: new Map(),
+  disponibilidadesIndisponivel: false,
   loading: true,
   error: null,
 }
@@ -76,11 +85,18 @@ function fetchPacientes(): Promise<void> {
   inflightFetch = Promise.all([
     getPacientes({ incluirFicticios: true, incluirInativos: true }),
     getTelefonesDosResponsaveis(),
-    Promise.allSettled([getResumoEscolarPorPaciente(), getPacientesComContrato()]),
+    Promise.allSettled([
+      getResumoEscolarPorPaciente(),
+      getPacientesComContrato(),
+      getUltimaDisponibilidadePorPaciente(),
+    ]),
   ])
-    .then(([{ data, error }, telefones, [escolar, contratos]]) => {
+    .then(([{ data, error }, telefones, [escolar, contratos, disponibilidades]]) => {
       if (contratos.status === "rejected") {
         console.error("Falha ao ler os contratos:", contratos.reason)
+      }
+      if (disponibilidades.status === "rejected") {
+        console.error("Falha ao ler as disponibilidades:", disponibilidades.reason)
       }
       if (escolar.status === "rejected") {
         console.error("Falha ao ler as fichas escolares:", escolar.reason)
@@ -92,6 +108,8 @@ function fetchPacientes(): Promise<void> {
         fichasEscolaresIndisponivel: escolar.status === "rejected",
         pacientesComContrato: contratos.status === "fulfilled" ? contratos.value : new Set(),
         contratosIndisponivel: contratos.status === "rejected",
+        disponibilidades: disponibilidades.status === "fulfilled" ? disponibilidades.value : new Map(),
+        disponibilidadesIndisponivel: disponibilidades.status === "rejected",
         loading: false,
         error,
       })
@@ -113,6 +131,8 @@ export function refetchPacientes(): Promise<void> {
     fichasEscolaresIndisponivel: false,
     pacientesComContrato: cachedState?.pacientesComContrato ?? new Set(),
     contratosIndisponivel: false,
+    disponibilidades: cachedState?.disponibilidades ?? new Map(),
+    disponibilidadesIndisponivel: false,
     loading: true,
     error: null,
   })

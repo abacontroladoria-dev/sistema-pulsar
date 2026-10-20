@@ -40,6 +40,7 @@ import {
   type VersaoDisponibilidade,
 } from "@/services/pacienteDisponibilidade.service"
 import { foco } from "../ui/campos"
+import { onlyDigits, validarCpf } from "@/lib/remuneracao/formatacao"
 import { EditorDisponibilidade, type ResultadoEditor } from "./disponibilidade/EditorDisponibilidade"
 import { HistoricoDisponibilidade, trocaDePessoaAtual } from "./disponibilidade/HistoricoDisponibilidade"
 import { ResumoDisponibilidade } from "./disponibilidade/ResumoDisponibilidade"
@@ -466,7 +467,12 @@ function PedirAoResponsavel({
 }
 
 function BotoesLink({ pacienteNome, pacienteCpf }: { pacienteNome: string; pacienteCpf: string | null }) {
-  const semCpf = !pacienteCpf || pacienteCpf.replace(/\D/g, "").length !== 11
+  // Mesma regra do formulário (/disponibilidade-paciente e as rotas da API):
+  // CPF com 11 números mas com algum número errado também é recusado lá, então
+  // o aviso tem que aparecer aqui, antes de a equipe mandar o link.
+  const digitos = onlyDigits(pacienteCpf ?? "")
+  const semCpf = digitos.length !== 11
+  const cpfErrado = !semCpf && !validarCpf(digitos)
 
   function link() {
     return linkFormularioDisponibilidade()
@@ -503,6 +509,12 @@ function BotoesLink({ pacienteNome, pacienteCpf }: { pacienteNome: string; pacie
         <p className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400">
           <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           Este paciente não tem CPF válido no cadastro, então o formulário não vai encontrá-lo. Complete o CPF na aba Cadastro antes de enviar o link.
+        </p>
+      )}
+      {cpfErrado && (
+        <p className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400">
+          <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          O CPF do cadastro tem algum número errado, e o formulário vai recusá-lo. Confira o CPF no documento da criança e corrija na aba Cadastro antes de enviar o link.
         </p>
       )}
     </div>

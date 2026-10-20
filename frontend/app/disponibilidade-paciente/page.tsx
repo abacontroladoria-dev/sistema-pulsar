@@ -118,8 +118,15 @@ export default function DisponibilidadePacientePage() {
     e.preventDefault()
     if (buscando) return
     setErro('')
-    if (!cpfCompleto || cpfInvalido) {
-      setErro('Confira o CPF: são 11 números.')
+    // Duas mensagens: "faltam números" e "algum número está errado" pedem
+    // correções diferentes, e a família com o CPF inteiro digitado não entende
+    // "são 11 números" (caso real: CPF do cadastro com um número trocado).
+    if (!cpfCompleto) {
+      setErro('Faltam números: o CPF tem 11.')
+      return
+    }
+    if (cpfInvalido) {
+      setErro('Este CPF não é válido: algum número está errado. Confira no documento da criança.')
       return
     }
     setBuscando(true)
@@ -350,7 +357,7 @@ export default function DisponibilidadePacientePage() {
                 </p>
               </div>
 
-              <Campo id="cpf" rotulo="CPF da criança" erro={erro || (cpfInvalido ? 'Este CPF não é válido. Confira os números.' : undefined)}>
+              <Campo id="cpf" rotulo="CPF da criança" erro={erro || (cpfInvalido ? 'Este CPF não é válido: algum número está errado. Confira no documento da criança.' : undefined)}>
                 <input
                   id="cpf"
                   type="text"

@@ -1,6 +1,6 @@
 "use client"
 
-import { maskCpf } from "@/lib/remuneracao/formatacao"
+import { cpfInvalido, cpfMalformado, maskCpf, MENSAGEM_CPF_MALFORMADO } from "@/lib/remuneracao/formatacao"
 import { idExibicao } from "@/types/paciente"
 import type { CorRaca, EstadoCivil, Paciente, SexoPaciente } from "@/types/paciente"
 import type { PacienteForm } from "@/hooks/usePacienteDetalhe"
@@ -110,6 +110,17 @@ export function DadosPessoais({
         disabled={disabled}
         inputMode="numeric"
         placeholder="000.000.000-00"
+        // Só avisa, não bloqueia o salvar: há cadastros vindos do TiTa com CPF
+        // errado, e travar a tela impediria corrigir qualquer outro campo.
+        // Malformado (contagem, tudo igual) bloqueia o salvar no hook; número
+        // errado só avisa. A mensagem diz qual dos dois é.
+        aviso={
+          cpfMalformado(form.cpf)
+            ? MENSAGEM_CPF_MALFORMADO
+            : cpfInvalido(form.cpf)
+              ? "CPF inválido: algum número está errado. Confira no documento — o formulário de disponibilidade não vai aceitá-lo."
+              : undefined
+        }
       />
       <Campo
         label="RG"

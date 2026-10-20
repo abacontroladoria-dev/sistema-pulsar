@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react"
 import * as Popover from "@radix-ui/react-popover"
-import { Check, ChevronDown } from "lucide-react"
+import { AlertTriangle, Check, ChevronDown } from "lucide-react"
 import { DatePicker } from "@/components/ui/date-picker"
 
 // Classes de formulário do projeto. Mesmas constantes de
@@ -53,6 +53,8 @@ type CampoBaseProps = {
   /** Ocupa a linha inteira em vez de meia. */
   largo?: boolean
   dica?: string
+  /** Alerta que não bloqueia o salvar (ex.: CPF inválido). Aparece no lugar da dica. */
+  aviso?: string
 }
 
 export function Campo({
@@ -64,6 +66,7 @@ export function Campo({
   placeholder,
   largo,
   dica,
+  aviso,
   maxLength,
   inputMode,
 }: CampoBaseProps & {
@@ -87,8 +90,16 @@ export function Campo({
         placeholder={placeholder}
         maxLength={maxLength}
         inputMode={inputMode}
+        aria-invalid={aviso ? true : undefined}
       />
-      {dica && <p className="mt-1 text-xs text-muted-foreground">{dica}</p>}
+      {aviso ? (
+        <p className="mt-1 flex items-start gap-1.5 text-xs text-[var(--status-atencao)]">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          {aviso}
+        </p>
+      ) : (
+        dica && <p className="mt-1 text-xs text-muted-foreground">{dica}</p>
+      )}
     </div>
   )
 }
