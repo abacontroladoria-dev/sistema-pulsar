@@ -18,6 +18,8 @@ const VALID_ACTIONS = [
   // A chave Maia / Humano num número Evolution com "Maia responde", onde não
   // há ai_mode a trocar (trg_evolution_sem_ia).
   'set_maia_numero',
+  // Seletor de status do atendimento (qualquer status → qualquer status).
+  'set_status',
 ] as const
 export type PatchAction = typeof VALID_ACTIONS[number]
 
@@ -126,6 +128,7 @@ export type PatchConversationBody =
   | { action: 'mark_read' }
   | { action: 'mark_unread' }
   | { action: 'set_maia_numero'; maia: boolean }
+  | { action: 'set_status'; status: ConversationStatus }
 
 export function parsePatchConversationBody(body: unknown): ParseResult<PatchConversationBody> {
   if (!body || typeof body !== 'object') return { ok: false, errors: ['Body inválido'] }
@@ -165,6 +168,13 @@ export function parsePatchConversationBody(body: unknown): ParseResult<PatchConv
       return { ok: false, errors: ['aiMode deve ser off, assisted, autonomous ou null'] }
     }
     return { ok: true, data: { action, aiMode: b.aiMode as AIMode | null } }
+  }
+
+  if (action === 'set_status') {
+    if (!VALID_STATUSES.includes(b.status as ConversationStatus)) {
+      return { ok: false, errors: [`status deve ser um de: ${VALID_STATUSES.join(', ')}`] }
+    }
+    return { ok: true, data: { action, status: b.status as ConversationStatus } }
   }
 
   if (action === 'set_maia_numero') {

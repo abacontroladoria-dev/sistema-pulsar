@@ -135,6 +135,9 @@ export async function PATCH(request: NextRequest, ctx: Ctx) {
       case 'set_ai_mode':
         await service.setAiMode(id, parsed.data.aiMode, user.id)
         break
+      case 'set_status':
+        await service.setStatus(id, parsed.data.status, user.id)
+        break
       case 'set_maia_numero':
         await service.definirMaiaNoNumero(id, parsed.data.maia, user.id)
         break

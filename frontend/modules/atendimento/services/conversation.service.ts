@@ -1,5 +1,6 @@
 import type {
   AIMode,
+  ConversationStatus,
   Conversation,
   PaginatedResult,
 } from '../types/central.types'
@@ -825,6 +826,53 @@ export class ConversationService {
     })
 
     this.events.emit('conversation.reopened', { conversation: updated, actorId })
+  }
+
+  // -------------------------------------------------------------------------
+  // setStatus
+  // O seletor "Status do atendimento" do cabeçalho: qualquer status para
+  // qualquer outro, por qualquer usuário do inbox. Os caminhos que já tinham
+  // efeitos próprios (resolve, archive, reopen) continuam sendo usados quando
+  // servem, para não duplicar auditoria nem eventos.
+  //
+  // 'assigned' sem dono é contraditório (ver `assign`), então "Em atendimento"
+  // numa conversa sem responsável atribui a quem escolheu.
+  // -------------------------------------------------------------------------
+  async setStatus(conversationId: string, status: ConversationStatus, actorId: string): Promise<void> {
+    const conv = await this.conv.findById(conversationId)
+    if (!conv) throw new ConversationNotFoundError(conversationId)
+    if (conv.status === status) return
+
+    const fechada = CLOSED_STATUSES.includes(conv.status as ClosedStatus)
+
+    if (!fechada && status === 'resolved') return this.resolve(conversationId, actorId)
+    if (!fechada && status === 'archived') return this.archive(conversationId, actorId)
+
+    const agora = new Date().toISOString()
+    const marcas =
+      status === 'resolved' ? { resolved_at: agora, archived_at: null }
+      : status === 'archived' ? { resolved_at: conv.resolved_at ?? agora, archived_at: agora }
+      : { resolved_at: null, archived_at: null }
+
+    if (status === 'assigned' && !conv.assigned_user_id) {
+      await this.conv.updateAssignee(conversationId, actorId)
+    }
+    await this.conv.updateStatus(conversationId, status, marcas)
+
+    void this.audit.insert({
+      organization_id: conv.organization_id,
+      conversation_id: conversationId,
+      event_type:      'conversation.status_changed',
+      performed_by:    actorId,
+      payload:         { previousStatus: conv.status, status },
+    })
+
+    if (fechada && status !== 'resolved' && status !== 'archived') {
+      this.events.emit('conversation.reopened', {
+        conversation: { ...conv, status, resolved_at: null, archived_at: null },
+        actorId,
+      })
+    }
   }
 
   // -------------------------------------------------------------------------

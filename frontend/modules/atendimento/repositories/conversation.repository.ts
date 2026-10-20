@@ -285,11 +285,12 @@ export class ConversationRepository {
   async updateStatus(
     id:     string,
     status: ConversationStatus,
-    extra?: { resolved_at?: string; archived_at?: string }
+    extra?: { resolved_at?: string | null; archived_at?: string | null }
   ): Promise<void> {
     const patch: Record<string, unknown> = { status }
-    if (extra?.resolved_at) patch.resolved_at = extra.resolved_at
-    if (extra?.archived_at) patch.archived_at = extra.archived_at
+    // `null` limpa a marca (conversa que voltou a ser ativa); ausente não toca.
+    if (extra?.resolved_at !== undefined) patch.resolved_at = extra.resolved_at
+    if (extra?.archived_at !== undefined) patch.archived_at = extra.archived_at
 
     const { error } = await (this.supabase as any)
       .schema('central')

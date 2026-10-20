@@ -106,6 +106,7 @@ export type AcaoConversa =
   | { action: 'archive' }
   | { action: 'reopen' }
   | { action: 'transfer'; toUserId: string; reason?: string }
+  | { action: 'set_status'; status: Conversation['status'] }
 
 const LOTE_ANTIGAS = 30
 

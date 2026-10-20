@@ -28,6 +28,7 @@ export type ConversationEventType =
   | 'conversation.resolved'
   | 'conversation.archived'
   | 'conversation.reopened'
+  | 'conversation.status_changed'
   // Alguém devolveu a conversa à fila de "precisa de retorno" recuando a marca
   // d'água de leitura (20260921140000). payload: { lastReadAt, anterior }.
   //
