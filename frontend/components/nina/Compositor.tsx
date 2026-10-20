@@ -369,19 +369,6 @@ export const Compositor: React.FC<Props> = ({
         : 'bg-card border-border'
     }`}>
       <div className="max-w-4xl mx-auto">
-        {!gravando && (
-          <div role="tablist" aria-label="O que escrever" className="mb-2 inline-flex rounded-lg border border-border bg-muted p-0.5 text-xs font-medium">
-            <button type="button" role="tab" aria-selected={!emNota} onClick={() => trocarAba('responder')} className={abaClasse(!emNota, false)}>
-              <MessageSquare className="w-3.5 h-3.5" aria-hidden />
-              Responder
-            </button>
-            <button type="button" role="tab" aria-selected={emNota} onClick={() => trocarAba('nota')} className={abaClasse(emNota, true)}>
-              <Lock className="w-3.5 h-3.5" aria-hidden />
-              Nota interna
-            </button>
-          </div>
-        )}
-
         {emNota && (
           <p className="mb-2 text-xs text-amber-800 dark:text-amber-300">
             Só a equipe vê. O contato não recebe. Digite <strong>@</strong> para mencionar alguém.
@@ -484,7 +471,7 @@ export const Compositor: React.FC<Props> = ({
               type="button"
               onClick={() => pararGravacao(true)}
               aria-label="Parar e enviar áudio"
-              className="rounded-full w-12 h-12 p-0 shadow-lg shadow-cyan-500/20"
+              className="rounded-full w-10 h-10 p-0 shadow-lg shadow-cyan-500/20"
             >
               <Square className="w-4 h-4 fill-current" />
             </Button>
@@ -492,33 +479,9 @@ export const Compositor: React.FC<Props> = ({
         ) : (
           <form
             onSubmit={e => { e.preventDefault(); void enviar() }}
-            className="flex items-end gap-1.5 sm:gap-2"
+            className="block"
           >
-            <SeletorEmoji aoEscolher={inserirEmoji} desabilitado={ocupado} />
-
-            {!emNota && (
-              <>
-                <input
-                  ref={arquivoRef}
-                  type="file"
-                  className="hidden"
-                  accept={TIPOS_ACEITOS}
-                  onChange={escolherArquivo}
-                />
-                <button
-                  type="button"
-                  onClick={() => arquivoRef.current?.click()}
-                  disabled={ocupado}
-                  title="Anexar arquivo"
-                  aria-label="Anexar arquivo"
-                  className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  {enviandoMidia ? <Loader2 className="w-5 h-5 animate-spin" /> : <Paperclip className="w-5 h-5" />}
-                </button>
-              </>
-            )}
-
-            <div className={`relative flex-1 min-w-0 rounded-2xl border focus-within:ring-2 transition-all shadow-inner ${
+            <div className={`relative min-w-0 rounded-2xl border focus-within:ring-2 transition-all shadow-inner ${
               emNota
                 ? 'bg-white border-amber-300 focus-within:ring-amber-500/30 focus-within:border-amber-500 dark:bg-amber-500/5 dark:border-amber-500/40'
                 : 'bg-background border-border focus-within:ring-cyan-500/30 focus-within:border-cyan-500/50'
@@ -589,46 +552,90 @@ export const Compositor: React.FC<Props> = ({
                 className="w-full bg-transparent border-none p-3.5 max-h-32 min-h-[48px] text-sm text-foreground focus:ring-0 resize-none outline-none placeholder:text-muted-foreground/70 disabled:cursor-not-allowed"
                 rows={1}
               />
+
+              <div className="flex items-center gap-1 px-2 pb-2">
+          {!gravando && (
+            <div role="tablist" aria-label="O que escrever" className="mr-1 inline-flex rounded-lg bg-muted p-0.5 text-xs font-medium">
+              <button type="button" role="tab" aria-selected={!emNota} onClick={() => trocarAba('responder')} className={abaClasse(!emNota, false)}>
+                <MessageSquare className="w-3.5 h-3.5" aria-hidden />
+                Responder
+              </button>
+              <button type="button" role="tab" aria-selected={emNota} onClick={() => trocarAba('nota')} className={abaClasse(emNota, true)}>
+                <Lock className="w-3.5 h-3.5" aria-hidden />
+                Nota interna
+              </button>
+            </div>
+          )}
+
+
+                <span aria-hidden className="mx-1 h-5 w-px bg-border" />
+              <SeletorEmoji aoEscolher={inserirEmoji} desabilitado={ocupado} />
+
+              {!emNota && (
+                <>
+                  <input
+                    ref={arquivoRef}
+                    type="file"
+                    className="hidden"
+                    accept={TIPOS_ACEITOS}
+                    onChange={escolherArquivo}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => arquivoRef.current?.click()}
+                    disabled={ocupado}
+                    title="Anexar arquivo"
+                    aria-label="Anexar arquivo"
+                    className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {enviandoMidia ? <Loader2 className="w-5 h-5 animate-spin" /> : <Paperclip className="w-5 h-5" />}
+                  </button>
+                </>
+              )}
+
+
+                <div className="flex-1" />
+              {/* Na nota, o botão só grava a nota — não há áudio para a equipe.
+                  Na resposta, sem texto ele grava áudio; com texto, envia — como
+                  no WhatsApp. */}
+              {emNota ? (
+                <button
+                  type="submit"
+                  disabled={ocupado || !temConteudo}
+                  aria-label="Gravar nota interna"
+                  title="Gravar nota interna"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-500 text-amber-950 shadow-lg shadow-amber-500/20 transition-all hover:scale-105 hover:bg-amber-400 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
+                >
+                  {enviandoNota ? <Loader2 className="w-5 h-5 animate-spin" /> : <Lock className="w-5 h-5" />}
+                </button>
+              ) : temConteudo ? (
+                <Button
+                  type="submit"
+                  disabled={ocupado}
+                  aria-label="Enviar"
+                  className={`rounded-full w-10 h-10 p-0 transition-all ${
+                    !ocupado ? 'shadow-lg shadow-cyan-500/20 hover:scale-105 active:scale-95' : 'opacity-50 cursor-not-allowed'
+                  }`}
+                >
+                  {enviando || enviandoMidia ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5 ml-0.5" />}
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  onClick={() => void iniciarGravacao()}
+                  disabled={ocupado}
+                  aria-label="Gravar áudio"
+                  title="Gravar áudio"
+                  className={`rounded-full w-10 h-10 p-0 transition-all ${
+                    !ocupado ? 'shadow-lg shadow-cyan-500/20 hover:scale-105 active:scale-95' : 'opacity-50 cursor-not-allowed'
+                  }`}
+                >
+                  {enviandoMidia ? <Loader2 className="w-5 h-5 animate-spin" /> : <Mic className="w-5 h-5" />}
+                </Button>
+              )}
+              </div>
             </div>
 
-            {/* Na nota, o botão só grava a nota — não há áudio para a equipe.
-                Na resposta, sem texto ele grava áudio; com texto, envia — como
-                no WhatsApp. */}
-            {emNota ? (
-              <button
-                type="submit"
-                disabled={ocupado || !temConteudo}
-                aria-label="Gravar nota interna"
-                title="Gravar nota interna"
-                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-amber-500 text-amber-950 shadow-lg shadow-amber-500/20 transition-all hover:scale-105 hover:bg-amber-400 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
-              >
-                {enviandoNota ? <Loader2 className="w-5 h-5 animate-spin" /> : <Lock className="w-5 h-5" />}
-              </button>
-            ) : temConteudo ? (
-              <Button
-                type="submit"
-                disabled={ocupado}
-                aria-label="Enviar"
-                className={`rounded-full w-12 h-12 p-0 transition-all ${
-                  !ocupado ? 'shadow-lg shadow-cyan-500/20 hover:scale-105 active:scale-95' : 'opacity-50 cursor-not-allowed'
-                }`}
-              >
-                {enviando || enviandoMidia ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5 ml-0.5" />}
-              </Button>
-            ) : (
-              <Button
-                type="button"
-                onClick={() => void iniciarGravacao()}
-                disabled={ocupado}
-                aria-label="Gravar áudio"
-                title="Gravar áudio"
-                className={`rounded-full w-12 h-12 p-0 transition-all ${
-                  !ocupado ? 'shadow-lg shadow-cyan-500/20 hover:scale-105 active:scale-95' : 'opacity-50 cursor-not-allowed'
-                }`}
-              >
-                {enviandoMidia ? <Loader2 className="w-5 h-5 animate-spin" /> : <Mic className="w-5 h-5" />}
-              </Button>
-            )}
           </form>
         )}
       </div>

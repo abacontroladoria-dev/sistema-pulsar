@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect, useLayoutEffect } from 'react'
 import {
   Search, MessageSquare, Loader2, Info, Bot, User, Pause, ShieldAlert, WifiOff, MailX, Smartphone,
-  Pin, PinOff, ArrowLeft, CheckCircle2, Archive, RotateCcw, UserRoundCog, UserPlus,
+  Pin, PinOff, ArrowLeft, CheckCircle2, Archive, RotateCcw, UserRoundCog, UserPlus, MoreHorizontal,
 } from 'lucide-react'
 
 import { ConversationStatus } from '@/types/nina'
@@ -29,6 +29,9 @@ import { StatusAtendimento } from './StatusAtendimento'
 import { MessageDirection } from '@/types/nina'
 import { maiaTransferiu } from '@/modules/atendimento/agente/caixas'
 import { toast } from 'sonner'
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 const ChatInterface: React.FC = () => {
   const {
@@ -741,10 +744,10 @@ const ChatInterface: React.FC = () => {
                       type="button"
                       title="Salvar contato"
                       aria-label="Salvar contato"
-                      className="flex items-center gap-1.5 p-1.5 sm:px-2.5 sm:py-1 rounded-lg text-xs font-medium border border-cyan-500/30 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 hover:bg-cyan-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 transition-colors data-[state=open]:bg-cyan-500/20"
+                      className="flex items-center gap-1.5 p-1.5 2xl:px-2.5 2xl:py-1 rounded-lg text-xs font-medium border border-cyan-500/30 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 hover:bg-cyan-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 transition-colors data-[state=open]:bg-cyan-500/20"
                     >
-                      <UserPlus className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
-                      <span className="hidden sm:inline">Salvar contato</span>
+                      <UserPlus className="w-4 h-4 2xl:w-3.5 2xl:h-3.5" />
+                      <span className="hidden 2xl:inline">Salvar contato</span>
                     </button>
                   </NomeContatoPopover>
                 )}
@@ -762,7 +765,7 @@ const ChatInterface: React.FC = () => {
                   />
                 ) : canalHumano ? (
                   <span
-                    className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border border-emerald-500/30 bg-emerald-500/10 text-[var(--status-ok)]"
+                    className="hidden 2xl:flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border border-emerald-500/30 bg-emerald-500/10 text-[var(--status-ok)]"
                     title="Número de atendimento humano — a Maia não responde por ele"
                   >
                     <Smartphone className="w-3.5 h-3.5" />
@@ -776,76 +779,56 @@ const ChatInterface: React.FC = () => {
                   />
                 )}
 
-                {/* "Isto ainda precisa de retorno." Recua a marca d'água para
-                    antes da última mensagem do contato — a conversa volta a
-                    acender na lista com UMA não lida, que é o sinal honesto.
-                    Não ressuscita o histórico inteiro de não-lidas. */}
-                <button
-                  type="button"
-                  onClick={handleMarcarNaoLida}
-                  title="Marcar como não lida"
-                  aria-label="Marcar como não lida"
-                  className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  <MailX className="w-5 h-5" />
-                </button>
-
-                {selectedId && (
-                  <button
-                    type="button"
-                    onClick={() => void handleFixar(selectedId)}
-                    title={fixadas.includes(selectedId) ? 'Desafixar' : 'Fixar no topo'}
-                    aria-label={fixadas.includes(selectedId) ? 'Desafixar conversa' : 'Fixar conversa'}
-                    aria-pressed={fixadas.includes(selectedId)}
-                    className={`p-1.5 rounded-lg hover:bg-muted transition-colors ${
-                      fixadas.includes(selectedId) ? 'text-cyan-500' : 'text-muted-foreground hover:text-foreground'
-                    }`}
+                {/* Ações da conversa: o cabeçalho tinha seis ícones soltos e, no
+                    laptop com o detalhamento aberto, tudo se sobrepunha. Só o que
+                    muda a cada conversa (status, quem atende) fica à vista. */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    aria-label="Mais ações da conversa"
+                    title="Mais ações"
+                    className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 data-[state=open]:bg-muted"
                   >
-                    {fixadas.includes(selectedId) ? <PinOff className="w-5 h-5" /> : <Pin className="w-5 h-5" />}
-                  </button>
-                )}
+                    <MoreHorizontal className="w-5 h-5" />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="min-w-52">
+                    {/* "Isto ainda precisa de retorno." Recua a marca d'água para
+                        antes da última mensagem do contato — a conversa volta a
+                        acender na lista com UMA não lida, que é o sinal honesto. */}
+                    <DropdownMenuItem onSelect={handleMarcarNaoLida}>
+                      <MailX aria-hidden="true" />
+                      Marcar como não lida
+                    </DropdownMenuItem>
+                    {selectedId && (
+                      <DropdownMenuItem onSelect={() => void handleFixar(selectedId)}>
+                        {fixadas.includes(selectedId) ? <PinOff aria-hidden="true" /> : <Pin aria-hidden="true" />}
+                        {fixadas.includes(selectedId) ? 'Desafixar do topo' : 'Fixar no topo'}
+                      </DropdownMenuItem>
+                    )}
+                    {encerrada ? (
+                      <DropdownMenuItem onSelect={() => void handleAcaoConversa({ action: 'reopen' }).catch(() => {})}>
+                        <RotateCcw aria-hidden="true" />
+                        Reabrir conversa
+                      </DropdownMenuItem>
+                    ) : (
+                      <>
+                        <DropdownMenuItem onSelect={() => setTransferindo(true)}>
+                          <UserRoundCog aria-hidden="true" />
+                          Transferir para outra pessoa
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onSelect={() => void handleAcaoConversa({ action: 'resolve' }).catch(() => {})}>
+                          <CheckCircle2 aria-hidden="true" />
+                          Encerrar atendimento
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => void handleAcaoConversa({ action: 'archive' }).catch(() => {})}>
+                          <Archive aria-hidden="true" />
+                          Arquivar conversa
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
 
-                {encerrada ? (
-                  <button
-                    type="button"
-                    onClick={() => void handleAcaoConversa({ action: 'reopen' }).catch(() => {})}
-                    title="Reabrir conversa"
-                    aria-label="Reabrir conversa"
-                    className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    <RotateCcw className="w-5 h-5" />
-                  </button>
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => setTransferindo(true)}
-                      title="Transferir para outra pessoa"
-                      aria-label="Transferir conversa"
-                      className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      <UserRoundCog className="w-5 h-5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleAcaoConversa({ action: 'resolve' }).catch(() => {})}
-                      title="Encerrar atendimento"
-                      aria-label="Encerrar atendimento"
-                      className="p-1.5 rounded-lg hover:bg-emerald-500/10 text-muted-foreground hover:text-emerald-600 transition-colors"
-                    >
-                      <CheckCircle2 className="w-5 h-5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleAcaoConversa({ action: 'archive' }).catch(() => {})}
-                      title="Arquivar conversa"
-                      aria-label="Arquivar conversa"
-                      className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      <Archive className="w-5 h-5" />
-                    </button>
-                  </>
-                )}
 
                 {/* O X do painel só escondia, e não havia como trazê-lo de
                     volta sem recarregar a página. Com seis blocos de ficha lá
