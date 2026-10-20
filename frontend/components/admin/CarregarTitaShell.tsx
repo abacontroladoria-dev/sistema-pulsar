@@ -17,8 +17,8 @@ import {
 } from "@/components/tita/adaptadoresRelatorio"
 import { RelatorioSincronizacaoTita, formatarDataHora, type RodadaRelatorio } from "@/components/tita/RelatorioSincronizacaoTita"
 import { dataBR } from "@/lib/disponibilidadeProfissional"
-import { medirFrescorGrade, type FrescorGrade } from "@/lib/grade/fonte"
-import { janelaImportacaoTita } from "@/lib/grade/janelaTita"
+import { medirFrescorGrade, medirReleituraGrade, type FrescorGrade } from "@/lib/grade/fonte"
+import { janelaImportacaoTita, janelaReleituraTita } from "@/lib/grade/janelaTita"
 import { DEPENDENCIAS_TITA } from "@/lib/tita/dependencias"
 import { lerCorteTita } from "@/services/corteTita.service"
 import { listarCargasTita, type CargaTita } from "@/services/cargaTita.service"
@@ -33,8 +33,15 @@ import { listarImportacoes, listarItensImportacao } from "@/services/titaImporta
 // "Carregar o Pulsar segundo o TiTa" — um botão que traz, NESTA ordem, tudo o
 // que o Pulsar precisa para viver sem o TiTa: pacientes → profissionais →
 // disponibilidades → agendamentos. Cada etapa depende da anterior (sessão de
-// paciente sem cadastro vira pendência). Só lê as cópias do TiTa já
-// sincronizadas no Supabase; NADA é enviado ao TiTa.
+// paciente sem cadastro vira pendência). NADA é enviado ao TiTa.
+//
+// Agendamentos AO VIVO (20/10/2026): a etapa não importa mais só o retrato do
+// sync das 02:00. No clique, o botão pede ao sync uma releitura do TiTa de
+// hoje até a primeira semana completa do mês seguinte (janelaReleituraTita) —
+// ela corre enquanto as três primeiras etapas rodam — e a etapa Agendamentos
+// espera todos esses dias serem reconfirmados (grade_sync_dia) antes de
+// importar. Se algum dia não voltar, para sem tocar na agenda. O resto da
+// janela de importação segue com a cópia das 02:00.
 //
 // Regras (15/10/2026): na disponibilidade e na agenda o TiTa prevalece no que
 // veio dele; o que foi criado no Pulsar nunca é tocado (o banco recusa).
@@ -47,11 +54,35 @@ type Estado =
   | { t: "feito"; resumo: string[]; aviso?: string; abrir: () => Promise<void> }
   | { t: "erro"; mensagem: string }
 
+/** Releitura ao vivo pedida no clique: a partir de quando os dias contam como relidos. */
+interface Releitura { inicio: string; fim: string; desde: string }
+
+const ESPERA_POLL_MS = 15_000
+/** Sem nenhum dia novo reconfirmado por este tempo, a releitura é dada como travada. */
+const ESPERA_SEM_PROGRESSO_MS = 8 * 60_000
+/** Teto absoluto da espera, por segurança. */
+const ESPERA_MAXIMA_MS = 75 * 60_000
+
+const dormir = (ms: number) => new Promise(r => setTimeout(r, ms))
+
+/**
+ * Pede ao sync a releitura ao vivo. `desde` recua 2 minutos do clique para
+ * absorver diferença de relógio entre o navegador e o servidor do sync; se a
+ * pessoa já tinha pedido nos últimos 10 minutos (limite da rota), recua 10 —
+ * a releitura em curso é aproveitada.
+ */
+async function pedirReleitura(): Promise<Releitura> {
+  const j = janelaReleituraTita()
+  const agora = Date.now()
+  const { jaPedida } = await atualizarCopiaTita(j.inicio, j.fim)
+  return { ...j, desde: new Date(agora - (jaPedida ? 10 : 2) * 60_000).toISOString() }
+}
+
 const ETAPAS: { id: Etapa; titulo: string; Icone: LucideIcon; descricao: string }[] = [
   { id: "pacientes", titulo: "Pacientes", Icone: Users, descricao: "Cadastro, responsável e endereço. O convênio vem do CADASTRO do TiTa, nunca do agendamento." },
   { id: "profissionais", titulo: "Profissionais", Icone: UserRound, descricao: "Cadastro (CPF, registro, celular) e terapias habilitadas. Completa vazios; não sobrescreve edição." },
   { id: "disponibilidade", titulo: "Disponibilidades", Icone: CalendarSync, descricao: "Horários de cada profissional pela grade do TiTa das próximas duas semanas. O TiTa prevalece." },
-  { id: "agenda", titulo: "Agendamentos", Icone: CalendarDays, descricao: "Sessões “Agendado” da grade do TiTa, em séries. O TiTa manda no que veio dele; o que foi criado no Pulsar fica." },
+  { id: "agenda", titulo: "Agendamentos", Icone: CalendarDays, descricao: "Sessões “Agendado” da grade do TiTa, em séries. Antes, lê o TiTa na hora de hoje até a primeira semana completa do mês seguinte (cerca de 1 minuto por dia útil). O TiTa manda no que veio dele; o que foi criado no Pulsar fica." },
 ]
 
 const INICIAL: Record<Etapa, Estado> = {
@@ -87,6 +118,8 @@ export default function CarregarTitaShell() {
   const [cargas, setCargas] = useState<CargaTita[] | null | undefined>(undefined)
   const [pedindoCopia, setPedindoCopia] = useState(false)
   const [relatorio, setRelatorio] = useState<Relatorio | null>(null)
+  // Releitura ao vivo pedida no clique — a etapa Agendamentos espera por ela.
+  const releituraRef = useRef<Promise<Releitura> | null>(null)
 
   const lerFrescor = useCallback(async () => {
     try { setFrescor(await medirFrescorGrade(janela.inicio, janela.fim, 280)) } catch { /* só informativo */ }
@@ -179,7 +212,34 @@ export default function CarregarTitaShell() {
     })
   }
 
+  /** Espera o TiTa reconfirmar todos os dias da releitura. Lança se travar. */
+  async function esperarReleitura(r: Releitura) {
+    const comeco = Date.now()
+    let ultimoAvanco = Date.now()
+    let conferidosAntes = -1
+    for (;;) {
+      const m = await medirReleituraGrade(r.inicio, r.fim, r.desde, 280)
+      if (m.faltando.length === 0) return
+      if (m.conferidos > conferidosAntes) { conferidosAntes = m.conferidos; ultimoAvanco = Date.now() }
+      const travou = Date.now() - ultimoAvanco > ESPERA_SEM_PROGRESSO_MS
+      if (travou || Date.now() - comeco > ESPERA_MAXIMA_MS) {
+        const lista = m.faltando.slice(0, 6).map(dataBR).join(", ") + (m.faltando.length > 6 ? "…" : "")
+        throw new Error(`O TiTa não confirmou ${m.faltando.length} dia(s) (${lista}). A agenda não foi tocada. Rode de novo a partir desta etapa.`)
+      }
+      definir("agenda", {
+        t: "rodando",
+        passo: `Lendo o TiTa na hora (${dataBR(r.inicio)} a ${dataBR(r.fim)}): ${m.conferidos} de ${m.total} dias conferidos. Mantenha esta página aberta.`,
+      })
+      await dormir(ESPERA_POLL_MS)
+    }
+  }
+
   async function etapaAgenda() {
+    definir("agenda", { t: "rodando", passo: "Pedindo ao TiTa a leitura dos agendamentos de agora…" })
+    // Normalmente já pedida no clique (ver rodar); se não, pede aqui.
+    const releitura = await (releituraRef.current ?? pedirReleitura())
+    releituraRef.current = null
+    await esperarReleitura(releitura)
     definir("agenda", { t: "rodando", passo: `Lendo a grade do TiTa de ${dataBR(janela.inicio)} a ${dataBR(janela.fim)}…` })
     const previa = await previaImportacao(janela.inicio, janela.fim)
     if (previa.contadores.restaurados === undefined) {
@@ -212,6 +272,14 @@ export default function CarregarTitaShell() {
     setRodando(true)
     const ordem = ETAPAS.map(e => e.id)
     const de = ordem.indexOf(inicio)
+    // A releitura ao vivo leva ~1 min por dia útil: pede já, para ela correr
+    // enquanto as etapas anteriores rodam. Erro aqui só aparece na etapa
+    // Agendamentos (o catch evita "unhandled rejection" até lá).
+    if (ordem.slice(de).includes("agenda")) {
+      const p = pedirReleitura()
+      p.catch(() => {})
+      releituraRef.current = p
+    }
     setEstados(prev => {
       const n = { ...prev }
       for (const id of ordem.slice(de)) n[id] = { t: "aguardando" }
@@ -239,8 +307,10 @@ export default function CarregarTitaShell() {
   const pedirCopia = async () => {
     setPedindoCopia(true)
     try {
-      await atualizarCopiaTita(janela.inicio, janela.fim)
-      toast.success("Cópia pedida ao TiTa. Ele confere um dia por vez (cerca de 1 minuto por dia útil). Volte aqui depois.", { duration: 9000 })
+      const { jaPedida } = await atualizarCopiaTita(janela.inicio, janela.fim)
+      toast.success(jaPedida
+        ? "A cópia já foi pedida há pouco e está sendo lida. Acompanhe pela data de conferência."
+        : "Cópia pedida ao TiTa. Ele confere um dia por vez (cerca de 1 minuto por dia útil). Volte aqui depois.", { duration: 9000 })
     } catch (e) {
       toast.error(msg(e), { duration: 8000 })
     } finally {
@@ -267,7 +337,7 @@ export default function CarregarTitaShell() {
           </p>
         </div>
         <ul className="space-y-1.5 text-sm text-muted-foreground">
-          <li className="flex gap-2"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" aria-hidden />Nada é enviado ao TiTa: só lê a cópia dele que já está no Pulsar.</li>
+          <li className="flex gap-2"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" aria-hidden />Nada é enviado ao TiTa. Os agendamentos de hoje até {dataBR(janelaReleituraTita().fim)} são lidos do TiTa na hora; o restante vem da cópia das 02:00.</li>
           <li className="flex gap-2"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" aria-hidden />O que foi criado no Pulsar nunca é apagado nem alterado por causa do TiTa.</li>
           <li className="flex gap-2"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" aria-hidden />Pode rodar de novo quantas vezes quiser: só o que mudou no TiTa é trazido.</li>
         </ul>

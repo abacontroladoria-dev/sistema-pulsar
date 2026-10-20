@@ -54,13 +54,16 @@ export function GradeColunas({
 
   const rolagem = useRef<HTMLDivElement>(null)
   const cabecalho = useRef<HTMLDivElement>(null)
+  // Altura visível abaixo do cabeçalho (tela cheia) — também dimensiona a sobra
+  // de rolagem do fim da grade (ver `sobraFinal`).
+  const [livre, setLivre] = useState(0)
   useEffect(() => {
     const el = rolagem.current
     if (!onAlturaLivre || !el) return
     const medir = () => {
       // 16 = py-2 da área das colunas; 2 = folga para não aparecer barra de rolagem por arredondamento.
       const livre = el.clientHeight - (cabecalho.current?.offsetHeight ?? 0) - 18
-      if (el.clientHeight > 0 && livre > 0) onAlturaLivre(livre)
+      if (el.clientHeight > 0 && livre > 0) { onAlturaLivre(livre); setLivre(livre) }
     }
     medir()
     const ro = new ResizeObserver(medir)
@@ -70,6 +73,13 @@ export function GradeColunas({
   }, [onAlturaLivre])
 
   const grande = !!onAlturaLivre
+  // Tela cheia: espaço vazio depois do último horário, para QUALQUER horário
+  // poder ser rolado até encostar no cabeçalho dos dias — sem isto a rolagem
+  // para quando 17:40 chega ao pé da tela e um paciente só da tarde (16:20 às
+  // 17:40) nunca fica no topo. Pedido do usuário, 20/10/2026. A sobra é a
+  // altura visível menos o último horário (que é o que sobe até o topo).
+  const penultima = escala.marcas.length >= 2 ? escala.marcas[escala.marcas.length - 2].y : 0
+  const sobraFinal = grande ? Math.max(0, livre - (escala.altura - penultima)) : 0
   const template = `${grande ? 80 : 56}px ${colunas.map(c => (c.estreita ? "72px" : `minmax(${larguraMin}px, 1fr)`)).join(" ")}`
 
   return (
@@ -126,6 +136,7 @@ export function GradeColunas({
               </div>
             ))}
           </div>
+          {sobraFinal > 0 && <div aria-hidden style={{ height: sobraFinal }} />}
         </div>
       </div>
     </div>

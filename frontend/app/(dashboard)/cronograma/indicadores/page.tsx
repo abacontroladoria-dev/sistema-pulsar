@@ -20,7 +20,7 @@ const TAB_LABELS: Record<TabKey, string> = {
   pacientes: "Dashboard de Pacientes",
   "previsao-receitas": "Previsão de Receitas",
   "alimentar-bd": "Preencher Receitas Faturadas",
-  "comparativo-sessoes": "Comparativo de Sessões",
+  "comparativo-sessoes": "Comparativo de Sessões (Tratamento Multidisciplinar)",
   "entrada-convenio": "Entrada de Pacientes (Convênio)",
 }
 

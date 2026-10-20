@@ -407,3 +407,47 @@ export async function buscarOpcoesGrade(cliente?: unknown): Promise<OpcoesGrade>
   }
   return out
 }
+
+/** Andamento de uma releitura pedida ao TiTa. Ver `medirReleituraGrade()`. */
+export interface ReleituraGrade {
+  /** Dias da janela (todos, inclusive sábado e domingo — o sync carimba todos). */
+  total: number
+  /** Dias reconfirmados pelo TiTa a partir de `desde`. */
+  conferidos: number
+  /** Dias que ainda faltam, em ordem. */
+  faltando: string[]
+}
+
+/**
+ * Quantos dias de `de`..`ate` o sync reconfirmou com o TiTa a partir de
+ * `desde` (ISO). É como o "Carregar do TiTa" sabe que a releitura ao vivo
+ * terminou antes de importar a agenda: cada dia processado é carimbado em
+ * `grade_sync_dia` (fim de semana também, com 0 recebidos). Dia que falhou no
+ * sync não é carimbado e continua em `faltando`.
+ */
+export async function medirReleituraGrade(
+  de: string, ate: string, desde: string, unidade = 280, cliente?: unknown,
+): Promise<ReleituraGrade> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sb: any = cliente ?? getSupabaseClient()
+
+  const dias: string[] = []
+  for (let d = de; d <= ate; ) {
+    dias.push(d)
+    const [a, m, dd] = d.split("-").map(Number)
+    d = new Date(Date.UTC(a, m - 1, dd + 1)).toISOString().slice(0, 10)
+  }
+
+  const { data, error } = await sb.from("grade_sync_dia")
+    .select("data")
+    .gte("data", de)
+    .lte("data", ate)
+    .eq("modo", "grade")
+    .eq("unidade_id", unidade)
+    .gte("sincronizado_em", desde)
+  if (error) throw new Error(error.message)
+
+  const vistos = new Set(((data ?? []) as { data: string }[]).map(r => String(r.data).slice(0, 10)))
+  const faltando = dias.filter(d => !vistos.has(d))
+  return { total: dias.length, conferidos: dias.length - faltando.length, faltando }
+}

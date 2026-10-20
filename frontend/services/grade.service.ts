@@ -475,14 +475,18 @@ export async function listarItensImportacaoGrade(importacaoId: string): Promise<
  * dia por vez (cerca de 1 minuto por dia útil) e segue sozinho; a tela acompanha
  * pelo frescor (grade_sync_dia). Nada é escrito no TiTa.
  */
-export async function atualizarCopiaTita(de: string, ate: string): Promise<void> {
+export async function atualizarCopiaTita(de: string, ate: string): Promise<{ jaPedida: boolean }> {
   const r = await fetch("/api/grade/atualizar-copia-tita", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ de, ate }),
   })
+  // 429 = esta pessoa pediu há menos de 10 minutos: o sync já está rodando.
+  // Não é erro — quem chama acompanha pelo carimbo dos dias.
+  if (r.status === 429) return { jaPedida: true }
   const corpo = (await r.json().catch(() => ({}))) as { ok?: boolean; mensagem?: string }
   if (!r.ok || !corpo.ok) throw new Error(corpo.mensagem ?? "Não foi possível pedir a cópia nova do TiTa.")
+  return { jaPedida: false }
 }
 
 export type ImportacaoResumo = { id: string; aplicada_em: string | null; aplicada_por_nome: string | null; janela_inicio: string; janela_fim: string; aplicado: AplicadoImportacao }
