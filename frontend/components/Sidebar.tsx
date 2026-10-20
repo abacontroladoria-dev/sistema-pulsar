@@ -43,6 +43,7 @@ import {
   UserSearch,
   Zap,
   FileClock,
+  FileOutput,
   CalendarClock,
   Gauge,
   FileSearch,
@@ -89,6 +90,7 @@ const pathIconLegado: Record<string, LucideIcon> = {
   "/auditoria-assim?tab=auditoria": ClipboardList,
   "/auditoria-assim?tab=reconciliacao": Link2,
   "/conferencia-guias": ClipboardPenLine,
+  "/exportar-evolucoes": FileOutput,
   "/admin": ShieldCheck,
   "/admin/permissoes": KeyRound,
   "/admin/api": Plug,
@@ -664,11 +666,11 @@ export default function Sidebar() {
           )}
 
           {/* Autorização */}
-          {(canAccess("/auditoria-assim?tab=auditoria") || canAccess("/auditoria-assim?tab=reconciliacao") || canAccess("/conferencia-guias")) && (
+          {(canAccess("/auditoria-assim?tab=auditoria") || canAccess("/auditoria-assim?tab=reconciliacao") || canAccess("/conferencia-guias") || canAccess("/exportar-evolucoes")) && (
             <SidebarGroup
               title={GRUPO.autorizacao.nome}
               icon={GRUPO.autorizacao.icon}
-              defaultOpen={["/auditoria-assim", "/conferencia-guias"].some(p => pathname === p)}
+              defaultOpen={["/auditoria-assim", "/conferencia-guias", "/exportar-evolucoes"].some(p => pathname === p)}
             >
               {/* Duas abas da mesma rota, cada uma com código próprio desde
                   29/09/2026 (auditoria_assim / reconciliacao_assim). Quem pode
@@ -683,6 +685,9 @@ export default function Sidebar() {
               )}
               {canAccess("/conferencia-guias") && (
                 <Item codigo="conferencia_guias" />
+              )}
+              {canAccess("/exportar-evolucoes") && (
+                <Item codigo="exportar_evolucoes" />
               )}
             </SidebarGroup>
           )}

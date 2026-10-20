@@ -44,6 +44,10 @@ export const CODIGO_PARA_ROTAS: Record<string, string[]> = {
   // Conferência ASSIM. A RLS de conferencia_guias_assinadas e a RPC
   // get_conferencia_guias_dia exigem este mesmo código (20260924200000).
   conferencia_guias: ['/conferencia-guias'],
+  // Evoluções (TiTa + Pulsar) em PDF/CSV para o convênio. Código próprio: libera
+  // o TEXTO clínico só nesta tela (decisão D1, 19/10/2026) — na Grade o texto
+  // continua só admin. As rotas /api/exportar-evolucoes/* exigem este código.
+  exportar_evolucoes: ['/exportar-evolucoes'],
   usuarios: ['/admin'],
   permissoes: ['/admin/permissoes'],
   // Documentação da API de integração de faltas (parceiros externos). Código
