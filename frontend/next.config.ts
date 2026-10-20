@@ -153,6 +153,9 @@ const nextConfig: NextConfig = {
                     ]
                   : []),
               ].join(' '),
+              // Prévia de PDF na bolha do inbox (ChipAnexo): o <iframe> aponta para a URL
+              // assinada do bucket. Sem isto o default-src 'self' a bloqueia.
+              ["frame-src 'self'", ...origensSupabase().filter(o => o.startsWith('http'))].join(' '),
               "frame-ancestors 'none'",
             ].join('; '),
           },

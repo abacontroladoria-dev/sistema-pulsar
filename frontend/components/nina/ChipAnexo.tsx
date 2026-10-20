@@ -1,7 +1,8 @@
 'use client'
 
 import React, { useEffect, useRef, useState } from 'react'
-import { FileText, Image as Icone, Mic, Video, Paperclip, Download, Loader2, AlertCircle } from 'lucide-react'
+import { createPortal } from 'react-dom'
+import { FileText, Image as Icone, Mic, Video, Paperclip, Download, Loader2, AlertCircle, ExternalLink, X } from 'lucide-react'
 import type { AnexoUI } from './adapters/centralToNina'
 import { VisualizadorImagem } from './VisualizadorImagem'
 
@@ -60,6 +61,9 @@ export const ChipAnexo: React.FC<{ anexo: AnexoUI; claro: boolean }> = ({ anexo,
   const chipRef = useRef<HTMLButtonElement>(null)
   const Icon = ICONE[anexo.rotulo] ?? Paperclip
   const ehImagem = anexo.rotulo === 'Imagem' || anexo.rotulo === 'Figurinha'
+  const ehPdf = anexo.rotulo === 'Documento' && !!anexo.nome?.toLowerCase().endsWith('.pdf')
+  // Imagem e PDF abrem sozinhos ao aparecer na tela; o resto espera o clique.
+  const abreSozinho = ehImagem || ehPdf
 
   // A bolha de saída é o gradiente cyan/teal com texto branco; a de entrada é
   // `bg-muted` com texto do tema. O chip vive DENTRO da bolha, então herda o
@@ -93,7 +97,7 @@ export const ChipAnexo: React.FC<{ anexo: AnexoUI; claro: boolean }> = ({ anexo,
   // seria pedida de novo a cada rolagem.
   const fechado = estado.fase === 'fechado'
   useEffect(() => {
-    if (!ehImagem || !fechado) return
+    if (!abreSozinho || !fechado) return
     const el = chipRef.current
     if (!el) return
     const obs = new IntersectionObserver(entradas => {
@@ -106,7 +110,7 @@ export const ChipAnexo: React.FC<{ anexo: AnexoUI; claro: boolean }> = ({ anexo,
     return () => obs.disconnect()
     // `abrir` é recriada a cada render; o que importa é a fase e o anexo.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ehImagem, fechado, anexo.id])
+  }, [abreSozinho, fechado, anexo.id])
 
   // Nome quando há; senão o rótulo vira o título. Documento quase sempre traz
   // nome, imagem e áudio quase nunca — e "Áudio · 12s" é um título perfeitamente
@@ -151,6 +155,9 @@ export const ChipAnexo: React.FC<{ anexo: AnexoUI; claro: boolean }> = ({ anexo,
           )}
         </>
       )
+    }
+    if (ehPdf) {
+      return <PreviaPdf url={estado.url} titulo={titulo} legenda={legenda} nome={anexo.nome} claro={claro} />
     }
     if (anexo.rotulo === 'Áudio') {
       return <PlayerAudio url={estado.url} claro={claro} />
@@ -207,6 +214,95 @@ export const ChipAnexo: React.FC<{ anexo: AnexoUI; claro: boolean }> = ({ anexo,
         <span className={`text-[10px] shrink-0 ${secundario}`}>abrir</span>
       )}
     </button>
+  )
+}
+
+// ----------------------------------------------------------------------------
+// PDF: a primeira página na própria bolha (o visualizador nativo do navegador
+// dentro de um <iframe>, sem barra) e o documento inteiro num painel ao clicar.
+// A camada transparente por cima impede o iframe de engolir o clique e a
+// rolagem da conversa.
+// ----------------------------------------------------------------------------
+const PreviaPdf: React.FC<{
+  url: string; titulo: string; legenda: string; nome: string | null; claro: boolean
+}> = ({ url, titulo, legenda, nome, claro }) => {
+  const [aberta, setAberta] = useState(false)
+  useEffect(() => {
+    if (!aberta) return
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setAberta(false) }
+    window.addEventListener('keydown', esc)
+    return () => window.removeEventListener('keydown', esc)
+  }, [aberta])
+  const secundario = claro ? 'text-white/70' : 'text-muted-foreground'
+
+  return (
+    <>
+      <div className={`w-full max-w-xs overflow-hidden rounded-lg border ${claro ? 'border-white/25' : 'border-border'}`}>
+        <button
+          type="button"
+          onClick={() => setAberta(true)}
+          title="Ver documento"
+          aria-label={`Ver ${titulo}`}
+          className="relative block h-56 w-full cursor-zoom-in bg-white"
+        >
+          <iframe
+            src={`${url}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
+            title={`Prévia de ${titulo}`}
+            tabIndex={-1}
+            loading="lazy"
+            className="pointer-events-none h-full w-full border-0"
+          />
+          <span aria-hidden className="absolute inset-0" />
+        </button>
+        <div className={`flex items-center gap-2 px-3 py-2 ${claro ? 'bg-white/10' : 'bg-background/60'}`}>
+          <FileText className="w-4 h-4 shrink-0" />
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-medium truncate">{titulo}</p>
+            <p className={`text-[10px] ${secundario}`}>{legenda}</p>
+          </div>
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            download={nome ?? undefined}
+            title="Baixar"
+            aria-label={`Baixar ${titulo}`}
+            className="shrink-0 p-1 rounded hover:bg-black/10"
+          >
+            <Download className="w-3.5 h-3.5" />
+          </a>
+        </div>
+      </div>
+
+      {aberta && createPortal(
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={titulo}
+          onClick={() => setAberta(false)}
+          className="fixed inset-0 z-60 flex flex-col items-center bg-black/85 p-3 sm:p-6"
+        >
+          <div className="mb-2 flex w-full max-w-4xl items-center justify-between gap-2 text-white" onClick={e => e.stopPropagation()}>
+            <p className="truncate text-sm font-medium">{titulo}</p>
+            <div className="flex items-center gap-1">
+              <a href={url} target="_blank" rel="noopener noreferrer" title="Abrir em nova aba" aria-label="Abrir em nova aba" className="p-2 rounded-lg text-white/80 hover:text-white hover:bg-white/10">
+                <ExternalLink className="w-5 h-5" />
+              </a>
+              <button type="button" onClick={() => setAberta(false)} aria-label="Fechar" className="p-2 rounded-lg text-white/80 hover:text-white hover:bg-white/10">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+          <iframe
+            src={url}
+            title={titulo}
+            onClick={e => e.stopPropagation()}
+            className="w-full max-w-4xl flex-1 rounded-lg border-0 bg-white"
+          />
+        </div>,
+        document.body,
+      )}
+    </>
   )
 }
 
