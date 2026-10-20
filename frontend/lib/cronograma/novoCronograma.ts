@@ -1,5 +1,6 @@
 import { DIA_COLS_DISP, DIAS_LIST, DIAS_ORD, ESP_CLINICO, EXCLUIR_OCUP, TERAPIA_TO_ESP, TERAPIA_TO_ESP_ALT } from "./constants"
 import { isLaudoComAlta, pm } from "./helpers"
+import { COORDENADOR_CASO } from "./coordenadorCaso"
 import type { CsvRow, DispRow, LaudoRow } from "@/types/cronograma"
 
 // Referência estável para quando `suspensaoSet` não é passado — `new Set()`
@@ -213,6 +214,15 @@ export interface SugestaoManual {
   espAlts: EspAltManual[]
 }
 
+/**
+ * Liga a sugestão de Coordenador de Caso (ver coordenadorCaso.ts). Sem este
+ * objeto — caso do Orçamento — a terapia continua fora, como sempre foi.
+ */
+export interface OpcoesCoordCasoManual {
+  /** O profissional ainda pode coordenar este paciente (teto de pacientes)? */
+  podeReceber: (prof: string) => boolean
+}
+
 export interface SugestoesManualResult {
   sugestoes: SugestaoManual[]
   espTable: Record<string, EspEntry>
@@ -241,6 +251,7 @@ export function buildSugestoesManual(
   laudosRows: LaudoRow[] | null | undefined,
   livreSlots: CsvRow[],
   suspensaoSet: Set<string> = SUSPENSAO_SET_VAZIO,
+  coordCaso?: OpcoesCoordCasoManual,
 ): SugestoesManualResult {
   const janela = TURNOS[turno]
   const unidadesPermitidas = new Set(unidades)
@@ -251,6 +262,13 @@ export function buildSugestoesManual(
   const espsValidas = new Set(
     Object.entries(espTable).filter(([, v]) => v.aut > 0).map(([e]) => e),
   )
+
+  // Coordenador de Caso entra como grupo próprio (não junto dos profissionais
+  // de Psicologia ABA no mesmo cartão), mas gasta o autorizado de Psicologia
+  // ABA — a soma é feita na tela. Exige ABA autorizada ≥ 1 no laudo. Fora de
+  // ESP_ORD, ordena por último: vira alternativa do horário e só é a principal
+  // quando é a única opção dele.
+  const ccLiberado = !!coordCaso && (espTable["Psicologia ABA"]?.aut ?? 0) >= 1
 
   // Filtra vagas elegíveis: turno + unidade. A terapia válida é checada
   // abaixo, por terapia individual (ver split de r["Terapia"]).
@@ -297,6 +315,9 @@ export function buildSugestoesManual(
       const espDefault = EXCLUIR_OCUP.has(tP) ? undefined : TERAPIA_TO_ESP[tP]
       const espsCandidatas = [espDefault, TERAPIA_TO_ESP_ALT[tP]]
         .filter((esp): esp is string => !!esp && espsValidas.has(esp))
+      if (tP === COORDENADOR_CASO && ccLiberado && coordCaso!.podeReceber(prof)) {
+        espsCandidatas.push(COORDENADOR_CASO)
+      }
       if (espsCandidatas.length === 0) continue
 
       for (const esp of espsCandidatas) {

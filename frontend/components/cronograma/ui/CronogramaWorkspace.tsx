@@ -4,6 +4,8 @@ import { useState, type ReactNode } from "react"
 import { B, DIAS_LIST, DIAS_ORD, HORAS_GRID } from "@/lib/cronograma/constants"
 import { buildCronoUnitMeta, fmtName, pm } from "@/lib/cronograma/helpers"
 import { UnitHeaderBadges } from "./UnitBadges"
+import { EspBloqueadaLinha } from "./EspBloqueadaLinha"
+import type { EspBloqueada } from "@/lib/cronograma/suspensaoTemporaria"
 import type { ProfAlt, EspAltManual } from "@/lib/cronograma/novoCronograma"
 
 // Workspace de cronograma — réplica da moldura do Modo 1 ("Aumentar Cronograma",
@@ -54,6 +56,8 @@ interface InterativoProps {
   onChangeProf: (id: string, idx: number) => void
   onChangeEsp: (id: string, idx: number) => void
   excessoEsps: Set<string>
+  /** Texto da etiqueta vermelha por especialidade em excesso; ausente = "Acima do limite". */
+  rotuloExcessoEsp?: Record<string, string>
   multiProfTerapias: Set<string>
   /** Dias com unidade já travada pela seleção — cards de outra unidade ficam apagados. */
   diaUnidadeTravada: Record<string, string>
@@ -66,6 +70,8 @@ interface EstaticoProps {
 type Props = {
   sessoes: WorkspaceSessao[]
   espResumo: WorkspaceEspResumo[]
+  /** Especialidades bloqueadas no cadastro/laudo — cadeado + motivo, abaixo das contagens. */
+  espBloqueadas?: EspBloqueada[]
   /** Sessões que o paciente já tinha antes (0 nos modos de cronograma novo/orçamento). */
   antes: number
   /** Caixas de aviso ao pé do painel lateral. */
@@ -78,7 +84,7 @@ type Props = {
 
 export function CronogramaWorkspace(props: Props) {
   const {
-    sessoes, espResumo, antes, avisos = [], actionBar,
+    sessoes, espResumo, espBloqueadas = [], antes, avisos = [], actionBar,
     vazioMsg = "Nenhuma sessão encontrada.",
   } = props
 
@@ -130,7 +136,12 @@ export function CronogramaWorkspace(props: Props) {
   })()
   const firstAfternoonSlot = allSlots.find(s => parseInt(s.replace(":", "")) >= 1300)
 
-  const depois = antes + sessoes.length
+  // No modo interativo as sessões são SUGESTÕES: só entram no "Depois" as
+  // marcadas. Sem seleção, Depois = Antes.
+  const adicionadas = iProps
+    ? sessoes.filter(s => s.sugestaoId && iProps.selectedIds.has(s.sugestaoId)).length
+    : sessoes.length
+  const depois = antes + adicionadas
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 200px", border: "1px solid var(--border)", borderRadius: "14px", background: "var(--card)", overflow: "hidden", height: "calc(100vh - 280px)", minHeight: "480px", marginBottom: "16px" }}>
@@ -219,14 +230,14 @@ export function CronogramaWorkspace(props: Props) {
             </div>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <div style={{ fontSize: "22px", fontWeight: 900, color: "var(--muted-foreground)", lineHeight: 1 }}>{antes}</div>
-              <div style={{ fontSize: "20px", fontWeight: 900, color: sessoes.length > 0 ? "#16a34a" : "var(--border)", transition: "color 200ms ease", flexShrink: 0 }}>→</div>
+              <div style={{ fontSize: "20px", fontWeight: 900, color: adicionadas > 0 ? "#16a34a" : "var(--border)", transition: "color 200ms ease", flexShrink: 0 }}>→</div>
               <div style={{ display: "flex", alignItems: "center", gap: "7px" }}>
-                <div style={{ fontSize: "28px", fontWeight: 900, color: sessoes.length > 0 ? "#16a34a" : "var(--muted-foreground)", lineHeight: 1, transition: "color 200ms ease" }}>
+                <div style={{ fontSize: "28px", fontWeight: 900, color: adicionadas > 0 ? "#16a34a" : "var(--muted-foreground)", lineHeight: 1, transition: "color 200ms ease" }}>
                   {depois}
                 </div>
-                {sessoes.length > 0 && (
+                {adicionadas > 0 && (
                   <span style={{ fontSize: "10px", fontWeight: 800, background: "#dcfce7", color: "#15803d", border: "1px solid #86efac", borderRadius: "5px", padding: "1px 6px", whiteSpace: "nowrap" }}>
-                    +{sessoes.length}
+                    +{adicionadas}
                   </span>
                 )}
               </div>
@@ -235,7 +246,7 @@ export function CronogramaWorkspace(props: Props) {
           </div>
 
           <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "10px" }}>
-            {espResumo.length === 0 && (
+            {espResumo.length === 0 && espBloqueadas.length === 0 && (
               <div style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>Sem autorização registrada.</div>
             )}
             {espResumo.map(g => {
@@ -261,6 +272,7 @@ export function CronogramaWorkspace(props: Props) {
                 </div>
               )
             })}
+            {espBloqueadas.map(item => <EspBloqueadaLinha key={`bloq|||${item.esp}`} item={item} />)}
           </div>
 
           {avisos.map((msg, i) => (
@@ -515,7 +527,7 @@ function SessionCard({
         {/* Badges de alerta (mutuamente exclusivos para poupar espaço vertical, como no Modo 1) */}
         {isExcesso ? (
           <span style={{ fontSize: "9px", fontWeight: 800, color: "#dc2626", background: "#fee2e2", border: "1px solid #fca5a5", borderRadius: "4px", padding: "0 5px", lineHeight: "1.6" }}>
-            Acima do limite
+            {iProps.rotuloExcessoEsp?.[c.esp] ?? "Acima do limite"}
           </span>
         ) : isMultiProf ? (
           <span style={{ fontSize: "9px", fontWeight: 800, color: "#dc2626", background: "#fee2e2", border: "1px solid #fca5a5", borderRadius: "4px", padding: "0 5px", lineHeight: "1.6" }}>
