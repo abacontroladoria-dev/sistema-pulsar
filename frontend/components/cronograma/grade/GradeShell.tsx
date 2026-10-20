@@ -359,7 +359,9 @@ export function GradeShell() {
         cabecalho: <CabecalhoDia data={d} hoje={hoje} />,
         textoVazio: !s.length && !fer && ![0, 6].includes(diaDaSemana(d)) ? "Sem sessão" : undefined,
         itens,
-        fundo: janela ? [{ ini: minutos(janela.inicio), fim: minutos(janela.fim), rotulo: `Família disponível ${janela.inicio}–${janela.fim}` }] : undefined,
+        // Tela cheia é para ver as sessões: sem o verde da disponibilidade da
+        // família (pedido do usuário, 20/10/2026). Fora dela, o verde volta.
+        fundo: janela && !telaCheia ? [{ ini: minutos(janela.inicio), fim: minutos(janela.fim), rotulo: `Família disponível ${janela.inicio}–${janela.fim}` }] : undefined,
         estreita: periodo === "semana" && [0, 6].includes(diaDaSemana(d)) && !s.length,
         destaque: d === hoje,
         aviso: fer ? <AvisoFeriado nome={fer.nome} /> : null,
@@ -367,7 +369,7 @@ export function GradeShell() {
     })
     return { tipo: "colunas" as const, colunas, dias: [], sessoes: doPac.filter(a => datas.includes(a.data)) }
   }, [visao, periodo, filtroDia, base.profissionais, diasPorProf, data, focal, itensDoDia, dadosSemana.bloqueios, dadosSemana.agendamentos, dadosSemana.feriados,
-      profSel, datasMes, dadosMes.faixas, dadosMes.agendamentos, dadosMes.bloqueios, dadosMes.feriados, hoje, id, semana, dispPac, profPorId, ocultos, visualDe, abrirSessao, ir])
+      profSel, datasMes, dadosMes.faixas, dadosMes.agendamentos, dadosMes.bloqueios, dadosMes.feriados, hoje, id, semana, dispPac, profPorId, ocultos, visualDe, abrirSessao, ir, telaCheia])
 
   // Régua pelos horários da regra de negócio (08:00, 08:40, 09:20…). Usa os
   // horários da grade SEM o filtro da legenda, para a régua não pular quando
