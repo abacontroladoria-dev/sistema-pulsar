@@ -698,7 +698,7 @@ const ChatInterface: React.FC = () => {
                     <Avatar url={activeChat.contactAvatar} nome={activeChat.contactName} ampliavel />
                   </div>
                 </div>
-                <div className="ml-3 min-w-0">
+                <div className="ml-3 min-w-0 flex-1">
                   <h2 className="text-sm font-bold text-foreground flex items-center gap-2 min-w-0">
                     <span className="truncate">{activeChat.contactName}</span>
                     {encerrada && (
@@ -716,7 +716,7 @@ const ChatInterface: React.FC = () => {
                   {/* O nome do número saiu da pílula da direita para cá: lá ele
                       espremia o nome do contato até sobrar uma letra. */}
                   <p className="text-xs font-medium flex items-center gap-1.5 min-w-0">
-                    <span className="text-cyan-500 tabular-nums shrink-0">{activeChat.contactPhone}</span>
+                    <span className="text-cyan-500 tabular-nums truncate">{activeChat.contactPhone}</span>
                     {(maiaRespondeNoNumero || canalHumano) && detalhe?.channel?.name && (
                       <>
                         <span aria-hidden className="text-muted-foreground/50">|</span>
@@ -734,6 +734,7 @@ const ChatInterface: React.FC = () => {
                     sozinho pelo WhatsApp. Depois de salvo, o nome se edita
                     pelo lápis do detalhamento. */}
                 {detalhe?.contact?.is_provisional && (
+                  <div className={showProfileInfo ? 'hidden 2xl:block' : undefined}>
                   <NomeContatoPopover
                     nome={detalhe.contact.name}
                     telefone={detalhe.contact.display_phone}
@@ -750,6 +751,7 @@ const ChatInterface: React.FC = () => {
                       <span className="hidden 2xl:inline">Salvar contato</span>
                     </button>
                   </NomeContatoPopover>
+                  </div>
                 )}
 
                 <StatusAtendimento
