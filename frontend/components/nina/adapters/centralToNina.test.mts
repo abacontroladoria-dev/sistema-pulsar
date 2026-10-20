@@ -421,6 +421,30 @@ eq(
 )
 
 // ---------------------------------------------------------------------------
+console.log('\n10. Reação vira selo na mensagem reagida, não bolha')
+
+const reacao = (id: string, body: string, alvo: string | null = 'm1') =>
+  msg({ id, message_type: 'reaction', body, reply_to_message_id: alvo })
+const nossa = msg({ id: 'm1', direction: 'outbound', body: 'Tenha um ótimo dia!' })
+
+const comReacao = toUIConversation(conv(), contato(), [nossa, reacao('r1', '[reagiu 💗]')], 'off', false)
+eq(comReacao.messages.length, 1, 'a reação não vira bolha')
+eq(comReacao.messages[0].reacoes.map(r => r.emoji).join(), '💗', 'o emoji vai para a mensagem-alvo')
+eq(comReacao.messages[0].reacoes[0]?.autor, 'Caio Vinícius', 'reação do contato leva o nome dele')
+eq(comReacao.lastMessage, 'Tenha um ótimo dia!', 'a prévia não vira "[reagiu 💗]"')
+
+const trocou = toUIConversation(conv(), contato(),
+  [nossa, reacao('r1', '[reagiu 💗]'), reacao('r2', '[reagiu 👍]')], 'off', false)
+eq(trocou.messages[0].reacoes.map(r => r.emoji).join(), '👍', 'a reação mais recente da pessoa substitui a anterior')
+
+const tirou = toUIConversation(conv(), contato(),
+  [nossa, reacao('r1', '[reagiu 💗]'), reacao('r2', '[reagiu]')], 'off', false)
+eq(tirou.messages[0].reacoes.length, 0, 'reação vazia remove a anterior')
+
+const semAlvo = toUIConversation(conv(), contato(), [nossa, reacao('r1', '[reagiu 💗]', null)], 'off', false)
+eq(semAlvo.messages.length, 1, 'reação sem alvo carregado some em vez de virar bolha')
+
+// ---------------------------------------------------------------------------
 console.log(
   falhas === 0
     ? '\nTodos os testes passaram.'

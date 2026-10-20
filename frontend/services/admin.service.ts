@@ -7,6 +7,7 @@ export type AdminUser = {
   created_at?: string
   username?: string | null
   unidades?: string[] | null
+  profissional_id?: number | null
 }
 
 export type AdminMachine = {
@@ -23,7 +24,7 @@ export async function getAdminUsers(): Promise<AdminUser[]> {
   const supabase = getSupabaseClient()
   const { data, error } = await supabase
     .from('usuarios')
-    .select('id, nome, email, role, ativo, created_at, username, unidades')
+    .select('id, nome, email, role, ativo, created_at, username, unidades, profissional_id')
     .order('nome', { ascending: true })
 
   if (error) {
@@ -68,6 +69,37 @@ export async function updateUserRoleUnidades(
     method: 'POST',
     headers: await getFunctionHeaders(),
     body: JSON.stringify({ userId, role, unidades }),
+  })
+
+  const json = await response.json()
+  if (!response.ok) return { ok: false, error: json.error }
+  return { ok: true }
+}
+
+/** Profissionais ativos, para ligar o login de um terapeuta do app ao seu cadastro. */
+export async function getProfissionaisAtivos(): Promise<{ id: number; nome: string }[]> {
+  const supabase = getSupabaseClient()
+  const { data, error } = await supabase
+    .from('profissionais')
+    .select('id, nome')
+    .eq('ativo', true)
+    .order('nome', { ascending: true })
+
+  if (error) {
+    console.error('Erro ao buscar profissionais:', error)
+    return []
+  }
+  return data || []
+}
+
+export async function vincularProfissional(
+  userId: string,
+  profissionalId: number | null
+): Promise<{ ok: boolean; error?: string }> {
+  const response = await fetch('/api/admin/user/profissional', {
+    method: 'POST',
+    headers: await getFunctionHeaders(),
+    body: JSON.stringify({ userId, profissionalId }),
   })
 
   const json = await response.json()

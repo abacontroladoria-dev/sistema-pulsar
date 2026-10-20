@@ -97,7 +97,8 @@ export function normalizarMensagemMeta(raw: unknown): NormalizedIncomingMessage 
     sentAt: m.timestamp ? new Date(Number(m.timestamp) * 1000).toISOString() : undefined,
     // `context.id` é a mensagem citada. Amarra a resposta ao que ela responde,
     // e é o que permite entender "sim" quando vem citando uma pergunta antiga.
-    replyToExternalId: m.context?.id,
+    // Na reação o alvo não vem em `context`, e sim em `reaction.message_id`.
+    replyToExternalId: m.context?.id ?? m.reaction?.message_id,
     attachments: extrairAnexos(m),
     anuncio: extrairAnuncio(m),
   }

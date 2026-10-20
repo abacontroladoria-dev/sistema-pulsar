@@ -12,10 +12,12 @@ import {
   deleteUser,
   getAdminMachines,
   getAdminUsers,
+  getProfissionaisAtivos,
   resetUserPassword,
   toggleUserActive,
   updateMachineStatus,
   updateUserRoleUnidades,
+  vincularProfissional,
 } from '@/services/admin.service'
 import {
   getAllMembrosPorGrupo,
@@ -36,7 +38,11 @@ export type AdminUser = {
   created_at?: string
   username?: string | null
   unidades?: string[] | null
+  /** Cadastro em public.profissionais do terapeuta do app (role 'terapeuta'). */
+  profissional_id?: number | null
 }
+
+export type ProfissionalOpcao = { id: number; nome: string }
 
 export type AdminMachine = {
   id: string
@@ -64,6 +70,7 @@ export default function AdminPageShell({
   const [grupos, setGrupos] = useState<Grupo[]>([])
   // grupo_id → ids dos membros, como vem de grupos_permissoes_membros.
   const [membrosPorGrupo, setMembrosPorGrupo] = useState<Record<string, string[]>>({})
+  const [profissionais, setProfissionais] = useState<ProfissionalOpcao[]>([])
   const [searchUser, setSearchUser] = useState('')
   const [searchMachine, setSearchMachine] = useState('')
   const [grupoFilter, setGrupoFilter] = useState('')
@@ -98,16 +105,18 @@ export default function AdminPageShell({
 
   useEffect(() => {
     async function load() {
-      const [loadedUsers, loadedMachines, loadedGrupos, loadedMembros] = await Promise.all([
+      const [loadedUsers, loadedMachines, loadedGrupos, loadedMembros, loadedProfissionais] = await Promise.all([
         getAdminUsers(),
         getAdminMachines(),
         getGrupos(),
         getAllMembrosPorGrupo(),
+        getProfissionaisAtivos(),
       ])
       setUsers(loadedUsers)
       setMachines(loadedMachines)
       setGrupos(loadedGrupos)
       setMembrosPorGrupo(loadedMembros)
+      setProfissionais(loadedProfissionais)
     }
     load()
 
@@ -279,6 +288,25 @@ export default function AdminPageShell({
     return true
   }
 
+  async function handleVincularProfissional(userId: string, profissionalId: number | null) {
+    setBusyId(userId)
+    setErrorMessage('')
+
+    const result = await vincularProfissional(userId, profissionalId)
+
+    if (!result.ok) {
+      setErrorMessage(result.error ?? 'Não foi possível ligar o profissional ao usuário.')
+      setBusyId(null)
+      return
+    }
+
+    setUsers((current) =>
+      current.map((user) => (user.id === userId ? { ...user, profissional_id: profissionalId } : user))
+    )
+    toast.success(profissionalId === null ? 'Profissional desligado do usuário' : 'Profissional ligado ao usuário')
+    setBusyId(null)
+  }
+
   async function handleResendInvite(userId: string, email: string, nome: string, role: string) {
     setBusyId(userId)
     setErrorMessage('')
@@ -404,6 +432,8 @@ export default function AdminPageShell({
               gruposPorUsuario={gruposPorUsuario}
               onToggleActive={handleToggleActive}
               onSaveUser={handleSaveUser}
+              profissionais={profissionais}
+              onVincularProfissional={handleVincularProfissional}
               onResendInvite={handleResendInvite}
               onDeleteUser={handleDeleteUser}
               onResetPassword={handleResetPassword}
