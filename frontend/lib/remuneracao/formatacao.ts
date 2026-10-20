@@ -130,6 +130,25 @@ export function validarCpf(v: unknown): boolean {
   return d1 === Number(d[9]) && d2 === Number(d[10])
 }
 
+// CPF preenchido que não é um CPF de verdade (contagem errada, todos os números
+// iguais ou dígito verificador que não fecha). Vazio NÃO é inválido — é outra
+// pendência. Só para AVISAR (selo ⚠, filtro): salvar continua permitido, porque
+// há cadastros vindos do TiTa assim e travar a tela impediria corrigir o resto.
+export function cpfInvalido(v: unknown): boolean {
+  return onlyDigits(v).length > 0 && !validarCpf(v)
+}
+
+// O subconjunto de `cpfInvalido` que BLOQUEIA o salvar (decisão do usuário,
+// 20/10/2026): preenchido sem 11 números, ou com os 11 iguais. Dígito
+// verificador que não fecha continua só com aviso — `cpfInvalido` cobre.
+export function cpfMalformado(v: unknown): boolean {
+  const d = onlyDigits(v)
+  return d.length > 0 && (d.length !== 11 || /^(\d)\1{10}$/.test(d))
+}
+
+export const MENSAGEM_CPF_MALFORMADO =
+  "CPF inválido: precisa ter 11 números, e não pode ser tudo o mesmo número. Corrija ou deixe em branco para salvar."
+
 // Documento → texto mascarado, escolhendo o formato pela contagem de dígitos:
 // até 11 vira CPF, acima vira CNPJ. Formata parcialmente enquanto se digita
 // (não espera o documento estar completo), e trunca em 14 dígitos. Usado em

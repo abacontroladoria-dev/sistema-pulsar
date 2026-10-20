@@ -10,6 +10,7 @@ import {
 import { getVinculosDoPaciente, salvarVinculos } from "@/services/responsaveis.service"
 import { getAltaIndividualidade, salvarAltaIndividualidade } from "@/services/pacienteAltaIndividualidade.service"
 import { refetchPacientes } from "@/hooks/usePacientes"
+import { cpfMalformado, MENSAGEM_CPF_MALFORMADO } from "@/lib/remuneracao/formatacao"
 import type { Paciente, PacienteEdit, PacienteFichaMedica } from "@/types/paciente"
 import type { VinculoResponsavel, VinculoResponsavelEdit } from "@/types/responsavel"
 import type { AltaIndividualidade, AltaIndividualidadeForm } from "@/types/laudos"
@@ -225,6 +226,12 @@ export function usePacienteDetalhe(idPaciente: number) {
 
   const salvar = useCallback(async (): Promise<boolean> => {
     if (!form) return false
+    // Só quando o CPF foi MEXIDO: cadastro antigo do TiTa com CPF malformado
+    // não pode travar a correção de outro campo (telefone, ficha…).
+    if (form.cpf !== original?.cpf && cpfMalformado(form.cpf)) {
+      setErroSalvar(MENSAGEM_CPF_MALFORMADO)
+      return false
+    }
     setSalvando(true)
     setErroSalvar(null)
     try {
@@ -281,7 +288,7 @@ export function usePacienteDetalhe(idPaciente: number) {
     } finally {
       setSalvando(false)
     }
-  }, [form, camposSujos, idPaciente, individualidadeRegistro, carregar])
+  }, [form, original, camposSujos, idPaciente, individualidadeRegistro, carregar])
 
   return {
     paciente,

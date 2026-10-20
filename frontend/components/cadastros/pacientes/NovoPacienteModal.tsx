@@ -4,7 +4,7 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import toast from "react-hot-toast"
 import { X, Loader2 } from "lucide-react"
-import { maskCpf, validarCpfCnpj } from "@/lib/remuneracao/formatacao"
+import { cpfInvalido, cpfMalformado, maskCpf, MENSAGEM_CPF_MALFORMADO } from "@/lib/remuneracao/formatacao"
 import { upsertPaciente } from "@/services/pacientes.service"
 import { refetchPacientes } from "@/hooks/usePacientes"
 import type { SexoPaciente } from "@/types/paciente"
@@ -34,11 +34,10 @@ export function NovoPacienteModal({ onFechar }: { onFechar: () => void }) {
       toast.error("Informe o nome do paciente.")
       return
     }
-    if (cpf && !validarCpfCnpj(cpf)) {
-      toast.error("CPF incompleto.")
+    if (cpfMalformado(cpf)) {
+      toast.error(MENSAGEM_CPF_MALFORMADO)
       return
     }
-
     setSalvando(true)
     setErro(null)
     const res = await upsertPaciente({
@@ -131,6 +130,14 @@ export function NovoPacienteModal({ onFechar }: { onFechar: () => void }) {
             disabled={salvando}
             inputMode="numeric"
             placeholder="000.000.000-00"
+            // Só com os 11 números: no meio da digitação todo CPF é "inválido".
+            aviso={
+              cpf && cpf.length === 11 && cpfMalformado(cpf)
+                ? MENSAGEM_CPF_MALFORMADO
+                : cpf && cpf.length === 11 && cpfInvalido(cpf)
+                  ? "CPF inválido: algum número está errado. Dá para salvar, mas confira no documento."
+                  : undefined
+            }
           />
           <CampoData
             label="Data de nascimento"

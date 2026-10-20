@@ -20,6 +20,8 @@ import {
   GraduationCap,
   ChevronDown,
   FileSignature,
+  AlertTriangle,
+  CalendarClock,
 } from "lucide-react"
 import { InlineNotice } from "@/components/cronograma/ui/InlineNotice"
 import { HistoricoCadastrosModal } from "@/components/cadastros/historico/HistoricoCadastrosModal"
@@ -31,7 +33,7 @@ import {
 import type { PacienteImportacaoLog } from "@/types/pacienteImportacao"
 import { ModalDetalheImportacao } from "./pacientes/ModalDetalheImportacao"
 import type { ResumoEscolar } from "@/services/pacienteDadosEscolares.service"
-import { maskCpfCnpj, onlyDigits } from "@/lib/remuneracao/formatacao"
+import { cpfInvalido, maskCpfCnpj, onlyDigits } from "@/lib/remuneracao/formatacao"
 import { idExibicao } from "@/types/paciente"
 import type { Paciente } from "@/types/paciente"
 import { NovoPacienteModal } from "./pacientes/NovoPacienteModal"
@@ -80,6 +82,30 @@ const ESCOLAS: { valor: EscolaFiltro; rotulo: string }[] = [
   { valor: "pendente", rotulo: "Escola pendente" },
 ]
 
+// Frescor da disponibilidade (data da versão atual). Seis meses CORRIDOS de
+// calendário, não 180 dias: "preenchida em 20/04" ainda é recente em 20/10.
+type DisponibilidadeFiltro = "recente" | "antiga" | "nunca"
+
+// Verde/âmbar/vermelho = bom/médio/ruim. Mesmos tons do ponto do contrato e dos
+// tokens --status-* (TOM, mais abaixo).
+// `curto` é o que aparece no gatilho do filtro, onde o rótulo inteiro não cabe.
+const DISPONIBILIDADES: {
+  valor: DisponibilidadeFiltro
+  rotulo: string
+  curto: string
+  ponto: string
+  tom: string
+}[] = [
+  { valor: "recente", rotulo: "Atualizado nos últimos 6 meses", curto: "Recente", ponto: "bg-emerald-500", tom: "text-[var(--status-ok)]" },
+  { valor: "antiga", rotulo: "Atualizado há mais de 6 meses", curto: "Antiga", ponto: "bg-amber-500", tom: "text-[var(--status-atencao)]" },
+  { valor: "nunca", rotulo: "Não preenchida", curto: "Não preenchida", ponto: "bg-rose-500", tom: "text-[var(--status-alerta)]" },
+]
+
+function situacaoDisponibilidade(criadoEm: string | undefined, corte: number): DisponibilidadeFiltro {
+  if (!criadoEm) return "nunca"
+  return new Date(criadoEm).getTime() >= corte ? "recente" : "antiga"
+}
+
 // Grade para reconhecer rosto, lista para varrer muitos nomes de uma vez. A
 // escolha é conveniência de quem está no navegador — por isso localStorage, e
 // por isso a tela funciona igual se ele falhar (aba anônima, dados bloqueados).
@@ -125,6 +151,8 @@ export function PacientesCadastro() {
     fichasEscolaresIndisponivel,
     pacientesComContrato,
     contratosIndisponivel,
+    disponibilidades,
+    disponibilidadesIndisponivel,
     loading,
     error,
   } = usePacientes()
@@ -171,6 +199,20 @@ export function PacientesCadastro() {
   const [escolas, setEscolas] = useState<Set<EscolaFiltro>>(
     () => new Set(["respondida", "pendente"])
   )
+  // Mesmo contrato do filtro de Escola: as três marcadas = sem filtro.
+  const [disponibilidadesFiltro, setDisponibilidadesFiltro] = useState<Set<DisponibilidadeFiltro>>(
+    () => new Set(["recente", "antiga", "nunca"])
+  )
+  // Calculado uma vez por montagem (initializer, não render): virar a meia-noite
+  // com a tela aberta não muda nada que importe para um corte de seis meses.
+  const [corteSeisMeses] = useState(() => {
+    const d = new Date()
+    d.setMonth(d.getMonth() - 6)
+    d.setHours(0, 0, 0, 0)
+    return d.getTime()
+  })
+  // Lente de conferência: CPF a corrigir — inválido (o ⚠ do card) OU em branco.
+  const [soCpfInvalido, setSoCpfInvalido] = useState(false)
   const [pagina, setPagina] = useState(1)
   // `null` = "Todos". É um filtro a mais, não uma busca — por isso separado de
   // `busca`: os dois convivem (marcar "M" e digitar "aria" acha só Maria).
@@ -217,6 +259,16 @@ export function PacientesCadastro() {
       )
     }
 
+    // Sem leitura das disponibilidades o filtro não age: "não deu para ler" não
+    // pode virar "ninguém preencheu".
+    if (!disponibilidadesIndisponivel && disponibilidadesFiltro.size < DISPONIBILIDADES.length) {
+      lista = lista.filter((p) =>
+        disponibilidadesFiltro.has(situacaoDisponibilidade(disponibilidades.get(p.id_paciente), corteSeisMeses))
+      )
+    }
+
+    if (soCpfInvalido) lista = lista.filter((p) => cpfACorrigir(p.cpf))
+
     const termo = norm(busca)
     if (!termo) return lista
 
@@ -231,7 +283,43 @@ export function PacientesCadastro() {
       // o ID lido no cartão não achava o paciente.
       return idExibicao(p).includes(digitos)
     })
-  }, [pacientes, busca, situacoes, escolas, fichasEscolares])
+  }, [
+    pacientes,
+    busca,
+    situacoes,
+    escolas,
+    fichasEscolares,
+    soCpfInvalido,
+    disponibilidadesFiltro,
+    disponibilidades,
+    disponibilidadesIndisponivel,
+    corteSeisMeses,
+  ])
+
+  // Mesma regra da contagem de escola: recorte de Situação, sem fictícios, e
+  // ignorando o próprio filtro (os três números somam sempre o mesmo total).
+  const contagemDisponibilidade = useMemo(() => {
+    if (disponibilidadesIndisponivel) return null
+    const c: Record<DisponibilidadeFiltro, number> = { recente: 0, antiga: 0, nunca: 0 }
+    for (const p of pacientes) {
+      if (p.ficticio) continue
+      if (!situacoes.has(p.ativo ? "ativo" : "inativo")) continue
+      c[situacaoDisponibilidade(disponibilidades.get(p.id_paciente), corteSeisMeses)] += 1
+    }
+    return c
+  }, [pacientes, situacoes, disponibilidades, disponibilidadesIndisponivel, corteSeisMeses])
+
+  // Mesmo recorte de Situação que a contagem de escola, e pelo mesmo motivo:
+  // fictício não é criança e não tem CPF a corrigir.
+  const contagemCpfInvalido = useMemo(() => {
+    let n = 0
+    for (const p of pacientes) {
+      if (p.ficticio) continue
+      if (!situacoes.has(p.ativo ? "ativo" : "inativo")) continue
+      if (cpfACorrigir(p.cpf)) n += 1
+    }
+    return n
+  }, [pacientes, situacoes])
 
   // Quais letras têm ao menos um paciente sob os filtros de cima — para a
   // barra A-Z desabilitar (não esconder: a posição de cada letra é fixa) quem não
@@ -401,6 +489,26 @@ export function PacientesCadastro() {
             setPagina(1)
           }}
         />
+        <FiltroDisponibilidade
+          value={disponibilidadesFiltro}
+          contagem={contagemDisponibilidade}
+          onChange={(v) => {
+            setDisponibilidadesFiltro(v)
+            setPagina(1)
+          }}
+        />
+        {/* Só aparece quando há o que conferir (ou se já está ligado, para dar
+            para desligar): sem CPF inválido, o botão seria ruído. */}
+        {(contagemCpfInvalido > 0 || soCpfInvalido) && (
+          <FiltroCpfInvalido
+            ativo={soCpfInvalido}
+            quantos={contagemCpfInvalido}
+            onAlternar={() => {
+              setSoCpfInvalido((v) => !v)
+              setPagina(1)
+            }}
+          />
+        )}
         <div className="ml-auto flex w-full items-center justify-between gap-3 sm:w-auto sm:justify-end">
           {!loading && (
             // Contagem única da tela (o rodapé ficou só com a paginação). Vale
@@ -470,6 +578,12 @@ export function PacientesCadastro() {
         <p className="rounded-xl border border-border bg-card px-4 py-16 text-center text-sm text-muted-foreground">
           {busca
             ? "Nenhum paciente encontrado para essa busca."
+            : soCpfInvalido
+              ? "Nenhum paciente deste recorte com CPF inválido ou em branco."
+            : disponibilidadesFiltro.size === 0
+              ? "Marque ao menos uma opção no filtro de Disponibilidade para ver pacientes."
+            : disponibilidadesFiltro.size < DISPONIBILIDADES.length && !disponibilidadesIndisponivel
+              ? "Nenhum paciente deste recorte nessa situação de disponibilidade."
             : letra
               ? `Nenhum paciente com o nome começando em "${letra}" neste recorte.`
               : escolas.size === 0
@@ -848,6 +962,117 @@ function FiltroEscola({
   )
 }
 
+/**
+ * Frescor da disponibilidade do paciente. Mesmo desenho do filtro de Escola:
+ * número por opção dentro do painel; o ponto colorido diz bom/médio/ruim.
+ */
+function FiltroDisponibilidade({
+  value,
+  contagem,
+  onChange,
+}: {
+  value: Set<DisponibilidadeFiltro>
+  /** `null` quando a leitura falhou — o painel então não afirma número nenhum. */
+  contagem: Record<DisponibilidadeFiltro, number> | null
+  onChange: (v: Set<DisponibilidadeFiltro>) => void
+}) {
+  const resumo =
+    value.size === 0
+      ? "Nenhuma"
+      : value.size === DISPONIBILIDADES.length
+        ? "Todas"
+        : DISPONIBILIDADES.filter((d) => value.has(d.valor)).map((d) => d.curto).join(", ")
+
+  return (
+    <PopoverFiltro
+      icone={CalendarClock}
+      nome="Disponibilidade"
+      valor={resumo}
+      rotuloPainel="Filtrar por disponibilidade"
+      larguraPainel="w-72"
+      rodape={
+        contagem === null && (
+          <p className="px-2 py-1.5 text-xs text-muted-foreground">
+            Não foi possível ler as disponibilidades agora. Recarregue a página para
+            filtrar por disponibilidade.
+          </p>
+        )
+      }
+    >
+      {DISPONIBILIDADES.map((d) => {
+        const quantos = contagem?.[d.valor]
+        return (
+          <OpcaoFiltro
+            key={d.valor}
+            marcado={value.has(d.valor)}
+            onAlternar={() => onChange(alternarEm(value, d.valor))}
+          >
+            <span className={`h-2 w-2 shrink-0 rounded-full ${d.ponto}`} aria-hidden="true" />
+            <span className="flex-1 truncate">{d.rotulo}</span>
+            {quantos !== undefined && (
+              <span className={`shrink-0 tabular-nums font-semibold ${d.tom}`}>{quantos}</span>
+            )}
+          </OpcaoFiltro>
+        )
+      })}
+    </PopoverFiltro>
+  )
+}
+
+/** CPF que alguém precisa conferir: em branco ou inválido. É o recorte do botão ⚠ CPF. */
+function cpfACorrigir(cpf: string | null): boolean {
+  return !onlyDigits(cpf ?? "") || cpfInvalido(cpf)
+}
+
+/**
+ * Botão-lente ao lado dos filtros: liga/desliga "só CPF a corrigir" (inválido
+ * ou em branco). Discreto de propósito (⚠ CPF + número); a explicação fica no
+ * title e no aria-label. Ligado, ganha o fundo âmbar para não parecer que a
+ * lista "sumiu".
+ */
+function FiltroCpfInvalido({
+  ativo,
+  quantos,
+  onAlternar,
+}: {
+  ativo: boolean
+  quantos: number
+  onAlternar: () => void
+}) {
+  const descricao = `${quantos} ${quantos === 1 ? "paciente" : "pacientes"} com CPF inválido ou em branco`
+  return (
+    <button
+      type="button"
+      onClick={onAlternar}
+      aria-pressed={ativo}
+      aria-label={ativo ? `Mostrando só ${descricao}. Clique para ver todos.` : `Mostrar só ${descricao}`}
+      title={ativo ? "Mostrando só CPF inválido ou em branco — clique para ver todos" : `Mostrar só ${descricao}`}
+      className={`inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-2 text-sm tabular-nums transition-colors motion-reduce:transition-none sm:min-h-0 ${
+        ativo
+          ? `border-amber-500/50 bg-amber-500/10 font-semibold ${TOM.atencao}`
+          : `border-border/80 text-muted-foreground hover:bg-muted hover:text-foreground`
+      } ${foco}`}
+    >
+      <AlertTriangle className={`h-4 w-4 shrink-0 ${TOM.atencao}`} strokeWidth={1.75} aria-hidden="true" />
+      <span className={ativo ? "" : "text-foreground"}>CPF</span>
+      <span className="text-xs">{quantos}</span>
+    </button>
+  )
+}
+
+/** CPF como o card/lista mostram, com o ⚠ quando é inválido. */
+function ValorCpf({ cpf }: { cpf: string | null }) {
+  if (!cpf) return <>—</>
+  if (!cpfInvalido(cpf)) return <>{maskCpfCnpj(cpf)}</>
+  return (
+    <span className={`inline-flex items-center gap-1 ${TOM.atencao}`} title="CPF inválido: algum número está errado">
+      <AlertTriangle className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
+      <span className="sr-only">CPF inválido: </span>
+      {maskCpfCnpj(cpf)}
+    </span>
+  )
+}
+
 const CardPaciente = memo(function CardPaciente({
   paciente,
   telefoneResponsavel,
@@ -896,7 +1121,13 @@ const CardPaciente = memo(function CardPaciente({
         </div>
 
         <dl className="mt-4 space-y-2 text-[13px]">
-          <LinhaDado icone={IdCard} rotulo="CPF" valor={paciente.cpf ? maskCpfCnpj(paciente.cpf) : null} />
+          {cpfInvalido(paciente.cpf) ? (
+            <LinhaDado icone={IdCard} rotulo="CPF">
+              <ValorCpf cpf={paciente.cpf} />
+            </LinhaDado>
+          ) : (
+            <LinhaDado icone={IdCard} rotulo="CPF" valor={paciente.cpf ? maskCpfCnpj(paciente.cpf) : null} />
+          )}
           <LinhaDado icone={Cake} rotulo="Nascimento" valor={dataBR(paciente.data_nascimento)} />
           {/* O telefone útil é o de quem responde pelo paciente: a clínica
               atende sobretudo menores, e paciente.telefone estava vazio na
@@ -971,7 +1202,7 @@ const LinhaPaciente = memo(function LinhaPaciente({
         </div>
         <span className="hidden tabular-nums text-foreground md:block">{idExibicao(paciente)}</span>
         <span className="hidden truncate tabular-nums text-foreground md:block">
-          {paciente.cpf ? maskCpfCnpj(paciente.cpf) : "—"}
+          <ValorCpf cpf={paciente.cpf} />
         </span>
         <span className="hidden tabular-nums text-foreground md:block">{nascimento}</span>
         <span className="hidden truncate tabular-nums text-foreground md:block">

@@ -124,6 +124,40 @@ export async function buscarDisponibilidade(pacienteId: number): Promise<Disponi
   }
 }
 
+/**
+ * `id_paciente` -> quando a disponibilidade ATUAL foi preenchida (criado_em da
+ * última versão; na carga do Órbita, a "Última Atualização" de lá). Ausência
+ * da chave = nunca preenchida. Alimenta o filtro da lista de pacientes.
+ *
+ * A view já entrega uma linha por paciente, então são ~1 linha por paciente
+ * com disponibilidade. Paginado porque o PostgREST corta em max_rows (1000)
+ * SEM erro — sem isso, paciente preenchido viraria "não preenchida" em silêncio.
+ */
+export async function getUltimaDisponibilidadePorPaciente(): Promise<Map<number, string>> {
+  const porPaciente = new Map<number, string>()
+  const TAMANHO = 1000
+  for (let de = 0; ; de += TAMANHO) {
+    const { data, error } = await supabase
+      .from("vw_pacientes_disponibilidade_atual")
+      .select("paciente_id, criado_em")
+      // paciente_id é único na view: ordenação total, o range não pula linha.
+      .order("paciente_id", { ascending: true })
+      .range(de, de + TAMANHO - 1)
+
+    if (error) {
+      throw new ErroDisponibilidade(
+        mensagemDeErro(error, "Não foi possível consultar a disponibilidade."),
+        ehMigracaoPendente(error)
+      )
+    }
+
+    const linhas = (data ?? []) as unknown as { paciente_id: number; criado_em: string }[]
+    for (const l of linhas) porPaciente.set(Number(l.paciente_id), l.criado_em)
+    if (linhas.length < TAMANHO) break
+  }
+  return porPaciente
+}
+
 export type DadosEdicaoEquipe = ColunasDisponibilidade & {
   /** Quem da família passou a informação (opcional na edição interna). */
   preenchido_por_nome: string | null
