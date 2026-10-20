@@ -19,9 +19,16 @@ import { ObservacaoPacienteBox } from "./ObservacaoPacienteBox"
 import type { CsvRow, LaudoRow, CfgState, RecItem, InvItem } from "@/types/cronograma"
 import type { AceiteSessao } from "@/types/acompanhamento"
 import { useCronogramaData } from "@/contexts/CronogramaDataContext"
+import {
+  COORDENADOR_CASO, LIMITE_PACIENTES_CC_PADRAO, MAX_SESSOES_CC_PACIENTE,
+  carteiraVazia, contarSessoesCCSemana, coordenadoresDistintos, coordenadoresDoPaciente, profPodeReceber,
+  somarBundlesConfirmados, validarSelecaoCC,
+  type CarteiraCC, type ValidacaoSelecaoCC,
+} from "@/lib/cronograma/coordenadorCaso"
 import { reativarRecusaPaciente } from "@/lib/cronograma/reativarRecusaPaciente"
 import { registrarRecusa, registrarReativacao } from "@/services/cronogramaRecusasAuditoria.service"
-import type { SuspensaoLinkInfo } from "@/lib/cronograma/suspensaoTemporaria"
+import { bloqueiosDoPaciente, type EspBloqueada, type SuspensaoLinkInfo } from "@/lib/cronograma/suspensaoTemporaria"
+import { EspBloqueadaLinha } from "@/components/cronograma/ui/EspBloqueadaLinha"
 import { isoParaBr, hojeBrasiliaISO } from "@/lib/laudos/acompanhamento"
 import { PREDICADO_RECORTE, RECORTE_LABEL, SITUACAO_LAUDO_LABEL, type RecorteLaudo } from "@/lib/laudos/filtros"
 import type { ItemAcompanhamentoLaudo } from "@/types/laudosAcompanhamento"
@@ -261,6 +268,15 @@ function PrefRadio({ ativo }: { ativo: boolean }) {
 
 // ─── buildSugestoes ───────────────────────────────────────────────────────────
 
+interface OpcoesCoordCaso {
+  /** Coordenadores (normTxt) que o paciente já tem nas próximas semanas. */
+  coordenadoresAtuais: Set<string>
+  /** Sessões de Coordenador de Caso que o paciente já tem na semana. */
+  sessoesExistentes: number
+  /** O profissional ainda cabe no teto de pacientes para este paciente? */
+  podeReceber: (prof: string) => boolean
+}
+
 function buildSugestoes(
   pac: string,
   agend: CsvRow[],
@@ -275,6 +291,9 @@ function buildSugestoes(
   // distância entre ofertado e autorizado). Só reordena: nunca muda a elegibilidade,
   // então nenhuma vaga deixa de ser ofertada por causa da preferência.
   prefEsps: string[] = [],
+  // Regras de Coordenador de Caso (ver coordenadorCaso.ts). Ausente = a terapia
+  // só é ofertada com o coordenador que o paciente já tem, sem tetos.
+  coordCaso?: OpcoesCoordCaso,
 ): Sugestao[] {
   const prefSet = new Set(prefEsps)
   const pacClinRows = agendClin.filter(r => r["Nome Favorecido"] === pac)
@@ -516,28 +535,35 @@ function buildSugestoes(
     if (isAssimSaude) return (gapMap[`${pac}|||${laudoEsp}`]?.aut ?? 0) <= 1
     return false
   }
-  // Coordenador de Caso só pode ser ofertado como acréscimo pra compor o déficit de
-  // Psicologia ABA — nunca cria o vínculo do zero (paciente sem Coordenador de Caso
-  // agendado não recebe a oferta) e nunca troca de coordenador (só o mesmo
-  // profissional que já é o Coordenador de Caso atual dela).
-  const coordenadorAtual = new Set(
-    agend
-      .filter(r => r["Nome Favorecido"] === pac && r.Terapia === "Coordenador de Caso")
+  // Coordenador de Caso compõe o déficit de Psicologia ABA (gasta o autorizado
+  // dela — ver o `espDif` abaixo). Nunca troca de coordenador: paciente que já
+  // tem um só recebe esse. Paciente sem coordenador recebe qualquer um que
+  // ainda caiba no teto de pacientes (coordCaso.podeReceber). E nenhum é
+  // ofertado quando o paciente já tem MAX_SESSOES_CC_PACIENTE na semana.
+  const coordenadorAtual = new Set([
+    ...agend
+      .filter(r => r["Nome Favorecido"] === pac && r.Terapia === COORDENADOR_CASO)
       .map(r => normTxt(r.Profissional)),
-  )
+    ...(coordCaso?.coordenadoresAtuais ?? []),
+  ])
+  const ccCheio = (coordCaso?.sessoesExistentes ?? 0) >= MAX_SESSOES_CC_PACIENTE
+  function coordCasoPermitido(prof: string): boolean {
+    if (ccCheio) return false
+    if (coordenadorAtual.size > 0) return coordenadorAtual.has(normTxt(prof))
+    return !!coordCaso && coordCaso.podeReceber(prof)
+  }
   const seenFree = new Set<string>()
   const allFreeRows: Array<CsvRow & { _hMin: number; _hora: string }> = []
   for (const r of cRows) {
     if (r["Status do Agendamento"] !== "Livre") continue
     if (isProfBloqueadoTemp(r.Profissional)) continue
     // Aplicador ABA (AE) é a única exceção "de sempre" liberada de EXCLUIR_OCUP aqui.
-    // Coordenador de Caso é uma segunda exceção, condicional: só passa se for
-    // exatamente o profissional que já é o coordenador atual da paciente (ver
-    // coordenadorAtual acima). As demais (Supervisão ABA etc.) continuam fora da
+    // Coordenador de Caso é uma segunda exceção, condicional (ver
+    // coordCasoPermitido acima). As demais (Supervisão ABA etc.) continuam fora da
     // oferta de sugestões. Ver AE_HS_LAUDO_ESP acima para a condição real de
     // elegibilidade do Aplicador ABA (AE).
     if (EXCLUIR_OCUP.has(r.Terapia) && r.Terapia !== "Aplicador ABA (AE)") {
-      const coordMatch = r.Terapia === "Coordenador de Caso" && coordenadorAtual.has(normTxt(r.Profissional))
+      const coordMatch = r.Terapia === COORDENADOR_CASO && coordCasoPermitido(r.Profissional)
       if (!coordMatch) continue
     }
     if (aeHsBloqueado(r.Terapia)) continue
@@ -820,8 +846,8 @@ const PACIENTE_TESTE_TITA = "Notificação Prévia"
 
 interface TodasSugestoesModalProps {
   pac: string; conv: string; cRows: CsvRow[]; sugestoes: Sugestao[]; pacGaps: GapInfo[]; pacAllEsp: GapInfo[]
-  /** Especialidades deste paciente com suspensão temporária vigente — não estão em pacAllEsp (removidas de lá, junto com "Alta"). */
-  pacSuspensoes: { esp: string; info: SuspensaoLinkInfo }[]
+  /** Especialidades bloqueadas deste paciente (cadastro ou alta no laudo) — não estão em pacAllEsp; aparecem com cadeado. */
+  pacBloqueadas: EspBloqueada[]
   stOf: (s: Sugestao) => Status | null
   setSt: (s: Sugestao, st: Status | null) => void
   estrategia: Estrategia; setEstrategia: (e: Estrategia) => void
@@ -840,6 +866,8 @@ interface TodasSugestoesModalProps {
   }[]
   /** Abre o modal de detalhe do card "recusadoFamilia" ao ser clicado. */
   onAbrirRecusaDetalhe: (dia: string, hora: string, recusas: Array<{ tP: string; prof: string; ocorrencias: Array<{ ts: number; data: string; motivo?: string }> }>) => void
+  /** Tetos de Coordenador de Caso deste paciente — a seleção é conferida contra eles. */
+  regrasCC: Omit<ValidacaoSelecaoCC, "selecionadas">
 }
 
 export interface TodasSugestoesModalHandle {
@@ -848,9 +876,9 @@ export interface TodasSugestoesModalHandle {
 }
 
 const TodasSugestoesModal = forwardRef<TodasSugestoesModalHandle, TodasSugestoesModalProps>(function TodasSugestoesModal({
-  pac, conv, cRows, sugestoes, pacGaps, pacAllEsp, pacSuspensoes, stOf, setSt,
+  pac, conv, cRows, sugestoes, pacGaps, pacAllEsp, pacBloqueadas, stOf, setSt,
   estrategia, setEstrategia, onAceitar, onInviavel, onAcaoDireta,
-  onUndoRecusa, reservasConfirmadas, recusasPac, onAbrirRecusaDetalhe,
+  onUndoRecusa, reservasConfirmadas, recusasPac, onAbrirRecusaDetalhe, regrasCC,
 }: TodasSugestoesModalProps, ref: React.Ref<TodasSugestoesModalHandle>) {
   const [selIdx, setSelIdx]         = useState<Record<string, Record<string, number>>>({})
   const [profSelIdx, setProfSelIdx] = useState<Record<string, number>>({})
@@ -993,7 +1021,7 @@ const TodasSugestoesModal = forwardRef<TodasSugestoesModalHandle, TodasSugestoes
 
   function handleAceitar() {
     const sessoes = buildSelectedSessoes()
-    if (!sessoes.length) return
+    if (!sessoes.length || hasExcesso) return
     // CRON-008: não aplica nem limpa a seleção aqui — o pai abre o modal premium de
     // confirmação; a seleção só é limpa (via ref.clearAll) após a implantação ser
     // efetivamente confirmada, permitindo cancelar sem perder o que foi selecionado.
@@ -1264,11 +1292,28 @@ const TodasSugestoesModal = forwardRef<TodasSugestoesModalHandle, TodasSugestoes
     }
   }
   const isDeficitSobre = pacAllEsp.some(g => g.of > g.aut)
-  const hasExcesso = pacAllEsp.some(g => {
+  const hasExcessoAut = pacAllEsp.some(g => {
     const sel = selectedByEsp[g.esp] || 0
     if (isDeficitSobre) return sel > 0 && (g.of + sel) > g.aut
     return (g.of + sel) > g.aut
   })
+  // Coordenador de Caso já entra em selectedByEsp como Psicologia ABA (gasta o
+  // autorizado); aqui ficam os tetos próprios dele.
+  const selecaoCC = {
+    ...regrasCC,
+    selecionadas: buildSelectedSessoes().filter(x => x.tP === COORDENADOR_CASO).map(x => ({ prof: x.prof })),
+  }
+  const bloqueioCC = validarSelecaoCC(selecaoCC)
+  // Etiqueta do cartão de Coordenador de Caso: "2 Coordenadores" quando o
+  // bloqueio é ter mais de um; senão o "Acima do limite" de sempre.
+  const nCoordenadores = coordenadoresDistintos(selecaoCC)
+  const rotuloExcesso = (tP: string) =>
+    tP === COORDENADOR_CASO && nCoordenadores > 1 ? `${nCoordenadores} Coordenadores` : "Acima do limite"
+  const hasExcesso = hasExcessoAut || bloqueioCC.length > 0
+  const msgExcesso = [
+    ...(hasExcessoAut ? ["Limite ultrapassado — desmarque sessões em excesso."] : []),
+    ...bloqueioCC,
+  ].join(" ")
   // Mesma fonte de verdade do painel "Quantidade de Sessões" — nenhuma lógica duplicada
   const excessoEsps = new Set<string>(
     pacAllEsp.filter(g => (g.of + (selectedByEsp[g.esp] || 0)) > g.aut).map(g => g.esp)
@@ -1398,7 +1443,13 @@ const TodasSugestoesModal = forwardRef<TodasSugestoesModalHandle, TodasSugestoes
                                 const cardEsp = isVCompCard
                                   ? (TERAPIA_TO_ESP[c.tP] ?? null)
                                   : (mainEd?.esp ?? TERAPIA_TO_ESP[c.tP] ?? null)
-                                const isExcesso = isSel && cardEsp !== null && excessoEsps.has(cardEsp)
+                                // Coordenador de Caso conta como Psicologia ABA no autorizado, mas os
+                                // bloqueios próprios dele (dois coordenadores, > 3 sessões, profissional
+                                // no teto) pintam só os cartões dele.
+                                const isExcesso = isSel && (
+                                  (cardEsp !== null && excessoEsps.has(cardEsp))
+                                  || (c.tP === COORDENADOR_CASO && bloqueioCC.length > 0)
+                                )
                                 // Aviso (não bloqueia): esta terapia ficou com 3+ profissionais diferentes
                                 const isMultiProf = isSel && multiProfSet.has(c.tP)
                                 const isVermelho = isExcesso || isMultiProf
@@ -1479,7 +1530,7 @@ const TodasSugestoesModal = forwardRef<TodasSugestoesModalHandle, TodasSugestoes
                                                 {cs.label && <><span style={{ color: "#d1d5db", flexShrink: 0 }}>•</span><span style={{ color: c.tipo === "aceito" ? B.blue : "#374151", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cs.label}</span></>}
                                               </div>
                                             ) : isExcesso ? (
-                                              <span style={{ fontSize: "9px", fontWeight: 800, color: "#dc2626", background: "#fee2e2", border: "1px solid #fca5a5", borderRadius: "4px", padding: "0 5px", lineHeight: "1.6" }}>Acima do limite</span>
+                                              <span style={{ fontSize: "9px", fontWeight: 800, color: "#dc2626", background: "#fee2e2", border: "1px solid #fca5a5", borderRadius: "4px", padding: "0 5px", lineHeight: "1.6" }}>{rotuloExcesso(c.tP)}</span>
                                             ) : isMultiProf ? (
                                               <span style={{ fontSize: "9px", fontWeight: 800, color: "#dc2626", background: "#fee2e2", border: "1px solid #fca5a5", borderRadius: "4px", padding: "0 5px", lineHeight: "1.6" }}>3+ profissionais</span>
                                             ) : cs.label ? (
@@ -1572,7 +1623,7 @@ const TodasSugestoesModal = forwardRef<TodasSugestoesModalHandle, TodasSugestoes
                                             <div style={{ fontSize: "11px", color: "#6b7280", lineHeight: "1.3", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fmtName(c.prof)}</div>
                                             {isDisc && <div style={{ fontSize: "11px", fontWeight: 700, color: "#ea580c", marginTop: "2px", display: "flex", alignItems: "center", gap: "3px" }}>⚠ {c.unidade}</div>}
                                             <div style={{ fontSize: "10px", fontWeight: 700, marginTop: "auto", display: "flex", alignItems: "center", gap: "3px" }}>
-                                              {isExcesso && <span style={{ fontSize: "9px", fontWeight: 800, color: "#dc2626", background: "#fee2e2", border: "1px solid #fca5a5", borderRadius: "4px", padding: "0 5px", lineHeight: "1.6" }}>Acima do limite</span>}
+                                              {isExcesso && <span style={{ fontSize: "9px", fontWeight: 800, color: "#dc2626", background: "#fee2e2", border: "1px solid #fca5a5", borderRadius: "4px", padding: "0 5px", lineHeight: "1.6" }}>{rotuloExcesso(c.tP)}</span>}
                                               {!isExcesso && isMultiProf && <span style={{ fontSize: "9px", fontWeight: 800, color: "#dc2626", background: "#fee2e2", border: "1px solid #fca5a5", borderRadius: "4px", padding: "0 5px", lineHeight: "1.6" }}>3+ profissionais</span>}
                                               <button
                                                 data-esp-dropdown="true"
@@ -1658,7 +1709,7 @@ const TodasSugestoesModal = forwardRef<TodasSugestoesModalHandle, TodasSugestoes
                     </button>
                   </div>
                   <div style={{ fontSize: "10px", maxWidth: "340px", textAlign: "right", color: (hasExcesso || hasMultiProf) ? "#dc2626" : hasPendingEsp ? "#d97706" : "var(--muted-foreground)", fontWeight: (hasExcesso || hasPendingEsp || hasMultiProf) ? 700 : 400 }}>
-                    {hasExcesso ? "⚠ Limite ultrapassado — desmarque sessões em excesso."
+                    {hasExcesso ? `⚠ ${msgExcesso}`
                       : hasPendingEsp ? "⚠ Selecione a terapia de todas as sugestões antes de continuar."
                       : hasMultiProf ? `⚠ ${multiProfTerapias.map(x => x.tP).join(", ")} ficará com 3 ou mais profissionais diferentes. O ideal é no máximo 2 por terapia — você pode continuar, mas revise antes.`
                       : "As alterações só serão aplicadas após a confirmação."}
@@ -1716,7 +1767,7 @@ const TodasSugestoesModal = forwardRef<TodasSugestoesModalHandle, TodasSugestoes
             })()}
 
 <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "10px" }}>
-              {pacAllEsp.length === 0 && (
+              {pacAllEsp.length === 0 && pacBloqueadas.length === 0 && (
                 <div style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>Sem autorização registrada.</div>
               )}
               {pacAllEsp.map((g, i) => {
@@ -1745,32 +1796,18 @@ const TodasSugestoesModal = forwardRef<TodasSugestoesModalHandle, TodasSugestoes
                   </div>
                 )
               })}
+              {pacBloqueadas.map(item => <EspBloqueadaLinha key={`bloq|||${item.esp}`} item={item} />)}
             </div>
-            {pacSuspensoes.length > 0 && (
-              <div style={{ marginTop: "12px", display: "flex", flexDirection: "column", gap: "6px", flexShrink: 0 }}>
-                {pacSuspensoes.map(({ esp, info }) => (
-                  <div key={esp} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", background: "#fef3c7", border: "1px solid #fcd34d", borderRadius: "8px", padding: "6px 8px" }}>
-                    <span style={{ fontSize: "10.5px", color: "#92400e", fontWeight: 700, lineHeight: 1.3 }}>
-                      🚫 {esp} — suspensa temporariamente
-                    </span>
-                    <Link
-                      href={`/cadastros/pacientes/${info.idPacientePulsar}?aba=altas&suspensao=${info.idSuspensao}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      title={`Ver a suspensão de ${esp} na ficha do paciente`}
-                      style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: "22px", height: "22px", borderRadius: "6px", background: "var(--card)", border: "1px solid #fcd34d", color: "#92400e", flexShrink: 0, textDecoration: "none", fontWeight: 900, fontSize: "13px" }}
-                    >
-                      →
-                    </Link>
-                  </div>
-                ))}
-              </div>
-            )}
-            {hasExcesso && (
+            {hasExcessoAut && (
               <div style={{ marginTop: "12px", background: "#fee2e2", border: "1px solid #fca5a5", borderRadius: "8px", padding: "8px 10px", fontSize: "10px", color: "#dc2626", fontWeight: 700, flexShrink: 0 }}>
                 ⚠ Limite ultrapassado. Desmarque sessões em excesso antes de aceitar.
               </div>
             )}
+            {bloqueioCC.map(msg => (
+              <div key={msg} style={{ marginTop: "12px", background: "#fee2e2", border: "1px solid #fca5a5", borderRadius: "8px", padding: "8px 10px", fontSize: "10px", color: "#dc2626", fontWeight: 700, flexShrink: 0 }}>
+                ⚠ {msg}
+              </div>
+            ))}
             {hasMultiProf && (
               <div style={{ marginTop: "12px", background: "#fee2e2", border: "1px solid #fca5a5", borderRadius: "8px", padding: "10px", flexShrink: 0, display: "flex", flexDirection: "column", gap: "8px" }}>
                 <div style={{ display: "flex", alignItems: "flex-start", gap: "5px", fontSize: "10px", color: "#dc2626", fontWeight: 700, lineHeight: 1.4 }}>
@@ -2021,6 +2058,14 @@ interface Props {
   suspensaoSet?: Set<string>
   /** Mesma chave -> paciente/suspensão de origem, para o link "ver na ficha do paciente". */
   suspensaoInfo?: Map<string, SuspensaoLinkInfo>
+  /**
+   * Quem já é Coordenador de Caso de quem (ver coordenadorCaso.ts).
+   * `undefined` = carregando; `null` = falhou — aí só o coordenador atual do
+   * paciente é ofertado, como antes.
+   */
+  carteiraCC?: CarteiraCC | null
+  /** Teto de pacientes por Coordenador de Caso (cc_lim_default). */
+  limiteCC?: number
 }
 
 // "Notificação Prévia" é o paciente-teste oficial usado na homologação da
@@ -2039,6 +2084,7 @@ const SUSPENSAO_INFO_VAZIO = new Map<string, SuspensaoLinkInfo>()
 export function OcupPacMode({
   cRows, lRows, cfg, rec: recGlobal = [], inv: invGlobal = [], sRec, sInv,
   suspensaoSet = SUSPENSAO_SET_VAZIO, suspensaoInfo = SUSPENSAO_INFO_VAZIO,
+  carteiraCC, limiteCC = LIMITE_PACIENTES_CC_PADRAO,
 }: Props) {
   const modalRef = useRef<TodasSugestoesModalHandle>(null)
   const [pac, setPac]           = useState("")
@@ -2763,20 +2809,47 @@ export function OcupPacMode({
       .sort((a, b) => b.dif - a.dif)
   }, [pac, agend, lRows, agendIdMap, agendMergeMap, aceites, suspensaoSet])
 
-  // Especialidades do paciente com suspensão temporária vigente — não aparecem em
-  // pacAllEsp (foram removidas de lá, junto com "Alta"), então sem isto o
-  // operador só veria a especialidade desaparecer sem entender o motivo.
-  const pacSuspensoes = useMemo(() => {
-    const resultado: { esp: string; info: SuspensaoLinkInfo }[] = []
-    if (!pac) return resultado
-    const prefixo = `${pac}|||`
-    for (const chave of suspensaoSet) {
-      if (!chave.startsWith(prefixo)) continue
-      const info = suspensaoInfo.get(chave)
-      if (info) resultado.push({ esp: chave.slice(prefixo.length), info })
+  // Especialidades bloqueadas do paciente (suspensão temporária, alta
+  // registrada, alta clínica, alta no laudo) — não aparecem em pacAllEsp
+  // (foram removidas de lá), então sem isto o operador só veria a
+  // especialidade desaparecer sem entender o motivo. Mesma resolução de
+  // paciente do laudo que pacAllEsp.
+  const pacBloqueadas = useMemo(() => {
+    if (!pac) return [] as EspBloqueada[]
+    const altaLaudo: string[] = []
+    for (const l of lRows) {
+      const idFav = String(l["ID Favorecido"] ?? l["Id Favorecido"] ?? "").trim()
+      const p = (idFav ? agendIdMap.get(idFav) : undefined) ?? String(l["Paciente"] || "").trim()
+      if (p !== pac || !isLaudoComAlta(l)) continue
+      const esp = String(l["Especialidade"] || "").trim()
+      if (esp) altaLaudo.push(esp)
     }
-    return resultado
-  }, [pac, suspensaoSet, suspensaoInfo])
+    return bloqueiosDoPaciente(pac, suspensaoInfo, altaLaudo)
+  }, [pac, lRows, agendIdMap, suspensaoInfo])
+
+  // ── Coordenador de Caso do paciente selecionado ─────────────────────────
+  // Carteira + pacotes confirmados que ainda não chegaram à grade.
+  const carteiraEfetiva = useMemo(
+    () => (carteiraCC ? somarBundlesConfirmados(carteiraCC, aceites) : null),
+    [carteiraCC, aceites],
+  )
+  const regrasCC = useMemo<Omit<ValidacaoSelecaoCC, "selecionadas">>(() => {
+    const doPac = (nome: string) => (agendMergeMap.get(nome) ?? nome) === pac
+    const pacId = agend.find(r => doPac(r["Nome Favorecido"]) && r.PacienteId != null)?.PacienteId ?? null
+    const daGrade = agend
+      .filter(r => doPac(r["Nome Favorecido"]) && r.Terapia === COORDENADOR_CASO)
+      .map(r => ({ dia: r["Dia da Semana"], hora: hiStr(r), prof: r.Profissional }))
+    const dosBundles = aceites
+      .filter(b => b.status === "confirmado" && b.pac === pac)
+      .flatMap(b => b.sessoes.filter(x => x.tP === COORDENADOR_CASO))
+      .map(x => ({ dia: x.dia, hora: x.hora, prof: x.prof }))
+    return {
+      carteira: carteiraEfetiva ?? carteiraVazia(),
+      limite: limiteCC,
+      paciente: { id: pacId, nome: pac },
+      sessoesExistentes: contarSessoesCCSemana(daGrade, dosBundles),
+    }
+  }, [pac, agend, agendMergeMap, aceites, carteiraEfetiva, limiteCC])
 
   const sugestoes = useMemo(() => {
     if (!pac || estrategia !== "S1") return [] as Sugestao[]
@@ -2791,9 +2864,15 @@ export function OcupPacMode({
     // Bundles "pendente" continuam fora do cálculo — preserva o comportamento anterior
     // de manter os cards visíveis enquanto aguardam confirmação do responsável.
     const aceitesRelevantes = aceites.filter(a => a.status === "confirmado" || a.status === "recusado")
-    return buildSugestoes(pac, agend, agendClin, cRowsExpandido, gapMap, aceitesRelevantes, conv, isLiminar, prefEsps)
+    const coordCaso: OpcoesCoordCaso = {
+      coordenadoresAtuais: coordenadoresDoPaciente(regrasCC.carteira, regrasCC.paciente),
+      sessoesExistentes: regrasCC.sessoesExistentes,
+      // Sem carteira não dá para conferir o teto: nenhum coordenador novo.
+      podeReceber: prof => !!carteiraEfetiva && profPodeReceber(carteiraEfetiva, prof, regrasCC.paciente, limiteCC).pode,
+    }
+    return buildSugestoes(pac, agend, agendClin, cRowsExpandido, gapMap, aceitesRelevantes, conv, isLiminar, prefEsps, coordCaso)
     // prefEsps nas deps: trocar a preferência recalcula as sugestões na hora, sem recarregar a página.
-  }, [pac, estrategia, agend, agendClin, cRowsExpandido, gapMap, pacConvMap, cfg.judicialMap, aceites, prefEsps])
+  }, [pac, estrategia, agend, agendClin, cRowsExpandido, gapMap, pacConvMap, cfg.judicialMap, aceites, prefEsps, regrasCC, carteiraEfetiva, limiteCC])
 
   useEffect(() => {
     if (!pac) return
@@ -3274,7 +3353,7 @@ export function OcupPacMode({
             sugestoes={sugestoes}
             pacGaps={pacGaps}
             pacAllEsp={pacAllEsp}
-            pacSuspensoes={pacSuspensoes}
+            pacBloqueadas={pacBloqueadas}
             stOf={stOf}
             setSt={setSt}
             estrategia={estrategia}
@@ -3286,6 +3365,7 @@ export function OcupPacMode({
             reservasConfirmadas={reservasConfirmadas}
             recusasPac={recusasPac}
             onAbrirRecusaDetalhe={(dia, hora, recusas) => setRecusaDetalheAberto({ dia, hora, recusas })}
+            regrasCC={regrasCC}
           />
         </>
       )}

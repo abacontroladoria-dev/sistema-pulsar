@@ -53,6 +53,44 @@ export async function getAltasDoPaciente(
   return { data: data as PacienteAlta[], error: null }
 }
 
+export interface AltaAtiva {
+  idAlta: number
+  especialidade: string
+}
+
+/**
+ * Altas ATIVAS (não excluídas) de vários pacientes de uma vez — para a
+ * Ocupação de Paciente deixar de ofertar a especialidade sem uma consulta por
+ * paciente. Mesmo papel de getSuspensoesVigentesPorPacientes. Erro (inclusive
+ * falta de permissão) devolve mapa vazio: a tela segue, sem o bloqueio.
+ */
+export async function getAltasAtivasPorPacientes(
+  pacienteIds: number[]
+): Promise<Map<number, AltaAtiva[]>> {
+  const mapa = new Map<number, AltaAtiva[]>()
+  if (pacienteIds.length === 0) return mapa
+
+  const { data, error } = await getSupabaseClient()
+    .from(TB_ALTAS)
+    .select("id_alta, id_paciente_pulsar, especialidade_alta")
+    .in("id_paciente_pulsar", pacienteIds)
+    .eq("ativo", true)
+
+  if (error) {
+    console.error("Erro ao buscar altas ativas em lote:", error)
+    return mapa
+  }
+
+  for (const linha of (data ?? []) as { id_alta: number; id_paciente_pulsar: number; especialidade_alta: string | null }[]) {
+    if (!linha.especialidade_alta) continue
+    const item: AltaAtiva = { idAlta: linha.id_alta, especialidade: linha.especialidade_alta }
+    const lista = mapa.get(linha.id_paciente_pulsar)
+    if (lista) lista.push(item)
+    else mapa.set(linha.id_paciente_pulsar, [item])
+  }
+  return mapa
+}
+
 // ─── UPSERT INDIVIDUALIDADE ───────────────────────────────────────────────────
 
 /** Salva (cria ou atualiza) as individualidades de um paciente. */

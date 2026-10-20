@@ -10,6 +10,12 @@ import {
 import {
   construirProfissionaisOcupados, isLaudoComAlta, profissionalEstaOcupado,
 } from "@/lib/cronograma/helpers"
+import {
+  COORDENADOR_CASO, LIMITE_PACIENTES_CC_PADRAO,
+  carteiraVazia, coordenadoresDistintos, profPodeReceber, somarBundlesConfirmados, validarSelecaoCC,
+  type CarteiraCC, type PacienteRef,
+} from "@/lib/cronograma/coordenadorCaso"
+import { bloqueiosDoPaciente, type SuspensaoLinkInfo } from "@/lib/cronograma/suspensaoTemporaria"
 import { useCronogramaData } from "@/contexts/CronogramaDataContext"
 import { UnidadeSelector } from "@/components/cronograma/ui/UnidadeSelector"
 import { WorkbenchBar, WorkbenchArea, WorkbenchKpi } from "@/components/cronograma/ui/WorkbenchBar"
@@ -26,12 +32,25 @@ import type { AceiteSessao, AceitePacBundle } from "@/types/acompanhamento"
 interface Props {
   cRows: CsvRow[]
   lRows: LaudoRow[]
-  /** `${pacienteNome}|||${especialidade}` com suspensão temporária vigente — ver suspensaoTemporaria.ts. */
+  /** `${pacienteNome}|||${especialidade}` bloqueada no cadastro (suspensão, alta, alta clínica) — ver suspensaoTemporaria.ts. */
   suspensaoSet?: Set<string>
+  /** Mesma chave -> motivo do bloqueio, para o cadeado no painel "Quantidade de Sessões". */
+  suspensaoInfo?: Map<string, SuspensaoLinkInfo>
+  /** Bloqueios do cadastro ainda sendo lidos: "Gerar cronograma" espera. */
+  bloqueiosCarregando?: boolean
+  /**
+   * Quem já é Coordenador de Caso de quem (ver coordenadorCaso.ts).
+   * `undefined` = ainda carregando; `null` = falhou — aí Coordenador de Caso não
+   * é sugerido, porque não dá para conferir o teto de pacientes.
+   */
+  carteiraCC?: CarteiraCC | null
+  /** Teto de pacientes por Coordenador de Caso (cc_lim_default). */
+  limiteCC?: number
 }
 
 // Referência estável para quando `suspensaoSet` não é passado.
 const SUSPENSAO_SET_VAZIO = new Set<string>()
+const SUSPENSAO_INFO_VAZIO = new Map<string, SuspensaoLinkInfo>()
 
 // "Notificação Prévia" é o paciente-teste de homologação da integração TiTa —
 // mesma exceção de OcupPacMode.tsx (PACS_ADMIN_OCUP_PAC), pra permitir testar o
@@ -63,7 +82,10 @@ type SituacoesState =
   | { estado: "erro" }
   | { estado: "ok"; porId: Map<number, "Ativo" | "Inativo">; porNome: Map<string, "Ativo" | "Inativo"> }
 
-export function CriarNovoCronogramaPacMode({ cRows, lRows, suspensaoSet = SUSPENSAO_SET_VAZIO }: Props) {
+export function CriarNovoCronogramaPacMode({
+  cRows, lRows, suspensaoSet = SUSPENSAO_SET_VAZIO, suspensaoInfo = SUSPENSAO_INFO_VAZIO,
+  bloqueiosCarregando = false, carteiraCC, limiteCC = LIMITE_PACIENTES_CC_PADRAO,
+}: Props) {
   const { pacBundles, persistPacBundles } = useCronogramaData()
   const [paciente, setPaciente] = useState("")
   const [turno, setTurno] = useState<"manha" | "tarde">("manha")
@@ -149,6 +171,17 @@ export function CriarNovoCronogramaPacMode({ cRows, lRows, suspensaoSet = SUSPEN
 
   const idFavorecidoSel = paciente ? idFavorecidoPorPac.get(paciente) : undefined
 
+  // Carteira dos Coordenadores de Caso + pacotes já confirmados que ainda não
+  // chegaram à grade (senão o teto de pacientes só valeria depois do sync).
+  const carteiraEfetiva = useMemo(
+    () => (carteiraCC ? somarBundlesConfirmados(carteiraCC, pacBundles) : null),
+    [carteiraCC, pacBundles],
+  )
+  const pacRef = useMemo<PacienteRef>(
+    () => ({ id: idFavorecidoSel ?? null, nome: paciente }),
+    [idFavorecidoSel, paciente],
+  )
+
   // Situação de um paciente: casa primeiro por id_favorecido (chave estável) e só
   // recorre ao nome quando o laudo não trouxe id. Paciente que não aparece no
   // cadastro do TiTa fica como null — indeterminado, e por isso não é bloqueado.
@@ -188,7 +221,16 @@ export function CriarNovoCronogramaPacMode({ cRows, lRows, suspensaoSet = SUSPEN
       toast.error("❌ Este paciente está inativo na clínica. Reative o cadastro no TiTa antes de montar o cronograma.")
       return
     }
-    const r = buildSugestoesManual(paciente, unidades, turno, lRows, livreSlots, suspensaoSet)
+    const coordCaso = carteiraEfetiva
+      ? { podeReceber: (prof: string) => profPodeReceber(carteiraEfetiva, prof, pacRef, limiteCC).pode }
+      : undefined
+    const r = buildSugestoesManual(paciente, unidades, turno, lRows, livreSlots, suspensaoSet, coordCaso)
+    if (!carteiraEfetiva && (r.espTable["Psicologia ABA"]?.aut ?? 0) >= 1) {
+      r.alertas.push({
+        tipo: "warn",
+        msg: "Coordenador de Caso não foi sugerido: não foi possível conferir quantos pacientes cada coordenador já tem. Recarregue a página para tentar de novo.",
+      })
+    }
     setResult(r)
     // Limpa seleção anterior.
     setSelectedIds(new Set())
@@ -246,15 +288,27 @@ export function CriarNovoCronogramaPacMode({ cRows, lRows, suspensaoSet = SUSPEN
 
   // ── Contagem de selecionados por especialidade ────────────────────────────
 
+  // Coordenador de Caso gasta o autorizado de Psicologia ABA: conta lá, e é
+  // contado também à parte (selecionadasCC) para o teto próprio de sessões.
   const selectedByEsp = useMemo<Record<string, number>>(() => {
     if (!result) return {}
     const counts: Record<string, number> = {}
     for (const s of result.sugestoes) {
       if (!selectedIds.has(s.id)) continue
       const d = getActiveData(s)
-      counts[d.esp] = (counts[d.esp] || 0) + 1
+      const esp = d.tP === COORDENADOR_CASO ? "Psicologia ABA" : d.esp
+      counts[esp] = (counts[esp] || 0) + 1
     }
     return counts
+  }, [result, selectedIds, getActiveData])
+
+  const selecionadasCC = useMemo<{ prof: string }[]>(() => {
+    if (!result) return []
+    return result.sugestoes
+      .filter(s => selectedIds.has(s.id))
+      .map(getActiveData)
+      .filter(d => d.tP === COORDENADOR_CASO)
+      .map(d => ({ prof: d.prof }))
   }, [result, selectedIds, getActiveData])
 
   const totalSelecionado = Object.values(selectedByEsp).reduce((a, b) => a + b, 0)
@@ -267,21 +321,61 @@ export function CriarNovoCronogramaPacMode({ cRows, lRows, suspensaoSet = SUSPEN
       ...ESP_ORD_T.filter(e => result.espTable[e]),
       ...Object.keys(result.espTable).filter(e => !ESP_ORD_T.includes(e)),
     ]
+    // Sem linha própria de Coordenador de Caso: ele conta dentro de Psicologia
+    // ABA (selectedByEsp). O teto de 3 sessões dele fica em bloqueioCC.
     return nomes
       .filter(e => (result.espTable[e]?.aut ?? 0) > 0)
       .map(e => ({ esp: e, of: selectedByEsp[e] || 0, aut: result.espTable[e].aut }))
   }, [result, selectedByEsp])
 
+  // Especialidades bloqueadas do paciente — cadeado no painel, no lugar da
+  // contagem (elas não entram em espResumo porque saíram do espTable).
+  const espBloqueadas = useMemo(() => {
+    if (!paciente) return []
+    const altaLaudo = lRows
+      .filter(r => String(r["Paciente"] || "").trim() === paciente && isLaudoComAlta(r as Record<string, unknown>))
+      .map(r => String(r["Especialidade"] || "").trim())
+      .filter(Boolean)
+    return bloqueiosDoPaciente(paciente, suspensaoInfo, altaLaudo)
+  }, [paciente, lRows, suspensaoInfo])
+
   // ── Controle de excesso ───────────────────────────────────────────────────
 
+  // Teto de sessões, um coordenador por paciente e teto de pacientes do
+  // profissional. Paciente do "Criar Novo" ainda não tem sessão agendada.
+  const bloqueioCC = useMemo(
+    () => validarSelecaoCC({
+      carteira: carteiraEfetiva ?? carteiraVazia(),
+      limite: limiteCC,
+      paciente: pacRef,
+      sessoesExistentes: 0,
+      selecionadas: selecionadasCC,
+    }),
+    [carteiraEfetiva, limiteCC, pacRef, selecionadasCC],
+  )
+
+  // "2 Coordenadores" no cartão, em vez de "Acima do limite", quando o
+  // bloqueio é ter mais de um coordenador.
+  const rotuloExcessoEsp = useMemo<Record<string, string>>(() => {
+    const n = coordenadoresDistintos({
+      carteira: carteiraEfetiva ?? carteiraVazia(), limite: limiteCC, paciente: pacRef,
+      sessoesExistentes: 0, selecionadas: selecionadasCC,
+    })
+    const r: Record<string, string> = {}
+    if (n > 1) r[COORDENADOR_CASO] = `${n} Coordenadores`
+    return r
+  }, [carteiraEfetiva, limiteCC, pacRef, selecionadasCC])
+
+  // Qualquer bloqueio de Coordenador de Caso (não só passar de 3) pinta de
+  // vermelho os cartões dele — ex.: dois coordenadores diferentes marcados.
   const excessoEsps = useMemo<Set<string>>(() => {
     if (!result) return new Set()
-    return new Set(
-      espResumo.filter(g => g.of > g.aut).map(g => g.esp),
-    )
-  }, [result, espResumo])
+    const s = new Set(espResumo.filter(g => g.of > g.aut).map(g => g.esp))
+    if (bloqueioCC.length > 0) s.add(COORDENADOR_CASO)
+    return s
+  }, [result, espResumo, bloqueioCC])
 
-  const hasExcesso = excessoEsps.size > 0
+  const hasExcesso = excessoEsps.size > 0 || bloqueioCC.length > 0
 
   // ── Controle de >3 profissionais por terapia (alerta, não bloqueia) ───────
 
@@ -379,12 +473,15 @@ export function CriarNovoCronogramaPacMode({ cRows, lRows, suspensaoSet = SUSPEN
 
   const avisos = useMemo(() => (result ? result.alertas.map(a => a.msg) : []), [result])
 
+  // Espera a carteira dos Coordenadores de Caso (uma consulta curta): gerar
+  // antes dela deixaria a terapia de fora sem aviso.
   const canGerar = !!paciente && !inativoSelecionado && unidades.length > 0 && lRows.length > 0 && cRows.length > 0
+    && carteiraCC !== undefined && !bloqueiosCarregando
 
   // ── Implantação ───────────────────────────────────────────────────────────
 
   function abrirConfirmacao() {
-    if (!result || totalSelecionado === 0) return
+    if (!result || totalSelecionado === 0 || hasExcesso) return
 
     const sessoes: AceiteSessao[] = []
     const semGradeId: string[] = []
@@ -493,9 +590,15 @@ export function CriarNovoCronogramaPacMode({ cRows, lRows, suspensaoSet = SUSPEN
   )
 
   // Motivo de bloqueio do botão de implantação — feedback para o operador.
-  const motivoBloqueio = hasExcesso
-    ? `Reduza a seleção: ${[...excessoEsps].join(", ")} ${excessoEsps.size === 1 ? "está" : "estão"} acima do autorizado.`
-    : null
+  // O vermelho de Coordenador de Caso em excessoEsps já vem explicado em bloqueioCC.
+  const excessoAutorizado = [...excessoEsps].filter(e => e !== COORDENADOR_CASO)
+  const motivosBloqueio = [
+    ...(excessoAutorizado.length > 0
+      ? [`Reduza a seleção: ${excessoAutorizado.join(", ")} ${excessoAutorizado.length === 1 ? "está" : "estão"} acima do autorizado.`]
+      : []),
+    ...bloqueioCC,
+  ]
+  const motivoBloqueio = motivosBloqueio.length > 0 ? motivosBloqueio.join(" ") : null
 
   return (
     <>
@@ -639,6 +742,7 @@ export function CriarNovoCronogramaPacMode({ cRows, lRows, suspensaoSet = SUSPEN
           <CronogramaWorkspace
             sessoes={sessoesParaWorkspace}
             espResumo={espResumo}
+            espBloqueadas={espBloqueadas}
             antes={0}
             avisos={avisos}
             vazioMsg="Nenhuma vaga livre encontrada para este turno/unidade."
@@ -652,6 +756,7 @@ export function CriarNovoCronogramaPacMode({ cRows, lRows, suspensaoSet = SUSPEN
             onChangeProf={handleChangeProf}
             onChangeEsp={handleChangeEsp}
             excessoEsps={excessoEsps}
+            rotuloExcessoEsp={rotuloExcessoEsp}
             multiProfTerapias={multiProfTerapias}
             diaUnidadeTravada={diaUnidadeTravada}
             actionBar={totalSelecionado > 0 ? (

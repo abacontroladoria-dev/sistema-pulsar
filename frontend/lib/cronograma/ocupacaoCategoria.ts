@@ -16,6 +16,7 @@ import { DIAS_UTIL, TERAPIA_TO_ESP, TODAS_ESP, TODAS_ESP_CATEGORIA, UNID_COR } f
 import type { FaixaCascata, ModoCascataOcupacao } from "./sugestaoContratacao"
 import type { RemanejamentoDetalhe } from "./sugestaoContratacaoTypes"
 import type { CsvRow } from "@/types/cronograma"
+import { COORDENADOR_CASO } from "./coordenadorCaso"
 
 const TURNOS: Turno[] = ["manha", "tarde"]
 
@@ -30,7 +31,6 @@ const TURNOS: Turno[] = ["manha", "tarde"]
 // Caso". Isso garante que a CH autorizada de Psicologia ABA nunca é
 // ultrapassada (é o MESMO saldo) e que "não gerar buraco"/"Dia Novo de
 // Atendimento" continuam se aplicando sem duplicação de regra.
-const COORDENADOR_CASO = "Coordenador de Caso"
 const ESP_INTERNA_COORDENADOR_CASO = "Psicologia ABA"
 
 function especialidadeInterna(especialidade: string): string {

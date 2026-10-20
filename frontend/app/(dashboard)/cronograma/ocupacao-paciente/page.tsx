@@ -14,6 +14,8 @@ import { filtrarLivresSemGradeAberta } from "@/lib/cronograma/gradeTitaOcupacao"
 import { reconciliarAgendadosComAgendaTita } from "@/lib/cronograma/reconciliarAgendaTita"
 import { construirSuspensaoTemporaria, type SuspensaoLinkInfo } from "@/lib/cronograma/suspensaoTemporaria"
 import { getJanelaOcupacaoPaciente } from "@/lib/cronograma/helpers"
+import { LIMITE_PACIENTES_CC_PADRAO, type CarteiraCC } from "@/lib/cronograma/coordenadorCaso"
+import { buscarCarteiraCoordenadorCaso, buscarLimiteCoordenadorCaso } from "@/lib/cronograma/coordenadorCasoCarga"
 import type { CsvRow } from "@/types/cronograma"
 
 type ModoOcupacao = "aumentar" | "novo" | "orcamento"
@@ -35,12 +37,22 @@ export default function OcupacaoPacientePage() {
   const [cRows, setCRows] = useState<CsvRow[]>([])
   const [suspensaoSet, setSuspensaoSet] = useState<Set<string>>(new Set())
   const [suspensaoInfo, setSuspensaoInfo] = useState<Map<string, SuspensaoLinkInfo>>(new Map())
+  // Para qual grade/laudo os bloqueios do cadastro já foram lidos. Enquanto
+  // não baterem com os atuais, o "Criar Novo" espera — para não gerar
+  // sugestão de especialidade suspensa/com alta.
+  const [bloqueiosDe, setBloqueiosDe] = useState<{ cRows: CsvRow[]; lRows: unknown[] } | null>(null)
+  // Não deu para conferir suspensões/altas do cadastro: aviso na página.
+  const [bloqueiosFalhou, setBloqueiosFalhou] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
   // Quantas horas faz que o TiTa não reconfirma a grade desta janela. Ver o
   // aviso mais abaixo e medirFrescorGrade() em lib/grade/fonte.ts.
   const [gradeVelhaHoras, setGradeVelhaHoras] = useState<number | null>(null)
   const fetchedRef = useRef(false)
   const [modo, setModo] = useState<ModoOcupacao>("aumentar")
+  // Carteira dos Coordenadores de Caso: undefined = carregando, null = falhou.
+  // Ver coordenadorCaso.ts — "Aumentar" e "Criar Novo" usam; "Orçamento" não.
+  const [carteiraCC, setCarteiraCC] = useState<CarteiraCC | null | undefined>(undefined)
+  const [limiteCC, setLimiteCC] = useState(LIMITE_PACIENTES_CC_PADRAO)
 
   useEffect(() => {
     setHeader("Ocupação · Paciente", "Aumente a ocupação de sessões por paciente")
@@ -58,6 +70,16 @@ export default function OcupacaoPacientePage() {
     void medirFrescorGrade(janela.inicio, janela.fim, 280)
       .then(f => setGradeVelhaHoras(f.desatualizado ? f.horas : null))
       .catch(() => {})
+
+    // Em paralelo e sem travar a grade: falhar aqui só tira o Coordenador de
+    // Caso das sugestões (não dá para conferir o teto de pacientes sem ela).
+    void buscarCarteiraCoordenadorCaso(janela.fim)
+      .then(setCarteiraCC)
+      .catch(e => {
+        console.error("[ocupacao-paciente] carteira dos Coordenadores de Caso", e)
+        setCarteiraCC(null)
+      })
+    void buscarLimiteCoordenadorCaso().then(setLimiteCC)
 
     // Duas correções sobre a mesma cópia, e elas atacam lados opostos:
     //
@@ -77,26 +99,40 @@ export default function OcupacaoPacientePage() {
     // Aplicado aqui, na origem da cópia, para valer nas três modalidades sem
     // alterar assinatura de nenhuma função do módulo — e sem alcançar a
     // Simulação de Novo Prestador, que lê o cRows do CronogramaDataProvider.
-    //
-    // O Set de suspensão temporária é montado do mesmo jeito, na mesma origem
-    // — uma consulta só, compartilhada por "Aumentar Cronograma" e "Criar Novo
-    // Cronograma" (ver suspensaoTemporaria.ts). "Orçamento" não recebe: usa
-    // paciente sintético ("Simulação"), sem id_paciente_pulsar real.
     buscarGradeComoCSVRows(janela.inicio, janela.fim)
       .then(rows => reconciliarAgendadosComAgendaTita(rows, janela.inicio, janela.fim))
       .then(rows => filtrarLivresSemGradeAberta(rows, janela.inicio, janela.fim))
-      .then(rows => {
-        setCRows(rows)
-        void construirSuspensaoTemporaria(rows).then(({ set, info }) => {
-          setSuspensaoSet(set)
-          setSuspensaoInfo(info)
-        })
-      })
+      .then(rows => setCRows(rows))
       .catch(e => {
         fetchedRef.current = false
         setErro(e instanceof Error ? e.message : "Erro ao carregar a grade.")
       })
   }, [])
+
+  // Bloqueios do cadastro (suspensão temporária, alta registrada, alta
+  // clínica) — uma consulta só, compartilhada por "Aumentar Cronograma" e
+  // "Criar Novo Cronograma" (ver suspensaoTemporaria.ts). Depende da grade E do
+  // laudo: o paciente do "Criar Novo" só é achado pelo ID Favorecido do laudo,
+  // que pode chegar depois da grade. "Orçamento" não recebe: usa paciente
+  // sintético ("Simulação"), sem cadastro.
+  useEffect(() => {
+    if (cRows.length === 0 && lRows.length === 0) return
+    let ativo = true
+    construirSuspensaoTemporaria(cRows, lRows)
+      .then(({ set, info, erro }) => {
+        if (!ativo) return
+        setSuspensaoSet(set)
+        setSuspensaoInfo(info)
+        setBloqueiosFalhou(!!erro)
+      })
+      .catch(e => {
+        console.error("[ocupacao-paciente] bloqueios do cadastro", e)
+        if (ativo) setBloqueiosFalhou(true)
+      })
+      .finally(() => { if (ativo) setBloqueiosDe({ cRows, lRows }) })
+    return () => { ativo = false }
+  }, [cRows, lRows])
+  const bloqueiosCarregando = bloqueiosDe?.cRows !== cRows || bloqueiosDe?.lRows !== lRows
 
   // O relatório de laudos é pré-requisito das TRÊS modalidades, não um dado
   // opcional: "Aumentar Cronograma" mede déficit contra a quantidade autorizada,
@@ -123,6 +159,16 @@ export default function OcupacaoPacientePage() {
             : `${Math.round(gradeVelhaHoras)} hora(s)`}
           . Pode faltar sessão recém-remarcada e sobrar horário que já foi ocupado —
           confira no TiTa antes de confirmar implantação.
+        </div>
+      )}
+
+      {/* Sem o cadastro, especialidade suspensa ou com alta aparece como
+          liberada — o operador precisa saber antes de ligar para a família. */}
+      {bloqueiosFalhou && (
+        <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          <strong className="font-semibold">Suspensões e altas não conferidas.</strong>{" "}
+          Não foi possível ler o cadastro dos pacientes, então especialidade suspensa ou com alta
+          pode aparecer como sugestão. Entre com seu usuário e recarregue a página.
         </div>
       )}
 
@@ -161,10 +207,10 @@ export default function OcupacaoPacientePage() {
       )}
 
       {laudosCarregados && modo === "aumentar" && (
-        <OcupPacMode cRows={cRows} lRows={lRows} cfg={cfg} rec={rec} inv={inv} sRec={sRec} sInv={sInv} suspensaoSet={suspensaoSet} suspensaoInfo={suspensaoInfo} />
+        <OcupPacMode cRows={cRows} lRows={lRows} cfg={cfg} rec={rec} inv={inv} sRec={sRec} sInv={sInv} suspensaoSet={suspensaoSet} suspensaoInfo={suspensaoInfo} carteiraCC={carteiraCC} limiteCC={limiteCC} />
       )}
       {laudosCarregados && modo === "novo" && (
-        <CriarNovoCronogramaPacMode cRows={cRows} lRows={lRows} suspensaoSet={suspensaoSet} />
+        <CriarNovoCronogramaPacMode cRows={cRows} lRows={lRows} suspensaoSet={suspensaoSet} suspensaoInfo={suspensaoInfo} bloqueiosCarregando={bloqueiosCarregando} carteiraCC={carteiraCC} limiteCC={limiteCC} />
       )}
       {laudosCarregados && modo === "orcamento" && <OrcamentoPacMode cRows={cRows} />}
     </>

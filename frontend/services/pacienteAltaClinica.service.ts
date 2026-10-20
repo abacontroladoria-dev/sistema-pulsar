@@ -39,6 +39,35 @@ export function altaClinicaVigente(altas: PacienteAltaClinica[]): PacienteAltaCl
   return altas.find((a) => a.ativo) ?? null
 }
 
+/**
+ * Alta clínica vigente (ativo=true) de vários pacientes de uma vez:
+ * id_paciente_pulsar → id_alta_clinica. Para a Ocupação de Paciente bloquear
+ * todas as terapias do paciente. Erro devolve mapa vazio.
+ */
+export async function getAltasClinicasVigentesPorPacientes(
+  pacienteIds: number[]
+): Promise<Map<number, number>> {
+  const mapa = new Map<number, number>()
+  if (pacienteIds.length === 0) return mapa
+
+  const { data, error } = await getSupabaseClient()
+    .from(TB_ALTA_CLINICA)
+    .select("id_alta_clinica, id_paciente_pulsar")
+    .in("id_paciente_pulsar", pacienteIds)
+    .eq("ativo", true)
+    .order("criado_em", { ascending: false })
+
+  if (error) {
+    console.error("Erro ao buscar altas clínicas em lote:", error)
+    return mapa
+  }
+
+  for (const linha of (data ?? []) as { id_alta_clinica: number; id_paciente_pulsar: number }[]) {
+    if (!mapa.has(linha.id_paciente_pulsar)) mapa.set(linha.id_paciente_pulsar, linha.id_alta_clinica)
+  }
+  return mapa
+}
+
 // ─── CRUD ─────────────────────────────────────────────────────────────────────
 
 export async function criarAltaClinica(
