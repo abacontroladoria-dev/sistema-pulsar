@@ -69,6 +69,16 @@ console.log('\n3. filtro: o que a extração pode gravar')
   checar(f.shift === 'manha', 'campo vazio entra', f)
 }
 
+{
+  const f = filtrarExtracao({
+    patient_name: 'filha', guardian_name: 'Família', health_plan: 'não tenho plano',
+  }, ficha())
+  checar(Object.keys(f).length === 0, '"filha", "Família" e "não tenho plano" não são dado', f)
+  const g = filtrarExtracao({ patient_name: 'Maria Alice', health_plan: 'Nossa Saúde' }, ficha())
+  checar(g.patient_name === 'Maria Alice' && g.health_plan === 'Nossa Saúde', 'nome e plano de verdade passam', g)
+  checar(filtrarExtracao({ health_plan: 'Particular' }, ficha()).health_plan === undefined, '"Particular" não é plano')
+}
+
 console.log('\n4. extrairFicha ponta a ponta')
 function provider(args: Record<string, unknown> | null): LLMProvider & { pedidos: LlmRequisicao[] } {
   const pedidos: LlmRequisicao[] = []
