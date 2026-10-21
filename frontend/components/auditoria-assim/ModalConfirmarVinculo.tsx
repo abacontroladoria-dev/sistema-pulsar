@@ -13,6 +13,8 @@ type Props = {
   guia: GuiaOrfa | null
   /** Nula = o modal está confirmando o descarte ("sem sessão correspondente"). */
   candidata: CandidataVinculo | null
+  /** Carteirinha com que a sessão foi pedida (`empresa.matricula.dep`), lida do cartão da grade. */
+  carteirinhaSessao?: string | null
   salvando: boolean
   /**
    * `houveSubstituto` só vai preenchido quando a candidata é uma falta — é a
@@ -95,6 +97,7 @@ export default function ModalConfirmarVinculo({
   onClose,
   guia,
   candidata,
+  carteirinhaSessao,
   salvando,
   onConfirmar,
 }: Props) {
@@ -155,7 +158,20 @@ export default function ModalConfirmarVinculo({
     !ehFalta &&
     !!guia.data_execucao &&
     (candidata.data_atendimento ?? '') > guia.data_execucao.slice(0, 10)
-  const exigeObservacao = tussDiverge || sessaoDepoisDaGuia
+  /**
+   * A sessão foi pedida com OUTRA carteirinha do mesmo paciente (aceito desde
+   * 20261021120000). Caso real: Miguel, 16/10 15:40 — o agendamento do TiTa
+   * levava a carteirinha antiga, a ASSIM recusou e a guia saiu com a nova. Mesma
+   * regra do TUSS: passa, mas só com observação. Faltas não entram: a escrita
+   * delas casa por paciente, não por carteirinha.
+   */
+  const carteirinhaDiverge =
+    !ehDescarte &&
+    !ehFalta &&
+    !!guia.carteirinha &&
+    !!carteirinhaSessao &&
+    guia.carteirinha !== carteirinhaSessao
+  const exigeObservacao = tussDiverge || sessaoDepoisDaGuia || carteirinhaDiverge
   const faltaObservacao = exigeObservacao && observacao.trim() === ''
 
   async function confirmar() {
@@ -227,6 +243,7 @@ export default function ModalConfirmarVinculo({
                   <Campo rotulo="Data" valor={dia(candidata.data_atendimento)} forte />
                   <Campo rotulo="Horário" valor={(candidata.hora_inicial ?? '').slice(0, 5) || '—'} forte />
                   <Campo rotulo="TUSS" valor={candidata.codigo_tuss} />
+                  {carteirinhaDiverge && <Campo rotulo="Carteirinha" valor={carteirinhaSessao} />}
                   <Campo rotulo="Terapia" valor={candidata.terapias} />
                   <Campo rotulo="Profissional" valor={candidata.profissionais} />
                   <Campo rotulo="Situação" valor={<SituacaoBadge situacao={candidata.situacao} />} />
@@ -289,6 +306,14 @@ export default function ModalConfirmarVinculo({
                     A guia é do TUSS <span className="font-semibold tabular-nums">{guia.codigo_tuss}</span> e
                     a sessão é do <span className="font-semibold tabular-nums">{candidata.codigo_tuss}</span>.
                     Diga por que ela foi pedida com outro código.
+                  </li>
+                )}
+                {carteirinhaDiverge && (
+                  <li>
+                    A sessão foi pedida com a carteirinha{' '}
+                    <span className="font-semibold tabular-nums">{carteirinhaSessao}</span> e a guia saiu
+                    com a <span className="font-semibold tabular-nums">{guia.carteirinha}</span>. Diga por
+                    que esta guia cobre a sessão.
                   </li>
                 )}
               </ul>

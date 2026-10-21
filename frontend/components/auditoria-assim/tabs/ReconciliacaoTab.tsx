@@ -413,6 +413,9 @@ export default function ReconciliacaoTab({ alvo, onAlvoConsumido }: Props) {
         onClose={() => setEtapa('grade')}
         guia={guiaEmVinculo}
         candidata={candidataEscolhida}
+        carteirinhaSessao={
+          analise.sessoesVisiveis.find((s) => s.bloco_id === candidataEscolhida?.bloco_id)?.carteirinha ?? null
+        }
         salvando={fila.salvando}
         onConfirmar={async (observacao, houveSubstituto) => {
           if (!guiaEmVinculo) return
