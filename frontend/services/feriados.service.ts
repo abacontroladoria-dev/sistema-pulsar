@@ -1,3 +1,4 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { getSupabaseClient } from '@/lib/supabase/client'
 import type { FeriadoRow } from '@/types/feriados'
 
@@ -20,8 +21,13 @@ export async function getFeriados(): Promise<{ data: FeriadoRow[]; error: string
  * 20261015170000 não estiver aplicada (ou se a RPC falhar), cai na leitura
  * direta da tabela: quem tem papel com leitura continua vendo igual.
  */
-export async function listarFeriadosDoPeriodo(de: string, ate: string): Promise<Pick<FeriadoRow, 'data' | 'nome' | 'tipo' | 'horario_inicio' | 'horario_fim'>[]> {
-  const supabase = getSupabaseClient()
+export async function listarFeriadosDoPeriodo(
+  de: string,
+  ate: string,
+  // Opcional: a chave de serviço no servidor (rota de retrato da evolução).
+  cliente?: SupabaseClient,
+): Promise<Pick<FeriadoRow, 'data' | 'nome' | 'tipo' | 'horario_inicio' | 'horario_fim'>[]> {
+  const supabase = (cliente ?? getSupabaseClient()) as SupabaseClient
   const rpc = await supabase.rpc('ocupacao_clinica_feriados', { p_de: de, p_ate: ate })
   if (!rpc.error) return rpc.data ?? []
 

@@ -133,7 +133,7 @@ export function TabelaComparar({ unidades, onAbrir }: Props) {
                     {l.unidade}
                   </button>
                   <div className="mt-0.5 text-xs text-muted-foreground">
-                    {plural(l.u.salasOperacionais, "sala em uso", "salas em uso")}{l.u.terceirizada ? " · fora do total da rede" : ""}
+                    {plural(l.u.salasOperacionais, "sala em uso", "salas em uso")}{l.u.terceirizada ? " · fora do total" : ""}
                   </div>
                   <div className="mt-2 max-w-[13rem]"><BarraCapacidade contagem={l.u.contagem} tamanho="sm" chave={false} /></div>
                 </td>

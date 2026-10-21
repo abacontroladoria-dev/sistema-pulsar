@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js"
 import { getSupabaseClient } from "@/lib/supabase/client"
 import { buscarGrade, fixMojibake } from "@/lib/grade/fonte"
 import { isFakePatient } from "@/lib/remuneracao/pacientes"
@@ -57,8 +58,15 @@ function normalizarSala(row: Sala): Sala {
   }
 }
 
-export async function listarSalas(): Promise<Sala[]> {
-  const sb = getSupabaseClient()
+/**
+ * Leituras com `cliente` opcional: sem ele, o cliente do navegador (as telas);
+ * com ele, a chave de serviço no servidor (rota de retrato da evolução, ver
+ * lib/cronograma/evolucaoSnapshot.server.ts). O comportamento é o mesmo.
+ */
+type ClienteLeitura = SupabaseClient
+
+export async function listarSalas(cliente?: ClienteLeitura): Promise<Sala[]> {
+  const sb = (cliente ?? getSupabaseClient()) as SupabaseClient
   const { data, error } = await sb
     .from(TABLE)
     .select("*")
@@ -366,8 +374,8 @@ export async function atualizarStatusLabel(codigo: SalaStatus, input: { label: s
 
 // ─── ALOCAÇÕES (planejamento de sala — não escreve no TiTa) ──────────────────
 
-export async function listarAlocacoes(): Promise<AlocacaoSala[]> {
-  const sb = getSupabaseClient()
+export async function listarAlocacoes(cliente?: ClienteLeitura): Promise<AlocacaoSala[]> {
+  const sb = (cliente ?? getSupabaseClient()) as SupabaseClient
   const { data, error } = await sb.from(ALOCACOES_TABLE).select("*")
   if (error) throw new Error(error.message)
   return (data ?? []) as AlocacaoSala[]
@@ -428,8 +436,8 @@ export async function excluirAlocacao(id: string): Promise<void> {
 
 const EXCLUSIVIDADE_TERAPIA_TABLE = "cronograma_salas_terapias_exclusivas"
 
-export async function listarExclusividadesTerapia(): Promise<SalaTerapiaExclusiva[]> {
-  const sb = getSupabaseClient()
+export async function listarExclusividadesTerapia(cliente?: ClienteLeitura): Promise<SalaTerapiaExclusiva[]> {
+  const sb = (cliente ?? getSupabaseClient()) as SupabaseClient
   const { data, error } = await sb.from(EXCLUSIVIDADE_TERAPIA_TABLE).select("*").order("terapia_nome")
   if (error) throw new Error(error.message)
   return (data ?? []) as SalaTerapiaExclusiva[]
@@ -518,10 +526,16 @@ const AGENDA_FIELDS = [
 ].join(", ")
 
 /** Busca linhas de agendamento do período, para cruzar com o cadastro de salas. */
-export async function buscarLinhasAgendaParaSalas(dataInicio: string, dataFim: string): Promise<AgendaSalaRow[]> {
+/**
+ * A grade crua do período (todas as unidades e status) — base comum de
+ * `buscarLinhasAgendaParaSalas` e `buscarTurnosBloqueioAdministrativo`. Quem
+ * precisa das duas (rota de retrato da evolução) lê uma vez só e deriva com
+ * `linhasAgendaParaSalasDe` / `turnosBloqueioAdministrativoDe`.
+ */
+export async function buscarGradeParaSalas(dataInicio: string, dataFim: string, cliente?: ClienteLeitura): Promise<AgendaSalaRow[]> {
   // Fonte "base" sem recorte: a ocupação de salas conta tanto o horário
   // ocupado quanto o slot 'Livre', e não se restringe à unidade 280.
-  const all = await buscarGrade<AgendaSalaRow>({
+  return buscarGrade<AgendaSalaRow>({
     campos: AGENDA_FIELDS,
     fonte: "base",
     de: dataInicio,
@@ -530,8 +544,15 @@ export async function buscarLinhasAgendaParaSalas(dataInicio: string, dataFim: s
     // pagina, e (data, hora_inicial) tem empate de sobra — sem desempate único
     // a paginação pode repetir ou pular sessão.
     ordem: [{ coluna: "data" }, { coluna: "hora_inicial" }, { coluna: "id" }],
+    cliente,
   })
+}
 
+export async function buscarLinhasAgendaParaSalas(dataInicio: string, dataFim: string): Promise<AgendaSalaRow[]> {
+  return linhasAgendaParaSalasDe(await buscarGradeParaSalas(dataInicio, dataFim))
+}
+
+export function linhasAgendaParaSalasDe(all: AgendaSalaRow[]): AgendaSalaRow[] {
   return all
     .map(repararTextoAgenda)
     // Pacientes fictícios/administrativos (Horário Administrativo, Notificação
@@ -582,7 +603,7 @@ function repararTextoAgenda(r: AgendaSalaRow): AgendaSalaRow {
  * é o mesmo `includes("agendado")` de isAgendadoAtivo, sem diferenciar
  * maiúsculas, então o conjunto que chega ao cálculo é idêntico.
  */
-export async function buscarLinhasPacientesPeriodo(dataInicio: string, dataFim: string): Promise<AgendaSalaRow[]> {
+export async function buscarLinhasPacientesPeriodo(dataInicio: string, dataFim: string, cliente?: ClienteLeitura): Promise<AgendaSalaRow[]> {
   const all = await buscarGrade<AgendaSalaRow>({
     campos: AGENDA_FIELDS,
     fonte: "base",
@@ -590,6 +611,7 @@ export async function buscarLinhasPacientesPeriodo(dataInicio: string, dataFim: 
     ate: dataFim,
     refinar: q => q.ilike("status_agendamento", "%agendado%"),
     ordem: [{ coluna: "data" }, { coluna: "hora_inicial" }, { coluna: "id" }],
+    cliente,
   })
   return descartarImportacaoSobreposta(all)
     .map(repararTextoAgenda)
@@ -625,14 +647,10 @@ function descartarImportacaoSobreposta(rows: AgendaSalaRow[]): AgendaSalaRow[] {
  * Salas, mas não está no TiTa" uma alocação que cobre um bloqueio desses.
  */
 export async function buscarTurnosBloqueioAdministrativo(dataInicio: string, dataFim: string): Promise<AgendaSalaRow[]> {
-  const all = await buscarGrade<AgendaSalaRow>({
-    campos: AGENDA_FIELDS,
-    fonte: "base",
-    de: dataInicio,
-    ate: dataFim,
-    ordem: [{ coluna: "data" }, { coluna: "hora_inicial" }, { coluna: "id" }],
-  })
+  return turnosBloqueioAdministrativoDe(await buscarGradeParaSalas(dataInicio, dataFim))
+}
 
+export function turnosBloqueioAdministrativoDe(all: AgendaSalaRow[]): AgendaSalaRow[] {
   return all
     .map(r => ({ ...r, paciente_nome: fixMojibake(r.paciente_nome), profissional_nome: fixMojibake(r.profissional_nome) }))
     .filter(r => r.paciente_nome != null && PACS_BLOQUEIO_ADMIN.has(r.paciente_nome))
