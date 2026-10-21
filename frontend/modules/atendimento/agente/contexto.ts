@@ -401,6 +401,7 @@ function blocoVagas(guardadas: VagasGuardadas | null): string | null {
 const ROTULO: Record<CampoFicha, string> = {
   patient_name:  'nome da criança',
   birth_date:    'data de nascimento',
+  age_years:     'idade',
   guardian_name: 'nome do responsável',
   shift:         'turno para as terapias',
   health_plan:   'plano de saúde',

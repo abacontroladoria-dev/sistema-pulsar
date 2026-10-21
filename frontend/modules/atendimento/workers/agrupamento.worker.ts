@@ -16,6 +16,7 @@ import { executarTurno } from '../agente/orquestrador'
 import { FerramentasAgente } from '../agente/ferramentas'
 import { lerVagasGuardadas, paraGuardar, mesclarAiContext } from '../agente/vagas-oferecidas'
 import { classificarConversa, falasDoHistorico } from '../agente/classificacao'
+import { extrairFicha } from '../agente/extracao-ficha'
 import { origemAceitaAnuncio, resolverOrigem } from '../agente/origem-campanha'
 import { catalogarAnuncio } from '../meta/catalogo-anuncios'
 import { TAG_TRABALHE_CONOSCO, pareceTrabalheConosco } from '../agente/tipo-contato'
@@ -538,6 +539,18 @@ async function processarContato(
         )
         if (!r.ok) console.warn('[worker agrupamento] classificação não aplicada', { conversationId: conversation.id, motivo: r.motivo })
         else if (r.aplicado) await ferramentas.moverCardPorClassificacao()
+      }
+
+      // A ficha, também depois da resposta (agente/extracao-ficha.ts): a
+      // ferramenta do turno quase nunca era chamada (2 em 310). `ficha` só é
+      // não-nula quando há o que coletar — mesmo recorte de deveColetar.
+      if (ficha !== null) {
+        const rf = await extrairFicha(
+          orgId, contato.id,
+          falasDoHistorico(historico, resultado.texto),
+          { provider: openAiProvider, fichas },
+        )
+        if (!rf.ok) console.warn('[worker agrupamento] ficha não extraída', { conversationId: conversation.id, motivo: rf.motivo })
       }
       return { tipo: 'respondido' }
 

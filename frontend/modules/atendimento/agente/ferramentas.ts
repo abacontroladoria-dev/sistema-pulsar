@@ -398,6 +398,12 @@ export const FERRAMENTAS_SEMPRE = [
               'Data de nascimento da criança, como o responsável escreveu (ex.: "12/03/2019", "12 de março de 2019"). '
               + 'Não converta o formato. null se ele não disse.',
           },
+          idade: {
+            type: ['string', 'null'],
+            description:
+              'Idade da criança como o responsável falou (ex.: "5 anos", "8 meses"). '
+              + 'Preencha mesmo quando ele também deu a data de nascimento. null se ele não disse.',
+          },
           nomeResponsavel: {
             type: ['string', 'null'],
             description: 'Nome de quem está conversando com você e é responsável pela criança. null se ele não disse.',
@@ -415,7 +421,7 @@ export const FERRAMENTAS_SEMPRE = [
             description: 'Nome do plano de saúde ou convênio, como o responsável falou. null se ele não disse.',
           },
         },
-        required: ['nomePaciente', 'dataNascimento', 'nomeResponsavel', 'turno', 'planoSaude'],
+        required: ['nomePaciente', 'dataNascimento', 'idade', 'nomeResponsavel', 'turno', 'planoSaude'],
         additionalProperties: false,
       },
     },
@@ -1279,7 +1285,7 @@ export class FerramentasAgente {
   // registrar_dados_do_paciente
   //
   // Anota na ficha o que o responsável acabou de informar. O modelo manda os
-  // cinco campos (strict exige todos), e quase sempre quatro deles são null.
+  // seis campos (strict exige todos), e quase sempre cinco deles são null.
   //
   // O RETORNO É A PRÓXIMA PERGUNTA DELA
   //
@@ -1307,6 +1313,7 @@ export class FerramentasAgente {
       {
         patient_name:  texto(args.nomePaciente),
         birth_date:    texto(args.dataNascimento),
+        age_years:     texto(args.idade),
         guardian_name: texto(args.nomeResponsavel),
         shift:         texto(args.turno),
         health_plan:   texto(args.planoSaude),
@@ -1558,6 +1565,7 @@ function texto(v: unknown): string | undefined {
 const ROTULO_CAMPO: Record<CampoFicha, string> = {
   patient_name:  'nome da criança',
   birth_date:    'data de nascimento',
+  age_years:     'idade',
   guardian_name: 'nome do responsável',
   shift:         'turno para as terapias',
   health_plan:   'plano de saúde',

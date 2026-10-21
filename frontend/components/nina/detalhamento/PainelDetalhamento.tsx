@@ -169,18 +169,17 @@ export const PainelDetalhamento: React.FC<{
           {/* Primeiro de todos: QUEM é o paciente se lê antes de COMO o
               responsável está. Os dois vêm antes de canal, origem e tags, que
               descrevem o cadastro do contato e não o atendimento.
-              Nos números Evolution a Maia não participa (ai_mode travado em
-              'off'), então a ficha que ela coleta só diria "a Maia ainda não
-              perguntou" para sempre — sai do painel. */}
-          {detalhe.channel?.provider !== 'evolution' && (
-            <BlocoFicha
-              ficha={dados.ficha}
-              carregando={dados.carregandoFicha}
-              erro={dados.erroFicha}
-              // Sem contato não há ficha para corrigir — a rota é por contactId.
-              aoSalvar={contato ? acoes.salvarCampoFicha : undefined}
-            />
-          )}
+              Vale para todo número: desde 08/10 a Maia atende no Evolution, e
+              a ficha é preenchida depois de cada resposta, nos dois modos
+              (agente/extracao-ficha.ts). */}
+          <BlocoFicha
+            ficha={dados.ficha}
+            servicos={servicosDeInteresse(contato?.tags ?? null, detalhe.tags, dados.catalogoTags)}
+            carregando={dados.carregandoFicha}
+            erro={dados.erroFicha}
+            // Sem contato não há ficha para corrigir — a rota é por contactId.
+            aoSalvar={contato ? acoes.salvarCampoFicha : undefined}
+          />
 
           {/* É o que se lê ANTES de escrever uma resposta, e não mais um campo
               da ficha: descreve o estado da pessoa agora. */}
@@ -239,6 +238,19 @@ export const PainelDetalhamento: React.FC<{
       )}
     </div>
   )
+}
+
+// As terapias que a família procura: as tags do grupo "serviço de interesse",
+// da classificação da conversa e do que a equipe marcou no contato.
+function servicosDeInteresse(
+  doContato: string[] | null,
+  daConversa: string[] | null | undefined,
+  catalogo: TagDefinition[],
+): string[] {
+  const chaves = new Set([...(daConversa ?? []), ...(doContato ?? [])])
+  return catalogo
+    .filter((t) => t.grupo_key === 'servico_de_interesse' && chaves.has(t.key))
+    .map((t) => t.label)
 }
 
 export default PainelDetalhamento

@@ -58,6 +58,7 @@ function coleta(over: Partial<ContactIntake> = {}): ContactIntake {
     organization_id:  'o-1',
     patient_name:     null,
     birth_date:       null,
+    age_years:        null,
     guardian_name:    null,
     shift:            null,
     health_plan:      null,

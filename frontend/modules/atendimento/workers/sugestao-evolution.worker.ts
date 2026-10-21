@@ -12,6 +12,8 @@ import { resolverOrigem, temOrigem, type FraseCadastrada } from '../agente/orige
 import { TAG_TRABALHE_CONOSCO, pareceTrabalheConosco } from '../agente/tipo-contato'
 import { montarContexto, LIMITE_HISTORICO } from '../agente/contexto'
 import { classificarConversa, falasDoHistorico } from '../agente/classificacao'
+import { extrairFicha } from '../agente/extracao-ficha'
+import { createFichaService } from '../services/ficha.service'
 import { executarTurno } from '../agente/orquestrador'
 import { FerramentasAgente } from '../agente/ferramentas'
 import { openAiProvider } from '../llm/openai.provider'
@@ -60,6 +62,10 @@ import type { AnuncioDaConversa, TagDefinition } from '../types/central.types'
 // As únicas ferramentas de escrita liberadas onde ela envia são essa e
 // `registrar_tags` (14/10): sem a de tags, nenhuma conversa do número ganhava
 // classificação (Mateus, 13/10). No rascunho, nenhuma das duas.
+//
+// A ficha do paciente (nome, responsável, nascimento, idade, turno, plano)
+// também não é ferramenta do turno: depois da resposta, nos dois modos, a
+// extração obrigatória (agente/extracao-ficha.ts, 21/10) lê a conversa e grava.
 //
 // Falha não é definitiva (13/10): erro de envio, da OpenAI ou limite de uso
 // agenda nova tentativa da mesma mensagem (1 min, depois 5 min); esgotadas,
@@ -144,6 +150,7 @@ export async function processarSugestoesEvolution(
   const pacientes = new PacienteRepository(supabase)
   const auditoria = new AuditRepository(supabase)
   const { conversationService, messageService } = createSystemServices()
+  const fichas = createFichaService(supabase)
 
   // Catálogo de tags, lido uma vez por tique: para a ORIGEM que o sistema
   // aplica em toda conversa e para `registrar_tags`, que só vai onde ela
@@ -333,14 +340,23 @@ export async function processarSugestoesEvolution(
       // resposta saiu ou virou rascunho — nos dois modos, como a ORIGEM: é
       // classificação da conversa, não fala de ninguém. Paciente vinculado
       // fica de fora (a taxonomia é comercial). Falha só vira aviso.
+      //
+      // A ficha do paciente vem junto, pela mesma razão e com o mesmo recorte
+      // (vinculado tem cadastro no TiTa). As duas chamadas são independentes.
       const classificar = async (respostaDoTurno: string | null) => {
-        if (modoPaciente || !porGrupoTags) return
-        const rc = await classificarConversa(
-          conv.id,
-          falasDoHistorico(historico, respostaDoTurno),
-          { provider: openAiProvider, porGrupo: porGrupoTags, conversas: conversationService },
-        )
-        if (!rc.ok) console.warn('[sugestao evolution] classificação não aplicada', { conversationId: conv.id, motivo: rc.motivo })
+        if (modoPaciente) return
+        const falas = falasDoHistorico(historico, respostaDoTurno)
+        await Promise.all([
+          porGrupoTags && classificarConversa(
+            conv.id, falas,
+            { provider: openAiProvider, porGrupo: porGrupoTags, conversas: conversationService },
+          ).then((rc) => {
+            if (!rc.ok) console.warn('[sugestao evolution] classificação não aplicada', { conversationId: conv.id, motivo: rc.motivo })
+          }),
+          extrairFicha(orgId, conv.contact_id, falas, { provider: openAiProvider, fichas }).then((rf) => {
+            if (!rf.ok) console.warn('[sugestao evolution] ficha não extraída', { conversationId: conv.id, motivo: rf.motivo })
+          }),
+        ])
       }
 
       // Falha de envio sobe para o catch: a mensagem fica como 'failed' na

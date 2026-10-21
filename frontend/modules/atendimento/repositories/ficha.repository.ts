@@ -13,7 +13,7 @@ import type { ContactIntake, CampoFicha, OrigemCampo } from '../types/central.ty
 
 const COLUNAS = `
   contact_id, organization_id,
-  patient_name, birth_date, guardian_name, shift, health_plan,
+  patient_name, birth_date, age_years, guardian_name, shift, health_plan,
   fontes, coleta_concluida, created_at, updated_at
 `
 
@@ -69,7 +69,8 @@ export class FichaRepository {
 
     for (const [campo, valor] of Object.entries(patch)) {
       if (valor === undefined) continue
-      campos[campo] = valor
+      // A coluna é smallint; o patch chega como texto já validado pelo serviço.
+      campos[campo] = campo === 'age_years' && valor !== null ? Number(valor) : valor
       // Campo apagado perde a procedência junto: manter "quem disse" de um valor
       // que não existe mais faria a tela atribuir a alguém um dado em branco.
       if (valor === null) delete fontes[campo]
@@ -105,7 +106,7 @@ export class FichaRepository {
 
 // A coleta está completa quando os cinco campos têm valor. `shift` conta como
 // preenchido quando vale 'indiferente' — a pessoa respondeu, e a resposta foi
-// "tanto faz".
+// "tanto faz". `age_years` fica de fora: o que se pergunta é a data.
 function concluida(linha: Record<string, unknown>): boolean {
   const campos: CampoFicha[] = [
     'patient_name', 'birth_date', 'guardian_name', 'shift', 'health_plan',

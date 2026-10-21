@@ -656,6 +656,8 @@ export interface ContactIntake {
   organization_id:  string
   patient_name:     string | null
   birth_date:       string | null   // date (YYYY-MM-DD), sem fuso
+  // A idade que a família disse, quando não deu a data (20261021140000).
+  age_years:        number | null
   guardian_name:    string | null
   shift:            TherapyShift | null
   health_plan:      string | null
@@ -669,9 +671,13 @@ export interface ContactIntake {
 // cosmética: é ela que o montador de contexto usa para dizer qual é a próxima
 // pergunta, e começa pelo nome do paciente porque é o que permite tratar a
 // criança pelo nome no resto da conversa.
+//
+// `age_years` não é pergunta: é o que se anota quando a família só deu a
+// idade. Por isso nunca entra em `faltantes` (ficha.service.ts).
 export const CAMPOS_FICHA = [
   'patient_name',
   'birth_date',
+  'age_years',
   'guardian_name',
   'shift',
   'health_plan',

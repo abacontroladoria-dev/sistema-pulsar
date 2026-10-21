@@ -30,10 +30,12 @@ import { Bloco, Vazio } from './Bloco'
 // Mostrar um traço para os dois casos esconderia a diferença.
 // ----------------------------------------------------------------------------
 
+// A ordem das chaves é a ordem das linhas na tela (a da coleta é CAMPOS_FICHA).
 const ROTULO: Record<CampoFicha, string> = {
   patient_name:  'Paciente',
-  birth_date:    'Nascimento',
   guardian_name: 'Responsável',
+  birth_date:    'Nascimento',
+  age_years:     'Idade',
   shift:         'Turno',
   health_plan:   'Plano de saúde',
 }
@@ -47,11 +49,15 @@ const TURNO: Record<string, string> = {
 
 export const BlocoFicha: React.FC<{
   ficha:      FichaPaciente | null
+  // Rótulos das tags de "serviço de interesse" — as terapias que a família
+  // procura. Vêm da classificação da conversa (e do que a equipe marcou no
+  // contato); a ficha só as mostra, quem edita é o bloco de tags.
+  servicos:   string[]
   carregando: boolean
   // Ausente quando não há contato selecionado: sem alguém, não há o que editar.
   aoSalvar?:  (campo: CampoFicha, valor: string | null) => Promise<void>
   erro?:      string | null
-}> = ({ ficha, carregando, aoSalvar, erro }) => {
+}> = ({ ficha, servicos, carregando, aoSalvar, erro }) => {
   const [editando, setEditando] = useState<CampoFicha | null>(null)
   const [salvando, setSalvando] = useState(false)
 
@@ -91,18 +97,34 @@ export const BlocoFicha: React.FC<{
             campo={campo}
             valor={ficha.campos[campo].valor}
             origem={ficha.campos[campo].origem}
-            // A idade acompanha o nascimento na mesma linha: são a mesma
-            // informação lida de dois jeitos, e separá-las em duas linhas faria
-            // o painel sugerir que alguém pode editar a idade — que é derivada.
-            sufixo={campo === 'birth_date' && ficha.idade !== null ? `${ficha.idade} anos` : null}
             vinculado={ficha.vinculado}
             editando={editando === campo}
             salvando={salvando}
-            aoEditar={aoSalvar ? () => setEditando(campo) : undefined}
+            // Com nascimento, a idade é calculada dele: editar a idade não
+            // mudaria nada na tela. Quem corrige, corrige a data.
+            aoEditar={aoSalvar && !(campo === 'age_years' && ficha.campos.birth_date.valor !== null)
+              ? () => setEditando(campo)
+              : undefined}
             aoCancelar={() => setEditando(null)}
             aoSalvar={(v) => salvar(campo, v)}
           />
         ))}
+
+        <div className="flex items-baseline gap-2">
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground w-24 shrink-0">Serviços</p>
+          <div className="flex-1 min-w-0 flex flex-wrap gap-1">
+            {servicos.length === 0 ? (
+              <span className="text-xs italic text-muted-foreground">nenhum identificado ainda</span>
+            ) : servicos.map((s) => (
+              <span
+                key={s}
+                className="text-[11px] px-1.5 py-px rounded border border-border bg-muted/50 text-foreground"
+              >
+                {s}
+              </span>
+            ))}
+          </div>
+        </div>
       </div>
 
       <Rodape ficha={ficha} erro={erro} />
@@ -117,14 +139,13 @@ const Linha: React.FC<{
   campo:      CampoFicha
   valor:      string | null
   origem:     OrigemCampo | null
-  sufixo:     string | null
   vinculado:  boolean
   editando:   boolean
   salvando:   boolean
   aoEditar?:  () => void
   aoCancelar: () => void
   aoSalvar:   (valor: string | null) => void
-}> = ({ campo, valor, origem, sufixo, vinculado, editando, salvando, aoEditar, aoCancelar, aoSalvar }) => {
+}> = ({ campo, valor, origem, vinculado, editando, salvando, aoEditar, aoCancelar, aoSalvar }) => {
   const [rascunho, setRascunho] = useState(valor ?? '')
 
   if (editando) {
@@ -140,7 +161,7 @@ const Linha: React.FC<{
               if (e.key === 'Enter')  aoSalvar(rascunho.trim() || null)
               if (e.key === 'Escape') aoCancelar()
             }}
-            placeholder={campo === 'birth_date' ? '12/03/2019' : ''}
+            placeholder={campo === 'birth_date' ? '12/03/2019' : campo === 'age_years' ? '5' : ''}
             className="flex-1 min-w-0 text-xs bg-background border border-border rounded-md px-2 py-1
                        focus:outline-none focus:ring-1 focus:ring-ring"
           />
@@ -182,7 +203,6 @@ const Linha: React.FC<{
         ) : (
           <>
             <span className="text-xs text-foreground break-words">{exibir(campo, valor)}</span>
-            {sufixo && <span className="text-[11px] text-muted-foreground">· {sufixo}</span>}
             {origem === 'ia' && <MarcaIA />}
           </>
         )}
@@ -253,6 +273,10 @@ const Rodape: React.FC<{ ficha: FichaPaciente; erro?: string | null }> = ({ fich
 // data recua um dia em São Paulo — o paciente nasceria na véspera.
 function exibir(campo: CampoFicha, valor: string): string {
   if (campo === 'shift') return TURNO[valor] ?? valor
+  if (campo === 'age_years') {
+    const n = Number(valor)
+    return n === 0 ? 'menos de 1 ano' : n === 1 ? '1 ano' : `${valor} anos`
+  }
   if (campo === 'birth_date') {
     const d = new Date(`${valor}T00:00:00`)
     return Number.isNaN(d.getTime()) ? valor : d.toLocaleDateString('pt-BR')

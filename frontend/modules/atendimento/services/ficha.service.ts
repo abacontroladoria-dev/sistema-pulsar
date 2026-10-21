@@ -68,8 +68,9 @@ export class FichaService {
       contact_id: contactId,
       vinculado:  titaId != null,
       campos,
-      idade:      idadeEmAnos(campos.birth_date.valor),
-      faltantes:  CAMPOS_FICHA.filter((c) => campos[c].valor === null),
+      idade:      campos.age_years.valor !== null ? Number(campos.age_years.valor) : null,
+      // A idade não é pergunta (ver CAMPOS_FICHA): falta a data, não a idade.
+      faltantes:  CAMPOS_FICHA.filter((c) => c !== 'age_years' && campos[c].valor === null),
       sincronizado_em: cadastro?.sincronizado_em ?? null,
     }
   }
@@ -105,6 +106,19 @@ export class FichaService {
         const data = normalizarData(texto)
         if (!data.ok) { recusados.push({ campo, motivo: data.motivo }); continue }
         patch.birth_date = data.valor
+        continue
+      }
+
+      if (campo === 'age_years') {
+        const idade = normalizarIdade(texto)
+        if (idade === null) {
+          recusados.push({
+            campo,
+            motivo: 'Idade não reconhecida. Pergunte quantos anos a criança tem, em números.',
+          })
+          continue
+        }
+        patch.age_years = String(idade)
         continue
       }
 
@@ -198,6 +212,13 @@ export function resolverCampos(
     }
 
     saida[campo] = { valor: null, origem: null }
+  }
+
+  // Com nascimento, a idade é a calculada, com a procedência da data: o número
+  // que a família disse envelhece, o calculado não.
+  const calculada = idadeEmAnos(saida.birth_date.valor)
+  if (calculada !== null) {
+    saida.age_years = { valor: String(calculada), origem: saida.birth_date.origem }
   }
 
   return saida
@@ -310,6 +331,22 @@ export function normalizarData(bruto: string, hoje = new Date()): Normalizacao {
 
   const pad = (n: number) => String(n).padStart(2, '0')
   return { ok: true, valor: `${ano}-${pad(mes!)}-${pad(dia!)}` }
+}
+
+// ----------------------------------------------------------------------------
+// Normalização da idade
+//
+// "5", "5 anos", "tem 5 anos e meio". Meses ("8 meses") viram 0 anos — é bebê,
+// e o painel não precisa de mais precisão que isso. Número por extenso não é
+// reconhecido: quem recebe null pergunta em números.
+// ----------------------------------------------------------------------------
+export function normalizarIdade(bruto: string): number | null {
+  const t = semAcento(bruto.trim().toLowerCase())
+  const m = t.match(/(\d{1,3})\s*(anos?|meses|mes)?/)
+  if (!m) return null
+  const n = Number(m[1])
+  const idade = m[2]?.startsWith('mes') ? Math.floor(n / 12) : n
+  return idade >= 0 && idade <= IDADE_MAXIMA_ANOS ? idade : null
 }
 
 // ----------------------------------------------------------------------------
