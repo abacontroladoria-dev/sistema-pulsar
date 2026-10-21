@@ -33,25 +33,31 @@ export function excluirPacientesFicticios(sessoes: SessaoComparativo[]): SessaoC
 }
 
 /**
- * Terapias fora do Comparativo de Sessões (Tratamento Multidisciplinar):
- * atendimentos pontuais, de entrada ou de avaliação, cujos pacientes
- * costumam aparecer num mês e sumir no seguinte — distorciam a leitura de
- * quem ganhou e quem perdeu sessão (decisão do usuário, 20/10/2026). Saem na
- * normalização, então valem para paciente e profissional; paciente cuja
- * agenda no período era só isso deixa de existir na análise.
+ * "Motivo da saída" do paciente desligado (P1 > 0, P2 = 0) — explica a saída
+ * em vez de esconder o paciente (decisão do usuário, 21/10/2026, depois de
+ * descartar a remoção de terapias pontuais do comparativo).
+ *
+ * Regra única por enquanto: TODAS as sessões do P1 foram Avaliação
+ * Neuropsicológica (2268) → "Concluiu Diagnóstico". Quem fazia avaliação E
+ * terapia e saiu não entra (é saída de tratamento). A Neuropsicopedagógica
+ * (2800) não conta. Novas regras entram em motivoSaidaPaciente.
  */
-export const TERAPIAS_FORA_DO_COMPARATIVO = new Map<number, string>([
-  [2800, "Avaliação Neuropsicopedagógica"],
-  [2695, "Psiquiatra/Neurologista"],
-  [2270, "Triagem"],
-  [2604, "Visita Guiada"],
-])
-const NOMES_FORA_DO_COMPARATIVO = new Set([...TERAPIAS_FORA_DO_COMPARATIVO.values()].map(normTxt))
+export const TERAPIA_AVALIACAO_NEUROPSICOLOGICA = 2268
+export const MOTIVO_CONCLUIU_DIAGNOSTICO = "Concluiu Diagnóstico"
+const NOME_AVALIACAO_NEUROPSICOLOGICA = normTxt("Avaliação Neuropsicológica")
 
-/** A sessão é de uma terapia fora do comparativo? Pelo id; pelo nome quando o id não veio. */
-export function terapiaForaDoComparativo(idTerapia: number | null, terapia: string): boolean {
-  if (idTerapia !== null) return TERAPIAS_FORA_DO_COMPARATIVO.has(idTerapia)
-  return NOMES_FORA_DO_COMPARATIVO.has(normTxt(terapia))
+function ehAvaliacaoNeuropsicologica(s: Pick<SessaoComparativo, "idTerapia" | "terapia">): boolean {
+  if (s.idTerapia !== null) return s.idTerapia === TERAPIA_AVALIACAO_NEUROPSICOLOGICA
+  return normTxt(s.terapia) === NOME_AVALIACAO_NEUROPSICOLOGICA
+}
+
+/** Motivo da saída a partir das sessões do paciente no P1 e da contagem no P2. `null` = sem motivo conhecido (ou não saiu). */
+export function motivoSaidaPaciente(
+  sessoesP1: Pick<SessaoComparativo, "idTerapia" | "terapia">[],
+  p2: number,
+): string | null {
+  if (sessoesP1.length === 0 || p2 > 0) return null
+  return sessoesP1.every(ehAvaliacaoNeuropsicologica) ? MOTIVO_CONCLUIU_DIAGNOSTICO : null
 }
 
 export const UNIDADE_CONSERTAR = "Consertar Unidade no Sistema"
@@ -241,13 +247,6 @@ export function normalizarLinhasUpload(raw: Record<string, unknown>[]): SessaoCo
     const sala = pick(row, ["Sala", "sala"])
     const data = normalizarDataAgendamento(pick(row, ["Data do Agendamento", "Data", "data"]))
     const diaSemanaTexto = pick(row, ["Dia da Semana", "Dia Semana", "dia_semana"])
-    const idTerapiaUp = (() => {
-      const s = pick(row, ["Id Especialidade", "IdEspecialidade", "Id_Especialidade", "Id Terapia", "IdTerapia", "Id_Terapia"])
-      const n = s ? Number(s.replace(/\D/g, "")) : NaN
-      return isNaN(n) ? null : n
-    })()
-    const terapiaUp = decodeEntidadesHtml(pick(row, ["Especialidade", "especialidade", "Terapia", "terapia"]))
-    if (terapiaForaDoComparativo(idTerapiaUp, terapiaUp)) continue
     out.push({
       idFavorecido: idFavorecido !== null && !isNaN(idFavorecido) ? idFavorecido : null,
       paciente: decodeEntidadesHtml(pick(row, ["Favorecido", "Nome Favorecido", "Paciente", "paciente"])),
@@ -256,8 +255,12 @@ export function normalizarLinhasUpload(raw: Record<string, unknown>[]): SessaoCo
       convenio: decodeEntidadesHtml(pick(row, ["Convênio", "Convenio", "convenio"])),
       data,
       hora: parseHoraAgendamento(pick(row, ["Hora Inicial", "Hora", "hora"])),
-      idTerapia: idTerapiaUp,
-      terapia: terapiaUp,
+      idTerapia: (() => {
+        const s = pick(row, ["Id Especialidade", "IdEspecialidade", "Id_Especialidade", "Id Terapia", "IdTerapia", "Id_Terapia"])
+        const n = s ? Number(s.replace(/\D/g, "")) : NaN
+        return isNaN(n) ? null : n
+      })(),
+      terapia: decodeEntidadesHtml(pick(row, ["Especialidade", "especialidade", "Terapia", "terapia"])),
       idProfissional: (() => {
         const s = pick(row, ["Id Profissional", "IdProfissional", "Id_Profissional"])
         const n = s ? Number(s.replace(/\D/g, "")) : NaN
@@ -291,7 +294,6 @@ export function normalizarLinhasApi(raw: GradeComparativoRaw[]): SessaoComparati
   const out: SessaoComparativo[] = []
   for (const row of raw) {
     if (!isAgendado(row.status_agendamento)) continue
-    if (terapiaForaDoComparativo(row.terapia_id, row.terapia_nome ?? "")) continue
     const data = normalizarDataAgendamento(row.data ?? "")
     out.push({
       idFavorecido: row.paciente_id,
@@ -336,6 +338,8 @@ export interface PacienteComparativo {
   p1: number
   p2: number
   diferenca: number
+  /** Só para desligados: por que saiu (ver motivoSaidaPaciente). `null` = sem motivo conhecido. */
+  motivoSaida: string | null
 }
 
 export interface ResumoAumentoReducao {
@@ -604,20 +608,21 @@ export function dedupAssimSaude(sessoes: SessaoComparativo[], contexto: SessaoCo
 
 /** Agrega sessões por paciente (Id Favorecido, com fallback pro nome normalizado). Reaproveitado tanto pelo total geral quanto pelo drill-down por unidade. */
 function agregarPorPaciente(sessoesP1: SessaoComparativo[], sessoesP2: SessaoComparativo[]): PacienteComparativo[] {
-  interface Acc { paciente: string; convenioP1: string; convenioP2: string; p1: number; p2: number }
+  interface Acc { paciente: string; convenioP1: string; convenioP2: string; p1: number; p2: number; sessoesP1: SessaoComparativo[] }
   const pacientes = new Map<string, Acc>()
 
   for (const s of sessoesP1) {
     const k = chaveDe(s)
-    const acc = pacientes.get(k) ?? { paciente: s.paciente, convenioP1: "", convenioP2: "", p1: 0, p2: 0 }
+    const acc = pacientes.get(k) ?? { paciente: s.paciente, convenioP1: "", convenioP2: "", p1: 0, p2: 0, sessoesP1: [] }
     acc.p1 += 1
+    acc.sessoesP1.push(s)
     acc.convenioP1 = s.convenio || acc.convenioP1
     if (s.paciente) acc.paciente = s.paciente
     pacientes.set(k, acc)
   }
   for (const s of sessoesP2) {
     const k = chaveDe(s)
-    const acc = pacientes.get(k) ?? { paciente: s.paciente, convenioP1: "", convenioP2: "", p1: 0, p2: 0 }
+    const acc = pacientes.get(k) ?? { paciente: s.paciente, convenioP1: "", convenioP2: "", p1: 0, p2: 0, sessoesP1: [] }
     acc.p2 += 1
     acc.convenioP2 = s.convenio || acc.convenioP2
     if (s.paciente) acc.paciente = s.paciente
@@ -633,6 +638,7 @@ function agregarPorPaciente(sessoesP1: SessaoComparativo[], sessoesP2: SessaoCom
       p1: acc.p1,
       p2: acc.p2,
       diferenca: acc.p2 - acc.p1,
+      motivoSaida: motivoSaidaPaciente(acc.sessoesP1, acc.p2),
     }))
     .sort((a, b) => a.paciente.localeCompare(b.paciente, "pt-BR"))
 }

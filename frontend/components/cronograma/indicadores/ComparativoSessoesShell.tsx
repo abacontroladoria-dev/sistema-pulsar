@@ -362,7 +362,10 @@ type SortDir = "asc" | "desc"
 interface SortCriterio { key: string; dir: SortDir }
 
 function compararValores(a: unknown, b: unknown): number {
-  if (typeof a === "string" && typeof b === "string") return a.localeCompare(b, "pt-BR")
+  // Texto ao lado de vazio (ex.: "Motivo da saída" nulo): vazio conta como "".
+  if ((typeof a === "string" || a == null) && (typeof b === "string" || b == null) && (a != null || b != null)) {
+    return String(a ?? "").localeCompare(String(b ?? ""), "pt-BR")
+  }
   const an = typeof a === "number" ? a : -Infinity
   const bn = typeof b === "number" ? b : -Infinity
   return an - bn
@@ -1304,11 +1307,12 @@ export function ComparativoSessoesShell() {
               <table className="w-full table-fixed text-xs">
                 <colgroup>
                   <col className="w-[6%]" />
-                  <col className="w-[26%]" />
+                  <col className="w-[22%]" />
+                  <col className="w-[14%]" />
+                  <col className="w-[9%]" />
+                  <col className="w-[9%]" />
+                  <col className="w-[9%]" />
                   <col className="w-[16%]" />
-                  <col className="w-[13%]" />
-                  <col className="w-[13%]" />
-                  <col className="w-[11%]" />
                   <col className="w-[15%]" />
                 </colgroup>
                 <thead className="sticky top-0 bg-card">
@@ -1319,12 +1323,13 @@ export function ComparativoSessoesShell() {
                     <SortableTh label={labelP1} sortKey="p1" criterios={sortPaciente} align="right" onClick={onSortPaciente} />
                     <SortableTh label={labelP2} sortKey="p2" criterios={sortPaciente} align="right" onClick={onSortPaciente} />
                     <SortableTh label="Diferença" sortKey="diferenca" criterios={sortPaciente} align="right" onClick={onSortPaciente} />
+                    <SortableTh label="Motivo da saída" sortKey="motivoSaida" criterios={sortPaciente} onClick={onSortPaciente} />
                     <th className="py-1.5 pl-2" />
                   </tr>
                 </thead>
                 <tbody>
                   {porPacienteFiltrado.length === 0 && (
-                    <tr><td colSpan={7} className="py-4 text-center text-muted-foreground">Nenhum paciente nessa categoria.</td></tr>
+                    <tr><td colSpan={8} className="py-4 text-center text-muted-foreground">Nenhum paciente nessa categoria.</td></tr>
                   )}
                   {porPacienteFiltrado.map(p => {
                     const chave = chavePaciente(p)
@@ -1337,6 +1342,12 @@ export function ComparativoSessoesShell() {
                         <td className="py-1.5 px-2 text-right tabular-nums">{p.p1}</td>
                         <td className="py-1.5 px-2 text-right tabular-nums">{p.p2}</td>
                         <td className="py-1.5 pl-2 text-right"><DiffBadge v={p.diferenca} /></td>
+                        {/* Motivo da saída: só desligados com motivo conhecido (ver motivoSaidaPaciente). */}
+                        <td className="py-1.5 pl-3">
+                          {p.motivoSaida
+                            ? <span className="inline-flex rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-700 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-300">{p.motivoSaida}</span>
+                            : <span className="text-muted-foreground">—</span>}
+                        </td>
                         <td className="py-1.5 pl-2 pr-1 text-right">
                           <button
                             type="button"
