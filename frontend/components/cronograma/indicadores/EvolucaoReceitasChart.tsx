@@ -40,6 +40,9 @@ import {
 import { classificarStatusMes, type StatusMes } from "@/lib/cronograma/previsaoReceitasHistoricoStatus"
 import type { PrevisaoReceitasResumoMes } from "@/services/previsaoReceitasHistoricoResumo.service"
 import { InfoTooltip } from "@/components/cronograma/ui/InfoTooltip"
+import {
+  RANGES, competenciaParaAnoMes, filtrarPorRange, formatarTickEixoY, type RangeChave,
+} from "@/lib/cronograma/evolucaoMensal"
 
 // Paleta categórica validada (light + dark) pro modo Comparar (%) — ver
 // cabeçalho do arquivo. Mesma ordem de ORDEM_METRICAS_PADRAO.
@@ -93,21 +96,8 @@ function montarSeriesRS(agrupar: boolean): SerieRS[] {
   ]
 }
 
-// Faixas de período, estilo Google Finance — "1D"/"5D"/"1M"/"YTD" não fazem
-// sentido pra uma série mensal (o menor grão já é 1 mês), por isso só as
-// faixas que cabem nesse grão. `meses: null` = sem corte (mostra tudo).
-type RangeChave = "1A" | "5A" | "MAX"
-const RANGES: { key: RangeChave; label: string; meses: number | null }[] = [
-  { key: "1A", label: "1A", meses: 12 },
-  { key: "5A", label: "5A", meses: 60 },
-  { key: "MAX", label: "Máx", meses: null },
-]
-
-/** Eixo Y abreviado — número cheio (ex.: "12069") estoura a largura reservada; acima de 1000 abrevia em "k". */
-function formatarTickEixoY(v: number, formato: "moeda" | "inteiro"): string {
-  const abreviado = Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(v % 1000 === 0 ? 0 : 1).replace(".", ",")}k` : String(v)
-  return formato === "moeda" ? abreviado : abreviado
-}
+// RANGES, filtrarPorRange e formatarTickEixoY vivem em lib/cronograma/evolucaoMensal.ts,
+// compartilhados com EvolucaoMensalChart (Ocupação Clínica e Pacientes).
 
 interface EvolucaoReceitasChartProps {
   resumos: PrevisaoReceitasResumoMes[]
@@ -126,11 +116,6 @@ interface PontoChart {
   /** Ainda pode mudar (mês corrente ou aguardando o fechamento do dia 5). */
   provisorio: boolean
   resumo: PrevisaoReceitasResumoMes
-}
-
-function competenciaParaAnoMes(competencia: string): { ano: number; mes: number } {
-  const [ano, mes] = competencia.split("-").map(Number)
-  return { ano, mes }
 }
 
 function montarPontos(resumos: PrevisaoReceitasResumoMes[]): PontoChart[] {
@@ -227,14 +212,7 @@ export function EvolucaoReceitasChart({ resumos, modo, mesSelecionado, onSelecio
 
   // Janela visível do gráfico — nunca corta o mês selecionado de fora, mesmo
   // que ele fique mais antigo que o corte do range escolhido.
-  const pontosFiltrados = useMemo(() => {
-    const meses = RANGES.find(r => r.key === range)?.meses ?? null
-    if (meses === null || pontos.length === 0) return pontos
-    const ultimo = pontos[pontos.length - 1]
-    let corteChave = ultimo.ano * 12 + ultimo.mes - meses + 1
-    if (mesSelecionado) corteChave = Math.min(corteChave, mesSelecionado.ano * 12 + mesSelecionado.mes)
-    return pontos.filter(p => p.ano * 12 + p.mes >= corteChave)
-  }, [pontos, range, mesSelecionado])
+  const pontosFiltrados = useMemo(() => filtrarPorRange(pontos, range, mesSelecionado), [pontos, range, mesSelecionado])
 
   const metricasAtivas = comparar ? metricasComparadas : compararRS ? METRICAS_COMPARAR_RS : [metricaAtiva]
 
@@ -454,7 +432,7 @@ export function EvolucaoReceitasChart({ resumos, modo, mesSelecionado, onSelecio
                   <CartesianGrid strokeDasharray="3 3" stroke="#e1e0d9" opacity={0.4} vertical={false} />
                   <XAxis dataKey="labelCurto" tick={{ fontSize: 11, fill: "#898781" }} axisLine={{ stroke: "#c3c2b7" }} tickLine={false} />
                   <YAxis tick={{ fontSize: 11, fill: "#898781" }} axisLine={false} tickLine={false} width={56}
-                    tickFormatter={v => formatarTickEixoY(v, "moeda")} />
+                    tickFormatter={v => formatarTickEixoY(v)} />
                   <Tooltip content={({ active, payload, label }) => {
                     if (!active || !payload?.length) return null
                     return (
@@ -490,7 +468,7 @@ export function EvolucaoReceitasChart({ resumos, modo, mesSelecionado, onSelecio
                   <CartesianGrid strokeDasharray="3 3" stroke="#e1e0d9" opacity={0.4} vertical={false} />
                   <XAxis dataKey="labelCurto" tick={{ fontSize: 11, fill: "#898781" }} axisLine={{ stroke: "#c3c2b7" }} tickLine={false} />
                   <YAxis tick={{ fontSize: 11, fill: "#898781" }} axisLine={false} tickLine={false} width={56}
-                    tickFormatter={v => formatarTickEixoY(v, configPrincipal.formato)} />
+                    tickFormatter={v => formatarTickEixoY(v)} />
                   <Tooltip content={<CustomTooltip metricasAtivas={metricasAtivas} />} />
                   <Area
                     type="monotone"

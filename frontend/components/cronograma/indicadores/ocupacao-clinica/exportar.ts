@@ -55,7 +55,7 @@ export function exportarOcupacaoClinica(args: {
     const slot = resumoOcupacaoDeItens(itensDaUnidade(u.unidade))
     return {
       Unidade: u.unidade,
-      Fora_do_total_da_rede: u.terceirizada ? "sim" : "",
+      Fora_do_total: u.terceirizada ? "sim" : "",
       Salas_Total: u.salasTotal,
       Salas_Em_Uso: u.salasOperacionais,
       ...Object.fromEntries(statusExistentes.map(c => [coluna(c), u.porStatus[c] ?? 0])),

@@ -22,7 +22,7 @@ export function FaixaRede({ contagem, salasOperacionais, unidades, pessoasParaAj
     <section aria-labelledby="ocup-rede" className="flex flex-col gap-5 rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6">
       <div>
         <h2 id="ocup-rede" className="inline-flex items-center gap-1.5 text-sm font-bold uppercase tracking-wide text-muted-foreground">
-          Rede · {plural(unidades, "unidade", "unidades")}
+          Total · {plural(unidades, "unidade", "unidades")}
           <InfoTooltip ariaLabel="Como a ocupação é medida" largura={360}>
             <div className="space-y-2 text-sm normal-case tracking-normal">
               <p>A conta é feita em vagas: cada vaga é o lugar de um profissional atendendo por 40 min numa sala. Sala individual tem 1 vaga por horário, dupla 2 e múltipla 3, porque cabem 2 ou 3 profissionais ao mesmo tempo. Uma sessão em grupo (um profissional com vários pacientes) conta como 1 vaga com paciente. Salas administrativas, de NTI e bloqueadas ficam fora, e feriados também.</p>

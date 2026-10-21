@@ -29,6 +29,9 @@ import { TabelaComparar } from "./ocupacao-clinica/TabelaComparar"
 import { DestaquesComparacao } from "./ocupacao-clinica/DestaquesComparacao"
 import { ChaveVisao } from "./ocupacao-clinica/ChaveVisao"
 import { exportarOcupacaoClinica } from "./ocupacao-clinica/exportar"
+import { EvolucaoMensalChart } from "./evolucao/EvolucaoMensalChart"
+import { useOcupacaoClinicaHistorico } from "@/hooks/useEvolucaoIndicadores"
+import { METRICAS_OCUPACAO, SERIES_OCUPACAO, montarPontosOcupacao } from "@/lib/cronograma/evolucaoPontos"
 
 import type { Visao } from "./ocupacao-clinica/ChaveVisao"
 
@@ -44,6 +47,13 @@ function semanaDe(dataIso: string): { inicio: string; fim: string } {
   const seg = new Date(y, m - 1, d - deslocamento)
   const sab = new Date(seg.getFullYear(), seg.getMonth(), seg.getDate() + 5)
   return { inicio: iso(seg), fim: iso(sab) }
+}
+
+/** Semana (seg–sáb) da 1ª segunda-feira do mês — destino do clique num ponto da evolução. */
+function primeiraSemanaDoMes(ano: number, mes: number): { inicio: string; fim: string } {
+  const dia1 = new Date(ano, mes - 1, 1)
+  const ateSegunda = (8 - dia1.getDay()) % 7 // domingo → 1, segunda → 0
+  return semanaDe(iso(new Date(ano, mes - 1, 1 + ateSegunda)))
 }
 
 function rotuloSemana(inicio: string, fim: string): string {
@@ -63,6 +73,17 @@ export function UnidadeDashboardShell() {
   const { setRightContent } = useHeader()
 
   const [visao, setVisao] = useState<Visao>("unidades")
+
+  // Evolução mês a mês (A15). Sem a tabela no banco ou com menos de 2 meses,
+  // o bloco não aparece.
+  const historico = useOcupacaoClinicaHistorico()
+  const pontosEvolucao = useMemo(() => (historico.linhas ? montarPontosOcupacao(historico.linhas) : []), [historico.linhas])
+  // Mês da semana escolhida: o da quarta-feira (a semana que vira o mês fica com o mês da maioria dos dias).
+  const mesDaSemana = useMemo(() => {
+    const [y, m, d] = semana.inicio.split("-").map(Number)
+    const qua = new Date(y, m - 1, d + 2)
+    return { ano: qua.getFullYear(), mes: qua.getMonth() + 1 }
+  }, [semana.inicio])
   const [aberta, setAberta] = useState<string | null>(null)
   const [auditoria, setAuditoria] = useState<{ unidade: string; turno: TurnoClinica } | null>(null)
 
@@ -149,6 +170,18 @@ export function UnidadeDashboardShell() {
         <div className={`flex flex-col gap-4 transition-opacity ${carregando ? "opacity-60" : ""}`} aria-busy={carregando}>
           {visao === "unidades" ? (
             <>
+              {pontosEvolucao.length >= 2 && (
+                <EvolucaoMensalChart
+                  titulo="Evolução da ocupação"
+                  info={<p>Um ponto por mês, somando as vagas de todos os dias úteis (feriado fora). O mês em andamento ainda muda, e os meses antigos são recalculados com o mapa de salas de hoje (aproximado) — passe o mouse no ponto para ver. Clique num ponto para ver a 1ª semana daquele mês.</p>}
+                  pontos={pontosEvolucao}
+                  series={SERIES_OCUPACAO}
+                  metricas={METRICAS_OCUPACAO}
+                  metricaInicial="pctPaciente"
+                  mesSelecionado={mesDaSemana}
+                  onSelecionarMes={(ano, mes) => setSemana(primeiraSemanaDoMes(ano, mes))}
+                />
+              )}
               {proprias.length > 0 && (
                 <FaixaRede contagem={rede.contagem} salasOperacionais={rede.salasOperacionais} unidades={rede.unidades} pessoasParaAjustar={rede.pessoasParaAjustar} />
               )}

@@ -119,7 +119,7 @@ export function LinhaTerceirizada({ unidade: u, onAbrir }: Props) {
       <div className="min-w-0">
         <div className="font-black text-foreground">{u.unidade}</div>
         <div className="text-sm text-muted-foreground">
-          {plural(u.salasOperacionais, "sala", "salas")} · fora do total da rede
+          {plural(u.salasOperacionais, "sala", "salas")} · fora do total
         </div>
       </div>
       <div className="text-sm text-muted-foreground">

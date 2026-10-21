@@ -44,6 +44,11 @@ import { exportarDashboardPacientesXlsx } from "@/lib/cronograma/exportPacientes
 import { PacientesGrupoDrawer, type GrupoSelecionado } from "@/components/cronograma/indicadores/PacientesGrupoDrawer"
 import { AvisoConvenioCadastro } from "@/components/cronograma/indicadores/AvisoConvenioCadastro"
 import type { ResumoPacientesGrupo, ResumoPacientesSalas, ResumoPacientesDia } from "@/lib/cronograma/salasTypes"
+import { ChaveDupla } from "@/components/cronograma/ui/ChaveDupla"
+import { EvolucaoMensalChart } from "@/components/cronograma/indicadores/evolucao/EvolucaoMensalChart"
+import { usePacientesHistorico } from "@/hooks/useEvolucaoIndicadores"
+import { METRICAS_PACIENTES, SERIES_PACIENTES, montarPontosPacientes } from "@/lib/cronograma/evolucaoPontos"
+import type { SegmentoEvolucao } from "@/lib/cronograma/evolucaoIndicadores"
 
 function fmtPct(valor: number, total: number): string {
   if (total <= 0) return "—"
@@ -368,6 +373,19 @@ export function PacientesDashboardShell() {
   const { setRightContent } = useHeader()
   const [grupoAberto, setGrupoAberto] = useState<(GrupoSelecionado & { segmento: SegmentoPacientes; chavePeriodo: string }) | null>(null)
 
+  // Evolução mês a mês (A16). Sem a tabela no banco ou com menos de 2 meses,
+  // o bloco não aparece.
+  const historico = usePacientesHistorico()
+  const [segmentoEvolucao, setSegmentoEvolucao] = useState<SegmentoEvolucao>("multidisciplinar")
+  const pontosEvolucao = useMemo(
+    () => (historico.linhas ? montarPontosPacientes(historico.linhas, segmentoEvolucao) : []),
+    [historico.linhas, segmentoEvolucao],
+  )
+  const mesEvolucao = useMemo(() => {
+    const [ano, mes] = (periodo.mes ?? periodo.inicio).split("-").map(Number)
+    return { ano, mes }
+  }, [periodo.mes, periodo.inicio])
+
   const mudarPeriodo = useCallback((mes: string | null) => {
     const novos = new URLSearchParams(qs)
     if (mes) novos.set("mes", mes.slice(0, 7))
@@ -466,6 +484,27 @@ export function PacientesDashboardShell() {
         {barra}
         <AvisoConvenioCadastro cadastro={cadastro} />
       </div>
+      {pontosEvolucao.length >= 2 && (
+        <EvolucaoMensalChart
+          titulo="Evolução"
+          info={<p>Um ponto por mês, com o mês inteiro (faltas e cancelamentos contam, como no &quot;Mês completo&quot;). Total = pacientes únicos: quem vai a duas unidades conta uma vez. O mês corrente e o seguinte ainda mudam (agenda planejada) — passe o mouse no ponto para ver. Clique num ponto para abrir o mês completo.</p>}
+          pontos={pontosEvolucao}
+          series={SERIES_PACIENTES}
+          metricas={METRICAS_PACIENTES}
+          metricaInicial="pacientes"
+          mesSelecionado={mesEvolucao}
+          onSelecionarMes={(ano, mes) => mudarPeriodo(`${ano}-${String(mes).padStart(2, "0")}`)}
+          controlesExtras={
+            <ChaveDupla
+              valor={segmentoEvolucao}
+              esquerda={{ valor: "multidisciplinar", rotulo: SEGMENTO_LABEL.multidisciplinar }}
+              direita={{ valor: "diagnostico", rotulo: SEGMENTO_LABEL.processoDiagnostico }}
+              onChange={setSegmentoEvolucao}
+              ariaLabel="Ver o Processo Diagnóstico"
+            />
+          }
+        />
+      )}
       <DashboardBloco tituloConvenio={SEGMENTO_LABEL.multidisciplinar} d={multidisciplinar} longo={longo} cadastroDisponivel={cadastroDisponivel} onAbrir={abrir("multidisciplinar")} />
       <div className="border-t border-border" />
       <DashboardBloco tituloConvenio={SEGMENTO_LABEL.processoDiagnostico} d={processoDiagnostico} longo={longo} cadastroDisponivel={cadastroDisponivel} onAbrir={abrir("processoDiagnostico")} />
