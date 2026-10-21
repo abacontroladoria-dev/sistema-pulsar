@@ -1,11 +1,13 @@
 'use client'
 
 import { memo, useEffect, useState } from 'react'
-import { Repeat2, ChevronDown, ExternalLink, RotateCcw } from 'lucide-react'
+import { Repeat2, ChevronDown, ExternalLink, RotateCcw, PenLine } from 'lucide-react'
 
 import Timeline from './Timeline'
 import StatusBadge from './StatusBadge'
 import { ReverteFaltaModal } from './ReverteFaltaModal'
+import { CorrigirLancamentoModal } from './CorrigirLancamentoModal'
+import type { CodigoJustificativaFalta } from '@/services/autorizacoes.service'
 import { Button } from '@/components/ui/button'
 import { buscarLogsFila } from '@/services/logs.service'
 import {
@@ -22,6 +24,28 @@ import { useGlosaCodigos } from '@/hooks/useGlosaCodigos'
 interface Props {
   atendimento: any
   onReverterFalta?: (atendimento: any) => Promise<void>
+  // Ausente = o papel não pode corrigir; o botão nem aparece.
+  onCorrigirLancamento?: (
+    atendimento: Props['atendimento'],
+    dados: {
+      tipoFalta: 'paciente' | 'terapeuta'
+      justificativa: string
+      codigo: CodigoJustificativaFalta | null
+    }
+  ) => Promise<boolean>
+}
+
+/**
+ * A sessão tem um lançamento resolvido (presença ou guia) que pode virar falta.
+ * Mesmo recorte da RPC corrigir_lancamento_falta: `status` concluído na fila. A
+ * origem 'relatorio' é a Parte 2 da vw_central_pacientes — guia do portal sem
+ * linha na fila, nada para corrigir.
+ */
+function podeCorrigirParaFalta(a: Props['atendimento']): boolean {
+  if (!a?.id || a.avulsa) return false
+  if (a.numero_autorizacao_origem === 'relatorio') return false
+  if (a.tipo_falta) return false
+  return a.status === 'concluido' || a.status === 'concluido_sem_guia'
 }
 
 /** Frase de situação por severidade — o coração da ficha. */
@@ -58,12 +82,14 @@ function fraseSituacao(item: any): string {
   }
 }
 
-function SidePanel({ atendimento, onReverterFalta }: Props) {
+function SidePanel({ atendimento, onReverterFalta, onCorrigirLancamento }: Props) {
   const [logs, setLogs] = useState<any[]>([])
   const [loadingLogs, setLoadingLogs] = useState(false)
   const [logsAbertos, setLogsAbertos] = useState(false)
   const [modalReverterAberto, setModalReverterAberto] = useState(false)
   const [loadingReverter, setLoadingReverter] = useState(false)
+  const [modalCorrigirAberto, setModalCorrigirAberto] = useState(false)
+  const [loadingCorrigir, setLoadingCorrigir] = useState(false)
   // Antes do early return de "nenhum atendimento": hook não pode ficar atrás de
   // condicional.
   const codigosGlosa = useGlosaCodigos()
@@ -90,6 +116,21 @@ function SidePanel({ atendimento, onReverterFalta }: Props) {
     } finally {
       setLoadingReverter(false)
       setModalReverterAberto(false)
+    }
+  }
+
+  const handleCorrigirConfirm = async (
+    dados: Parameters<NonNullable<Props['onCorrigirLancamento']>>[1]
+  ) => {
+    if (!onCorrigirLancamento) return
+    try {
+      setLoadingCorrigir(true)
+      // Só fecha quando deu certo: no erro a atendente lê o aviso e o texto
+      // que ela escreveu continua no modal.
+      const ok = await onCorrigirLancamento(atendimento, dados)
+      if (ok) setModalCorrigirAberto(false)
+    } finally {
+      setLoadingCorrigir(false)
     }
   }
 
@@ -249,6 +290,19 @@ function SidePanel({ atendimento, onReverterFalta }: Props) {
           >
             <RotateCcw className="w-4 h-4 mr-1.5" />
             Reverter falta
+          </Button>
+        )}
+
+        {/* Presença (ou guia) lançada numa sessão que não aconteceu. Até aqui só
+            dava para corrigir por SQL: a /solicitar esconde sessão resolvida. */}
+        {onCorrigirLancamento && podeCorrigirParaFalta(atendimento) && (
+          <Button
+            size="sm"
+            onClick={() => setModalCorrigirAberto(true)}
+            className="mt-3 bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200"
+          >
+            <PenLine className="w-4 h-4 mr-1.5" />
+            Corrigir para falta
           </Button>
         )}
       </div>
@@ -421,6 +475,16 @@ function SidePanel({ atendimento, onReverterFalta }: Props) {
         onConfirm={handleReverterConfirm}
         loading={loadingReverter}
       />
+
+      {modalCorrigirAberto && (
+      <CorrigirLancamentoModal
+        open
+        atendimento={atendimento}
+        onCancel={() => setModalCorrigirAberto(false)}
+        onConfirm={handleCorrigirConfirm}
+        loading={loadingCorrigir}
+      />
+      )}
     </div>
   )
 }

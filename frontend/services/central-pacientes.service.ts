@@ -104,3 +104,39 @@ export async function buscarCoberturaDasGlosas(
 
   return porLinha
 }
+
+export type ResultadoCorrecaoFalta = {
+  id: string
+  status: string
+  tipo_falta: string
+  numero_autorizacao: string | null
+  // A guia continua emitida na ASSIM e, com a linha em falta, aparece como
+  // órfã na Reconciliação — quem corrigiu precisa saber que falta essa triagem.
+  guia_ficou_orfa: boolean
+}
+
+/**
+ * Troca um lançamento já resolvido (presença ou guia capturada) por falta.
+ * Toda a regra mora na RPC `corrigir_lancamento_falta`
+ * (20261021130000): papel, status aceito, vínculo que impede. O erro dela já
+ * vem em frase para a tela.
+ */
+export async function corrigirLancamentoFalta(params: {
+  filaId: string
+  tipoFalta: 'paciente' | 'terapeuta'
+  justificativa: string
+  codigo?: number | null
+}): Promise<ResultadoCorrecaoFalta> {
+  const { data, error } = await supabase.rpc('corrigir_lancamento_falta', {
+    p_fila_id: params.filaId,
+    p_tipo_falta: params.tipoFalta,
+    p_justificativa: params.justificativa,
+    p_codigo: params.tipoFalta === 'paciente' ? params.codigo ?? null : null,
+  })
+
+  if (error) throw new Error(error.message)
+
+  const linha = Array.isArray(data) ? data[0] : data
+  if (!linha) throw new Error('A correção não devolveu a sessão. Recarregue a tela.')
+  return linha as ResultadoCorrecaoFalta
+}

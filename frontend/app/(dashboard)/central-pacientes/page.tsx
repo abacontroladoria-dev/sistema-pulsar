@@ -8,10 +8,14 @@ import FiltersBar from '@/components/central/FiltersBar'
 import AttendanceList from '@/components/central/AttendanceList'
 import SidePanel from '@/components/central/SidePanel'
 import { useHeader } from '@/contexts/HeaderContext'
+import toast from 'react-hot-toast'
 import {
   buscarCoberturaDasGlosas,
+  corrigirLancamentoFalta,
   listarCentralPacientes,
 } from '@/services/central-pacientes.service'
+import type { CodigoJustificativaFalta } from '@/services/autorizacoes.service'
+import { useUsuarioAtual } from '@/hooks/useUsuarioAtual'
 import { getRowId } from '@/lib/central/rowId'
 import { resolverStatus, houveSubstituicao } from '@/lib/central/severity'
 
@@ -48,6 +52,12 @@ export default function CentralTerapeuticaPage() {
   const [data, setData] = useState(hoje)
 
   const supabase = getSupabaseClient()
+
+  // Mesmos papéis do porteiro de corrigir_lancamento_falta. A RPC é quem decide;
+  // isto só evita mostrar um botão que ela vai recusar.
+  const { role } = useUsuarioAtual()
+  const podeCorrigirLancamento =
+    role === 'admin' || role === 'autorizacao' || role === 'recepcao'
 
   // Modelo A: estado atual lido por refs dentro de callbacks estáveis,
   // evitando stale closure no realtime.
@@ -364,6 +374,38 @@ export default function CentralTerapeuticaPage() {
     router.push('/solicitar')
   }
 
+  // Presença/guia lançada numa sessão que não aconteceu → falta. Diferente da
+  // reversão, fica na Central: a sessão continua no dia, só muda de status, e o
+  // KPI do dia precisa refletir isso na hora.
+  const handleCorrigirLancamento = async (
+    atendimento: { id: string },
+    dados: {
+      tipoFalta: 'paciente' | 'terapeuta'
+      justificativa: string
+      codigo: CodigoJustificativaFalta | null
+    }
+  ): Promise<boolean> => {
+    try {
+      const r = await corrigirLancamentoFalta({
+        filaId: atendimento.id,
+        tipoFalta: dados.tipoFalta,
+        justificativa: dados.justificativa,
+        codigo: dados.codigo,
+      })
+      toast.success(
+        r.guia_ficou_orfa
+          ? `Falta lançada. A guia ${r.numero_autorizacao} ficou sem sessão — triar na Reconciliação.`
+          : 'Falta lançada.',
+        { duration: r.guia_ficou_orfa ? 8000 : 4000 }
+      )
+      await carregar({ silent: true })
+      return true
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao corrigir o lançamento')
+      return false
+    }
+  }
+
   // KPIs refletem o cenário operacional COMPLETO da data selecionada (sobre `dados`),
   // não o subconjunto filtrado pela busca/filtros (`filtrados`). Assim os totais do dia
   // permanecem estáveis durante a busca e o DayPulse não re-renderiza a cada tecla.
@@ -489,6 +531,7 @@ export default function CentralTerapeuticaPage() {
 			  <SidePanel
 				atendimento={selecionado}
 				onReverterFalta={handleReverterFalta}
+				onCorrigirLancamento={podeCorrigirLancamento ? handleCorrigirLancamento : undefined}
 			  />
 			</div>
 
