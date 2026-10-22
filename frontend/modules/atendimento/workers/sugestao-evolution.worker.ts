@@ -14,6 +14,7 @@ import { montarContexto, LIMITE_HISTORICO } from '../agente/contexto'
 import { classificarConversa, falasDoHistorico } from '../agente/classificacao'
 import { extrairFicha } from '../agente/extracao-ficha'
 import { createFichaService } from '../services/ficha.service'
+import { FunilMaiaService } from '../services/funil-maia.service'
 import { executarTurno } from '../agente/orquestrador'
 import { FerramentasAgente } from '../agente/ferramentas'
 import { openAiProvider } from '../llm/openai.provider'
@@ -340,7 +341,9 @@ export async function processarSugestoesEvolution(
         // própria depois da resposta (agente/classificacao.ts, abaixo).
         null,
         [],
-        null,
+        // Para a escalada marcar o card ("passado para a equipe") onde a Maia
+        // envia. A coluna o worker do funil lê da conversa (funil.worker.ts).
+        automatica ? new FunilMaiaService(supabase) : null,
         // Para `consultar_sessoes_do_paciente` (modo paciente).
         new SessoesTitaRepository(supabase),
       )
