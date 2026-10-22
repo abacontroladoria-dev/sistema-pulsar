@@ -308,18 +308,6 @@ const ChatInterface: React.FC = () => {
     await recarregarDetalhe()
   }
 
-  const handleSalvarOrigem = async (valor: string | null) => {
-    try {
-      await patchContato({ source: valor })
-      toast.success(valor ? 'Origem registrada.' : 'Origem apagada.')
-    } catch (err) {
-      toast.error((err as Error).message)
-      // Repropaga para o bloco manter o campo aberto com o texto digitado:
-      // fechar depois de falhar faria a pessoa redigitar do zero.
-      throw err
-    }
-  }
-
   // Salvar contato e editar o nome são a mesma escrita: dar nome é confirmar
   // quem é, então o contato deixa de ser provisório. Ver NomeContatoPopover.
   const handleSalvarNome = async (nome: string) => {
@@ -984,7 +972,6 @@ const ChatInterface: React.FC = () => {
               }}
               acoes={{
                 salvarNome:          handleSalvarNome,
-                salvarOrigem:        handleSalvarOrigem,
                 salvarTags:          handleSalvarTags,
                 trocarResponsavel:   handleTrocarResponsavel,
                 salvandoResponsavel,

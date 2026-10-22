@@ -17,7 +17,6 @@ import { NomeContatoPopover } from '../NomeContatoPopover'
 import { BlocoFicha }        from './BlocoFicha'
 import { BlocoSentimento }   from './BlocoSentimento'
 import { BlocoCanal }        from './BlocoCanal'
-import { BlocoOrigem }       from './BlocoOrigem'
 import { BlocoAnuncio }      from './BlocoAnuncio'
 import { BlocoResponsavel, type UsuarioAtribuivel } from './BlocoResponsavel'
 import { BlocoTags }         from './BlocoTags'
@@ -54,7 +53,6 @@ export interface DadosPainel {
 
 export interface AcoesPainel {
   salvarNome?:    (nome: string) => Promise<void>
-  salvarOrigem?:  (valor: string | null) => Promise<void>
   salvarTags?:    (chaves: string[]) => Promise<void>
   trocarResponsavel?: (userId: string | null) => Promise<void>
   salvandoResponsavel?: boolean
@@ -167,7 +165,7 @@ export const PainelDetalhamento: React.FC<{
           </header>
 
           {/* Primeiro de todos: QUEM é o paciente se lê antes de COMO o
-              responsável está. Os dois vêm antes de canal, origem e tags, que
+              responsável está. Os dois vêm antes de canal e tags, que
               descrevem o cadastro do contato e não o atendimento.
               Vale para todo número: desde 08/10 a Maia atende no Evolution, e
               a ficha é preenchida depois de cada resposta, nos dois modos
@@ -193,11 +191,6 @@ export const PainelDetalhamento: React.FC<{
           />
 
           <BlocoCanal canal={detalhe.channel} inbox={detalhe.inbox} />
-
-          <BlocoOrigem
-            origem={contato?.source ?? null}
-            aoSalvar={contato ? acoes.salvarOrigem : undefined}
-          />
 
           <BlocoAnuncio
             anuncio={detalhe.anuncio}
