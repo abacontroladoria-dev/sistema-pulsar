@@ -139,7 +139,7 @@ const SidebarContent = ({ collapsed }: { collapsed: boolean }) => {
         {/* O seletor de tema fica acima do usuário, como no sidebar do Pulsar:
             mesmo componente, mesma posição relativa, para quem alterna entre os
             dois lados do sistema não precisar procurar. */}
-        <ThemeSwitcher />
+        <ThemeSwitcher compacto={collapsed} />
         <div
           className="flex items-center gap-3 p-2 rounded-xl hover:bg-sidebar-accent/60 transition-colors group"
           title={collapsed ? (usuario.gruposLabel ? `${usuario.primeiroNome} — ${usuario.gruposLabel}` : usuario.primeiroNome) : usuario.email}

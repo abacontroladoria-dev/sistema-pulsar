@@ -3,8 +3,28 @@
 import { Sun, Moon } from 'lucide-react'
 import { useTheme } from '@/contexts/ThemeContext'
 
-export function ThemeSwitcher() {
+export function ThemeSwitcher({ compacto = false }: { compacto?: boolean }) {
   const { theme, setTheme } = useTheme()
+
+  // Sidebar recolhido (64px): os dois botões com texto não cabem. Vira um
+  // botão só, no formato dos itens do menu, que alterna o tema e mostra o
+  // ícone do tema para onde vai.
+  if (compacto) {
+    const proximo = theme === 'dark' ? 'light' : 'dark'
+    const rotulo = proximo === 'dark' ? 'Mudar para tema escuro' : 'Mudar para tema claro'
+    const Icone = proximo === 'dark' ? Moon : Sun
+    return (
+      <button
+        type="button"
+        onClick={() => setTheme(proximo)}
+        title={rotulo}
+        aria-label={rotulo}
+        className="flex w-full items-center gap-3 px-3 py-2.5 rounded-lg transition-colors cursor-pointer text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/60"
+      >
+        <Icone className="h-5 w-5 shrink-0" />
+      </button>
+    )
+  }
 
   return (
     <div className="px-3 py-2">
