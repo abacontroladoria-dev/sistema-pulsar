@@ -25,6 +25,15 @@ export type DealSource =
 export type TrilhaEstagio = 'ambas' | 'particular' | 'convenio'
 export type TrilhaNegocio = 'particular' | 'convenio'
 
+// Situação do card dentro da coluna (20261022110000). Eram posições do funil
+// de 28/09; no funil clássico não mudam o card de coluna.
+export type DetalheNegocio =
+  | 'aguardando_elegibilidade' | 'encaminhado_humano'
+  | 'aguardando_cronograma'    | 'em_follow_up'
+export const DETALHES_NEGOCIO: readonly DetalheNegocio[] = [
+  'aguardando_elegibilidade', 'encaminhado_humano', 'aguardando_cronograma', 'em_follow_up',
+]
+
 export type DealActivityType =
   | 'note' | 'call' | 'email' | 'meeting'
   | 'task' | 'status_change' | 'ai_analysis'
@@ -50,7 +59,7 @@ export interface PipelineStageRow {
   is_active:       boolean
   auto_win:        boolean
   auto_lose:       boolean
-  // Código estável da posição (ex.: 'aguardando_elegibilidade'). Null nos
+  // Código estável da posição (ex.: 'negociacao'). Null nos
   // estágios antigos, desativados pela migration do funil da diretoria.
   slug:            string | null
   trilha:          TrilhaEstagio
@@ -96,6 +105,8 @@ export interface DealRow {
   resgate:             boolean
   // O "campo lateral" da planilha: motivo do encaminhamento, objeção ou perda.
   motivo:              string | null
+  detalhe:             DetalheNegocio | null
+  detalhe_desde:       string | null
   stage_changed_at:    string
   created_at:          string | null
   updated_at:          string | null
@@ -169,6 +180,8 @@ export interface UpdateDealInput {
   trilha?:              TrilhaNegocio | null
   resgate?:             boolean
   motivo?:              string | null
+  detalhe?:             DetalheNegocio | null
+  detalhe_desde?:       string | null
 }
 
 export interface ListDealsFilters {

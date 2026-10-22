@@ -7,18 +7,20 @@ import { toast } from 'sonner'
 
 import { crmApi } from '@/services/crm/client'
 import type { DealUI, DealActivityUI, KanbanColumnUI } from '@/services/crm/adapter'
-import type { TrilhaNegocio } from '@/modules/comercial/types/crm.types'
+import { DETALHES_NEGOCIO } from '@/modules/comercial/types/crm.types'
+import type { DetalheNegocio, TrilhaNegocio } from '@/modules/comercial/types/crm.types'
 import type { TagDefinition } from '@/modules/atendimento/types/central.types'
 import { Button } from '@/components/nina/Button'
 import { BlocoTags } from '@/components/nina/detalhamento/BlocoTags'
 import { TagChip } from '@/components/central/shared/TagChip'
-import { ROTULO_TRILHA, podeReceber, separarEstagios, tempoNaPosicao } from './funil'
+import { ROTULO_DETALHE, ROTULO_TRILHA, podeReceber, separarEstagios, tempoNaPosicao } from './funil'
 
 // ============================================================================
 // Gaveta do negócio — abre ao clicar no card.
 //
-// Tudo o que se decide sobre UM negócio: posição, trilha, resgate,
-// responsável, anotações e as últimas mensagens da conversa de origem.
+// Tudo o que se decide sobre UM negócio: etapa, situação na etapa (detalhe),
+// trilha, resgate, responsável, anotações e as últimas mensagens da conversa
+// de origem.
 //
 // Mudança de posição NÃO é feita aqui: sobe para o board (aoMover), que é
 // quem pede o motivo quando a posição exige — um caminho só para as duas
@@ -158,8 +160,8 @@ export const GavetaNegocio: React.FC<{
   }
 
   // Trilha incompatível com a posição atual fica desabilitada: trocar para
-  // Particular um card parado em "Aguardando elegibilidade" deixaria o funil
-  // afirmando duas coisas contrárias.
+  // Particular um card em "Perdido / Não elegível" (só Convênio) deixaria o
+  // funil afirmando duas coisas contrárias.
   const trilhaTravada = estagioAtual && estagioAtual.trilha !== 'ambas' ? estagioAtual.trilha : null
 
   const salvarNota = async () => {
@@ -213,27 +215,41 @@ export const GavetaNegocio: React.FC<{
           <div className="flex-1 overflow-y-auto custom-scrollbar">
             {/* Campos do negócio */}
             <section className="grid grid-cols-1 gap-4 border-b border-border px-6 py-5 sm:grid-cols-2">
-              <label className="flex flex-col gap-1.5 text-xs font-medium text-muted-foreground sm:col-span-2">
-                Posição no funil
+              <label className="flex flex-col gap-1.5 text-xs font-medium text-muted-foreground">
+                Etapa do funil
                 <select
                   value={negocio.stageId}
                   onChange={(e) => escolherPosicao(e.target.value)}
                   className="h-10 rounded-lg border border-border bg-card px-3 text-sm text-foreground outline-none focus:ring-1 focus:ring-cyan-500"
                 >
-                  <optgroup label="Em andamento">
+                  <optgroup label="Etapas">
                     {andamento.map(e => (
                       <option key={e.id} value={e.id} disabled={!podeReceber(e, negocio)}>
                         {e.title}{e.trilha !== 'ambas' ? ` (${ROTULO_TRILHA[e.trilha]})` : ''}
                       </option>
                     ))}
                   </optgroup>
-                  <optgroup label="Encerrar">
+                  <optgroup label="Encerrar como perda">
                     {encerrados.map(e => (
                       <option key={e.id} value={e.id} disabled={!podeReceber(e, negocio)}>
                         {e.title}{e.trilha !== 'ambas' ? ` (${ROTULO_TRILHA[e.trilha]})` : ''}
                       </option>
                     ))}
                   </optgroup>
+                </select>
+              </label>
+
+              {/* Situação dentro da etapa: não muda o card de coluna, e sai
+                  sozinha quando ele anda (crm.marcar_troca_de_estagio). */}
+              <label className="flex flex-col gap-1.5 text-xs font-medium text-muted-foreground">
+                Situação na etapa
+                <select
+                  value={negocio.detalhe ?? ''}
+                  onChange={(e) => aoAtualizar(negocio.id, { detalhe: (e.target.value || null) as DetalheNegocio | null })}
+                  className="h-10 rounded-lg border border-border bg-card px-3 text-sm text-foreground outline-none focus:ring-1 focus:ring-cyan-500"
+                >
+                  <option value="">Nenhuma</option>
+                  {DETALHES_NEGOCIO.map(d => <option key={d} value={d}>{ROTULO_DETALHE[d]}</option>)}
                 </select>
               </label>
 

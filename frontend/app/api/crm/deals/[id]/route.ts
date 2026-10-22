@@ -3,6 +3,7 @@ import { extractUser }       from '@/lib/central/auth'
 import { mapComercialError } from '@/lib/comercial/errors'
 import { ok, noContent, badRequest } from '@/lib/central/response'
 import { createDealService } from '@/modules/comercial/services'
+import { DETALHES_NEGOCIO } from '@/modules/comercial/types/crm.types'
 import type { DealPriority, TrilhaNegocio } from '@/modules/comercial/types/crm.types'
 
 const PRIORIDADES: DealPriority[] = ['low', 'medium', 'high', 'urgent']
@@ -77,6 +78,15 @@ export async function PATCH(request: NextRequest, ctx: Ctx) {
         return badRequest('motivo deve ser texto', 'motivo')
       }
       patch.motivo = typeof body.motivo === 'string' ? (body.motivo.trim() || null) : null
+    }
+    // Detalhe do card (elegibilidade, com a equipe, ...). Não é estágio: não
+    // passa pelo /move. O prazo conta de detalhe_desde.
+    if (body.detalhe !== undefined) {
+      if (body.detalhe !== null && !DETALHES_NEGOCIO.includes(body.detalhe)) {
+        return badRequest(`detalhe inválido: ${body.detalhe}`, 'detalhe')
+      }
+      patch.detalhe       = body.detalhe
+      patch.detalhe_desde = body.detalhe === null ? null : new Date().toISOString()
     }
 
     if (body.expectedCloseDate  !== undefined) patch.expected_close_date = body.expectedCloseDate

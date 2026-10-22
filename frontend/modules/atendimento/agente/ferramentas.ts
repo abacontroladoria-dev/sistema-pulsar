@@ -434,15 +434,14 @@ export const FERRAMENTAS_SEMPRE = [
     type: 'function' as const,
     function: {
       name: 'atualizar_funil',
-      // "Em qualificação", "Agendado"/"Entrevista agendada" e "Encaminhado para
-      // humano" NÃO estão no enum: o sistema move sozinho quando a Maia
-      // classifica, agenda ou escala. Aqui ficam só as posições que dependem de
-      // ela entender a conversa.
+      // "Qualificação", "Agendamento" e o "com a equipe" NÃO estão no enum: o
+      // sistema move sozinho quando a Maia classifica, agenda ou escala. Aqui
+      // ficam só as etapas que dependem de ela entender a conversa.
       description:
         'Move o card deste contato no funil comercial. Não aparece para o responsável. '
         + 'Chame quando a conversa mudar de etapa: '
-        + 'qualificado = você já sabe o motivo do contato, se tem laudo, o que já fez e como vai pagar; '
-        + 'proposta_apresentada = você apresentou valor, horários ou o caminho para começar (particular); '
+        + 'apresentacao = você apresentou como a clínica atende: terapias, como funciona a avaliação, valor ou caminho para começar; '
+        + 'negociacao = o responsável está discutindo valor, horário, documentos ou objeções antes de decidir; '
         + 'aguardando_elegibilidade = o responsável entregou os documentos do convênio e a equipe vai conferir; '
         + 'perdido_objecao = desistiu por preço, distância, horário ou outra objeção; '
         + 'perdido_nao_elegivel = o plano ou o diagnóstico não é aceito pela clínica; '
@@ -457,7 +456,7 @@ export const FERRAMENTAS_SEMPRE = [
           posicao: {
             type: 'string',
             enum: [
-              'qualificado', 'proposta_apresentada', 'aguardando_elegibilidade',
+              'apresentacao', 'negociacao', 'aguardando_elegibilidade',
               'perdido_objecao', 'perdido_nao_elegivel', 'nao_qualificado', 'sem_interesse',
             ],
             description: 'A etapa em que a conversa está agora.',
@@ -634,7 +633,7 @@ export class FerramentasAgente {
   // O mesmo movimento de card que `registrar_tags` fazia ao classificar, agora
   // que a classificação roda fora do turno (agente/classificacao.ts). Nunca lança.
   async moverCardPorClassificacao(): Promise<void> {
-    await this.moverCard('em_qualificacao', null)
+    await this.moverCard('qualificacao', null)
   }
 
   // O estado da lista ao fim do turno, para o worker decidir se grava. Lido
@@ -660,7 +659,7 @@ export class FerramentasAgente {
         case 'consultar_horarios_disponiveis':       return await this.consultarHorarios(args)
         case 'agendar_sessao': {
           const r = await this.agendar(args)
-          if (r.ok) await this.moverCard('agendado', null)
+          if (r.ok) await this.moverCard('agendamento', null)
           return r
         }
         case 'consultar_agendamentos_do_contato':    return await this.consultarDoContato()
@@ -676,7 +675,7 @@ export class FerramentasAgente {
         case 'registrar_dados_do_paciente':          return await this.registrarDadosDoPaciente(args)
         case 'registrar_tags': {
           const r = await this.registrarTags(args)
-          if (r.ok && r.aplicado) await this.moverCard('em_qualificacao', null)
+          if (r.ok && r.aplicado) await this.moverCard('qualificacao', null)
           return r
         }
         case 'atualizar_funil':                      return await this.atualizarFunil(args)
@@ -1592,7 +1591,7 @@ const MOTIVOS_ESCALADA: readonly string[] = [
   'pedido_do_usuario', 'insatisfacao', 'fora_do_alcance', 'paciente_da_clinica',
 ] as const
 
-// O motivo da escalada como a equipe lê no card ("Encaminhado para humano"
+// O motivo da escalada como a equipe lê no card (o detalhe "com a equipe"
 // exige motivo).
 const ROTULO_ESCALADA: Record<string, string> = {
   pedido_do_usuario:   'Pediu para falar com uma pessoa',
@@ -1603,7 +1602,7 @@ const ROTULO_ESCALADA: Record<string, string> = {
 
 // O enum de `atualizar_funil`, para validar o que chega do modelo.
 const POSICOES_FUNIL_MAIA: readonly string[] = [
-  'qualificado', 'proposta_apresentada', 'aguardando_elegibilidade',
+  'apresentacao', 'negociacao', 'aguardando_elegibilidade',
   'perdido_objecao', 'perdido_nao_elegivel', 'nao_qualificado', 'sem_interesse',
 ] as const
 

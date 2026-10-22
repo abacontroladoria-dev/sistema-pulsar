@@ -20,11 +20,10 @@ import {
 // ============================================================================
 // Funil de atendimento (/connect/pipeline)
 //
-// O funil é o da diretoria (migration 20260930100000): 11 posições em
-// andamento viram colunas; as 6 que encerram o negócio (Iniciou tratamento +
-// 5 perdas) ficam numa área "Encerrados" à direita, que também é alvo de
-// soltura. 17 colunas lado a lado não caberiam em tela nenhuma, e o trabalho
-// do dia é o que está em andamento.
+// O funil é o clássico (migration 20261022110000): Prospecção, Qualificação,
+// Apresentação, Negociação, Agendamento e Atendimento viram colunas — a
+// última é o ganho e mostra quem começou nos últimos dias. As 5 perdas ficam
+// numa área "Encerrados" à direita, que também é alvo de soltura.
 //
 // Mover (arrastando o card ou escolhendo na gaveta) passa sempre por `pedirMovimento`:
 // é ali que a trilha é conferida e o motivo é pedido. Um caminho só, para as
@@ -118,12 +117,15 @@ const Kanban: React.FC = () => {
       stageId:        estagio.id,
       status:         estagio.autoWin ? 'won' : estagio.autoLose ? 'lost' : 'open',
       motivo,
+      // Mudar de coluna tira o detalhe (crm.marcar_troca_de_estagio).
+      detalhe:        null,
+      detalheDesde:   null,
       stageChangedAt: new Date().toISOString(),
       trilha:         n.trilha ?? (estagio.trilha !== 'ambas' ? estagio.trilha : null),
     }))
     try {
       await crmApi.moveDealStage(negocio.id, estagio.id, motivo)
-      if (estagio.autoWin)  toast.success(`${negocio.contactName ?? negocio.title}: iniciou tratamento`)
+      if (estagio.autoWin)  toast.success(`${negocio.contactName ?? negocio.title}: em atendimento`)
     } catch (err) {
       toast.error((err as Error).message || 'Não foi possível mover o card')
     } finally {
@@ -154,6 +156,7 @@ const Kanban: React.FC = () => {
       ...('trilha'     in patch ? { trilha:  patch.trilha as DealUI['trilha'] } : {}),
       ...('resgate'    in patch ? { resgate: patch.resgate as boolean } : {}),
       ...('assignedTo' in patch ? { ownerId: patch.assignedTo as string | null } : {}),
+      ...('detalhe'    in patch ? { detalhe: patch.detalhe as DealUI['detalhe'], detalheDesde: patch.detalhe ? new Date().toISOString() : null } : {}),
     }))
     try {
       await crmApi.updateDeal(id, patch)
@@ -214,6 +217,46 @@ const Kanban: React.FC = () => {
     return () => obs.disconnect()
   }, [medirRolagem, estado.tipo, trilha, estagios.length])
 
+  // Quais colunas estão à vista: a faixa de etapas acende essas. Com 6
+  // etapas, nenhuma tela de notebook mostra todas — a faixa é o mapa.
+  const colunaRefs = useRef(new Map<string, HTMLElement>())
+  const [aVista, setAVista] = useState<Set<string>>(new Set())
+  const idsColunas = colunas.map(c => c.id).join(',')
+
+  useEffect(() => {
+    const raiz = trilho.current
+    if (!raiz || typeof IntersectionObserver === 'undefined') return
+    const obs = new IntersectionObserver((entradas) => {
+      setAVista(atual => {
+        const prox = new Set(atual)
+        for (const e of entradas) {
+          const id = (e.target as HTMLElement).dataset.estagio
+          if (!id) continue
+          if (e.isIntersecting) prox.add(id)
+          else prox.delete(id)
+        }
+        return prox
+      })
+    }, { root: raiz, threshold: 0.6 })
+    for (const el of colunaRefs.current.values()) obs.observe(el)
+    return () => obs.disconnect()
+  }, [idsColunas, estado.tipo])
+
+  // No celular a faixa rola sozinha: a etapa à vista não pode sumir dela
+  // enquanto se passa as colunas com o dedo.
+  const faixa = useRef<HTMLOListElement>(null)
+  useEffect(() => {
+    const el = faixa.current
+    const primeira = colunas.find(c => aVista.has(c.id))
+    if (!el || !primeira || el.scrollWidth <= el.clientWidth) return
+    const item = el.querySelector<HTMLElement>(`[data-faixa="${primeira.id}"]`)
+    if (item) el.scrollTo({ left: item.offsetLeft - el.offsetLeft - 8, behavior: 'smooth' })
+  }, [aVista]) // eslint-disable-line react-hooks/exhaustive-deps -- `colunas` muda a cada render; o gatilho é o que está à vista
+
+  const irPara = (id: string) => {
+    colunaRefs.current.get(id)?.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' })
+  }
+
   // Uma "página" = o que cabe na tela menos uma coluna, para a última coluna
   // vista continuar à vista como referência.
   const rolar = (sentido: 1 | -1) => {
@@ -224,11 +267,11 @@ const Kanban: React.FC = () => {
   }
 
   const nomeDoUsuario = (id: string | null) => (id ? usuarios.find(u => u.id === id)?.nome ?? null : null)
-  const slugDe = (id: string) => estagios.find(e => e.id === id)?.slug ?? null
   const aberto = abertoId ? negocios.find(n => n.id === abertoId) ?? null : null
 
   const emAndamento = negocios.filter(n => n.status === 'open').length
-  const fechados    = negocios.length - emAndamento
+  const ganhos      = negocios.filter(n => n.status === 'won').length
+  const perdidos    = negocios.length - emAndamento - ganhos
 
   // --------------------------------------------------------------------------
   // Arrastar e soltar
@@ -264,7 +307,6 @@ const Kanban: React.FC = () => {
     <CardNegocio
       key={n.id}
       negocio={n}
-      slugEstagio={slugDe(n.stageId)}
       responsavel={nomeDoUsuario(n.ownerId)}
       arrastavel
       aoAbrir={() => setAbertoId(n.id)}
@@ -372,7 +414,7 @@ const Kanban: React.FC = () => {
       <div className="flex h-full items-center justify-center bg-background p-6">
         <p className="max-w-sm text-center text-sm text-muted-foreground">
           Nenhuma posição de funil configurada para esta organização. Aplique a migration do funil
-          (20260930100000) e recarregue.
+          (20261022110000) e recarregue.
         </p>
       </div>
     )
@@ -384,15 +426,18 @@ const Kanban: React.FC = () => {
 
   return (
     <div className="relative flex h-full flex-col overflow-hidden bg-background text-foreground">
-      <header className="flex shrink-0 flex-col gap-4 px-4 pb-4 pt-5 sm:px-6 lg:flex-row lg:items-end lg:justify-between">
+      {/* flex-wrap: quando título e controles não cabem numa linha, os
+          controles descem inteiros — antes o botão quebrava em duas linhas e
+          a trilha era cortada a 1280px. */}
+      <header className="flex shrink-0 flex-col gap-4 px-4 pb-4 pt-5 sm:px-6 lg:flex-row lg:flex-wrap lg:items-end lg:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground">Funil de atendimento</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {emAndamento} em andamento · {fechados} encerrados nos últimos {DIAS_ENCERRADOS} dias
+            {emAndamento} em andamento · {ganhos} em atendimento · {perdidos} encerrados nos últimos {DIAS_ENCERRADOS} dias
           </p>
         </div>
 
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center">
           <div className="flex rounded-lg border border-border bg-card p-0.5" role="radiogroup" aria-label="Trilha">
             {(['todas', 'particular', 'convenio'] as FiltroTrilha[]).map(t => (
               <button
@@ -422,11 +467,50 @@ const Kanban: React.FC = () => {
             />
           </div>
 
-          <Button size="sm" className="h-9" onClick={() => setNovoAberto(true)}>
+          <Button size="sm" className="h-9 whitespace-nowrap" onClick={() => setNovoAberto(true)}>
             <Plus className="mr-1.5 h-4 w-4" /> Novo negócio
           </Button>
         </div>
       </header>
+
+      {/* Faixa de etapas: o funil inteiro numa linha, na ordem da diretoria.
+          Clicar leva à coluna; soltar um card numa etapa move para ela —
+          assim dá para mover para uma coluna que está fora da tela. As
+          etapas à vista ficam acesas. */}
+      <nav aria-label="Etapas do funil" className="shrink-0 px-4 pb-3 sm:px-6">
+        <ol ref={faixa} className="flex items-stretch gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {colunas.map((estagio, i) => {
+            const qtd = (porEstagio.get(estagio.id) ?? []).length
+            const { recusa, destacado, handlers } = propsDeAlvo(estagio)
+            const visivel = aVista.has(estagio.id)
+            return (
+              <li key={estagio.id} data-faixa={estagio.id} className="flex shrink-0 items-center gap-1 md:min-w-0 md:flex-1 md:shrink">
+                {i > 0 && <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" aria-hidden="true" />}
+                <button
+                  type="button"
+                  {...handlers}
+                  onClick={() => irPara(estagio.id)}
+                  aria-current={visivel ? 'true' : undefined}
+                  title={estagio.description ?? undefined}
+                  className={`flex min-w-28 flex-1 items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 ${
+                    destacado
+                      ? 'border-cyan-500/60 bg-cyan-500/10'
+                      : visivel
+                        ? 'border-border bg-card shadow-sm'
+                        : 'border-transparent bg-muted/50 hover:bg-muted'
+                  } ${recusa ? 'opacity-40' : ''} ${arrastando && !recusa ? 'border-dashed border-border' : ''}`}
+                >
+                  <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: estagio.color }} aria-hidden="true" />
+                  <span className={`min-w-0 flex-1 truncate text-xs font-medium ${visivel ? 'text-foreground' : 'text-muted-foreground'}`}>
+                    {estagio.title}
+                  </span>
+                  <span className="text-xs font-semibold tabular-nums text-foreground">{qtd}</span>
+                </button>
+              </li>
+            )
+          })}
+        </ol>
+      </nav>
 
       {/* No desktop, "Encerrados" é um painel IRMÃO da área que rola, não uma
           coluna fixada por cima dela: a versão sticky cobria a última coluna
@@ -478,6 +562,8 @@ const Kanban: React.FC = () => {
             return (
               <section
                 key={estagio.id}
+                ref={(el) => { if (el) colunaRefs.current.set(estagio.id, el); else colunaRefs.current.delete(estagio.id) }}
+                data-estagio={estagio.id}
                 aria-label={estagio.title}
                 {...handlers}
                 className={`flex h-full w-[82vw] max-w-72 snap-start flex-col rounded-xl border bg-card/60 transition-colors sm:w-72 ${
@@ -493,6 +579,9 @@ const Kanban: React.FC = () => {
                     {estagio.trilha !== 'ambas' && trilha === 'todas' && (
                       <p className="mt-0.5 pl-4 text-[11px] text-muted-foreground">só {ROTULO_TRILHA[estagio.trilha]}</p>
                     )}
+                    {estagio.autoWin && (
+                      <p className="mt-0.5 pl-4 text-[11px] text-muted-foreground">últimos {DIAS_ENCERRADOS} dias</p>
+                    )}
                   </div>
                   <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium tabular-nums text-muted-foreground">
                     {lista.length}
@@ -500,7 +589,7 @@ const Kanban: React.FC = () => {
                 </div>
                 <div className="flex-1 space-y-2 overflow-y-auto p-2 custom-scrollbar">
                   {lista.map(card)}
-                  {lista.length === 0 && estagio.slug === 'novo' && negocios.length === 0 && (
+                  {lista.length === 0 && estagio.slug === 'prospeccao' && negocios.length === 0 && (
                     <p className="px-2 py-6 text-center text-xs text-muted-foreground">
                       Quem escrever pela primeira vez no WhatsApp da Maia aparece aqui.
                     </p>

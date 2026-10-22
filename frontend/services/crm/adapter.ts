@@ -4,6 +4,7 @@ import type {
   DealActivityRow,
   TrilhaEstagio,
   TrilhaNegocio,
+  DetalheNegocio,
 } from '@/modules/comercial/types/crm.types'
 
 // ============================================================================
@@ -37,6 +38,8 @@ export interface DealUI {
   trilha:         TrilhaNegocio | null
   resgate:        boolean
   motivo:         string | null
+  detalhe:        DetalheNegocio | null
+  detalheDesde:   string | null
   stageChangedAt: string | null
   ownerId:        string | null
   contactId:      string | null
@@ -60,6 +63,8 @@ export function adaptarDeal(row: DealWithContactRow): DealUI {
     trilha:         row.trilha ?? null,
     resgate:        row.resgate ?? false,
     motivo:         row.motivo ?? null,
+    detalhe:        row.detalhe ?? null,
+    detalheDesde:   row.detalhe_desde ?? null,
     stageChangedAt: row.stage_changed_at ?? row.updated_at ?? null,
     ownerId:        row.assigned_to,
     contactId:      row.contact_id,
