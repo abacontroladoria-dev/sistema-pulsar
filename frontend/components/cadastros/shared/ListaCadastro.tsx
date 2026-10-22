@@ -1,6 +1,7 @@
 "use client"
 
-import { IdCard, LayoutGrid, List } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
+import { Check, ChevronDown, IdCard, LayoutGrid, List, ListFilter } from "lucide-react"
 import { foco } from "@/components/cadastros/pacientes/ui/campos"
 
 // Peças da listagem de cadastros (Pacientes, Profissionais): barra A–Z, seletor
@@ -180,4 +181,155 @@ export function LinhaDado({
       </dd>
     </div>
   )
+}
+
+
+/**
+ * Gatilho + painel de opções marcáveis, compartilhado pelos filtros das listas de Pacientes e Profissionais.
+ *
+ * Teclado: abrir leva o foco à primeira opção; ↑/↓, Home/End navegam; Esc ou
+ * Tab fecham e devolvem o foco ao gatilho. Clique fora também fecha.
+ */
+export function PopoverFiltro({
+  icone: Icone,
+  nome,
+  valor,
+  rotuloPainel,
+  larguraPainel,
+  children,
+  rodape,
+  unico = false,
+}: {
+  icone: typeof ListFilter
+  /** "Situação", "Escola" — em tom apagado, antes do valor. */
+  nome: string
+  /** O recorte atual ("Todos", "Ativos"…). */
+  valor: string
+  rotuloPainel: string
+  larguraPainel: string
+  children: React.ReactNode
+  rodape?: React.ReactNode
+  /** Escolha única (ex.: ordenação): marcar uma opção fecha o painel. */
+  unico?: boolean
+}) {
+  const [aberto, setAberto] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  const gatilho = useRef<HTMLButtonElement>(null)
+  const painel = useRef<HTMLDivElement>(null)
+
+  const opcoes = () =>
+    Array.from(painel.current?.querySelectorAll<HTMLElement>('[role="option"]') ?? [])
+
+  useEffect(() => {
+    if (!aberto) return
+    opcoes()[0]?.focus()
+    function aoClicarFora(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setAberto(false)
+    }
+    document.addEventListener("mousedown", aoClicarFora)
+    return () => document.removeEventListener("mousedown", aoClicarFora)
+  }, [aberto])
+
+  function fechar() {
+    setAberto(false)
+    gatilho.current?.focus()
+  }
+
+  function aoTeclar(e: React.KeyboardEvent) {
+    const lista = opcoes()
+    const atual = lista.indexOf(document.activeElement as HTMLElement)
+    let destino: number | null = null
+    if (e.key === "ArrowDown") destino = (atual + 1) % lista.length
+    else if (e.key === "ArrowUp") destino = (atual - 1 + lista.length) % lista.length
+    else if (e.key === "Home") destino = 0
+    else if (e.key === "End") destino = lista.length - 1
+    else if (e.key === "Escape") {
+      e.preventDefault()
+      fechar()
+      return
+    } else if (e.key === "Tab") {
+      setAberto(false)
+      return
+    }
+    if (destino !== null) {
+      e.preventDefault()
+      lista[destino]?.focus()
+    }
+  }
+
+  return (
+    <div ref={ref} className="relative min-w-0 flex-1 sm:flex-none">
+      <button
+        ref={gatilho}
+        type="button"
+        onClick={() => setAberto((a) => !a)}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowDown" && !aberto) {
+            e.preventDefault()
+            setAberto(true)
+          }
+        }}
+        aria-expanded={aberto}
+        aria-haspopup="listbox"
+        aria-label={`${nome}: ${valor}`}
+        className={`inline-flex min-h-11 w-full items-center gap-2 rounded-lg border border-border/80 px-3 py-2 text-sm hover:bg-muted sm:min-h-0 sm:w-auto sm:min-w-44 ${foco}`}
+      >
+        <Icone className="h-4 w-4 shrink-0 text-muted-foreground" strokeWidth={1.75} aria-hidden="true" />
+        <span className="shrink-0 text-muted-foreground">{nome}</span>
+        <span className="min-w-0 flex-1 truncate text-left font-medium text-foreground">{valor}</span>
+        <ChevronDown
+          className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none ${aberto ? "rotate-180" : ""}`}
+          aria-hidden="true"
+        />
+      </button>
+      {aberto && (
+        <div
+          ref={painel}
+          role="listbox"
+          aria-multiselectable={!unico}
+          aria-label={rotuloPainel}
+          onKeyDown={aoTeclar}
+          onClick={unico ? (e) => { if ((e.target as HTMLElement).closest("[role=\"option\"]")) fechar() } : undefined}
+          className={`absolute left-0 top-[calc(100%+4px)] z-[100] ${larguraPainel} rounded-md border border-border bg-popover p-1 shadow-lg`}
+        >
+          {children}
+          {rodape}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** Uma opção do `PopoverFiltro`: alvo de 44px no toque, marca à direita. */
+export function OpcaoFiltro({
+  marcado,
+  onAlternar,
+  children,
+}: {
+  marcado: boolean
+  onAlternar: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      role="option"
+      aria-selected={marcado}
+      onClick={onAlternar}
+      className={`flex min-h-11 w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted sm:min-h-0 ${foco}`}
+    >
+      {children}
+      <Check
+        className={`h-4 w-4 shrink-0 text-primary ${marcado ? "" : "invisible"}`}
+        aria-hidden="true"
+      />
+    </button>
+  )
+}
+
+export function alternarEm<T>(conjunto: Set<T>, item: T): Set<T> {
+  const novo = new Set(conjunto)
+  if (novo.has(item)) novo.delete(item)
+  else novo.add(item)
+  return novo
 }
