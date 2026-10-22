@@ -259,6 +259,14 @@ const VALOR_LEGIVEL: Record<string, Record<string, string>> = {
   },
 }
 
+/**
+ * Nome legível de valores que são id de outra tabela, por campo — ex.:
+ * `{ plano_saude_id: { "18": "ASSIM Saúde" } }`. Sem isto o histórico mostrava
+ * "Plano de saúde: 11 → 18". Quem chama monta o mapa (nomesDeIds, em
+ * services/cadastrosAuditoria.service.ts); este módulo continua sem acesso a banco.
+ */
+export type NomesDeIds = Record<string, Record<string, string>>
+
 export function rotuloCampo(entidade: EntidadeAuditada, campo: string): string {
   return LABEL_POR_ENTIDADE[entidade]?.[campo] ?? campo
 }
@@ -269,8 +277,10 @@ function dataBR(iso: string): string {
   return `${dia}/${mes}/${ano}`
 }
 
-export function formatarValor(campo: string, valor: unknown): string {
+export function formatarValor(campo: string, valor: unknown, nomes?: NomesDeIds): string {
   if (valor === null || valor === undefined || valor === "") return "—"
+  const nome = nomes?.[campo]?.[String(valor)]
+  if (nome) return nome
   if (typeof valor === "boolean") return valor ? "Sim" : "Não"
 
   const mapa = VALOR_LEGIVEL[campo]
@@ -303,7 +313,8 @@ export type CampoAlteracao = { campo: string; label: string; antes: string; depo
 export function camposAlterados(
   entidade: EntidadeAuditada,
   antes: Record<string, unknown> | null,
-  depois: Record<string, unknown> | null
+  depois: Record<string, unknown> | null,
+  nomes?: NomesDeIds
 ): CampoAlteracao[] {
   if (!antes || !depois) return []
 
@@ -318,8 +329,8 @@ export function camposAlterados(
     saida.push({
       campo,
       label: rotuloCampo(entidade, campo),
-      antes: formatarValor(campo, a),
-      depois: formatarValor(campo, d),
+      antes: formatarValor(campo, a, nomes),
+      depois: formatarValor(campo, d, nomes),
     })
   }
 
@@ -331,7 +342,8 @@ export type CampoSnapshot = { campo: string; label: string; valor: string }
 /** Para criar/excluir, onde não há dois lados a comparar. */
 export function camposSnapshot(
   entidade: EntidadeAuditada,
-  registro: Record<string, unknown> | null
+  registro: Record<string, unknown> | null,
+  nomes?: NomesDeIds
 ): CampoSnapshot[] {
   if (!registro) return []
   return Object.keys(registro)
@@ -340,13 +352,13 @@ export function camposSnapshot(
     .map((campo) => ({
       campo,
       label: rotuloCampo(entidade, campo),
-      valor: formatarValor(campo, registro[campo]),
+      valor: formatarValor(campo, registro[campo], nomes),
     }))
     .sort((x, y) => x.label.localeCompare(y.label, "pt-BR"))
 }
 
 /** A linha única que aparece sem expandir o item. */
-export function resumoAlteracao(entrada: EntradaAuditoria): string {
+export function resumoAlteracao(entrada: EntradaAuditoria, nomes?: NomesDeIds): string {
   const { tabela, acao, antes, depois } = entrada
 
   if (acao === "criar") return "Registro criado."
@@ -354,7 +366,7 @@ export function resumoAlteracao(entrada: EntradaAuditoria): string {
   if (acao === "inativar") return "Cadastro inativado."
   if (acao === "reativar") return "Cadastro reativado."
 
-  const alteracoes = camposAlterados(tabela, antes ?? null, depois ?? null)
+  const alteracoes = camposAlterados(tabela, antes ?? null, depois ?? null, nomes)
   if (alteracoes.length === 0) return "Nenhum campo alterado."
 
   // Trunca para o resumo não virar um parágrafo quando alguém salva a ficha

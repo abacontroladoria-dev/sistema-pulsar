@@ -10,12 +10,14 @@ import {
 } from "lucide-react"
 import { ScheduleModal } from "@/components/cronograma/ui/ScheduleModal"
 import { TONE_SOLID, type Tone } from "@/components/cronograma/ui/tones"
-import { getAuditoria } from "@/services/cadastrosAuditoria.service"
+import { getAuditoria, nomesDeIds } from "@/services/cadastrosAuditoria.service"
 import {
   camposAlterados,
   camposSnapshot,
   dataHoraAuditoria,
   nomeContextual,
+  resumoAlteracao,
+  type NomesDeIds,
 } from "@/lib/cadastros/auditoriaFormat"
 import {
   ACAO_LABEL,
@@ -74,6 +76,7 @@ export function HistoricoCadastrosModal({
   const [erro, setErro] = useState<string | null>(null)
   const [expandidoId, setExpandidoId] = useState<string | null>(null)
   const [pagina, setPagina] = useState(1)
+  const [nomes, setNomes] = useState<NomesDeIds>({})
 
   const carregar = useCallback(async () => {
     setCarregando(true)
@@ -84,6 +87,8 @@ export function HistoricoCadastrosModal({
       pagina,
       limite: ITENS_POR_PAGINA,
     })
+    // Antes de mostrar a página: sem o nome, a linha piscaria "11 → 18" e trocaria.
+    setNomes(await nomesDeIds(data))
     setItens(data)
     setTotal(t)
     setErro(error)
@@ -136,6 +141,7 @@ export function HistoricoCadastrosModal({
               <ItemHistorico
                 key={item.id}
                 item={item}
+                nomes={nomes}
                 expandido={expandidoId === item.id}
                 onToggle={() => setExpandidoId(expandidoId === item.id ? null : item.id)}
               />
@@ -174,21 +180,33 @@ export function HistoricoCadastrosModal({
 
 function ItemHistorico({
   item,
+  nomes,
   expandido,
   onToggle,
 }: {
   item: RegistroAuditoria
+  nomes: NomesDeIds
   expandido: boolean
   onToggle: () => void
 }) {
   const tone = TONE_SOLID[ACAO_TONE[item.acao]]
-  const alteracoes = camposAlterados(item.tabela, item.antes, item.depois)
+  const alteracoes = camposAlterados(item.tabela, item.antes, item.depois, nomes)
   const snapshot =
     item.acao === "criar"
-      ? camposSnapshot(item.tabela, item.depois)
+      ? camposSnapshot(item.tabela, item.depois, nomes)
       : item.acao === "excluir"
-        ? camposSnapshot(item.tabela, item.antes)
+        ? camposSnapshot(item.tabela, item.antes, nomes)
         : []
+  // O resumo vem gravado do momento da alteração. Edição da ficha médica é
+  // recalculada aqui para as linhas antigas, gravadas com o id do plano
+  // ("Plano de saúde: 11 → 18"), também mostrarem o nome.
+  const resumo =
+    item.acao === "editar" && item.tabela === "ficha_medica" && nomes.plano_saude_id
+      ? resumoAlteracao(
+          { tabela: item.tabela, registroId: item.registro_id, acao: item.acao, antes: item.antes, depois: item.depois },
+          nomes
+        )
+      : item.resumo
 
   return (
     <li className="rounded-lg border border-border bg-card">
@@ -221,7 +239,7 @@ function ItemHistorico({
             </span>
           </span>
           <span className="mt-1 block text-[12px] text-muted-foreground">
-            {item.resumo ?? "—"}
+            {resumo ?? "—"}
           </span>
         </span>
 

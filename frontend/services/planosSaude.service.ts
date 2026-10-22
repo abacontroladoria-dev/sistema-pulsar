@@ -12,7 +12,7 @@
 // fechada em 20260826110100.
 // ============================================================================
 
-import { getPlanosSaudeAtivos } from "@/services/convenios.service"
+import { getPlanosSaudeAtivos, getPlanosSaudePorIds } from "@/services/convenios.service"
 
 export type PlanoSaude = {
   id: number
@@ -36,6 +36,29 @@ export async function getPlanosSaude(): Promise<{
   } catch (e: any) {
     return { data: [], error: String(e?.message ?? e) }
   }
+}
+
+/**
+ * Como o plano aparece na tela (select da Ficha financeira e histórico).
+ *
+ * O rótulo traz o convênio junto ("Unimed — Nacional") porque planos homônimos
+ * entre convênios são comuns e o nome sozinho não desambigua. "Padrão" é o nome
+ * que todo convênio recebe quando não tem produto próprio cadastrado (carga
+ * inicial, APLICAR_3_convenios) — repeti-lo transformaria a lista em dezessete
+ * linhas terminadas na mesma palavra. Nesse caso o convênio sozinho já é a
+ * resposta. Quando o plano tem nome de verdade ("Nacional", "Volta Redonda"), o
+ * convênio continua na frente: aí os dois pedaços carregam informação.
+ */
+export function rotuloPlano(plano: Pick<PlanoSaude, "nome" | "convenio_nome">): string {
+  if (!plano.convenio_nome) return plano.nome
+  const generico = plano.nome.trim().toLowerCase() === "padrão"
+  return generico ? plano.convenio_nome : `${plano.convenio_nome} — ${plano.nome}`
+}
+
+/** id → rótulo (rotuloPlano), inclusive de planos já desativados. */
+export async function getRotulosPlanosSaude(ids: number[]): Promise<Record<string, string>> {
+  const planos = await getPlanosSaudePorIds(ids)
+  return Object.fromEntries(planos.map((p) => [String(p.id), rotuloPlano(p)]))
 }
 
 /** `true` quando a integração real já está ligada — a tela usa para escolher a mensagem. */

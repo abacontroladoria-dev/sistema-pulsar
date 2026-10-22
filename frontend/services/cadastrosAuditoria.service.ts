@@ -2,7 +2,7 @@ import toast from "react-hot-toast"
 
 import { getSupabaseClient } from "@/lib/supabase/client"
 import { getUsuarioAtual } from "@/lib/supabase/usuarioAtual"
-import { camposAlterados, resumoAlteracao } from "@/lib/cadastros/auditoriaFormat"
+import { camposAlterados, resumoAlteracao, type NomesDeIds } from "@/lib/cadastros/auditoriaFormat"
 import type {
   EntidadeAuditada,
   EntradaAuditoria,
@@ -61,6 +61,31 @@ function avisarFalhaDeTrilha(detalhe: unknown): void {
  * continuar salvo. Mesma decisão de salasAuditoria.service.ts — mas, diferente
  * de antes, a falha agora aparece (ver avisarFalhaDeTrilha).
  */
+/**
+ * Nome dos ids que aparecem na trilha (hoje: `plano_saude_id` da ficha médica),
+ * para o histórico mostrar "ASSIM Saúde" e não "18". Falha de leitura devolve
+ * mapa vazio: o histórico cai no id cru em vez de não abrir.
+ */
+export async function nomesDeIds(
+  entradas: { antes?: Record<string, unknown> | null; depois?: Record<string, unknown> | null }[]
+): Promise<NomesDeIds> {
+  const ids = new Set<number>()
+  for (const e of entradas) {
+    for (const lado of [e.antes, e.depois]) {
+      const v = Number(lado?.plano_saude_id)
+      if (Number.isInteger(v) && v > 0) ids.add(v)
+    }
+  }
+  if (ids.size === 0) return {}
+  try {
+    // Import dinâmico: planosSaude → convenios.service → este arquivo fecharia um ciclo.
+    const { getRotulosPlanosSaude } = await import("@/services/planosSaude.service")
+    return { plano_saude_id: await getRotulosPlanosSaude([...ids]) }
+  } catch {
+    return {}
+  }
+}
+
 export async function registrarAuditoria(entrada: EntradaAuditoria): Promise<void> {
   try {
     // Edição que não mudou nada não é evento. O salvar do detalhe do paciente
@@ -87,7 +112,8 @@ export async function registrarAuditoria(entrada: EntradaAuditoria): Promise<voi
       alvo_nome: entrada.alvoNome ?? null,
       antes: entrada.antes ?? null,
       depois: entrada.depois ?? null,
-      resumo: resumoAlteracao(entrada),
+      // O resumo fica gravado pronto: com o nome do plano, não o id.
+      resumo: resumoAlteracao(entrada, await nomesDeIds([entrada])),
       motivo: entrada.motivo ?? null,
       usuario_id: usuario.id,
       usuario_nome: usuario.nome,

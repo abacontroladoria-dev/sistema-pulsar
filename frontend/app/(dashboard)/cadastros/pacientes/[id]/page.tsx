@@ -5,7 +5,9 @@ import Link from "next/link"
 import { useParams, useSearchParams } from "next/navigation"
 import { ChevronLeft } from "lucide-react"
 import { useHeader } from "@/contexts/HeaderContext"
-import { PacienteDetalhe } from "@/components/cadastros/pacientes/PacienteDetalhe"
+import { PacienteDetalhe, type SecaoLaudo } from "@/components/cadastros/pacientes/PacienteDetalhe"
+
+const SECOES_LAUDO = ["laudos", "info", "altas", "suspensoes", "altaClinica"] as const satisfies readonly SecaoLaudo[]
 
 export default function PacienteDetalhePage() {
   const { id } = useParams<{ id: string }>()
@@ -13,9 +15,11 @@ export default function PacienteDetalhePage() {
   const { setHeader, setRightContent } = useHeader()
 
   // Deep link vindo de Ocupação de Paciente ("suspensa temporariamente → ver
-  // na ficha do paciente"): ?aba=altas&suspensao=123 abre direto na aba e no
-  // registro que está causando o bloqueio, em vez de deixar o operador
-  // procurar entre Cadastro/Ficha médica/Laudo/Altas e Individualidades.
+  // na ficha do paciente"): ?aba=laudo&secao=suspensoes&suspensao=123 abre
+  // direto na seção e no registro que está causando o bloqueio, em vez de
+  // deixar o operador procurar entre as abas. `?aba=altas` é o link de antes de
+  // 22/10/2026, quando Altas e Individualidades era aba própria: cai em Laudos e
+  // individualidades, na seção de suspensões (se veio `suspensao`) ou de altas.
   //
   // `?aba=escola` vem da listagem de pacientes: o selo de escola no cartão abre
   // direto em Cadastro → Escola (seção de Cadastro desde 22/10/2026), para
@@ -24,9 +28,20 @@ export default function PacienteDetalhePage() {
   // Lista fechada de propósito — `aba` cru viria de URL e o valor
   // precisa casar com o type `Aba`.
   const abaParam = searchParams.get("aba")
+  const suspensaoIdParam = searchParams.get("suspensao")
+  const suspensaoIdInicial = suspensaoIdParam ? Number(suspensaoIdParam) : undefined
+  const secaoParam = searchParams.get("secao")
+  const secaoLaudoInicial: SecaoLaudo | undefined =
+    secaoParam && (SECOES_LAUDO as readonly string[]).includes(secaoParam)
+      ? (secaoParam as SecaoLaudo)
+      : abaParam === "altas"
+        ? suspensaoIdInicial
+          ? "suspensoes"
+          : "altas"
+        : undefined
   const abaInicial =
-    abaParam === "altas"
-      ? "altas"
+    abaParam === "altas" || abaParam === "laudo"
+      ? "laudo"
       : abaParam === "escola"
         ? "escola"
         : abaParam === "disponibilidade"
@@ -34,8 +49,6 @@ export default function PacienteDetalhePage() {
           : abaParam === "contratos"
             ? "contratos"
             : undefined
-  const suspensaoIdParam = searchParams.get("suspensao")
-  const suspensaoIdInicial = suspensaoIdParam ? Number(suspensaoIdParam) : undefined
 
   useEffect(() => {
     setHeader("Detalhes do paciente", "Cadastro e ficha médica")
@@ -73,6 +86,7 @@ export default function PacienteDetalhePage() {
     <PacienteDetalhe
       idPaciente={idPaciente}
       abaInicial={abaInicial}
+      secaoLaudoInicial={secaoLaudoInicial}
       suspensaoIdInicial={suspensaoIdInicial}
     />
   )

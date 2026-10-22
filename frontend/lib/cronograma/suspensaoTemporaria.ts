@@ -204,10 +204,15 @@ export interface EspBloqueada {
   href?: string
 }
 
-/** Link para a aba "Altas e Individualidades" — a suspensão abre já destacada. */
+/**
+ * Link para a seção certa de "Laudos e individualidades" na ficha do paciente
+ * (antes de 22/10/2026, a aba "Altas e Individualidades") — a suspensão abre já
+ * destacada.
+ */
 export function hrefBloqueio(i: SuspensaoLinkInfo): string {
-  const base = `/cadastros/pacientes/${i.idPacientePulsar}?aba=altas`
-  return i.tipo === "suspensao" ? `${base}&suspensao=${i.idRegistro}` : base
+  const base = `/cadastros/pacientes/${i.idPacientePulsar}?aba=laudo`
+  if (i.tipo === "suspensao") return `${base}&secao=suspensoes&suspensao=${i.idRegistro}`
+  return `${base}&secao=${i.tipo === "alta_clinica" ? "altaClinica" : "altas"}`
 }
 
 /**
