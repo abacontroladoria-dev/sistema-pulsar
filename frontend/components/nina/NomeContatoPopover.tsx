@@ -17,7 +17,7 @@ import { Loader2 } from 'lucide-react'
 //
 // O detalhe da conversa recarrega a cada 5s. O rascunho é semeado UMA vez, ao
 // abrir, e o prop não volta a tocá-lo — um tique no meio da digitação apagaria
-// o que a pessoa escreveu (mesmo cuidado de BlocoOrigem).
+// o que a pessoa escreveu.
 // ============================================================================
 
 interface Props {
