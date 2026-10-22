@@ -231,7 +231,9 @@ export function mapStatus(c: Conversation, modoPadrao: string, maiaResponde: boo
   if (maiaResponde && !maiaTransferiu(c.ai_context)) return 'nina'
   const { modo } = resolverModoEfetivo(c.ai_mode, modoPadrao)
   if (modo === 'autonomous') return 'nina'
-  if (c.status === 'open' || c.status === 'assigned') return 'human'
+  // self_service sem a Maia respondendo (a chave virou e o status ainda não
+  // acompanhou) é gente na conversa, não pausa.
+  if (c.status === 'self_service' || c.status === 'open' || c.status === 'assigned') return 'human'
   return 'paused'
 }
 
@@ -519,7 +521,9 @@ export function horaDoRelogio(iso: string | null): string {
   return new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
 }
 
+// Só palavras que começam com letra: contato sem nome vem com o telefone no
+// lugar ("(21) 98…"), e as iniciais disso eram "(9".
 export function iniciais(nome: string | null | undefined): string {
-  if (!nome) return '?'
-  return nome.trim().split(/\s+/).map(n => n[0]).join('').slice(0, 2).toUpperCase()
+  const letras = (nome ?? '').trim().split(/\s+/).filter(p => /^\p{L}/u.test(p)).map(p => p[0])
+  return letras.length ? letras.join('').slice(0, 2).toUpperCase() : '?'
 }

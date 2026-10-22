@@ -91,12 +91,12 @@ function salvarSelecao(ids: string[]): void {
   }
 }
 
-// Ativas = open/assigned/waiting; Encerradas = resolved/archived. Contato que
+// Ativas = self_service/open/assigned/waiting; Encerradas = resolved/archived. Contato que
 // escreve numa conversa encerrada abre conversa NOVA (findActive), então
 // esconder as encerradas da visão padrão não esconde mensagem chegando.
 export type VisaoLista = 'ativas' | 'encerradas'
 const STATUS_DA_VISAO: Record<VisaoLista, string> = {
-  ativas:     'open,assigned,waiting',
+  ativas:     'self_service,open,assigned,waiting',
   encerradas: 'resolved,archived',
 }
 
@@ -425,7 +425,7 @@ export function useCentralInbox(): UseCentralInbox {
   // números não estão em mãos), e é para isso que serve `atualizandoLista`.
   const visiveis = useMemo(() => {
     if (chaveLista === filtroCarregado) return conversations
-    const ativos = ['open', 'assigned', 'waiting']
+    const ativos = ['self_service', 'open', 'assigned', 'waiting']
     const daVisao = conversations.filter(c =>
       ativos.includes(c.statusCentral) === (visao === 'ativas'))
     if (!filtroCanais) return daVisao

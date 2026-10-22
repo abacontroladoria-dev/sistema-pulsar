@@ -113,9 +113,11 @@ console.log('\nsetAiMode — soltar a conversa')
   const { service, escritas, auditoria } = montar(conv)
   await service.setAiMode('conv-1', 'autonomous', USUARIO)
   checar('religar a Maia limpa o responsável', escritas.assignee, [null])
-  // 'assigned' sem responsável seria um estado contraditório.
-  checar('status volta para open',             escritas.status,   ['open'])
-  checar('trilha guarda quem foi liberado',    auditoria[0]?.payload?.responsavelLiberado, USUARIO)
+  // 'assigned' sem responsável seria um estado contraditório; com a Maia de
+  // volta, o status é Autoatendimento (20261022100000).
+  checar('status vai para self_service',       escritas.status,   ['self_service'])
+  const trocaDeModo = auditoria.find(l => l.event_type === 'conversation.ai_mode_changed')
+  checar('trilha guarda quem foi liberado',    trocaDeModo?.payload?.responsavelLiberado, USUARIO)
 }
 {
   // Desligar a Maia é o humano continuando no comando — não pode soltar nada.

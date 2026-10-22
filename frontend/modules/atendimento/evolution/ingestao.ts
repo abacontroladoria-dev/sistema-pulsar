@@ -164,6 +164,8 @@ async function processarMensagem(
 
   // Alguém respondeu pelo celular: com "Maia responde", ela sai da conversa.
   await conversationService.maiaSaiQuandoHumanoResponde(conversation, null)
+  // Gente na conversa: Autoatendimento/Aberto → Em atendimento.
+  await conversationService.statusAoHumanoResponder(conversation.id)
 }
 
 // Clique num anúncio (contextInfo.externalAdReply): grava o primeiro anúncio da

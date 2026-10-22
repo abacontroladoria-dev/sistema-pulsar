@@ -7,6 +7,7 @@ import { useAuth } from '@/hooks/nina/useAuth'
 import { useUsuarioAtual } from '@/hooks/useUsuarioAtual'
 import { useChatEquipe, useContadoresChatEquipe } from '@/contexts/ChatEquipeContext'
 import BolinhaNaoLidas from '@/components/chat-equipe/BolinhaNaoLidas'
+import { useConversasAbertas } from '@/hooks/nina/useConversasAbertas'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { ThemeSwitcher } from '@/components/sidebar/ThemeSwitcher'
@@ -60,6 +61,9 @@ const SidebarContent = ({ collapsed }: { collapsed: boolean }) => {
   // Quem está no Connect tem as duas: as menções e as conversas (todo usuário).
   const naoLidas = useContadoresChatEquipe({ conversas: true, mencoes: true }).total
   const chat = useChatEquipe()
+  // Conversas em Aberto: a Maia passou e ninguém da equipe pegou. Vai no item
+  // Atendimentos, onde está a coluna delas.
+  const abertas = useConversasAbertas()
   const pathname = usePathname()
   const currentPath = pathname.replace('/connect/', '')
 
@@ -82,12 +86,15 @@ const SidebarContent = ({ collapsed }: { collapsed: boolean }) => {
         <nav className="flex flex-col gap-0.5">
           {menuItems.map((item) => {
             const isActive = currentPath.startsWith(item.id)
+            const contagem = item.id === 'atendimentos' ? abertas : 0
+            const rotuloContagem = contagem > 0 ? ` (${contagem > 99 ? '99+' : contagem} em aberto)` : ''
             return (
               <Link
                 key={item.id}
                 href={`/connect/${item.id}`}
-                title={collapsed ? item.label : undefined}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
+                title={collapsed ? `${item.label}${rotuloContagem}` : undefined}
+                aria-label={contagem > 0 ? `${item.label}${rotuloContagem}` : undefined}
+                className={`relative flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
                   isActive
                     ? 'bg-sidebar-accent text-sidebar-accent-foreground'
                     : 'text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/60'
@@ -97,6 +104,7 @@ const SidebarContent = ({ collapsed }: { collapsed: boolean }) => {
                 {!collapsed && (
                   <span className="text-sm font-medium truncate">{item.label}</span>
                 )}
+                <BolinhaNaoLidas n={contagem} compacta={collapsed} />
               </Link>
             )
           })}

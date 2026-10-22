@@ -56,6 +56,11 @@ export interface NotaInternaVista extends NotaInterna {
 
 const ENCERRADA = ['resolved', 'archived']
 
+// Autor das notas que a Maia escreve (author_user_id nulo). O id não é de
+// usuário: nada compara com ele a não ser para "é minha?", e a Maia não é
+// ninguém da equipe.
+export const AUTOR_MAIA: PessoaNota = { id: 'maia', nome: 'Maia' }
+
 export class NotaInternaService {
   constructor(
     private readonly notas:    NotaInternaRepository,
@@ -79,7 +84,7 @@ export class NotaInternaService {
   private async vista(orgId: string, notas: NotaInterna[]): Promise<NotaInternaVista[]> {
     const ids = new Set<string>()
     for (const n of notas) {
-      ids.add(n.author_user_id)
+      if (n.author_user_id) ids.add(n.author_user_id)
       n.mentioned_user_ids.forEach(id => ids.add(id))
       if (n.delegated_to_user_id) ids.add(n.delegated_to_user_id)
     }
@@ -88,7 +93,7 @@ export class NotaInternaService {
 
     return notas.map(n => ({
       ...n,
-      autor:        pessoa(n.author_user_id),
+      autor:        n.author_user_id ? pessoa(n.author_user_id) : AUTOR_MAIA,
       mencionados:  n.mentioned_user_ids.map(pessoa),
       delegadaPara: n.delegated_to_user_id ? pessoa(n.delegated_to_user_id) : null,
     }))
@@ -107,6 +112,47 @@ export class NotaInternaService {
 
   // O @autocomplete: quem enxerga esta conversa — inclusive quem está
   // escrevendo, que pode se marcar como lembrete.
+  // A Maia escreve na conversa: a nota de "conversa parada" do worker de
+  // status. Sem sessão de usuário — o factory monta este service com service
+  // role nas duas pontas. Menciona só quem enxerga a caixa (regra 3); quem não
+  // enxerga é descartado em vez de recusar a nota, que é o aviso que importa.
+  async criarPelaMaia(orgId: string, conversationId: string, body: string, mencoes: string[]): Promise<void> {
+    const conversa = await this.exigirConversa(orgId, conversationId)
+    const comAcesso = mencoes.length > 0
+      ? new Set((await this.usuarios.listarComAcessoACaixa(orgId, conversa.inbox_id)).map(u => u.id))
+      : new Set<string>()
+    const mencionados = [...new Set(mencoes)].filter(id => comAcesso.has(id))
+
+    const nota = await this.notas.criar({
+      organization_id:      orgId,
+      conversation_id:      conversationId,
+      author_user_id:       null,
+      body:                 body.trim(),
+      mentioned_user_ids:   mencionados,
+      delegated_to_user_id: null,
+    })
+
+    try {
+      await this.mencoes.criarVarias(mencionados.map(id => ({
+        organization_id:   orgId,
+        note_id:           nota.id,
+        conversation_id:   conversationId,
+        mentioned_user_id: id,
+        author_user_id:    null,
+      })))
+    } catch (err) {
+      await this.notas.apagar(nota.id).catch(() => {})
+      throw err
+    }
+
+    void this.audit.insert({
+      organization_id: orgId,
+      conversation_id: conversationId,
+      event_type:      'conversation.note_added',
+      payload:         { noteId: nota.id, mencionados, delegouPara: null, origem: 'maia' },
+    })
+  }
+
   async mencionaveis(orgId: string, conversationId: string): Promise<UsuarioCentral[]> {
     const conversa = await this.exigirConversa(orgId, conversationId)
     return this.usuarios.listarComAcessoACaixa(orgId, conversa.inbox_id)

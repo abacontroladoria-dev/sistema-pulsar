@@ -282,6 +282,8 @@ export class MessageService {
       await this.conversas.assumirAoResponder(conversation, input.sentByUserId)
       // Número com "Maia responde": a chave da conversa vira para Humano.
       await this.conversas.maiaSaiQuandoHumanoResponde(conversation, input.sentByUserId)
+      // Autoatendimento/Aberto → Em atendimento.
+      await this.conversas.statusAoHumanoResponder(conversation.id)
     }
 
     return message
@@ -439,6 +441,8 @@ export class MessageService {
     if (input.sentByUserId && this.conversas) {
       await this.conversas.assumirAoResponder(conversation, input.sentByUserId)
       await this.conversas.maiaSaiQuandoHumanoResponde(conversation, input.sentByUserId)
+      // Autoatendimento/Aberto → Em atendimento.
+      await this.conversas.statusAoHumanoResponder(conversation.id)
     }
 
     return message

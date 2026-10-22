@@ -2,15 +2,20 @@
 
 import { useState } from 'react'
 import * as Popover from '@radix-ui/react-popover'
-import { ChevronDown, Loader2 } from 'lucide-react'
+import { Bot, ChevronDown, Loader2 } from 'lucide-react'
 import type { Conversation } from '@/modules/atendimento/types/central.types'
 
 // ============================================================================
 // Status do atendimento — "como está o andamento desta conversa".
 //
-// Mapa para o enum central.conversation_status, sem coluna nova:
-//   open → Aberto · assigned → Em atendimento · waiting → Aguardando
-//   resolved → Resolvido · archived → Fechado
+// Mapa para o enum central.conversation_status:
+//   self_service → Autoatendimento · open → Aberto · assigned → Em atendimento
+//   waiting → Aguardando · resolved → Resolvido · archived → Fechado
+//
+// A Maia muda o status sozinha (ConversationService + workers/status.worker.ts),
+// mas a escolha daqui sempre vale: a equipe troca a qualquer momento, e a Maia
+// não a desfaz até chegar mensagem nova. Autoatendimento liga a Maia na
+// conversa; sair dele a desliga — o status não pode mentir sobre quem fala.
 //
 // Qualquer usuário do inbox troca (a RLS de conversations já é por organização,
 // e resolve/archive/reopen já eram abertos a todos). Cada opção carrega a cor
@@ -24,10 +29,14 @@ export const STATUS_ATENDIMENTO: {
   valor: Status; rotulo: string; descricao: string
   texto: string; faixa: string; ponto: string
 }[] = [
-  { valor: 'open',     rotulo: 'Aberto',         descricao: 'Uma nova conversa ou reiniciada.',
+  { valor: 'self_service', rotulo: 'Autoatendimento', descricao: 'A Maia está conversando com o cliente.',
+    texto: 'text-violet-600 dark:text-violet-400',   faixa: 'border-l-violet-500',  ponto: 'bg-violet-500' },
+  { valor: 'open',     rotulo: 'Aberto',         descricao: 'Esperando alguém da equipe assumir.',
     texto: 'text-red-600 dark:text-red-400',         faixa: 'border-l-red-500',     ponto: 'bg-red-500' },
+  // Azul, não anil: lado a lado com o violeta da Maia (Autoatendimento), o
+  // anil não se distinguia na faixa da triagem.
   { valor: 'assigned', rotulo: 'Em atendimento', descricao: 'Cliente está sendo atendido.',
-    texto: 'text-indigo-600 dark:text-indigo-400',   faixa: 'border-l-indigo-500',  ponto: 'bg-indigo-500' },
+    texto: 'text-blue-600 dark:text-blue-400',       faixa: 'border-l-blue-500',    ponto: 'bg-blue-500' },
   { valor: 'waiting',  rotulo: 'Aguardando',     descricao: 'Aguardando uma ação sua ou do cliente.',
     texto: 'text-amber-600 dark:text-amber-400',     faixa: 'border-l-amber-400',   ponto: 'bg-amber-400' },
   { valor: 'resolved', rotulo: 'Resolvido',      descricao: 'Cliente foi atendido e foi resolvido.',
@@ -36,12 +45,28 @@ export const STATUS_ATENDIMENTO: {
     texto: 'text-teal-700 dark:text-teal-300',       faixa: 'border-l-teal-700',    ponto: 'bg-teal-700 dark:bg-teal-300' },
 ]
 
+// O motivo só aparece quando a última palavra sobre o status foi da Maia: com
+// a escolha da equipe mais nova que a leitura, mostrá-lo contradiria a tela.
+export function motivoStatusMaia(
+  c: Pick<Conversation, 'status_ia_motivo' | 'status_ia_em' | 'status_manual_em'> | null,
+): string | null {
+  if (!c?.status_ia_motivo || !c.status_ia_em) return null
+  if (c.status_manual_em && c.status_manual_em >= c.status_ia_em) return null
+  return c.status_ia_motivo
+}
+
 interface Props {
   status:   Status | null
   aoTrocar: (novo: Status) => Promise<void>
+  // A Maia pode atender esta conversa? Número só de gente (Evolution sem
+  // "Maia responde") não tem Autoatendimento a escolher.
+  maiaDisponivel: boolean
+  // Por que a Maia pôs a conversa no status atual. Null quando a última
+  // palavra foi da equipe ou a Maia ainda não leu a conversa.
+  motivoMaia?: string | null
 }
 
-export function StatusAtendimento({ status, aoTrocar }: Props) {
+export function StatusAtendimento({ status, aoTrocar, maiaDisponivel, motivoMaia }: Props) {
   const [aberto, setAberto]     = useState(false)
   const [salvando, setSalvando] = useState(false)
 
@@ -86,24 +111,36 @@ export function StatusAtendimento({ status, aoTrocar }: Props) {
           sideOffset={6}
           className="z-50 w-[min(18rem,calc(100vw-1.5rem))] rounded-lg border border-border bg-card shadow-lg overflow-hidden focus:outline-none"
         >
+          {motivoMaia && (
+            <p className="flex items-start gap-1.5 px-3 py-2 text-xs text-muted-foreground border-b border-border">
+              <Bot aria-hidden className="w-3.5 h-3.5 mt-px shrink-0 text-violet-500" />
+              <span><span className="font-semibold text-foreground">Maia:</span> {motivoMaia}</span>
+            </p>
+          )}
           <ul role="listbox" aria-label="Status do atendimento">
-            {STATUS_ATENDIMENTO.map(s => (
-              <li key={s.valor} role="presentation">
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={s.valor === status}
-                  disabled={salvando}
-                  onClick={() => void escolher(s.valor)}
-                  className={`w-full text-left border-l-4 ${s.faixa} px-3 py-2.5 hover:bg-muted focus-visible:bg-muted focus-visible:outline-none disabled:cursor-wait ${
-                    s.valor === status ? 'bg-muted' : ''
-                  }`}
-                >
-                  <span className={`block text-sm font-bold ${s.texto}`}>{s.rotulo}</span>
-                  <span className="block text-xs text-muted-foreground">{s.descricao}</span>
-                </button>
-              </li>
-            ))}
+            {STATUS_ATENDIMENTO.map(s => {
+              const indisponivel = s.valor === 'self_service' && !maiaDisponivel
+              return (
+                <li key={s.valor} role="presentation">
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={s.valor === status}
+                    disabled={salvando || indisponivel}
+                    title={indisponivel ? 'A Maia não atende por este número.' : undefined}
+                    onClick={() => void escolher(s.valor)}
+                    className={`w-full text-left border-l-4 ${s.faixa} px-3 py-2.5 hover:bg-muted focus-visible:bg-muted focus-visible:outline-none disabled:cursor-wait ${
+                      s.valor === status ? 'bg-muted' : ''
+                    } ${indisponivel ? 'opacity-50 disabled:cursor-not-allowed' : ''}`}
+                  >
+                    <span className={`block text-sm font-bold ${s.texto}`}>{s.rotulo}</span>
+                    <span className="block text-xs text-muted-foreground">
+                      {indisponivel ? 'A Maia não atende por este número.' : s.descricao}
+                    </span>
+                  </button>
+                </li>
+              )
+            })}
           </ul>
         </Popover.Content>
       </Popover.Portal>

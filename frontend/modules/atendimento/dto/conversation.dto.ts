@@ -7,7 +7,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const isUUID    = (v: unknown): v is string => typeof v === 'string' && UUID_RE.test(v)
 const isISODate = (v: unknown): v is string => typeof v === 'string' && !isNaN(new Date(v).getTime())
 
-const VALID_STATUSES: ConversationStatus[] = ['open', 'assigned', 'waiting', 'resolved', 'archived']
+const VALID_STATUSES: ConversationStatus[] = ['self_service', 'open', 'assigned', 'waiting', 'resolved', 'archived']
 const VALID_ACTIONS = [
   'assign', 'transfer', 'resolve', 'archive', 'reopen', 'set_ai_mode',
   // Marca d'água de leitura (20260921140000). Nenhuma das duas tem campo
