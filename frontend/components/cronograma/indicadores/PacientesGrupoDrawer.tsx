@@ -1,7 +1,7 @@
 "use client"
 
 // PacientesGrupoDrawer — "Ver pacientes" de uma linha das tabelas do Dashboard
-// de Pacientes (convênio ou unidade). A lista sai de listarPacientesDoGrupo
+// de Pacientes (convênio, unidade ou procedimento). A lista sai de listarPacientesDoGrupo
 // (lib/cronograma/pacientesDashboard.ts), com a MESMA chave do contador da
 // tabela — o total listado aqui é sempre o número da coluna "Pacientes".
 
@@ -13,10 +13,11 @@ import { SortableTh, ordenarPor, type SortDir } from "@/components/cronograma/ui
 import { fmtHDec } from "@/lib/cronograma/helpers"
 import { normTxt } from "@/lib/cronograma/constants"
 import type { PacienteDoGrupo } from "@/lib/cronograma/salasTypes"
+import type { CampoGrupoPacientes } from "@/lib/cronograma/pacientesDashboard"
 
 export interface GrupoSelecionado {
   segmentoLabel: string
-  campo: "convenio" | "unidade"
+  campo: CampoGrupoPacientes
   chave: string
   /** Período consultado, já por extenso (ex.: "Mês completo: Outubro de 2026 · 01/10/2026 a 31/10/2026"). */
   periodoRotulo?: string
@@ -25,6 +26,8 @@ export interface GrupoSelecionado {
 }
 
 type ChaveOrdem = "nome" | "sessoes" | "chSemanal"
+
+const COLUNA_CHAVE: Record<CampoGrupoPacientes, string> = { convenio: "Convenio", unidade: "Unidade", procedimento: "Procedimento" }
 
 export function PacientesGrupoDrawer({ grupo, pacientes, onClose }: {
   grupo: GrupoSelecionado
@@ -55,7 +58,7 @@ export function PacientesGrupoDrawer({ grupo, pacientes, onClose }: {
     const linhas = pacientes.map(p => ({
       Segmento: grupo.segmentoLabel,
       ...(grupo.periodoRotulo ? { Periodo: grupo.periodoRotulo } : {}),
-      [grupo.campo === "convenio" ? "Convenio" : "Unidade"]: grupo.chave,
+      [COLUNA_CHAVE[grupo.campo]]: grupo.chave,
       Paciente_ID: p.ids.join(", "),
       Paciente_Nome: p.nome,
       [grupo.periodoLongo ? "Sessoes_No_Mes" : "Sessoes"]: p.sessoes,

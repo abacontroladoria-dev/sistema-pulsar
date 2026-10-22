@@ -39,6 +39,14 @@ export const TURNOS: Record<"manha" | "tarde", AvailWindow> = {
   tarde: { inicio: 780, fim: 1060 },
 }
 
+export type TurnoManual = keyof typeof TURNOS
+
+/** Liga/desliga um turno da seleção, mantendo a ordem manhã → tarde. O último marcado não sai: sem turno não há vaga para mostrar. */
+export function alternarTurno(atuais: readonly TurnoManual[], t: TurnoManual): TurnoManual[] {
+  if (atuais.includes(t)) return atuais.length > 1 ? atuais.filter(x => x !== t) : [...atuais]
+  return (Object.keys(TURNOS) as TurnoManual[]).filter(x => x === t || atuais.includes(x))
+}
+
 export interface AvailWindow {
   inicio: number
   fim: number
@@ -247,13 +255,14 @@ export interface SugestoesManualResult {
 export function buildSugestoesManual(
   paciente: string,
   unidades: string[],
-  turno: "manha" | "tarde",
+  /** Um ou os dois turnos — com os dois, cada dia oferece manhã e tarde e o operador escolhe. */
+  turnos: readonly TurnoManual[],
   laudosRows: LaudoRow[] | null | undefined,
   livreSlots: CsvRow[],
   suspensaoSet: Set<string> = SUSPENSAO_SET_VAZIO,
   coordCaso?: OpcoesCoordCasoManual,
 ): SugestoesManualResult {
-  const janela = TURNOS[turno]
+  const janelas = turnos.map(t => TURNOS[t])
   const unidadesPermitidas = new Set(unidades)
 
   const espTable = construirEspTable(paciente, laudosRows, false, suspensaoSet)
@@ -277,7 +286,7 @@ export function buildSugestoesManual(
     return (
       unidadesPermitidas.has(String(r.Unidade || r["Unidade"] || "")) &&
       r.HI !== null && !isNaN(hiVal) &&
-      hiVal >= janela.inicio && hiVal < janela.fim
+      janelas.some(j => hiVal >= j.inicio && hiVal < j.fim)
     )
   })
 

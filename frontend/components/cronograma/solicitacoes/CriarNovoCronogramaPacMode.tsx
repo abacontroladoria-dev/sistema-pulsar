@@ -5,6 +5,8 @@ import toast from "react-hot-toast"
 import { PACS_ADMIN, TERAPIA_TO_ESP } from "@/lib/cronograma/constants"
 import {
   buildSugestoesManual,
+  alternarTurno,
+  type TurnoManual,
   type EspEntry, type SugestaoManual, type SugestoesManualResult,
 } from "@/lib/cronograma/novoCronograma"
 import {
@@ -88,7 +90,9 @@ export function CriarNovoCronogramaPacMode({
 }: Props) {
   const { pacBundles, persistPacBundles } = useCronogramaData()
   const [paciente, setPaciente] = useState("")
-  const [turno, setTurno] = useState<"manha" | "tarde">("manha")
+  // Manhã e tarde podem ficar marcadas juntas: aí cada dia oferece os dois
+  // turnos e o operador escolhe — dá para montar seg de manhã e ter à tarde.
+  const [turnos, setTurnos] = useState<TurnoManual[]>(["manha"])
   const [unidades, setUnidades] = useState<string[]>([])
   const [multiplas, setMultiplas] = useState(false)
   const [result, setResult] = useState<SugestoesManualResult | null>(null)
@@ -224,7 +228,7 @@ export function CriarNovoCronogramaPacMode({
     const coordCaso = carteiraEfetiva
       ? { podeReceber: (prof: string) => profPodeReceber(carteiraEfetiva, prof, pacRef, limiteCC).pode }
       : undefined
-    const r = buildSugestoesManual(paciente, unidades, turno, lRows, livreSlots, suspensaoSet, coordCaso)
+    const r = buildSugestoesManual(paciente, unidades, turnos, lRows, livreSlots, suspensaoSet, coordCaso)
     if (!carteiraEfetiva && (r.espTable["Psicologia ABA"]?.aut ?? 0) >= 1) {
       r.alertas.push({
         tipo: "warn",
@@ -633,16 +637,16 @@ export function CriarNovoCronogramaPacMode({
           )}
         </WorkbenchArea>
 
-        <WorkbenchArea label="Turno">
+        <WorkbenchArea label="Turno (um ou os dois)">
           <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", width: "100%" }}>
             {(["manha", "tarde"] as const).map(t => {
-              const active = turno === t
+              const active = turnos.includes(t)
               return (
                 <button
                   key={t}
                   type="button"
                   aria-pressed={active}
-                  onClick={() => { setTurno(t); setResult(null); setSelectedIds(new Set()) }}
+                  onClick={() => { setTurnos(alternarTurno(turnos, t)); setResult(null); setSelectedIds(new Set()) }}
                   className="crono-wb-toggle"
                   style={{
                     flex: 1,
@@ -745,7 +749,7 @@ export function CriarNovoCronogramaPacMode({
             espBloqueadas={espBloqueadas}
             antes={0}
             avisos={avisos}
-            vazioMsg="Nenhuma vaga livre encontrada para este turno/unidade."
+            vazioMsg="Nenhuma vaga livre encontrada para o turno/unidade escolhidos."
             interativo
             selectedIds={selectedIds}
             onToggle={handleToggle}

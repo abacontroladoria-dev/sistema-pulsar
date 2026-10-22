@@ -496,6 +496,12 @@ export const PROCESSO_DIAGNOSTICO_NAMES = new Set(
     .map(([name]) => name)
 )
 
+// Nome de agenda de cada procedimento do Processo Diagnóstico, na ordem de
+// PROCESSO_DIAGNOSTICO_IDS — as linhas "Por procedimento" do dashboard.
+export const PROCEDIMENTO_DIAGNOSTICO_POR_ID = new Map(
+  [...PROCESSO_DIAGNOSTICO_IDS].map(id => [id, Object.keys(TERAPIA_ID).find(n => TERAPIA_ID[n] === id) ?? String(id)] as const)
+)
+
 // Especialidades no laudo que habilitam AE e HS
 export const AE_LAUDO_ESP = "Arteterapia"
 export const HS_LAUDO_ESP = "Habilidades Sociais"

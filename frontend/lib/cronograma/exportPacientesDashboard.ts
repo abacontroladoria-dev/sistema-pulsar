@@ -88,9 +88,9 @@ export function exportarDashboardPacientesXlsx(opts: ExportarPacientesOpts): voi
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(resumoSegmento), "Resumo por segmento")
 
   // ── Por convenio / Por unidade ───────────────────────────────────────────
-  function linhasGrupo(campo: "porConvenio" | "porUnidade", colunaChave: "Convenio" | "Unidade") {
+  function linhasGrupo(campo: "porConvenio" | "porUnidade" | "porProcedimento", colunaChave: "Convenio" | "Unidade" | "Procedimento", segs: SegmentoKey[] = segmentos) {
     const linhas: Record<string, unknown>[] = []
-    segmentos.forEach(seg => {
+    segs.forEach(seg => {
       const d = dashboard[seg]
       const grupos: ResumoPacientesGrupo[] = d[campo]
       grupos.forEach(g => {
@@ -111,6 +111,7 @@ export function exportarDashboardPacientesXlsx(opts: ExportarPacientesOpts): voi
   }
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(linhasGrupo("porConvenio", "Convenio")), "Por convenio")
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(linhasGrupo("porUnidade", "Unidade")), "Por unidade")
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(linhasGrupo("porProcedimento", "Procedimento", ["processoDiagnostico"])), "Por procedimento")
 
   // ── Por dia da semana ────────────────────────────────────────────────────
   const porDiaLinhas: Record<string, unknown>[] = []

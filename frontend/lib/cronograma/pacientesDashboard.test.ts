@@ -91,3 +91,27 @@ describe("montarMapaConvenioCadastro / convenioDaLinha", () => {
     expect(convenioDaLinha(linha({ paciente_id: 8, convenio_nome: null }), m)).toEqual({ convenio: "Não informado", fonte: "agenda", convenioAgenda: "Não informado" })
   })
 })
+
+describe("Processo Diagnóstico por procedimento", () => {
+  const diag: AgendaSalaRow[] = [
+    linha({ paciente_id: 10, paciente_nome: "Gabi", terapia_id: 2268, terapia_nome: "Avaliação Neuropsicológica" }),
+    linha({ paciente_id: 10, paciente_nome: "Gabi", terapia_id: 2270, terapia_nome: "Triagem", data: "2026-11-03", dia_semana: "Terça-feira" }),
+    linha({ paciente_id: 11, paciente_nome: "Hugo", terapia_id: 2268, terapia_nome: "Avaliação Neuropsicológica" }),
+    linha({ paciente_id: 12, paciente_nome: "Íris" }),
+  ]
+
+  it("os três procedimentos sempre aparecem e o total do bloco não muda", () => {
+    const d = calcularDashboardPacientes(diag).processoDiagnostico
+    expect(d.pacientesUnicos).toBe(2)
+    expect(d.porProcedimento.map(g => [g.chave, g.pacientesUnicos, g.sessoesTotal])).toEqual([
+      ["Avaliação Neuropsicológica", 2, 2],
+      ["Psiquiatra/Neurologista", 0, 0],
+      ["Triagem", 1, 1],
+    ])
+  })
+
+  it("Ver pacientes de um procedimento lista quem foi contado na linha", () => {
+    const lista = listarPacientesDoGrupo(diag, null, "processoDiagnostico", "procedimento", "Avaliação Neuropsicológica")
+    expect(lista.map(p => p.nome)).toEqual(["Gabi", "Hugo"])
+  })
+})

@@ -5,7 +5,7 @@ import {
   COORDENADOR_CASO, contarSessoesCCSemana, coordenadoresDoPaciente, montarCarteira,
   profPodeReceber, somarBundlesConfirmados, validarSelecaoCC, type LinhaCC,
 } from "./coordenadorCaso"
-import { buildSugestoesManual } from "./novoCronograma"
+import { alternarTurno, buildSugestoesManual } from "./novoCronograma"
 import type { AceitePacBundle } from "@/types/acompanhamento"
 import type { CsvRow, LaudoRow } from "@/types/cronograma"
 
@@ -161,7 +161,7 @@ describe("buildSugestoesManual com Coordenador de Caso", () => {
       .filter(x => x.esp === COORDENADOR_CASO)
 
   it("com Psicologia ABA ≥ 1, sugere como alternativa do horário e como principal quando é a única opção", () => {
-    const r = buildSugestoesManual("Joana", ["Unidade A"], "manha", [laudo("Psicologia ABA", "1")], slots, undefined, { podeReceber: () => true })
+    const r = buildSugestoesManual("Joana", ["Unidade A"], ["manha"], [laudo("Psicologia ABA", "1")], slots, undefined, { podeReceber: () => true })
     const s0800 = r.sugestoes.find(s => s.hora === "08:00")!
     expect(s0800.esp).not.toBe(COORDENADOR_CASO)
     expect(s0800.espAlts.map(a => a.esp)).toContain(COORDENADOR_CASO)
@@ -169,19 +169,41 @@ describe("buildSugestoesManual com Coordenador de Caso", () => {
   })
 
   it("sem Psicologia ABA autorizada não sugere", () => {
-    const r = buildSugestoesManual("Joana", ["Unidade A"], "manha", [laudo("Fonoaudiologia", "4")], slots, undefined, { podeReceber: () => true })
+    const r = buildSugestoesManual("Joana", ["Unidade A"], ["manha"], [laudo("Fonoaudiologia", "4")], slots, undefined, { podeReceber: () => true })
     expect(temCC(r)).toEqual([])
   })
 
   it("sem as regras (Orçamento) continua fora", () => {
-    const r = buildSugestoesManual("Joana", ["Unidade A"], "manha", [laudo("Psicologia ABA", "10")], slots)
+    const r = buildSugestoesManual("Joana", ["Unidade A"], ["manha"], [laudo("Psicologia ABA", "10")], slots)
     expect(temCC(r)).toEqual([])
   })
 
   it("profissional no teto de pacientes não aparece", () => {
-    const r = buildSugestoesManual("Joana", ["Unidade A"], "manha", [laudo("Psicologia ABA", "10")], slots, undefined, {
+    const r = buildSugestoesManual("Joana", ["Unidade A"], ["manha"], [laudo("Psicologia ABA", "10")], slots, undefined, {
       podeReceber: prof => prof !== "Ana Lima",
     })
     expect(temCC(r).map(x => x.prof)).toEqual(["Bruno Reis"])
+  })
+})
+
+describe("buildSugestoesManual com manhã e tarde juntas", () => {
+  const livre = (hora: string, id: string): CsvRow => ({
+    "Status do Agendamento": "Livre", "Dia da Semana": "Segunda", Terapia: "Fonoaudiologia", Profissional: "Carla Dias",
+    HI_str: hora, HI: Number(hora.slice(0, 2)) * 60 + Number(hora.slice(3)), Unidade: "Unidade A", CsvGradeId: id,
+  } as unknown as CsvRow)
+  const laudo = { Paciente: "Joana", Especialidade: "Fonoaudiologia", "Qtd autorizada": "4", "Qtd laudo": "4", "Situação": "Vigente" } as unknown as LaudoRow
+  const slots = [livre("08:00", "1"), livre("12:20", "2"), livre("14:00", "3")]
+  const horas = (t: ("manha" | "tarde")[]) => buildSugestoesManual("Joana", ["Unidade A"], t, [laudo], slots).sugestoes.map(s => s.hora).sort()
+
+  it("cada turno sozinho só traz o seu horário; os dois juntos trazem ambos", () => {
+    expect(horas(["manha"])).toEqual(["08:00"])
+    expect(horas(["tarde"])).toEqual(["14:00"])
+    expect(horas(["manha", "tarde"])).toEqual(["08:00", "14:00"])
+  })
+
+  it("alternarTurno não deixa a seleção vazia e mantém manhã antes de tarde", () => {
+    expect(alternarTurno(["manha"], "manha")).toEqual(["manha"])
+    expect(alternarTurno(["tarde"], "manha")).toEqual(["manha", "tarde"])
+    expect(alternarTurno(["manha", "tarde"], "manha")).toEqual(["tarde"])
   })
 })

@@ -39,7 +39,7 @@ import { useConvenioCadastroPacientes } from "@/hooks/useConvenioCadastroPacient
 import {
   HISTORICO_INICIO, fmtDataBR, historicoFim, mesCorrente, mesVizinho, resolverPeriodo, rotuloMes, type PeriodoResolvido,
 } from "@/lib/cronograma/periodoPacientes"
-import { calcularDashboardPacientes, listarPacientesDoGrupo, type SegmentoPacientes } from "@/lib/cronograma/pacientesDashboard"
+import { calcularDashboardPacientes, listarPacientesDoGrupo, type CampoGrupoPacientes, type SegmentoPacientes } from "@/lib/cronograma/pacientesDashboard"
 import { exportarDashboardPacientesXlsx } from "@/lib/cronograma/exportPacientesDashboard"
 import { PacientesGrupoDrawer, type GrupoSelecionado } from "@/components/cronograma/indicadores/PacientesGrupoDrawer"
 import { AvisoConvenioCadastro } from "@/components/cronograma/indicadores/AvisoConvenioCadastro"
@@ -178,11 +178,14 @@ function BarrasPorDia({
 // `tituloConvenio` é o nome do dashboard (ex.: "Tratamento Multidisciplinar",
 // "Processo Diagnóstico") — vai DIRETO no título da tabela por convênio, sem
 // header separado por cima. "Por unidade" continua com o mesmo nome nos dois.
+// `procedimentos` liga a tabela "Por procedimento" (só no Processo
+// Diagnóstico: Avaliação Neuropsicológica, Psiquiatra/Neurologista, Triagem).
 function DashboardBloco({
   tituloConvenio,
   d,
   longo,
   cadastroDisponivel,
+  procedimentos = false,
   onAbrir,
 }: {
   tituloConvenio: string
@@ -190,7 +193,8 @@ function DashboardBloco({
   /** Período maior que uma semana — ver cabeçalho do arquivo. */
   longo: boolean
   cadastroDisponivel: boolean
-  onAbrir: (campo: "convenio" | "unidade", chave: string) => void
+  procedimentos?: boolean
+  onAbrir: (campo: CampoGrupoPacientes, chave: string) => void
 }) {
   return (
     <div className="flex flex-col gap-3">
@@ -230,6 +234,9 @@ function DashboardBloco({
           )}
         </div>
         <TabelaGrupo titulo="Por unidade" linhas={d.porUnidade} totalPacientes={d.pacientesUnicos} totalChSemanal={d.chSemanalTotal} longo={longo} onAbrir={chave => onAbrir("unidade", chave)} />
+        {procedimentos && (
+          <TabelaGrupo titulo="Por procedimento" linhas={d.porProcedimento} totalPacientes={d.pacientesUnicos} totalChSemanal={d.chSemanalTotal} longo={longo} onAbrir={chave => onAbrir("procedimento", chave)} />
+        )}
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -467,7 +474,7 @@ export function PacientesDashboardShell() {
   const { multidisciplinar, processoDiagnostico } = dashboardPacientes
 
   const cadastroDisponivel = !!cadastro.mapa
-  const abrir = (segmento: SegmentoPacientes) => (campo: "convenio" | "unidade", chave: string) =>
+  const abrir = (segmento: SegmentoPacientes) => (campo: CampoGrupoPacientes, chave: string) =>
     setGrupoAberto({
       segmento,
       segmentoLabel: SEGMENTO_LABEL[segmento],
@@ -507,7 +514,7 @@ export function PacientesDashboardShell() {
       )}
       <DashboardBloco tituloConvenio={SEGMENTO_LABEL.multidisciplinar} d={multidisciplinar} longo={longo} cadastroDisponivel={cadastroDisponivel} onAbrir={abrir("multidisciplinar")} />
       <div className="border-t border-border" />
-      <DashboardBloco tituloConvenio={SEGMENTO_LABEL.processoDiagnostico} d={processoDiagnostico} longo={longo} cadastroDisponivel={cadastroDisponivel} onAbrir={abrir("processoDiagnostico")} />
+      <DashboardBloco tituloConvenio={SEGMENTO_LABEL.processoDiagnostico} d={processoDiagnostico} longo={longo} cadastroDisponivel={cadastroDisponivel} procedimentos onAbrir={abrir("processoDiagnostico")} />
       {grupoVisivel && (
         <PacientesGrupoDrawer grupo={grupoVisivel} pacientes={pacientesDoGrupo} onClose={() => setGrupoAberto(null)} />
       )}
