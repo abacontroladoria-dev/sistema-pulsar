@@ -4,7 +4,10 @@ import { useMemo, useState } from "react"
 import toast from "react-hot-toast"
 import { CalendarDays, CalendarRange, CircleSlash, Database, FastForward, Loader2, Pencil, Plus, Replace, RotateCcw, X } from "lucide-react"
 import { InlineNotice } from "@/components/cronograma/ui/InlineNotice"
-import { CabecalhoPastel, SecaoPastel, avisoFeito, tom } from "@/components/ui/pastel/pecas"
+import { btnPerigo, btnPrimario, btnSecundario } from "@/components/cronograma/grade/estilo"
+import { SegmentedTabs } from "@/components/cronograma/ui/SegmentedTabs"
+import { CabecalhoSecao, EstadoVazio } from "@/components/ui/padrao"
+import { COR_NEUTRA } from "@/lib/cadastros/terapias"
 import { useConfirmacao } from "@/components/ui/pastel/confirmacao"
 import { useProfissionais } from "@/hooks/useProfissionais"
 import { dataBR, hojeBrasilia, rascunhoDeVersao, periodoBR, somarDias, totaisDaSemana } from "@/lib/disponibilidadeProfissional"
@@ -15,7 +18,7 @@ import type {
 import type { CadastroTerapia } from "@/types/terapia"
 import type { Profissional } from "@/types/profissional"
 import { EditorDisponibilidade } from "./EditorDisponibilidade"
-import { FaixaSituacao, SeloSituacao, SemanaLeitura, TOM_SITUACAO } from "./pecasDisponibilidade"
+import { FaixaSituacao, ROTULO_SITUACAO, SemanaLeitura } from "./pecasDisponibilidade"
 import { VigenciaModal } from "./VigenciaModal"
 
 type Edicao = { base: RascunhoDisponibilidade; origem: OrigemVersao; restauradaDe: VersaoDisponibilidade | null }
@@ -81,7 +84,7 @@ export function AbaDisponibilidade({
     setAntecipando(true)
     try {
       await valerHoje(v.id)
-      avisoFeito(`Versão nº ${v.numero} valendo a partir de hoje`)
+      toast.success(`Versão nº ${v.numero} valendo a partir de hoje`)
       setSelecionadaId(v.id)
       await onMudou()
     } catch (e) {
@@ -92,7 +95,7 @@ export function AbaDisponibilidade({
   }
 
   const catalogoPorId = useMemo(() => new Map(catalogo.map(t => [t.id, t])), [catalogo])
-  const corDaTerapia = (id: number) => catalogoPorId.get(id)?.cor_hex ?? "#CBD5E1"
+  const corDaTerapia = (id: number) => catalogoPorId.get(id)?.cor_hex ?? COR_NEUTRA
   const nomeTerapia = (id: number) => catalogoPorId.get(id)?.nome ?? `#${id}`
   const nomesProf = useMemo(() => new Map(profissionais.map(p => [p.id, p.nome])), [profissionais])
 
@@ -119,7 +122,7 @@ export function AbaDisponibilidade({
     )
   }
   if (carregando) {
-    return <div className="flex items-center gap-2 p-6 text-sm font-semibold text-[var(--pp-ink-muted)]"><Loader2 className="h-4 w-4 animate-spin" /> Carregando disponibilidade…</div>
+    return <div className="flex items-center gap-2 p-6 text-sm text-muted-foreground" role="status"><Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Carregando disponibilidade…</div>
   }
   if (erro) {
     return <InlineNotice tone="red">{erro}</InlineNotice>
@@ -162,22 +165,18 @@ export function AbaDisponibilidade({
 
   if (!ordenadas.length) {
     return (
-      <SecaoPastel titulo="disp-vazia">
-        <div className="flex flex-col items-center gap-3 py-8 text-center">
-          <span className={`${tom("teal")} flex size-16 items-center justify-center rounded-[20px] bg-[var(--c)] text-[var(--c-sobre)]`}>
-            <CalendarDays className="h-7 w-7" aria-hidden />
-          </span>
-          <h3 id="disp-vazia" className="text-[20px] font-extrabold">Nenhuma disponibilidade cadastrada</h3>
-          <p className="max-w-md text-sm font-semibold text-[var(--pp-ink-muted)]">
-            Monte os dias, horários, terapias e locais em que {prof.nome.split(" ")[0]} atende.
-            {prof.tita_profissional_id ? " Dá para começar pelo que a grade do TiTa já mostra." : ""}
-          </p>
-          <button type="button" onClick={novaVersao} disabled={preparando} className={`${tom("teal")} pp-btn mt-1`}>
+      <EstadoVazio
+        Icone={CalendarDays}
+        titulo="Nenhuma disponibilidade cadastrada"
+        texto={<>Monte os dias, horários, terapias e locais em que {prof.nome.split(" ")[0]} atende.
+          {prof.tita_profissional_id ? " Dá para começar pelo que a grade do TiTa já mostra." : ""}</>}
+        acao={
+          <button type="button" onClick={novaVersao} disabled={preparando} className={btnPrimario}>
             {preparando ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Plus className="h-4 w-4" aria-hidden />}
             Cadastrar disponibilidade
           </button>
-        </div>
-      </SecaoPastel>
+        }
+      />
     )
   }
 
@@ -185,54 +184,40 @@ export function AbaDisponibilidade({
   const totais = rascunhoSel ? totaisDaSemana(rascunhoSel) : null
 
   return (
-    <div className="space-y-5">
-      <SecaoPastel titulo="disp-titulo">
-        <CabecalhoPastel
+    <div className="space-y-4">
+      <section aria-labelledby="disp-titulo" className="rounded-lg border border-border bg-card px-4 py-4">
+        <CabecalhoSecao
           id="disp-titulo"
           titulo="Disponibilidade"
-          t="teal"
-          Icone={CalendarDays}
+          rotuloAjuda="Como funcionam as versões"
           apoio={vigente ? `Versão nº ${vigente.numero} valendo · ${periodoBR(vigente.vigente_de, vigente.vigente_ate)}` : "Nenhuma versão valendo hoje"}
           ajuda={[
-            { t: "teal", Icone: Pencil, texto: "É só editar: ao salvar uma mudança, o sistema guarda a anterior e cria a versão nova, com data para começar e (se quiser) para terminar." },
-            { t: "vermelho", Icone: CircleSlash, texto: "Passou a data de fim e não há outra versão: a grade fica inativa." },
-            { t: "verde", Icone: FastForward, texto: "Versão agendada para depois? \"Valer a partir de hoje\" antecipa sem mudar o número." },
-            { t: "cinza", Icone: Replace, texto: "Trocada antes de valer (ou no mesmo dia em que começou), a versão fica \"Substituída\" no histórico." },
-            { t: "aco", Icone: RotateCcw, texto: "Versões antigas nunca são apagadas — dá para restaurar qualquer uma." },
+            { Icone: Pencil, texto: "É só editar: ao salvar uma mudança, o sistema guarda a anterior e cria a versão nova, com data para começar e (se quiser) para terminar." },
+            { Icone: CircleSlash, tone: "red", texto: "Passou a data de fim e não há outra versão: a grade fica inativa." },
+            { Icone: FastForward, tone: "green", texto: "Versão agendada para depois? \"Valer a partir de hoje\" antecipa sem mudar o número." },
+            { Icone: Replace, tone: "blue", texto: "Trocada antes de valer (ou no mesmo dia em que começou), a versão fica \"Substituída\" no histórico." },
+            { Icone: RotateCcw, texto: "Versões antigas nunca são apagadas — dá para restaurar qualquer uma." },
           ]}
         />
 
         {/* Seletor de versões: da mais nova para a mais antiga */}
-        <div role="tablist" aria-label="Versões" className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
-          {ordenadas.map(v => {
-            const ativa = selecionada?.id === v.id
-            return (
-              <button
-                key={v.id}
-                type="button"
-                role="tab"
-                aria-selected={ativa}
-                onClick={() => setSelecionadaId(v.id)}
-                className={`${tom(TOM_SITUACAO[v.situacao])} flex shrink-0 flex-col items-start gap-0.5 rounded-[16px] px-3.5 py-2.5 text-left transition-shadow ${
-                  ativa ? "bg-[var(--c-suave)] shadow-[inset_0_0_0_2px_var(--c-medio)]" : "bg-[var(--pp-muted)] hover:bg-[var(--c-suave)]"
-                }`}
-              >
-                <span className="flex items-center gap-2 text-[13px] font-extrabold">
-                  nº {v.numero} <SeloSituacao situacao={v.situacao} compacto />
-                </span>
-                <span className="text-xs font-semibold tabular-nums text-[var(--pp-ink-muted)]">{periodoBR(v.vigente_de, v.vigente_ate)}</span>
-              </button>
-            )
-          })}
-        </div>
-      </SecaoPastel>
+        <SegmentedTabs<string>
+          value={selecionada?.id ?? ""}
+          onChange={setSelecionadaId}
+          ariaLabel="Versões"
+          tabs={ordenadas.map(v => ({
+            value: v.id,
+            label: <>nº {v.numero} · {ROTULO_SITUACAO[v.situacao]} <span className="font-normal tabular-nums opacity-80">· {periodoBR(v.vigente_de, v.vigente_ate)}</span></>,
+          }))}
+        />
+      </section>
 
       {selecionada && rascunhoSel && totais && (
-        <SecaoPastel titulo="disp-versao">
+        <section aria-labelledby="disp-versao" className="rounded-lg border border-border bg-card px-4 py-4">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h3 id="disp-versao" className="text-[18px] font-extrabold">Versão nº {selecionada.numero}</h3>
-              <p className="text-[13px] font-semibold text-[var(--pp-ink-muted)]">
+            <div className="min-w-0">
+              <h3 id="disp-versao" className="text-base font-semibold text-foreground">Versão nº {selecionada.numero}</h3>
+              <p className="mt-0.5 text-sm text-muted-foreground">
                 {totais.sessoes} sessões/semana · criada por {selecionada.criado_por_nome ?? "—"} em {new Date(selecionada.criado_em).toLocaleDateString("pt-BR")}
                 {selecionada.origem === "preenchido_tita" && " · montada a partir da grade do TiTa"}
                 {selecionada.origem === "restaurada" && " · restaurada de versão anterior"}
@@ -243,26 +228,26 @@ export function AbaDisponibilidade({
               {selecionada.situacao === "encerrada" || selecionada.situacao === "substituida" ? (
                 <button type="button" disabled={preparando}
                   onClick={() => abrirEditor({ base: rascunhoDeVersao(selecionada), origem: "restaurada", restauradaDe: selecionada })}
-                  className={`${tom("aco")} pp-btn pp-btn-suave`}>
+                  className={btnSecundario}>
                   <RotateCcw className="h-4 w-4" aria-hidden /> Restaurar
                 </button>
               ) : (
                 <>
                   <button type="button" disabled={preparando}
                     onClick={() => abrirEditor({ base: rascunhoDeVersao(selecionada), origem: "manual", restauradaDe: null })}
-                    className={`${tom("teal")} pp-btn`}>
+                    className={btnPrimario}>
                     {preparando ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Pencil className="h-4 w-4" aria-hidden />} Editar
                   </button>
                   {selecionada.situacao === "agendada" && (
-                    <button type="button" disabled={antecipando} onClick={() => fazerValerHoje(selecionada)} className={`${tom("verde")} pp-btn pp-btn-suave`}>
+                    <button type="button" disabled={antecipando} onClick={() => fazerValerHoje(selecionada)} className={btnSecundario}>
                       {antecipando ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <FastForward className="h-4 w-4" aria-hidden />}
                       Valer a partir de hoje
                     </button>
                   )}
-                  <button type="button" onClick={() => setVigencia({ versao: selecionada, modo: "ajustar" })} className={`${tom("aco")} pp-btn pp-btn-suave`}>
+                  <button type="button" onClick={() => setVigencia({ versao: selecionada, modo: "ajustar" })} className={btnSecundario}>
                     <CalendarRange className="h-4 w-4" aria-hidden /> Vigência
                   </button>
-                  <button type="button" onClick={() => setVigencia({ versao: selecionada, modo: "encerrar" })} className={`${tom("vermelho")} pp-btn pp-btn-suave`}>
+                  <button type="button" onClick={() => setVigencia({ versao: selecionada, modo: "encerrar" })} className={btnPerigo}>
                     <CircleSlash className="h-4 w-4" aria-hidden /> Encerrar
                   </button>
                 </>
@@ -278,7 +263,7 @@ export function AbaDisponibilidade({
             />
           </div>
           <SemanaLeitura rascunho={rascunhoSel} corDaTerapia={corDaTerapia} nomeTerapia={nomeTerapia} />
-        </SecaoPastel>
+        </section>
       )}
 
       {dialogo}

@@ -3,7 +3,8 @@
 import { useRef, useState, type ReactNode } from "react"
 import toast from "react-hot-toast"
 import { Camera, ImagePlus, Loader2, PenLine, RefreshCw, Trash2 } from "lucide-react"
-import { CabecalhoPastel, SecaoPastel, avisoFeito, tom } from "@/components/ui/pastel/pecas"
+import { btnSecundario } from "@/components/cronograma/grade/estilo"
+import { Secao } from "@/components/cadastros/pacientes/ui/campos"
 import type { useConfirmacao } from "@/components/ui/pastel/confirmacao"
 import { useUrlAssinada } from "@/hooks/useUrlAssinada"
 import {
@@ -41,7 +42,7 @@ function useImagemProfissional(prof: Profissional, tipo: TipoArquivoProfissional
       }
       // A antiga só sai depois que a nova já está gravada.
       if (atual) void removerArquivoProfissional(atual)
-      avisoFeito(`${NOME[tipo]} ${atual ? "trocada" : "adicionada"}`)
+      toast.success(`${NOME[tipo]} ${atual ? "trocada" : "adicionada"}`)
     } catch (e) {
       toast.error(String((e as Error)?.message ?? e))
     } finally {
@@ -65,7 +66,7 @@ function useImagemProfissional(prof: Profissional, tipo: TipoArquivoProfissional
     try {
       if (await gravar({ [CAMPO[tipo]]: null })) {
         void removerArquivoProfissional(atual)
-        avisoFeito(`${NOME[tipo]} removida`)
+        toast.success(`${NOME[tipo]} removida`)
       }
     } finally {
       setEnviando(false)
@@ -96,7 +97,7 @@ export function TrocarFotoAvatar({
 }: { prof: Profissional; gravar: Gravar; confirmar: Confirmar; children: ReactNode }) {
   const f = useImagemProfissional(prof, "foto", gravar, confirmar)
   return (
-    <div className="relative shrink-0 self-start @2xl:self-auto">
+    <div className="relative shrink-0">
       {children}
       {f.enviando && (
         <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/45" role="status" aria-label="Enviando foto">
@@ -107,7 +108,7 @@ export function TrocarFotoAvatar({
         type="button"
         onClick={f.escolher}
         disabled={f.enviando}
-        className="pp-iconbtn absolute bottom-0.5 right-0.5 h-9 w-9 bg-[var(--pp-surface)] shadow-[var(--pp-sombra-alta),inset_0_0_0_1px_var(--pp-border)]"
+        className="absolute -bottom-1 -right-1 inline-flex h-8 w-8 items-center justify-center rounded-full border border-border bg-card text-foreground shadow-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         title={f.atual ? "Trocar foto de perfil" : "Adicionar foto de perfil"}
         aria-label={f.atual ? "Trocar foto de perfil" : "Adicionar foto de perfil"}
       >
@@ -126,41 +127,31 @@ export function SecaoImagens({ prof, gravar, confirmar }: { prof: Profissional; 
   const urlAssinatura = useUrlAssinada(assinatura.atual)
 
   return (
-    <SecaoPastel titulo="cad-imagens" className="@4xl:col-span-2">
-      <CabecalhoPastel
-        id="cad-imagens"
-        titulo="Foto e assinatura"
-        t="violeta"
-        Icone={PenLine}
-        tamanho="medio"
-        nivel="h3"
-        apoio="JPEG, PNG ou WebP até 5 MB. Gravadas na hora, sem precisar de Editar."
+    <Secao titulo="Foto e assinatura" descricao="JPEG, PNG ou WebP até 5 MB. Gravadas na hora, sem precisar de Editar.">
+      <Bloco
+        rotulo="Foto de perfil"
+        previa={
+          <span className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-full border border-border bg-muted text-muted-foreground">
+            {urlFoto ? <img src={urlFoto} alt={`Foto de ${prof.nome}`} className="h-full w-full object-cover" /> : <Camera className="h-8 w-8" aria-hidden />}
+          </span>
+        }
+        estado={foto}
+        rotuloAdicionar="Adicionar foto"
       />
-      <div className="grid gap-4 @2xl:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
-        <Bloco
-          rotulo="Foto de perfil"
-          previa={
-            <span className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-full bg-[var(--pp-muted)] text-[var(--pp-ink-muted)]">
-              {urlFoto ? <img src={urlFoto} alt={`Foto de ${prof.nome}`} className="h-full w-full object-cover" /> : <Camera className="h-8 w-8" aria-hidden />}
-            </span>
-          }
-          estado={foto}
-          rotuloAdicionar="Adicionar foto"
-        />
-        <Bloco
-          rotulo="Assinatura / carimbo"
-          previa={
-            <span className="flex h-24 w-full max-w-[22rem] items-center justify-center overflow-hidden rounded-[14px] bg-white shadow-[inset_0_0_0_1px_var(--pp-border)]">
-              {urlAssinatura
-                ? <img src={urlAssinatura} alt={`Assinatura/carimbo de ${prof.nome}`} className="h-full w-full object-contain p-2" />
-                : <PenLine className="h-8 w-8 text-slate-400" aria-hidden />}
-            </span>
-          }
-          estado={assinatura}
-          rotuloAdicionar="Adicionar foto da assinatura"
-        />
-      </div>
-    </SecaoPastel>
+      <Bloco
+        rotulo="Assinatura / carimbo"
+        previa={
+          // Fundo branco nos dois temas: a assinatura é tinta escura sobre papel.
+          <span className="flex h-24 w-full max-w-[22rem] items-center justify-center overflow-hidden rounded-md border border-border bg-white">
+            {urlAssinatura
+              ? <img src={urlAssinatura} alt={`Assinatura/carimbo de ${prof.nome}`} className="h-full w-full object-contain p-2" />
+              : <PenLine className="h-8 w-8 text-muted-foreground" aria-hidden />}
+          </span>
+        }
+        estado={assinatura}
+        rotuloAdicionar="Adicionar foto da assinatura"
+      />
+    </Secao>
   )
 }
 
@@ -173,23 +164,23 @@ function Bloco({
   rotuloAdicionar: string
 }) {
   return (
-    <div className="flex flex-col gap-3 rounded-[18px] bg-[var(--pp-muted)] p-4">
-      <p className="text-sm font-extrabold">{rotulo}</p>
+    <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
+      <p className="text-sm font-semibold text-foreground">{rotulo}</p>
       <div className="relative">
         {previa}
         {estado.enviando && (
           <span className="absolute inset-0 flex items-center justify-center" role="status" aria-label="Enviando">
-            <Loader2 className="h-6 w-6 animate-spin text-[var(--pp-ink-muted)]" aria-hidden />
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" aria-hidden />
           </span>
         )}
       </div>
       <div className="flex flex-wrap gap-2">
-        <button type="button" onClick={estado.escolher} disabled={estado.enviando} className={`${tom("violeta")} pp-btn pp-btn-suave !min-h-9 text-[13px]`}>
+        <button type="button" onClick={estado.escolher} disabled={estado.enviando} className={btnSecundario}>
           {estado.atual ? <RefreshCw className="h-4 w-4" aria-hidden /> : <ImagePlus className="h-4 w-4" aria-hidden />}
           {estado.atual ? "Trocar" : rotuloAdicionar}
         </button>
         {estado.atual && (
-          <button type="button" onClick={estado.remover} disabled={estado.enviando} className={`${tom("cinza")} pp-btn pp-btn-suave !min-h-9 text-[13px]`}>
+          <button type="button" onClick={estado.remover} disabled={estado.enviando} className={btnSecundario}>
             <Trash2 className="h-4 w-4" aria-hidden /> Remover
           </button>
         )}
