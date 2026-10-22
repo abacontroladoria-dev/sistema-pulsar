@@ -4,14 +4,12 @@ import {
   LayoutDashboard,
   PlusCircle,
   Activity,
-  FileText,
   ShieldCheck,
   ClipboardList,
   ClipboardPlus,
   ClipboardPenLine,
   ListChecks,
   Link2,
-  CalendarDays,
   UserRound,
   Building2,
   Star,
@@ -66,10 +64,12 @@ import { SidebarGroup } from "@/components/sidebar/SidebarGroup"
 import { ThemeSwitcher } from "@/components/sidebar/ThemeSwitcher"
 import { useTheme } from "@/contexts/ThemeContext"
 import { useImpersonation } from "@/contexts/ImpersonationContext"
+import { usePermissoesUsuario } from "@/contexts/PermissoesUsuarioContext"
 import { ImpersonationSelector } from "@/components/admin/ImpersonationSelector"
-import { podeAcessarRota, uniaoDosModelos } from "@/lib/permissions/resolver"
-import { carregarGruposDoUsuario, carregarPermissoesEfetivas, rotuloDosGrupos } from "@/lib/permissions/carregar"
-import { MENU_GRUPOS as GRUPO, MENU_ITENS, MENU_POR_CODIGO } from "@/lib/permissions/menu"
+import { SeletorArea } from "@/components/sidebar/SeletorArea"
+import { BuscaMestre } from "@/components/busca/BuscaMestre"
+import { useAreaDoMenu } from "@/hooks/useAreaDoMenu"
+import { MENU_ICONE_GRUPO, MENU_ITENS, MENU_ORDEM_GRUPOS, MENU_POR_CODIGO } from "@/lib/permissions/menu"
 
 type Favorito = { label: string; path: string }
 
@@ -142,10 +142,12 @@ export default function Sidebar() {
   const searchParams = useSearchParams()
   const supabase = getSupabaseClient()
   const { theme } = useTheme()
-  const { isImpersonating, impersonatedTarget, canImpersonate } = useImpersonation()
+  const { isImpersonating, canImpersonate } = useImpersonation()
+  // Quem é e o que pode abrir (inclusive no "Visualizar como"): a mesma resposta
+  // que o seletor de área e a busca mestre usam.
+  const { role, gruposRotulo, canAccess } = usePermissoesUsuario()
+  const { area, areas, escolher: escolherArea } = useAreaDoMenu()
   const [loadingLogout, setLoadingLogout] = useState(false)
-  const [role, setRole] = useState<string | null>(null)
-  const [loadingRole, setLoadingRole] = useState(true)
   const [nome, setNome] = useState("Usuário")
   const [open, setOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -163,13 +165,6 @@ export default function Sidebar() {
   const [modalSenha, setModalSenha] = useState(false)
   const [modalErros, setModalErros] = useState(false)
   const [favoritos, setFavoritos] = useState<Favorito[]>([])
-  // Guarda os CÓDIGOS, não as rotas já convertidas: `podeAcessarRota` (a mesma do
-  // proxy.ts) faz a conversão por dentro, e é o que mantém menu e navegação com
-  // uma implementação só.
-  const [codigos, setCodigos] = useState<Set<string>>(new Set())
-  // Os grupos de permissão mostrados no rodapé, embaixo do nome — no lugar do
-  // nível técnico (`role`), que é só do banco. `null`: rótulo vazio.
-  const [gruposRotulo, setGruposRotulo] = useState<string | null>(null)
 
   useEffect(() => {
     try {
@@ -207,93 +202,6 @@ export default function Sidebar() {
     await supabase.auth.signOut()
     router.replace("/login")
   }
-
-  function canAccess(path: string) {
-    if (!role) return false
-    // `podeAcessarRota` é a MESMA função do proxy.ts, o gate real da navegação —
-    // inclusive o "admin acessa tudo". Enquanto eram duas implementações, o admin
-    // abria /autorizacoes-avulsas pelo link e não via o item no menu.
-    const [barePath, query] = path.split("?")
-    return podeAcessarRota(role, codigos, barePath, query ? `?${query}` : "")
-  }
-
-  useEffect(() => {
-    let isMounted = true
-
-    async function loadRole() {
-      let targetId: string | undefined
-      let targetGrupoId: string | undefined
-      let targetRole: string | null
-
-      if (isImpersonating && impersonatedTarget) {
-        targetId = impersonatedTarget.id
-        targetGrupoId = impersonatedTarget.grupoId
-        targetRole = impersonatedTarget.role
-      } else {
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) {
-          if (isMounted) setLoadingRole(false)
-          return
-        }
-        targetId = user.id
-        const { data } = await supabase
-          .from("usuarios")
-          .select("role")
-          .eq("id", user.id)
-          .single()
-        targetRole = data?.role || null
-      }
-
-      if (!isMounted) return
-
-      setRole(targetRole)
-
-      if (!targetRole) {
-        setCodigos(new Set())
-        setLoadingRole(false)
-        return
-      }
-
-      // Telas efetivas pelo banco (grupos ao vivo + ajustes individuais) — o
-      // mesmo carregador do proxy.ts e das rotas de API. "Visualizar como grupo"
-      // mostra o modelo daquele grupo sozinho, sem pessoa por trás.
-      let resolvidos = new Set<string>()
-      let rotulo: string | null = null
-      try {
-        if (targetGrupoId) {
-          const { data } = await supabase
-            .from("grupos_permissoes")
-            .select("nome, modelo_permissoes")
-            .eq("id", targetGrupoId)
-            .maybeSingle()
-          resolvidos = uniaoDosModelos([(data?.modelo_permissoes as Record<string, boolean>) ?? {}])
-          rotulo = (data?.nome as string | undefined) ?? null
-        } else {
-          const alvo = isImpersonating ? targetId : undefined
-          const [c, g] = await Promise.all([
-            carregarPermissoesEfetivas(supabase, alvo),
-            carregarGruposDoUsuario(supabase, alvo),
-          ])
-          resolvidos = c
-          rotulo = rotuloDosGrupos(g)
-        }
-      } catch (error) {
-        console.error("Erro ao carregar permissões do usuário:", error)
-      }
-
-      if (isMounted) {
-        setCodigos(resolvidos)
-        setGruposRotulo(rotulo)
-        setLoadingRole(false)
-      }
-    }
-
-    loadRole()
-
-    return () => {
-      isMounted = false
-    }
-  }, [isImpersonating, impersonatedTarget, supabase])
 
   useEffect(() => {
     async function checkUser() {
@@ -492,6 +400,17 @@ export default function Sidebar() {
 
   const isDark = theme === 'dark'
 
+  // O grupo abre sozinho quando a tela aberta é dele — ou uma subpágina dela,
+  // como /cadastros/pacientes/123 —, sem olhar a aba.
+  const naRota = (path: string) => {
+    const base = path.split("?")[0]
+    return pathname === base || pathname.startsWith(base + "/")
+  }
+  const gruposDaArea = MENU_ORDEM_GRUPOS
+    .map(nome => ({ nome, itens: MENU_ITENS.filter(i => i.area === area && i.grupo === nome && canAccess(i.path)) }))
+    .filter(g => g.itens.length > 0)
+    .map(g => ({ ...g, aberto: g.itens.some(i => naRota(i.path)) }))
+
   // Chat da equipe: conversas (todo usuário logado — sem código de permissão
   // desde 16/10/2026) e menções em notas internas do Connect (só para quem tem
   // o Connect: a rota delas responde 401 a quem não tem papel na Central).
@@ -549,6 +468,14 @@ export default function Sidebar() {
           </div>
         )}
 
+        {/* ÁREA + BUSCA MESTRE — o seletor troca o que o menu abaixo lista
+            (Operacional · Financeiro · Relatórios · Pulsar Connect); a busca
+            abre também com Ctrl+K, de qualquer tela. */}
+        <div className="px-3 py-3 border-b border-sidebar-border space-y-2">
+          <SeletorArea area={area} areas={areas} onEscolher={escolherArea} />
+          <BuscaMestre />
+        </div>
+
         {/* MENU */}
         <nav className="flex-1 px-3 py-3 overflow-y-auto space-y-0.5">
 
@@ -600,285 +527,16 @@ export default function Sidebar() {
 
           <hr className="my-2 border-sidebar-border" />
 
-          {/* Pacientes */}
-          {(canAccess("/solicitar") || canAccess("/autorizacoes-avulsas") || canAccess("/central-pacientes") ||
-            canAccess("/acompanhamento/laudos") || canAccess("/acompanhamento/contratos") || canAccess("/outros-convenios")) && (
-            <SidebarGroup
-              title={GRUPO.pacientes.nome}
-              icon={GRUPO.pacientes.icon}
-              defaultOpen={["/solicitar", "/autorizacoes-avulsas", "/central-pacientes", "/acompanhamento/laudos", "/acompanhamento/contratos", "/outros-convenios"].some(p => pathname === p)}
-            >
-              {canAccess("/solicitar") && (
-                <Item codigo="atendimentos" />
-              )}
-              {canAccess("/central-pacientes") && (
-                <Item codigo="gestao" />
-              )}
-              {canAccess("/autorizacoes-avulsas") && (
-                <Item codigo="autorizacoes_avulsas" />
-              )}
-              {/* Fila de laudos vencidos + registro do aviso ao responsável.
-                  Neste grupo, e não em Autorização (ao lado da Reconciliação) nem
-                  em Cadastros: quem trabalha aqui é a recepção, e o grupo
-                  Pacientes é onde as outras telas dela já estão. Decisão do
-                  usuário em 28/08/2026. */}
-              {canAccess("/acompanhamento/laudos") && (
-                <Item codigo="acompanhamento_laudos" />
-              )}
-              {/* Contratos do paciente: assinatura e vigência, no mesmo molde
-                  da Status Laudos e Senhas. Só leitura — criar e assinar é na
-                  aba Contratos da ficha do paciente. */}
-              {canAccess("/acompanhamento/contratos") && (
-                <Item codigo="status_contratos" />
-              )}
-              {/* A tela existia sem item no menu (só abria pela URL). Entrou em
-                  29/09/2026, quando o catálogo de permissões passou a espelhar
-                  o Sidebar — decisão do usuário. */}
-              {canAccess("/outros-convenios") && (
-                <Item codigo="outros_convenios" />
-              )}
+          {/* Telas da área escolhida no seletor, na ordem de grupos e de itens de
+              lib/permissions/menu.ts (antes cada grupo era escrito à mão aqui).
+              Cada item só aparece para quem pode abrir a rota; o grupo, só com
+              pelo menos um item. O Pulsar Connect saiu do rodapé: é uma área do
+              seletor. */}
+          {gruposDaArea.map(g => (
+            <SidebarGroup key={`${area}:${g.nome}`} title={g.nome} icon={MENU_ICONE_GRUPO[g.nome]} defaultOpen={g.aberto}>
+              {g.itens.map(i => <Item key={i.codigo} codigo={i.codigo} />)}
             </SidebarGroup>
-          )}
-
-          {/* Terapêutico */}
-          {(canAccess("/central-terapeutas") || canAccess("/analise-tratativas") || canAccess("/terapeutico/auditoria-evolucoes") || canAccess("/terapeutico/prazos-pdi") || canAccess("/terapeutico/pdi-painel-analista")) && (
-            <SidebarGroup
-              title={GRUPO.terapeutico.nome}
-              icon={GRUPO.terapeutico.icon}
-              defaultOpen={["/central-terapeutas", "/analise-tratativas", "/terapeutico/auditoria-evolucoes", "/terapeutico/prazos-pdi", "/terapeutico/pdi-painel-analista"].some(p => pathname === p)}
-            >
-              {canAccess("/central-terapeutas") && (
-                <Item codigo="escala_terapeutica" />
-              )}
-              {canAccess("/analise-tratativas") && (
-                <Item codigo="analise_tratativas" />
-              )}
-              {canAccess("/terapeutico/auditoria-evolucoes") && (
-                <Item codigo="terapeutico_auditoria_evolucoes" />
-              )}
-              {canAccess("/terapeutico/prazos-pdi") && (
-                <Item codigo="terapeutico_pdi" />
-              )}
-              {canAccess("/terapeutico/pdi-painel-analista") && (
-                <Item codigo="terapeutico_pdi_painel" />
-              )}
-            </SidebarGroup>
-          )}
-
-          {/* Autorização */}
-          {(canAccess("/auditoria-assim?tab=auditoria") || canAccess("/auditoria-assim?tab=reconciliacao") || canAccess("/conferencia-guias") || canAccess("/exportar-evolucoes")) && (
-            <SidebarGroup
-              title={GRUPO.autorizacao.nome}
-              icon={GRUPO.autorizacao.icon}
-              defaultOpen={["/auditoria-assim", "/conferencia-guias", "/exportar-evolucoes"].some(p => pathname === p)}
-            >
-              {/* Duas abas da mesma rota, cada uma com código próprio desde
-                  29/09/2026 (auditoria_assim / reconciliacao_assim). Quem pode
-                  VINCULAR na Reconciliação continua decidido pelas RPCs
-                  (admin/autorizacao/recepcao), não aqui — diretoria consulta sem
-                  escrever. */}
-              {canAccess("/auditoria-assim?tab=auditoria") && (
-                <Item codigo="auditoria_assim" />
-              )}
-              {canAccess("/auditoria-assim?tab=reconciliacao") && (
-                <Item codigo="reconciliacao_assim" />
-              )}
-              {canAccess("/conferencia-guias") && (
-                <Item codigo="conferencia_guias" />
-              )}
-              {canAccess("/exportar-evolucoes") && (
-                <Item codigo="exportar_evolucoes" />
-              )}
-            </SidebarGroup>
-          )}
-
-          {/* Insumos — controle de compras (porte do AXIUM). Grupo próprio, e não
-              dentro de Faturamento: aquele grupo é faturamento de convênio
-              (ASSIM), este é compra de insumo. Vai crescer com Estoque. */}
-          {canAccess("/insumos") && (
-            <SidebarGroup title={GRUPO.suprimentos.nome} icon={GRUPO.suprimentos.icon} defaultOpen={pathname === "/insumos"}>
-              <Item codigo="insumos" />
-            </SidebarGroup>
-          )}
-
-          {/* Cronograma */}
-          {(canAccess("/cronograma/grade") ||
-            canAccess("/cronograma/saida-profissional") || canAccess("/cronograma/ocupacao-paciente") ||
-            canAccess("/cronograma/ocupacao?tab=oportunidades-recusadas") || canAccess("/cronograma/ocupacao?tab=gaps") ||
-            canAccess("/cronograma/ocupacao?tab=inconsistencias") ||
-            canAccess("/cronograma/reposicao")) && (
-            <SidebarGroup
-              title={GRUPO.cronograma.nome}
-              icon={GRUPO.cronograma.icon}
-              defaultOpen={[
-                "/cronograma/grade",
-                "/cronograma/saida-profissional",
-                "/cronograma/ocupacao-paciente",
-                "/cronograma/reposicao",
-              ].includes(pathname) || pathname === "/cronograma/ocupacao"}
-            >
-              {canAccess("/cronograma/grade") && <Item codigo="cronograma_grade" />}
-              {canAccess("/cronograma/saida-profissional") && <Item codigo="cronograma_saida_profissional" />}
-              {canAccess("/cronograma/ocupacao-paciente") && <Item codigo="cronograma_ocupacao_paciente" />}
-              {canAccess("/cronograma/reposicao") && <Item codigo="reposicao_faltas" />}
-              {canAccess("/cronograma/ocupacao?tab=oportunidades-recusadas") && <Item codigo="ocupacao_clinica" />}
-              {canAccess("/cronograma/ocupacao?tab=gaps") && <Item codigo="ocupacao_clinica_gaps" />}
-              {canAccess("/cronograma/ocupacao?tab=inconsistencias") && <Item codigo="ocupacao_clinica_inconsistencias" />}
-            </SidebarGroup>
-          )}
-
-          {/* Indicadores — uma permissão por aba, não uma pra rota inteira */}
-          {(canAccess("/cronograma/indicadores?tab=profissionais") ||
-            canAccess("/cronograma/indicadores?tab=unidades") ||
-            canAccess("/cronograma/indicadores?tab=pacientes") ||
-            canAccess("/cronograma/indicadores?tab=previsao-receitas") ||
-            canAccess("/cronograma/indicadores?tab=alimentar-bd") ||
-            canAccess("/cronograma/indicadores?tab=comparativo-sessoes") ||
-            canAccess("/cronograma/indicadores?tab=entrada-convenio")) && (
-            <SidebarGroup title={GRUPO.indicadores.nome} icon={GRUPO.indicadores.icon} defaultOpen={pathname === "/cronograma/indicadores"}>
-              {canAccess("/cronograma/indicadores?tab=profissionais") && (
-                <Item codigo="ocupacao_profissionais" />
-              )}
-              {canAccess("/cronograma/indicadores?tab=unidades") && (
-                <Item codigo="indicadores_ocupacao_unidades" />
-              )}
-              {canAccess("/cronograma/indicadores?tab=pacientes") && (
-                <Item codigo="indicadores_pacientes" />
-              )}
-              {canAccess("/cronograma/indicadores?tab=previsao-receitas") && (
-                <Item codigo="indicadores_previsao_receitas" />
-              )}
-              {canAccess("/cronograma/indicadores?tab=alimentar-bd") && (
-                <Item codigo="indicadores_alimentar_bd" />
-              )}
-              {canAccess("/cronograma/indicadores?tab=comparativo-sessoes") && (
-                <Item codigo="indicadores_comparativo_sessoes" />
-              )}
-              {canAccess("/cronograma/indicadores?tab=entrada-convenio") && (
-                <Item codigo="indicadores_entrada_convenio" />
-              )}
-            </SidebarGroup>
-          )}
-
-          {/* Cadastros */}
-          {(canAccess("/cadastros/cadastro-valores") || canAccess("/cadastros/feriados") ||
-            canAccess("/cadastros/contratos") || canAccess("/cadastros/taxas-e-parametros") ||
-            canAccess("/cadastros/pacientes") || canAccess("/cadastros/convenios") ||
-            canAccess("/cadastros/terapias") || canAccess("/cadastros/profissionais")) && (
-            <SidebarGroup
-              title={GRUPO.cadastros.nome}
-              icon={GRUPO.cadastros.icon}
-              defaultOpen={pathname.startsWith("/cadastros")}
-            >
-              {canAccess("/cadastros/pacientes") && <Item codigo="cadastros_pacientes" />}
-              {canAccess("/cadastros/profissionais") && <Item codigo="cadastros_profissionais" />}
-              {canAccess("/cadastros/terapias") && <Item codigo="cadastros_terapias" />}
-              {canAccess("/cadastros/convenios") && <Item codigo="cadastros_convenios" />}
-              {canAccess("/cadastros/cadastro-valores") && <Item codigo="cronograma_valores_convenio" />}
-              {canAccess("/cadastros/feriados") && <Item codigo="cadastros_feriados" />}
-              {canAccess("/cadastros/taxas-e-parametros") && <Item codigo="cadastros_taxas" />}
-              {canAccess("/cadastros/contratos") && <Item codigo="cadastros_contratos" />}
-            </SidebarGroup>
-          )}
-
-          {/* Relacionamento Prestador */}
-          {(canAccess("/relacionamento-prestador/analise") || canAccess("/relacionamento-prestador/rp") ||
-            canAccess("/relacionamento-prestador/individual") || canAccess("/relacionamento-prestador/pep") ||
-            canAccess("/relacionamento-prestador/pep-historico") ||
-            canAccess("/relacionamento-prestador/auditoria-documentos") ||
-            canAccess("/relacionamento-prestador/ocupacao-salas") ||
-            canAccess("/relacionamento-prestador/solicitacoes") ||
-            canAccess("/relacionamento-prestador/ocupar-profissionais-disponiveis")) && (
-            <SidebarGroup
-              title={GRUPO.relacionamentoPrestador.nome}
-              icon={GRUPO.relacionamentoPrestador.icon}
-              defaultOpen={pathname.startsWith("/relacionamento-prestador")}
-            >
-              {canAccess("/relacionamento-prestador/ocupacao-salas") && (
-                <Item codigo="cronograma_ocupacao_salas" />
-              )}
-              {canAccess("/relacionamento-prestador/solicitacoes") && (
-                <Item codigo="cronograma_solicitacoes" />
-              )}
-              {canAccess("/relacionamento-prestador/ocupar-profissionais-disponiveis") && (
-                <Item codigo="cronograma_disponibilidade_interna" />
-              )}
-              {canAccess("/relacionamento-prestador/analise") && (
-                <Item codigo="relacionamento_prestador_analise" />
-              )}
-              {canAccess("/relacionamento-prestador/rp") && (
-                <Item codigo="relacionamento_prestador_rp" />
-              )}
-              {canAccess("/relacionamento-prestador/individual") && (
-                <Item codigo="relacionamento_prestador_individual" />
-              )}
-              {canAccess("/relacionamento-prestador/pep") && (
-                <Item codigo="relacionamento_prestador_pep" />
-              )}
-              {canAccess("/relacionamento-prestador/pep-historico") && (
-                <Item codigo="relacionamento_prestador_pep_historico" />
-              )}
-              {canAccess("/relacionamento-prestador/auditoria-documentos") && (
-                <Item codigo="relacionamento_prestador_auditoria_documentos" />
-              )}
-            </SidebarGroup>
-          )}
-
-          {/* Marketing */}
-          {/* Grupo PRÓPRIO, e não um item dentro de Administração (onde nasceu):
-              quem opera isto é o marketing, que não administra o sistema — o
-              único vizinho ali seriam Usuários e Permissões, telas que este setor
-              nunca vai abrir. E o rótulo do item diz o LUGAR ("TV da Recepção"),
-              não o meio: a única dúvida de quem prepara um cartaz é onde ele vai
-              aparecer. */}
-          {canAccess("/tv-avisos") && (
-            <SidebarGroup
-              title={GRUPO.marketing.nome}
-              icon={GRUPO.marketing.icon}
-              defaultOpen={pathname === "/tv-avisos"}
-            >
-              <Item codigo="tv_avisos" />
-            </SidebarGroup>
-          )}
-
-          {/* Administração */}
-          {/* "Usuários" é condicional, e não incondicional como já foi: sem isso
-              apareceria para quem não tem /admin. O grupo aparece com qualquer
-              um dos três — cada item tem código próprio, e quem só tem a API
-              não pode ficar sem caminho até ela. */}
-          {(canAccess("/admin") || canAccess("/admin/permissoes") || canAccess("/admin/api") || canAccess("/admin/robo-sharepoint") || canAccess("/admin/carregar-tita")) && (
-            <SidebarGroup
-              title={GRUPO.administracao.nome}
-              icon={GRUPO.administracao.icon}
-              defaultOpen={["/admin", "/admin/permissoes", "/admin/api", "/admin/robo-sharepoint", "/admin/carregar-tita"].some(p => pathname === p)}
-            >
-              {canAccess("/admin") && (
-                <Item codigo="usuarios" />
-              )}
-              {canAccess("/admin/permissoes") && (
-                <Item codigo="permissoes" />
-              )}
-              {canAccess("/admin/api") && (
-                <Item codigo="api_integracao" />
-              )}
-              {canAccess("/admin/robo-sharepoint") && (
-                <Item codigo="robo_sharepoint" />
-              )}
-              {canAccess("/admin/carregar-tita") && (
-                <Item codigo="carregar_tita" />
-              )}
-            </SidebarGroup>
-          )}
-
-          {/* Pulsar Connect — o proxy só libera /connect para admin ou para quem
-              recebeu a permissão `connect`. Antes o item aparecia para todos e
-              levava a /sem-permissao. */}
-          {canAccess("/connect") && (
-            <>
-              <hr className="my-2 border-sidebar-border" />
-              <Item codigo="connect" />
-            </>
-          )}
+          ))}
 
         </nav>
 

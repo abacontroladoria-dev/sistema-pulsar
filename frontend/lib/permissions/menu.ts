@@ -6,6 +6,9 @@ import {
   Bot,
   CloudDownload,
   BriefcaseBusiness,
+  DollarSign,
+  FileChartColumn,
+  LayoutGrid,
   Building2,
   Calendar,
   CalendarClock,
@@ -84,6 +87,79 @@ export const MENU_GRUPOS = {
   administracao: { nome: 'Administração', icon: ShieldCheck },
 } satisfies Record<string, MenuGrupoDef>
 
+// Áreas do seletor acima do menu. Cada tela fica numa área só, e o Sidebar mostra
+// apenas as telas da área escolhida. É agrupamento visual: o `grupo` (que a tela
+// de Permissões e o catálogo do banco usam) não muda, e a área não tem migration.
+export type AreaId = 'operacional' | 'financeiro' | 'relatorios' | 'connect'
+
+export type MenuAreaDef = { id: AreaId; nome: string; icon: LucideIcon }
+
+export const MENU_AREAS: MenuAreaDef[] = [
+  { id: 'operacional', nome: 'Operacional', icon: LayoutGrid },
+  { id: 'financeiro', nome: 'Financeiro', icon: DollarSign },
+  { id: 'relatorios', nome: 'Relatórios', icon: FileChartColumn },
+  { id: 'connect', nome: 'Pulsar Connect', icon: Zap },
+]
+
+export const MENU_AREA_POR_ID: Record<AreaId, MenuAreaDef> = Object.fromEntries(
+  MENU_AREAS.map((a) => [a.id, a])
+) as Record<AreaId, MenuAreaDef>
+
+// Só as telas que NÃO são Operacional (decisão do usuário em 22/10/2026).
+// Relatórios = telas de visualização e exportação, que não geram trabalho
+// operacional. "Preencher Receitas Faturadas" fica em Operacional porque é
+// digitação; as listas de Ocupação (recusadas, gaps, inconsistências) também,
+// porque são fila de trabalho. `null`: aparece em todas as áreas.
+const AREA_DO_ITEM: Record<string, AreaId | null> = {
+  dashboard: null,
+  insumos: 'financeiro',
+  ocupacao_profissionais: 'relatorios',
+  indicadores_ocupacao_unidades: 'relatorios',
+  indicadores_pacientes: 'relatorios',
+  indicadores_previsao_receitas: 'relatorios',
+  indicadores_comparativo_sessoes: 'relatorios',
+  indicadores_entrada_convenio: 'relatorios',
+  relacionamento_prestador_analise: 'relatorios',
+  relacionamento_prestador_rp: 'relatorios',
+  relacionamento_prestador_individual: 'relatorios',
+  relacionamento_prestador_pep_historico: 'relatorios',
+  exportar_evolucoes: 'relatorios',
+  connect: 'connect',
+}
+
+// Outros nomes por que as pessoas procuram a tela na busca mestre.
+const PALAVRAS_CHAVE: Record<string, string> = {
+  atendimentos: 'solicitar guia autorização',
+  gestao: 'recepção',
+  acompanhamento_laudos: 'laudo senha',
+  status_contratos: 'assinatura',
+  escala_terapeutica: 'escala terapeutas',
+  analise_tratativas: 'tratativas',
+  terapeutico_pdi: 'prazo',
+  conferencia_guias: 'guia',
+  insumos: 'insumos compra estoque',
+  cronograma_grade: 'cronograma agenda horário',
+  cronograma_saida_profissional: 'desligamento',
+  cronograma_ocupacao_paciente: 'implantação horário',
+  reposicao_faltas: 'falta faltas',
+  ocupacao_clinica: 'recusa',
+  ocupacao_clinica_gaps: 'gaps',
+  indicadores_previsao_receitas: 'faturamento receita',
+  indicadores_alimentar_bd: 'faturamento receita',
+  cadastros_pacientes: 'ficha',
+  cadastros_profissionais: 'prestador terapeuta',
+  cadastros_convenios: 'plano de saúde',
+  cronograma_valores_convenio: 'preço valor',
+  cadastros_taxas: 'imposto',
+  cronograma_ocupacao_salas: 'sala',
+  relacionamento_prestador_analise: 'remuneração',
+  tv_avisos: 'avisos',
+  permissoes: 'acesso',
+  api_integracao: 'integração',
+  carregar_tita: 'importar',
+  exportar_evolucoes: 'pdf exportação',
+}
+
 export type MenuItemDef = {
   codigo: string
   label: string
@@ -91,13 +167,33 @@ export type MenuItemDef = {
   /** O href do item no Sidebar (pode trazer ?tab=). */
   path: string
   icon: LucideIcon
+  /** Área do seletor; `null` = aparece em todas (Dashboard). */
+  area: AreaId | null
+  /** Outros nomes da tela, para a busca mestre. */
+  palavrasChave?: string
 }
+
+type MenuItemBase = Omit<MenuItemDef, 'area' | 'palavrasChave'>
 
 const G = MENU_GRUPOS
 
-// Na ordem em que o Sidebar lista. Dashboard e Pulsar Connect ficam soltos no
-// menu (topo e rodapé) e aparecem juntos em "Geral" na tela de Permissões.
-export const MENU_ITENS: MenuItemDef[] = [
+// Na ordem em que o Sidebar lista. O Dashboard fica solto no topo do menu e o
+// Pulsar Connect é uma área do seletor; os dois aparecem juntos em "Geral" na
+// tela de Permissões.
+//
+// Decisões de agrupamento que vinham comentadas no Sidebar:
+// - Status Laudos e Senhas em Pacientes (e não em Autorização ou Cadastros): quem
+//   trabalha nela é a recepção, e as outras telas dela estão em Pacientes (28/08/2026).
+// - Status Contratos: só leitura; criar e assinar é na aba Contratos da ficha.
+// - Outros Convênios existia sem item no menu; entrou em 29/09/2026.
+// - Conferência e Reconciliação ASSIM: duas abas da mesma rota, cada uma com código
+//   próprio desde 29/09/2026. Quem pode VINCULAR continua decidido pelas RPCs.
+// - Suprimentos é grupo próprio, não Faturamento: é compra de insumo, não
+//   faturamento de convênio. Vai crescer com Estoque.
+// - Marketing é grupo próprio, não um item de Administração: quem opera a TV não
+//   administra o sistema. O rótulo diz o LUGAR ("TV da Recepção"), não o meio.
+// - Indicadores: uma permissão por aba, não uma para a rota inteira.
+const MENU_ITENS_BASE: MenuItemBase[] = [
   { codigo: 'dashboard', label: 'Dashboard', grupo: G.geral.nome, path: '/', icon: LayoutDashboard },
 
   { codigo: 'atendimentos', label: 'Atendimentos', grupo: G.pacientes.nome, path: '/solicitar', icon: PlusCircle },
@@ -165,6 +261,12 @@ export const MENU_ITENS: MenuItemDef[] = [
 
   { codigo: 'connect', label: 'Pulsar Connect', grupo: G.geral.nome, path: '/connect', icon: Zap },
 ]
+
+export const MENU_ITENS: MenuItemDef[] = MENU_ITENS_BASE.map((item) => ({
+  ...item,
+  area: item.codigo in AREA_DO_ITEM ? AREA_DO_ITEM[item.codigo] : 'operacional',
+  palavrasChave: PALAVRAS_CHAVE[item.codigo],
+}))
 
 export const MENU_POR_CODIGO: Record<string, MenuItemDef> = Object.fromEntries(
   MENU_ITENS.map((item) => [item.codigo, item])

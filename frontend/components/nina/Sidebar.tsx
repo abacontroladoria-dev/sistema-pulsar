@@ -2,7 +2,11 @@
 
 import React, { useState } from 'react'
 import { MessageSquare, MessagesSquare, Users, LayoutDashboard, Kanban, Calendar, Settings as SettingsIcon, LogOut, ArrowLeft, ChevronLeft, Inbox as InboxIcon } from 'lucide-react'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
+import { SeletorArea } from '@/components/sidebar/SeletorArea'
+import { BuscaMestre } from '@/components/busca/BuscaMestre'
+import { guardarArea, useAreasVisiveis } from '@/hooks/useAreaDoMenu'
+import type { AreaId } from '@/lib/permissions/menu'
 import { useAuth } from '@/hooks/nina/useAuth'
 import { useUsuarioAtual } from '@/hooks/useUsuarioAtual'
 import { useChatEquipe, useContadoresChatEquipe } from '@/contexts/ChatEquipeContext'
@@ -62,6 +66,15 @@ const SidebarContent = ({ collapsed }: { collapsed: boolean }) => {
   const chat = useChatEquipe()
   const pathname = usePathname()
   const currentPath = pathname.replace('/connect/', '')
+  const router = useRouter()
+  const areas = useAreasVisiveis()
+
+  // Outra área no seletor: volta ao Pulsar com o menu já nela.
+  const escolherArea = (id: AreaId) => {
+    if (id === 'connect') return
+    guardarArea(id)
+    router.push('/')
+  }
 
   const handleLogout = async () => {
     try {
@@ -77,6 +90,13 @@ const SidebarContent = ({ collapsed }: { collapsed: boolean }) => {
 
   return (
     <>
+      {/* Área + busca mestre — os mesmos do sidebar do Pulsar, para quem passa
+          de um lado ao outro achar no mesmo lugar. */}
+      <div className={`flex flex-col gap-2 px-2 ${collapsed ? 'items-center' : ''}`}>
+        <SeletorArea area="connect" areas={areas} onEscolher={escolherArea} compacto={collapsed} />
+        <BuscaMestre compacto={collapsed} />
+      </div>
+
       {/* Nav items */}
       <div className="flex flex-col flex-1 overflow-y-auto overflow-x-hidden px-2">
         <nav className="flex flex-col gap-0.5">

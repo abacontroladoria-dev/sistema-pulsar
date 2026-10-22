@@ -31,6 +31,16 @@ export function TerapiasCadastro() {
   const [filtroTipo, setFiltroTipo] = useState<FiltroTipo>("todos")
   const [modal, setModal] = useState<{ terapia?: CadastroTerapia } | null>(null)
   const [situacao, setSituacao] = useState<FiltroSituacao>("ativas")
+  // ?busca=Nome — vindo da busca mestre: a lista já abre filtrada na terapia, em
+  // "Todas" (a busca mestre também acha inativa). Lido do window, e não de
+  // useSearchParams, para a página não precisar de Suspense.
+  useEffect(() => {
+    const inicial = new URLSearchParams(window.location.search).get("busca")
+    if (!inicial) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- lê a URL só após hidratar
+    setBusca(inicial)
+    setSituacao("todas")
+  }, [])
   const [verHistorico, setVerHistorico] = useState(false)
   const [ordem, setOrdem] = useState<Ordem>("nome")
   useEffect(() => {

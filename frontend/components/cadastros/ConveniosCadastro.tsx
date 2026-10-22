@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import toast from "react-hot-toast"
 import { Building2, ChevronDown, ChevronRight, History, Loader2, Pencil, Plus, RotateCcw, Trash2 } from "lucide-react"
 import { HistoricoCadastrosModal } from "@/components/cadastros/historico/HistoricoCadastrosModal"
@@ -27,6 +27,26 @@ export function ConveniosCadastro() {
   const [modalConvenio, setModalConvenio] = useState<{ convenio?: Convenio } | null>(null)
   const [modalPlano, setModalPlano] = useState<{ convenio: Convenio; plano?: PlanoSaude } | null>(null)
   const [verHistorico, setVerHistorico] = useState(false)
+  // ?convenio=ID — vindo da busca mestre: abre o convênio, rola até ele e o
+  // contorna por alguns segundos. Lido do window, e não de useSearchParams, para
+  // a página não precisar de Suspense.
+  const [destacadoId, setDestacadoId] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (loading) return
+    const id = Number(new URLSearchParams(window.location.search).get("convenio"))
+    const alvo = convenios.find(c => c.id === id)
+    if (!alvo) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- lê a URL só depois de a lista carregar
+    if (!alvo.ativo) setInativosAbertos(true)
+    setExpandedIds(prev => new Set(prev).add(alvo.id))
+    setDestacadoId(alvo.id)
+    requestAnimationFrame(() =>
+      document.getElementById(`convenio-${alvo.id}`)?.scrollIntoView({ block: "center", behavior: "smooth" })
+    )
+    const t = setTimeout(() => setDestacadoId(null), 4000)
+    return () => clearTimeout(t)
+  }, [loading, convenios])
 
   const toggleExpand = (id: number) => {
     setExpandedIds(prev => {
@@ -150,7 +170,7 @@ export function ConveniosCadastro() {
             {ativos.map(c => {
               const expandido = expandedIds.has(c.id)
               return (
-                <div key={c.id} className="rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+                <div key={c.id} id={`convenio-${c.id}`} className={`rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden transition-shadow ${destacadoId === c.id ? "ring-2 ring-sidebar-primary" : ""}`}>
                   <div className="flex items-center justify-between p-3 hover:bg-slate-50 dark:hover:bg-slate-800/50">
                     <button
                       type="button"
@@ -288,7 +308,7 @@ export function ConveniosCadastro() {
               {inativos.map(c => {
                 const expandido = expandedIds.has(c.id)
                 return (
-                  <div key={c.id} className="rounded-xl border border-amber-500/25 bg-white dark:bg-slate-900 overflow-hidden">
+                  <div key={c.id} id={`convenio-${c.id}`} className={`rounded-xl border border-amber-500/25 bg-white dark:bg-slate-900 overflow-hidden transition-shadow ${destacadoId === c.id ? "ring-2 ring-sidebar-primary" : ""}`}>
                     <div className="flex items-center justify-between p-3 hover:bg-slate-50 dark:hover:bg-slate-800/50">
                       <button
                         type="button"
