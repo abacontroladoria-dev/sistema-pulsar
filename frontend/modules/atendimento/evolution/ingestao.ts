@@ -46,9 +46,11 @@ export async function processarEventoEvolution(
 ): Promise<void> {
   switch (evento.tipo) {
     case 'mensagem':
-      return processarMensagem(supabase, canal, evento)
+      await processarMensagem(supabase, canal, evento)
+      return confirmarConexaoPeloTrafego(supabase, canal)
     case 'status':
-      return processarStatus(canal, evento)
+      await processarStatus(canal, evento)
+      return confirmarConexaoPeloTrafego(supabase, canal)
     case 'conexao':
       return processarConexao(supabase, canal, evento.estado)
     case 'ignorado':
@@ -231,6 +233,41 @@ export async function processarConexao(
     .update({ status })
     .eq('id', canal.channel_id)
   if (e2) throw e2
+}
+
+// Mensagem ou recibo de entrega passando pela instância prova que ela está
+// conectada. A Evolution às vezes manda o último `connection.update` como
+// "connecting" e nunca o "open" seguinte (22/10/2026: os três números ficaram
+// em "Conectando" depois de um reinício, com mensagens entrando e saindo).
+// Sem isto o status gravado ficava preso até alguém abrir o modal do QR.
+//
+// Só sai de connecting/disconnected/error; 'suspended' é decisão, não estado
+// da sessão. O update filtrado não toca linha nenhuma no caso comum (já
+// 'active'). Nunca lança: o status é secundário à mensagem já gravada.
+export async function confirmarConexaoPeloTrafego(
+  supabase: SupabaseClient,
+  canal: CanalEvolution,
+): Promise<void> {
+  try {
+    const { data, error } = await supabase
+      .schema('central')
+      .from('channels')
+      .update({ status: 'active' })
+      .eq('id', canal.channel_id)
+      .in('status', ['connecting', 'disconnected', 'error'])
+      .select('id')
+    if (error) throw error
+    if (!data?.length) return
+
+    const { error: e2 } = await supabase
+      .schema('central')
+      .from('channel_connections')
+      .update({ connection_status: 'active', last_sync_at: new Date().toISOString() })
+      .eq('channel_id', canal.channel_id)
+    if (e2) throw e2
+  } catch (err) {
+    console.warn('[ingestao evolution] status do canal não confirmado pelo tráfego', { channelId: canal.channel_id, err })
+  }
 }
 
 // Procura o contato pelas duas formas do celular brasileiro (com e sem o 9º
