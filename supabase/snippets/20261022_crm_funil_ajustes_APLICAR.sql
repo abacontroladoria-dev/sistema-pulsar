@@ -1,4 +1,4 @@
--- Aplica supabase/migrations/20261022150000_crm_funil_ajustes.sql e registra no livro-caixa.
+-- Aplica supabase/migrations/20261022150100_crm_funil_ajustes.sql e registra no livro-caixa.
 -- Aplicar ANTES do redeploy da correção: o worker do funil passa a chamar crm.funil_cards_para_ler.
 begin;
 set local lock_timeout = '5s';
@@ -483,7 +483,7 @@ $$;
 
 revoke all on function crm.maia_mover_negocio(uuid, uuid, text, text) from public, anon, authenticated;
 grant execute on function crm.maia_mover_negocio(uuid, uuid, text, text) to service_role;
-insert into supabase_migrations.schema_migrations (version, name) values ('20261022150000', 'crm_funil_ajustes') on conflict (version) do nothing;
+insert into supabase_migrations.schema_migrations (version, name) values ('20261022150100', 'crm_funil_ajustes') on conflict (version) do nothing;
 commit;
 
 -- Conferência (só leitura): a lista do worker e uma rodada das regras (idempotente).

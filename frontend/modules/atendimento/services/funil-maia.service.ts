@@ -11,7 +11,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 //
 // Também é por aqui que o worker do funil (workers/funil.worker.ts) lista os
 // cards que precisam de leitura e grava a leitura (funil_ia_*, 20261022140000
-// e 20261022150000).
+// e 20261022150100).
 //
 // Precisa de cliente service role: a função só tem EXECUTE para service_role.
 // ============================================================================
@@ -63,7 +63,7 @@ export class FunilMaiaService {
   }
 
   // Só os cards que precisam de leitura, mais nova primeiro — o filtro é do
-  // banco (crm.funil_cards_para_ler, 20261022150000): marca d'água, calma,
+  // banco (crm.funil_cards_para_ler, 20261022150100): marca d'água, calma,
   // contato vinculado a paciente fora. A conversa é a MAIS RECENTE do contato,
   // não a do card: deals.conversation_id fica na conversa em que ele nasceu.
   async listarParaLeitura(orgId: string, limite: number, calmaMs: number): Promise<CardParaLeitura[]> {

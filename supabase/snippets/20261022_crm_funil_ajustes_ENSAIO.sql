@@ -1,4 +1,4 @@
--- ENSAIO de 20261022150000_crm_funil_ajustes: roda a migration inteira, a lista do worker e UMA
+-- ENSAIO de 20261022150100_crm_funil_ajustes: roda a migration inteira, a lista do worker e UMA
 -- rodada das regras, e termina em RAISE EXCEPTION com o relatório. Nada fica gravado.
 set lock_timeout = '5s';
 -- ============================================================================

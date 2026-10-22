@@ -1,5 +1,5 @@
 // Teste das regras do sistema no funil (20261022140000 + os ajustes de
-// 20261022150000) no PGlite (Postgres de verdade em Node, sem Docker).
+// 20261022150100) no PGlite (Postgres de verdade em Node, sem Docker).
 //
 // Prova: a migration roda e reroda; a chave de telefone casa o WhatsApp com o
 // cadastro do TiTa com e sem o 9; a 1ª presença depois de o card nascer dá o
@@ -15,7 +15,8 @@
 // Rodar FORA do repo (o pacote não é dependência do projeto):
 //   mkdir /tmp/pg && cd /tmp/pg && npm i @electric-sql/pglite
 //   cp <repo>/supabase/tests/crm_funil_regras.pglite.mjs . && node crm_funil_regras.pglite.mjs \
-//     <repo>/supabase/migrations/20261022140000_crm_funil_leitura_e_regras.sql //     <repo>/supabase/migrations/20261022150000_crm_funil_ajustes.sql
+//     <repo>/supabase/migrations/20261022140000_crm_funil_leitura_e_regras.sql \
+//     <repo>/supabase/migrations/20261022150100_crm_funil_ajustes.sql
 import { PGlite } from '@electric-sql/pglite'
 import { readFileSync } from 'fs'
 
