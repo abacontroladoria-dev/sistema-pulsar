@@ -28,6 +28,12 @@ import type { AgendaSalaRow, AlocacaoSala, Sala, SalaTerapiaExclusiva } from "./
 export const UNIDADE_REDE = "__rede__"
 /** Chave da linha "total" (pacientes únicos no total, não a soma) na tabela de pacientes. */
 export const UNIDADE_TOTAL = "__total__"
+/**
+ * Prefixo das linhas por procedimento do Processo Diagnóstico na coluna
+ * `unidade` da tabela de pacientes ("proc:Triagem"). Mesma tabela, sem coluna
+ * nova: o prefixo não colide com nome de unidade (pedido de 22/10/2026).
+ */
+export const PREFIXO_PROCEDIMENTO = "proc:"
 
 export type StatusRetrato = "parcial" | "fechado" | "aproximado"
 
@@ -162,6 +168,11 @@ export interface LinhaPacientesMes {
  * pacientes ÚNICOS do segmento (quem vai a duas unidades conta uma vez), não a
  * soma das unidades. `rows` = buscarLinhasPacientesPeriodo do mês (já sem
  * fictícios e sem a importação duplicada de 23–30/06).
+ *
+ * No Processo Diagnóstico vão também as linhas por procedimento (Avaliação
+ * Neuropsicológica, Psiquiatra/Neurologista, Triagem — sempre as três), com a
+ * chave PREFIXO_PROCEDIMENTO + nome. Elas detalham o mesmo total: quem fez dois
+ * procedimentos conta nos dois, mas uma vez só no total.
  */
 export function pacientesDaCompetencia(rows: AgendaSalaRow[], competencia: string): LinhaPacientesMes[] {
   const periodo = limitesDaCompetencia(competencia)
@@ -171,6 +182,11 @@ export function pacientesDaCompetencia(rows: AgendaSalaRow[], competencia: strin
   for (const [segmento, r] of segmentos) {
     for (const u of r.porUnidade) {
       out.push({ segmento, unidade: u.chave, pacientes: u.pacientesUnicos, sessoes: u.sessoesTotal, horas: u.chSemanalTotal * r.semanas })
+    }
+    if (segmento === "diagnostico") {
+      for (const p of r.porProcedimento) {
+        out.push({ segmento, unidade: PREFIXO_PROCEDIMENTO + p.chave, pacientes: p.pacientesUnicos, sessoes: p.sessoesTotal, horas: p.chSemanalTotal * r.semanas })
+      }
     }
     out.push({ segmento, unidade: UNIDADE_TOTAL, pacientes: r.pacientesUnicos, sessoes: r.sessoesTotal, horas: r.chTotalPeriodo })
   }

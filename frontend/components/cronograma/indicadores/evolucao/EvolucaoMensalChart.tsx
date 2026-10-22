@@ -52,6 +52,12 @@ export interface SerieEvolucao {
   cor: string
   /** Série de referência (total): traço mais grosso e valor no cabeçalho. */
   destaque?: boolean
+  /**
+   * Rótulo da linha da legenda ("Unidade", "Procedimento", "Total"), na mesma
+   * coluna do rótulo "Critério". Sem grupo em nenhuma série, a legenda é uma
+   * linha só, sem rótulo.
+   */
+  grupo?: string
 }
 
 export interface MetricaEvolucao {
@@ -99,6 +105,12 @@ const ROTULO_STATUS: Record<Exclude<StatusPonto, "fechado">, string> = {
   parcial: "em andamento",
 }
 
+// Rótulo de linha ("Critério", "Unidade", "Procedimento", "Total"). Com a
+// legenda em grupos, todos ocupam a mesma coluna de largura fixa (no celular,
+// o rótulo fica em cima dos botões).
+const ROTULO = "text-[11px] font-bold uppercase tracking-wide text-muted-foreground"
+const ROTULO_LINHA = `${ROTULO} w-full shrink-0 sm:w-28`
+
 export function EvolucaoMensalChart({
   titulo, info, pontos, series, metricas, metricaInicial, mesSelecionado, onSelecionarMes, controlesExtras,
 }: Props) {
@@ -110,6 +122,23 @@ export function EvolucaoMensalChart({
   const metrica = metricas.find(m => m.key === metricaKey) ?? metricas[0]
   const destaque = series.find(s => s.destaque) ?? series[series.length - 1]
   const visiveis = series.filter(s => !ocultas.has(s.key))
+
+  // Legenda em linhas por `grupo`, na ordem em que o grupo aparece. Série sem
+  // grupo vai numa linha final sem rótulo (alinhada à coluna dos rótulos). Sem
+  // grupo nenhum: uma linha só, como antes.
+  const linhasLegenda = useMemo(() => {
+    const linhas: { grupo?: string; itens: SerieEvolucao[] }[] = []
+    for (const s of series) {
+      if (!s.grupo) continue
+      const l = linhas.find(x => x.grupo === s.grupo)
+      if (l) l.itens.push(s)
+      else linhas.push({ grupo: s.grupo, itens: [s] })
+    }
+    const soltas = series.filter(s => !s.grupo)
+    if (soltas.length) linhas.push({ itens: soltas })
+    return linhas
+  }, [series])
+  const legendaComRotulos = linhasLegenda.some(l => l.grupo)
 
   const ordenados = useMemo(
     () => [...pontos].sort((a, b) => a.competencia.localeCompare(b.competencia)).map(p => ({ ...p, ...competenciaParaAnoMes(p.competencia) })),
@@ -171,7 +200,7 @@ export function EvolucaoMensalChart({
           Recolher/Expandir sempre no canto superior direito. */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
-          <span className="inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+          <span className={`inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wide text-muted-foreground ${legendaComRotulos ? "w-full shrink-0 sm:w-28" : ""}`}>
             {titulo}
             {info && <InfoTooltip ariaLabel={`Sobre ${titulo}`}>{info}</InfoTooltip>}
           </span>
@@ -184,7 +213,7 @@ export function EvolucaoMensalChart({
         <>
           {/* 2) Escolher o que medir (antes de ler o número). */}
           <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
-            <span className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Critério</span>
+            <span className={legendaComRotulos ? ROTULO_LINHA : ROTULO}>Critério</span>
             <div role="group" aria-label="Critério exibido" className="flex flex-wrap gap-1.5">
               {metricas.map(m => {
                 const ativo = m.key === metrica.key
@@ -232,28 +261,45 @@ export function EvolucaoMensalChart({
             </div>
           )}
 
-          {/* 4) Unidades com o valor do mês — são a legenda (nome + cor, nunca
-              só a cor) e o liga/desliga de cada linha. */}
-          <div role="group" aria-label={`Valores de ${mesDestacado} por unidade — clique para mostrar ou esconder a linha`} className="mt-3 flex flex-wrap gap-1.5">
-            {series.map(s => {
-              const ativa = !ocultas.has(s.key)
-              const v = pontoDestacado?.valores[s.key]?.[metrica.key] ?? null
-              return (
-                <button
-                  key={s.key}
-                  type="button"
-                  aria-pressed={ativa}
-                  onClick={() => alternarSerie(s.key)}
-                  className={`inline-flex min-h-8 items-center gap-1.5 rounded-md border px-3 py-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                    ativa ? "border-border bg-card text-foreground shadow-sm" : "border-dashed border-border text-muted-foreground opacity-60 hover:opacity-100"
-                  }`}
+          {/* 4) Séries com o valor do mês — são a legenda (nome + cor, nunca
+              só a cor) e o liga/desliga de cada linha. Com grupos, uma linha
+              por grupo, com o rótulo na MESMA coluna de "Critério" — os
+              botões de todas as linhas começam alinhados. */}
+          <div className="mt-3 flex flex-col gap-2">
+            {linhasLegenda.map(({ grupo, itens }) => (
+              <div key={grupo ?? "_"} className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                {grupo ? (
+                  <span className={ROTULO_LINHA}>{grupo}</span>
+                ) : legendaComRotulos && (
+                  <span className={`${ROTULO_LINHA} hidden sm:block`} aria-hidden />
+                )}
+                <div
+                  role="group"
+                  aria-label={`Valores de ${mesDestacado}${grupo ? ` por ${grupo.toLowerCase()}` : ""} — clique para mostrar ou esconder a linha`}
+                  className="flex flex-wrap gap-1.5"
                 >
-                  <span className={`shrink-0 rounded-full ${s.destaque ? "h-1 w-4" : "h-2 w-2"}`} style={{ background: s.cor }} />
-                  <span className={s.destaque ? "font-bold" : "font-semibold"}>{s.label}</span>
-                  <span className="tabular-nums text-muted-foreground">{formatarValor(v, metrica.formato)}</span>
-                </button>
-              )
-            })}
+                  {itens.map(s => {
+                    const ativa = !ocultas.has(s.key)
+                    const v = pontoDestacado?.valores[s.key]?.[metrica.key] ?? null
+                    return (
+                      <button
+                        key={s.key}
+                        type="button"
+                        aria-pressed={ativa}
+                        onClick={() => alternarSerie(s.key)}
+                        className={`inline-flex min-h-8 items-center gap-1.5 rounded-md border px-3 py-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                          ativa ? "border-border bg-card text-foreground shadow-sm" : "border-dashed border-border text-muted-foreground opacity-60 hover:opacity-100"
+                        }`}
+                      >
+                        <span className={`shrink-0 rounded-full ${s.destaque ? "h-1 w-4" : "h-2 w-2"}`} style={{ background: s.cor }} />
+                        <span className={s.destaque ? "font-bold" : "font-semibold"}>{s.label}</span>
+                        <span className="tabular-nums text-muted-foreground">{formatarValor(v, metrica.formato)}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
 
           <div className="mt-3" />
