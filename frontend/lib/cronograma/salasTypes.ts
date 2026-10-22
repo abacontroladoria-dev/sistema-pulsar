@@ -363,6 +363,8 @@ export interface ResumoPacientesSalas {
   mediaSessoesPorPaciente: number
   porConvenio: ResumoPacientesGrupo[]
   porUnidade: ResumoPacientesGrupo[]
+  /** Por terapia (nome da agenda). Na tela, só o Processo Diagnóstico mostra — sempre com os três procedimentos, mesmo zerados. */
+  porProcedimento: ResumoPacientesGrupo[]
   porDia: ResumoPacientesDia[]
   /** Pacientes cujo convênio veio do cadastro do TiTa × da agenda (sem cadastro, conflito ou TiTa indisponível). */
   fonteConvenio: { cadastro: number; agenda: number }
@@ -376,7 +378,7 @@ export interface PacienteDoGrupo {
   sessoes: number
   chSemanal: number
   terapias: string[]
-  /** Unidades (na lista por convênio) ou convênios (na lista por unidade). */
+  /** Unidades (na lista por convênio) ou convênios (na lista por unidade ou por procedimento). */
   outraDimensao: string[]
   /** Convênio(s) como a agenda registra — para mostrar quando o cadastro diverge. */
   conveniosAgenda: string[]
