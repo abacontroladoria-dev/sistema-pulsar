@@ -219,11 +219,12 @@ export function PacienteDetalhe({
               ]}
             />
             {secaoCadastro === "escola" ? (
-              // Fora do fluxo de editar/salvar do cadastro de propósito: o conteúdo é
-              // declaração do responsável, e a equipe lê sem editar. Por isso não
-              // recebe `disabled={!editando}` nem participa de `dirtyCount`. Traz as
-              // próprias caixas, então não vai dentro do cartão das outras seções.
-              <AbaEscola pacienteId={idPaciente} />
+              // Fora do fluxo de editar/salvar do cadastro, como a Disponibilidade:
+              // tem o próprio botão e cada gravação é um envio novo no histórico.
+              // Por isso não recebe `disabled={!editando}` nem participa de
+              // `dirtyCount`. Traz as próprias caixas, então não vai dentro do
+              // cartão das outras seções.
+              <AbaEscola pacienteId={idPaciente} pacienteNome={paciente.nome} dataNascimento={paciente.data_nascimento} />
             ) : (
               <div className="min-w-0 flex-1 rounded-lg border border-border bg-card px-4 py-4">
                 {secaoCadastro === "dados" && (
