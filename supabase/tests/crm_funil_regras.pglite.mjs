@@ -1,5 +1,5 @@
-// Teste das regras do sistema no funil (20261022140000) no PGlite (Postgres de
-// verdade em Node, sem Docker).
+// Teste das regras do sistema no funil (20261022140000 + os ajustes de
+// 20261022150000) no PGlite (Postgres de verdade em Node, sem Docker).
 //
 // Prova: a migration roda e reroda; a chave de telefone casa o WhatsApp com o
 // cadastro do TiTa com e sem o 9; a 1ª presença depois de o card nascer dá o
@@ -7,17 +7,21 @@
 // semanas; quem já era paciente não ganha e recebe UMA nota; "Nunca respondeu"
 // só pega Prospecção sem resposta à 1ª mensagem da clínica há 7 dias, nunca quem a
 // clínica não respondeu; o card volta a Prospecção quando o contato escreve,
-// salvo se ele já tiver outro aberto; só service_role executa.
+// salvo se ele já tiver outro aberto, e nunca dois do mesmo contato de uma vez;
+// a lista de cards para ler traz só quem precisa, pela conversa mais recente
+// do contato; elegibilidade não volta para card que passou de Negociação; só
+// service_role executa.
 //
 // Rodar FORA do repo (o pacote não é dependência do projeto):
 //   mkdir /tmp/pg && cd /tmp/pg && npm i @electric-sql/pglite
 //   cp <repo>/supabase/tests/crm_funil_regras.pglite.mjs . && node crm_funil_regras.pglite.mjs \
-//     <repo>/supabase/migrations/20261022140000_crm_funil_leitura_e_regras.sql
+//     <repo>/supabase/migrations/20261022140000_crm_funil_leitura_e_regras.sql //     <repo>/supabase/migrations/20261022150000_crm_funil_ajustes.sql
 import { PGlite } from '@electric-sql/pglite'
 import { readFileSync } from 'fs'
 
-const [, , migPath] = process.argv
+const [, , migPath, ajustesPath] = process.argv
 const mig = readFileSync(migPath, 'utf8')
+const ajustes = readFileSync(ajustesPath, 'utf8')
 
 let falhas = 0
 const ok = (cond, msg) => { if (cond) console.log('  ok  ', msg); else { falhas++; console.log('  FALHA', msg) } }
@@ -54,7 +58,8 @@ create table central.contacts (
 );
 create table central.contact_patient_links (contact_id uuid, organization_id uuid, tita_paciente_id bigint);
 create table central.conversations (
-  id uuid primary key default gen_random_uuid(), organization_id uuid, contact_id uuid
+  id uuid primary key default gen_random_uuid(), organization_id uuid, contact_id uuid,
+  last_message_at timestamptz, tags text[]
 );
 create table central.messages (
   id uuid primary key default gen_random_uuid(), conversation_id uuid, direction text,
@@ -66,13 +71,16 @@ create table public.fila_autorizacoes (paciente_id text, data_atendimento date, 
 
 create table crm.pipeline_stages (
   id uuid primary key default gen_random_uuid(), organization_id uuid not null,
-  slug text, title text, position int, is_active boolean default true
+  slug text, title text, position int, is_active boolean default true,
+  auto_win boolean default false, auto_lose boolean default false,
+  trilha text not null default 'ambas', exige_motivo boolean not null default false
 );
 create table crm.deals (
   id uuid primary key default gen_random_uuid(), organization_id uuid not null,
   contact_id uuid, stage_id uuid not null references crm.pipeline_stages(id),
   status text not null default 'open' check (status in ('open', 'won', 'lost')),
   closed_at timestamptz, closed_reason text, motivo text,
+  trilha text, detalhe text, detalhe_desde timestamptz,
   created_at timestamptz default now()
 );
 create unique index uq_open_deal_per_contact on crm.deals (organization_id, contact_id) where status = 'open';
@@ -86,13 +94,18 @@ create table crm.deal_activities (
 const ETAPAS = ['prospeccao', 'qualificacao', 'apresentacao', 'negociacao', 'agendamento', 'atendimento',
   'perdido_objecao', 'perdido_nao_elegivel', 'nao_qualificado', 'sem_interesse', 'nunca_respondeu']
 for (const [i, slug] of ETAPAS.entries()) {
-  await db.query(`insert into crm.pipeline_stages (organization_id, slug, title, position) values ($1, $2, $2, $3)`,
-    [ORG, slug, i + 1])
+  await db.query(
+    `insert into crm.pipeline_stages (organization_id, slug, title, position, auto_win, auto_lose, trilha, exige_motivo)
+     values ($1, $2, $2, $3, $4, $5, $6, $7)`,
+    [ORG, slug, i + 1, slug === 'atendimento', i >= 6, slug === 'perdido_nao_elegivel' ? 'convenio' : 'ambas',
+     slug === 'perdido_objecao' || slug === 'perdido_nao_elegivel'])
 }
 
 console.log('\nmigration')
 ok(!(await rodar(mig)), 'roda')
 ok(!(await rodar(mig)), 'reroda')
+ok(!(await rodar(ajustes)), 'ajustes rodam')
+ok(!(await rodar(ajustes)), 'ajustes rerodam')
 igual((await um(`select schedule from cron.job where jobname = 'crm-funil-regras'`))?.schedule, '*/15 * * * *', 'cron agendado a cada 15 min')
 igual((await um(`select count(*)::int n from information_schema.columns
                   where table_schema = 'crm' and table_name = 'deals' and column_name like 'funil_ia_%'`)).n, 5,
@@ -230,6 +243,60 @@ igual(r3.reabertos, 1, 'um reaberto')
 igual(await estado(sumiu.deal), { slug: 'prospeccao', status: 'open', closed_reason: null }, 'escreveu de novo → Prospecção, aberto')
 igual((await estado(soReagiu.deal)).status, 'lost', 'com outro card aberto → não reabre')
 
+console.log('\ndois cards fechados do mesmo contato')
+// O contato teve dois cards encerrados por silêncio (duas conversas) e volta a
+// escrever: só o mais recente reabre, e a função não quebra no índice de um
+// card aberto por contato.
+const duplo = await um(`insert into central.contacts (organization_id, display_phone) values ($1, '5521977770000') returning id`, [ORG])
+const convDuplo = await um(`insert into central.conversations (organization_id, contact_id) values ($1, $2) returning id`, [ORG, duplo.id])
+const fechar = (haDias) => um(
+  `insert into crm.deals (organization_id, contact_id, stage_id, status, closed_at, closed_reason)
+   select $1, $2, id, 'lost', ${dias(haDias)}, 'Sem resposta há 7 dias' from crm.pipeline_stages where slug = 'nunca_respondeu'
+   returning id`, [ORG, duplo.id])
+const velho = await fechar(20)
+const novo = await fechar(5)
+await msg(convDuplo.id, 'inbound', 0)
+const r4 = await um(`select crm.funil_regras_do_sistema() r`).catch((e) => ({ erro: e.message }))
+igual(r4.erro ?? null, null, 'a função não quebra')
+igual(r4.r?.reabertos, 1, 'reabre um só')
+igual((await estado(novo.id)).status, 'open', 'o mais recente reabre')
+igual((await estado(velho.id)).status, 'lost', 'o mais antigo fica fechado')
+
+console.log('\ncards para ler')
+const ler = async () => (await db.query(
+  `select deal_id, conversation_id from crm.funil_cards_para_ler($1, 10, interval '2 minutes')`, [ORG])).rows
+const leitor = await card({ fone: '5521966660000', etapa: 'qualificacao', criadoHa: 3 })
+// A conversa do card é antiga; a mais recente do contato é outra.
+const outraConversa = await um(
+  `insert into central.conversations (organization_id, contact_id, last_message_at) values ($1, $2, now() - interval '10 minutes') returning id`,
+  [ORG, leitor.contato])
+await db.query(`update central.conversations set last_message_at = now() - interval '2 days' where id = $1`, [leitor.conversa])
+let lista = await ler()
+igual(lista.find((l) => l.deal_id === leitor.deal)?.conversation_id, outraConversa.id, 'lê pela conversa mais recente do contato')
+await db.query(`update crm.deals set funil_ia_ate = now() - interval '10 minutes' where id = $1`, [leitor.deal])
+lista = await ler()
+igual(lista.some((l) => l.deal_id === leitor.deal), false, 'marca d\'água em dia → fora da lista')
+await db.query(`update central.conversations set last_message_at = now() - interval '30 seconds' where id = $1`, [outraConversa.id])
+lista = await ler()
+igual(lista.some((l) => l.deal_id === leitor.deal), false, 'mensagem de 30 s atrás → espera a calma')
+await db.query(`update central.conversations set last_message_at = now() - interval '5 minutes' where id = $1`, [outraConversa.id])
+lista = await ler()
+igual(lista.some((l) => l.deal_id === leitor.deal), true, 'mensagem nova e calma → volta à lista')
+await db.query(`insert into central.contact_patient_links values ($1, $2, 999)`, [leitor.contato, ORG])
+lista = await ler()
+igual(lista.some((l) => l.deal_id === leitor.deal), false, 'contato vinculado a paciente → fora')
+
+console.log('\nelegibilidade depois de Negociação')
+const agendado = await card({ fone: '5521955550000', etapa: 'agendamento', criadoHa: 3 })
+igual((await um(`select crm.maia_mover_negocio($1, $2, 'aguardando_elegibilidade', 'Verificando o plano') r`, [ORG, agendado.contato])).r,
+  'nao_volta', 'card em Agendamento não ganha o detalhe de novo')
+igual((await um(`select detalhe from crm.deals where id = $1`, [agendado.deal])).detalhe, null, 'detalhe continua vazio')
+const qualif = await card({ fone: '5521944440000', etapa: 'qualificacao', criadoHa: 3 })
+igual((await um(`select crm.maia_mover_negocio($1, $2, 'aguardando_elegibilidade', 'Verificando o plano') r`, [ORG, qualif.contato])).r,
+  'movido', 'antes de Negociação continua valendo')
+igual((await um(`select s.slug, d.detalhe from crm.deals d join crm.pipeline_stages s on s.id = d.stage_id where d.id = $1`, [qualif.deal])),
+  { slug: 'negociacao', detalhe: 'aguardando_elegibilidade' }, 'leva a Negociação com o detalhe')
+
 console.log('\npermissões')
 igual((await um(`select has_function_privilege('authenticated', 'crm.funil_regras_do_sistema(integer)', 'execute') p`)).p, false,
   'authenticated não executa')
@@ -237,6 +304,10 @@ igual((await um(`select has_function_privilege('service_role', 'crm.funil_regras
   'service_role executa')
 igual((await um(`select has_function_privilege('authenticated', 'crm.funil_presencas_dos_abertos()', 'execute') p`)).p, false,
   'presenças: authenticated não executa')
+igual((await um(`select has_function_privilege('authenticated', 'crm.funil_cards_para_ler(uuid, integer, interval)', 'execute') p`)).p, false,
+  'cards para ler: authenticated não executa')
+igual((await um(`select has_function_privilege('service_role', 'crm.funil_cards_para_ler(uuid, integer, interval)', 'execute') p`)).p, true,
+  'cards para ler: service_role executa')
 
 console.log(falhas ? `\n${falhas} FALHA(S)` : '\ntudo ok')
 process.exit(falhas ? 1 : 0)

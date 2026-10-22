@@ -6,7 +6,7 @@ import { MessageRepository } from '../repositories/message.repository'
 import { FunilMaiaService } from '../services/funil-maia.service'
 import { openAiProvider } from '../llm/openai.provider'
 import { LlmRateLimitError, LlmBudgetExceededError, LlmConfiguracaoError } from '../llm/erros'
-import { falasParaStatus } from '../agente/status-atendimento'
+import { ESPERA_PARA_LER_MS, falasParaStatus } from '../agente/status-atendimento'
 import {
   decidirFunil,
   lerFunilDaConversa,
@@ -47,9 +47,11 @@ function modoDoAmbiente(): Modo {
 
 // Leituras (chamadas ao modelo) por tique. Cada card é lido uma vez por troca
 // de mensagens: o teto só segura um pico — e a primeira passada pelos cards
-// que nunca foram lidos.
+// que nunca foram lidos. O banco devolve só quem precisa de leitura
+// (crm.funil_cards_para_ler); a folga além do teto cobre os cards que saem
+// sem chamada (conversa só com áudio ou foto).
 const LEITURAS_POR_TIQUE = 5
-const CARDS_EXAMINADOS = 400
+const CARDS_POR_TIQUE = 10
 const HISTORICO = 40
 const ORCAMENTO_MS = 10_000
 
@@ -73,10 +75,12 @@ export async function processarFunil(
   const funil = new FunilMaiaService(supabase)
   const mensagens = new MessageRepository(supabase)
 
-  const cards = await funil.listarAbertosParaLeitura(orgId, CARDS_EXAMINADOS)
+  const cards = await funil.listarParaLeitura(orgId, CARDS_POR_TIQUE, ESPERA_PARA_LER_MS)
 
   for (const card of cards) {
     if (Date.now() > limite || r.lidos >= LEITURAS_POR_TIQUE) break
+    // O banco já filtrou; isto só protege de um relógio diferente entre ele e
+    // o servidor.
     if (!precisaLeituraFunil(card, Date.now())) continue
 
     try {
@@ -87,8 +91,15 @@ export async function processarFunil(
         conversationId: card.conversationId, limit: HISTORICO, withAttachments: false,
       })
       const falas = falasParaStatus(historico)
-      if (falas.length === 0) continue
+      // Só áudio, foto ou figurinha: nada para ler. A marca anda, senão o
+      // mesmo card voltaria em todo tique e tomaria o lugar dos outros.
+      if (falas.length === 0) {
+        await funil.avancarMarca(card.id, ate)
+        continue
+      }
 
+      // Conta antes da chamada: leitura inválida também gasta o modelo.
+      r.lidos++
       let leitura
       try {
         leitura = await lerFunilDaConversa(
@@ -103,19 +114,28 @@ export async function processarFunil(
         )
       } catch (err) {
         if (!(err instanceof LeituraFunilInvalidaError)) throw err
-        // Resposta do modelo fora do formato: a marca d'água anda mesmo assim,
-        // senão o mesmo card seria relido (e pago) a cada 10 segundos. Volta a
-        // ser lido na próxima mensagem.
-        await funil.gravarLeitura(card.id, {
-          funil_ia_ate:       ate,
-          funil_ia_etapa:     'manter',
-          funil_ia_confianca: 0,
-          funil_ia_motivo:    err.message.slice(0, 200),
-          funil_ia_em:        new Date().toISOString(),
-        })
+        // Resposta do modelo fora do formato: só a marca d'água anda (senão o
+        // card seria relido, e pago, a cada 10 segundos). A última leitura
+        // válida fica como estava; volta a ler na próxima mensagem.
+        await funil.avancarMarca(card.id, ate)
         r.falhas++
+        console.error('[worker funil] leitura inválida', { dealId: card.id, motivo: err.message })
         continue
       }
+
+      // Mover ANTES de gravar a leitura: a gravação leva a marca d'água, e com
+      // ela gravada primeiro uma falha do movimento só seria refeita na
+      // próxima mensagem. Assim, se mover falhar, o card é relido no tique
+      // seguinte. 'nao_volta', 'ja_esta', 'trilha_diferente'... são a regra
+      // do funil dizendo não — resposta normal, não falha.
+      if (modo === 'aplicar') {
+        const decisao = decidirFunil(leitura)
+        if (decisao.acao === 'mover') {
+          const resultado = await funil.mover(orgId, card.contactId, decisao.slug, decisao.motivo)
+          if (resultado === 'movido') r.movidos++
+        }
+      }
+
       await funil.gravarLeitura(card.id, {
         funil_ia_ate:       ate,
         funil_ia_etapa:     leitura.etapa,
@@ -123,16 +143,6 @@ export async function processarFunil(
         funil_ia_motivo:    leitura.motivo,
         funil_ia_em:        new Date().toISOString(),
       })
-      r.lidos++
-
-      if (modo !== 'aplicar') continue
-
-      const decisao = decidirFunil(leitura)
-      if (decisao.acao === 'nada') continue
-      // 'nao_volta', 'ja_esta', 'trilha_diferente'... são a regra do funil
-      // dizendo não — resposta normal, não falha.
-      const resultado = await funil.mover(orgId, card.contactId, decisao.slug, decisao.motivo)
-      if (resultado === 'movido') r.movidos++
     } catch (err) {
       // Cota, crédito ou chave: vale para todos os cards. Para o tique.
       if (
