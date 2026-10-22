@@ -43,7 +43,9 @@ const BASE = '/api/central/evolution/instances'
 
 const STATUS: Record<string, { rotulo: string; cor: string }> = {
   active:       { rotulo: 'Online',        cor: 'bg-emerald-500/10 text-[var(--status-ok)] border-emerald-500/30' },
-  connecting:   { rotulo: 'Aguardando QR', cor: 'bg-amber-500/10 text-[var(--status-atencao)] border-amber-500/30' },
+  // 'connecting' é tanto o número novo esperando o QR quanto a sessão que
+  // está reconectando sozinha: "Aguardando QR" mandava escanear à toa.
+  connecting:   { rotulo: 'Conectando',    cor: 'bg-amber-500/10 text-[var(--status-atencao)] border-amber-500/30' },
   disconnected: { rotulo: 'Offline',       cor: 'bg-slate-500/10 text-muted-foreground border-border' },
   error:        { rotulo: 'Erro',          cor: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30' },
 }
