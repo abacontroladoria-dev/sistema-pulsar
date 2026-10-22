@@ -7,7 +7,6 @@ import {
   BadgeCheck,
   CalendarClock,
   Clock,
-  Copy,
   Loader2,
   Lock,
   LockOpen,
@@ -40,6 +39,7 @@ import {
   type VersaoDisponibilidade,
 } from "@/services/pacienteDisponibilidade.service"
 import { foco } from "../ui/campos"
+import { BotoesCopiarLink } from "../ui/BotoesCopiarLink"
 import { onlyDigits, validarCpf } from "@/lib/remuneracao/formatacao"
 import { EditorDisponibilidade, type ResultadoEditor } from "./disponibilidade/EditorDisponibilidade"
 import { HistoricoDisponibilidade, trocaDePessoaAtual } from "./disponibilidade/HistoricoDisponibilidade"
@@ -474,37 +474,9 @@ function BotoesLink({ pacienteNome, pacienteCpf }: { pacienteNome: string; pacie
   const semCpf = digitos.length !== 11
   const cpfErrado = !semCpf && !validarCpf(digitos)
 
-  function link() {
-    return linkFormularioDisponibilidade()
-  }
-
-  function mensagem() {
-    return mensagemFormularioDisponibilidade(pacienteNome)
-  }
-
-  async function copiar(texto: string, sucesso: string) {
-    try {
-      await navigator.clipboard.writeText(texto)
-      toast.success(sucesso)
-    } catch {
-      toast.error("Não foi possível copiar. Copie manualmente: " + texto)
-    }
-  }
-
-  const botao = `inline-flex min-h-11 items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm text-foreground hover:bg-muted sm:min-h-0 ${foco}`
-
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap gap-2">
-        <button type="button" onClick={() => void copiar(link(), "Link copiado.")} className={botao}>
-          <Copy className="h-4 w-4" aria-hidden="true" />
-          Copiar link
-        </button>
-        <button type="button" onClick={() => void copiar(mensagem(), "Mensagem copiada.")} className={botao}>
-          <Copy className="h-4 w-4" aria-hidden="true" />
-          Copiar mensagem
-        </button>
-      </div>
+      <BotoesCopiarLink link={linkFormularioDisponibilidade()} mensagem={mensagemFormularioDisponibilidade(pacienteNome)} />
       {semCpf && (
         <p className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400">
           <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />

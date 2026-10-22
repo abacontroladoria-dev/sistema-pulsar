@@ -47,7 +47,14 @@ import type {
   PacienteSuspensaoTemporariaForm,
 } from "@/types/laudos"
 
+/**
+ * Qual bloco mostrar. Desde 22/10/2026 estes blocos são seções da aba "Laudos e
+ * individualidades" (menu lateral), e não mais uma aba própria com tudo junto.
+ */
+export type SecaoAltasIndividualidades = "info" | "altas" | "suspensoes" | "altaClinica"
+
 type Props = {
+  secao: SecaoAltasIndividualidades
   pacienteId: number
   pacienteNome: string
   /**
@@ -114,6 +121,7 @@ function prazoAlcancado(sus: PacienteSuspensaoTemporaria): boolean {
 
 
 export function AbaAltasIndividualidades({
+  secao,
   pacienteId,
   pacienteNome,
   individualidade,
@@ -383,6 +391,7 @@ export function AbaAltasIndividualidades({
       {/* ── Informações adicionais ── */}
       {/* Sem botão de salvar próprio: entra no "Salvar tudo" do topo da
           página (usePacienteDetalhe), junto com Cadastro e Ficha médica. */}
+      {secao === "info" && (
       <section className="rounded-lg border border-border bg-card px-4 py-4 shadow-sm">
         <h2 className="mb-4 text-base font-semibold text-foreground">
           Informações adicionais
@@ -430,11 +439,10 @@ export function AbaAltasIndividualidades({
           />
         </div>
       </section>
-
-      {/* ── Altas e Suspensões, lado a lado ── */}
-      <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
+      )}
 
       {/* ── Lista de Altas ── */}
+      {secao === "altas" && (
       <section className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-base font-semibold text-foreground">Altas Registradas</h2>
@@ -554,8 +562,10 @@ export function AbaAltasIndividualidades({
           </>
         )}
       </section>
+      )}
 
       {/* ── Lista de Suspensões Temporárias ── */}
+      {secao === "suspensoes" && (
       <section className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-base font-semibold text-foreground">Suspensões Temporárias de Especialidades</h2>
@@ -665,12 +675,11 @@ export function AbaAltasIndividualidades({
           </ul>
         )}
       </section>
+      )}
 
-      </div>
-
-      {/* ── Alta Clínica: fora do grid, tratamento visual distinto — não é
-          "mais um registro por especialidade", é o encerramento geral do
-          paciente. ── */}
+      {/* ── Alta Clínica: tratamento visual distinto — não é "mais um registro
+          por especialidade", é o encerramento geral do paciente. ── */}
+      {secao === "altaClinica" && (
       <section
         className={`rounded-lg border px-4 py-4 shadow-sm ${
           vigenteAltaClinica
@@ -772,6 +781,7 @@ export function AbaAltasIndividualidades({
           </div>
         )}
       </section>
+      )}
 
       {modalAltaClinicaAberto && (
         <AltaClinicaConfirmModal

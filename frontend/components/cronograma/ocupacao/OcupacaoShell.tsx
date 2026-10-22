@@ -13,15 +13,14 @@ import { useHeader } from "@/contexts/HeaderContext"
 import { GapsTab } from "./tabs/GapsTab"
 import { GuiaTab } from "./tabs/GuiaTab"
 import { AcompanhamentoTab } from "./tabs/AcompanhamentoTab"
-import { InconsistenciasTab } from "./tabs/InconsistenciasTab"
 import { CronModal } from "./CronModal"
-import { detectarInconsistencias } from "@/lib/cronograma/inconsistencias"
 import type { AlgorithmResult, Sugestao, WaStatus } from "@/types/cronograma"
 
+// "inconsistencias" (Inconsistências e Exceções) saiu em 22/10/2026: ninguém
+// usava. InconsistenciasTab.tsx ficou no repositório, caso volte.
 const TABS = [
   { key: "oportunidades-recusadas", label: "🚫 Oportunidades Recusadas" },
   { key: "gaps",             label: "📊 Diferença: Laudo e Oferta" },
-  { key: "inconsistencias",  label: "⚠️ Inconsistências e Exceções" },
   { key: "guia",             label: "📖 Guia" },
 ] as const
 
@@ -30,7 +29,6 @@ type TabKey = (typeof TABS)[number]["key"]
 const TAB_HEADERS: Record<TabKey, { title: string; subtitle: string }> = {
   "oportunidades-recusadas": { title: "Oportunidades Recusadas",  subtitle: "Acompanhamento de sugestões e redistribuições" },
   gaps:            { title: "Diferença: Laudo e Oferta",     subtitle: "Comparativo entre laudos autorizados e sessões ofertadas" },
-  inconsistencias: { title: "Inconsistências e Exceções",    subtitle: "Registros com divergências ou exceções no cronograma" },
   guia:            { title: "Guia do Cronograma",            subtitle: "" },
 }
 
@@ -128,7 +126,6 @@ export function OcupacaoShell() {
     return m
   }, [res])
 
-  const incItems = useMemo(() => detectarInconsistencias(cRows, lRows), [cRows, lRows])
 
   // Carrega a grade da tabela csv_grades_profissionais (sincronizada diariamente às 06h).
   // É a fonte canônica e completa — substitui a antiga chamada à API ao vivo do TITA,
@@ -185,7 +182,6 @@ export function OcupacaoShell() {
           onRec={setCRec} onInv={setCInv} onCron={s => setCronPac(s.pac)} />
       )}
       {activeTab === "gaps" && <GapsTab res={res} />}
-      {activeTab === "inconsistencias" && <InconsistenciasTab items={incItems} cRows={cRows} />}
       {activeTab === "guia" && <GuiaTab apiFetch={apiFetch} apiErr={apiErr} onApiFetch={handleApiFetch} />}
 
       {/* Modal Recusa */}

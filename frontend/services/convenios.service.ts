@@ -203,6 +203,21 @@ async function definirAtivoPlano(id: number, ativo: boolean): Promise<void> {
 }
 
 // ─── Consumo externo (Cadastro de Pacientes / Ficha Médica) ────────────────
+
+/**
+ * Planos pelos ids, ATIVOS OU NÃO — para o histórico dar nome a um plano que já
+ * foi desativado depois de usado.
+ */
+export async function getPlanosSaudePorIds(
+  ids: number[]
+): Promise<{ id: number; nome: string; convenio_nome: string }[]> {
+  if (ids.length === 0) return []
+  const sb = getSupabaseClient()
+  const { data, error } = await sb.from(TABLE_PLANOS).select("id, nome, convenios(nome)").in("id", ids)
+  if (error) throw new Error(error.message)
+  return (data ?? []).map((row: any) => ({ id: row.id, nome: row.nome, convenio_nome: row.convenios?.nome ?? "" }))
+}
+
 // Fonte de verdade para o select "Plano de saúde" — nunca texto livre. A RLS
 // de convenios_select/planos_saude_select já libera SELECT para quem tem
 // `cadastros_pacientes`, mesmo sem `cadastros_convenios`.
