@@ -1,8 +1,8 @@
 // Linhas das tabelas-resumo → pontos do EvolucaoMensalChart (Ocupação Clínica
 // e Dashboard de Pacientes). Puro: as telas só chamam e desenham.
 
-import { UNID_COR } from "./constants"
-import { UNIDADE_REDE, UNIDADE_TOTAL, type SegmentoEvolucao } from "./evolucaoIndicadores"
+import { PROCEDIMENTO_DIAGNOSTICO_POR_ID, UNID_COR } from "./constants"
+import { PREFIXO_PROCEDIMENTO, UNIDADE_REDE, UNIDADE_TOTAL, type SegmentoEvolucao } from "./evolucaoIndicadores"
 import type { MetricaEvolucao, PontoEvolucao, SerieEvolucao, StatusPonto } from "@/components/cronograma/indicadores/evolucao/EvolucaoMensalChart"
 
 /** Ordem fixa (a cor acompanha a unidade, nunca a posição) — mesma do validador de paleta. */
@@ -90,7 +90,27 @@ export interface LinhaPacientesHistorico {
   status: StatusPonto
 }
 
-export const SERIES_PACIENTES = seriesUnidades(UNIDADE_TOTAL, "Total")
+// Cores dos procedimentos do Processo Diagnóstico: fora das três das unidades
+// (UNID_COR), para a linha de procedimento nunca se passar por unidade.
+const COR_PROCEDIMENTO = ["#2F9E84", "#C8932A", "#C2577F"]
+
+/**
+ * Linhas do gráfico de Pacientes, com a legenda em linhas rotuladas (como a de
+ * "Critério"): UNIDADE e, no Processo Diagnóstico, PROCEDIMENTO (Avaliação
+ * Neuropsicológica, Psiquiatra/Neurologista, Triagem — as gravadas com
+ * PREFIXO_PROCEDIMENTO). O Total fica numa linha só dele (TOTAL), para não
+ * parecer um procedimento a mais.
+ */
+export function seriesPacientes(segmento: SegmentoEvolucao): SerieEvolucao[] {
+  const base = seriesUnidades(UNIDADE_TOTAL, "Total")
+  const unidades = base.slice(0, -1).map(s => ({ ...s, grupo: "Unidade" }))
+  const total = { ...base[base.length - 1], grupo: "Total" }
+  if (segmento !== "diagnostico") return [...unidades, total]
+  const procedimentos = [...PROCEDIMENTO_DIAGNOSTICO_POR_ID.values()].map((nome, i) => ({
+    key: PREFIXO_PROCEDIMENTO + nome, label: nome, cor: COR_PROCEDIMENTO[i % COR_PROCEDIMENTO.length], grupo: "Procedimento",
+  }))
+  return [...unidades, ...procedimentos, total]
+}
 
 export const METRICAS_PACIENTES: MetricaEvolucao[] = [
   {

@@ -47,7 +47,7 @@ import type { ResumoPacientesGrupo, ResumoPacientesSalas, ResumoPacientesDia } f
 import { ChaveDupla } from "@/components/cronograma/ui/ChaveDupla"
 import { EvolucaoMensalChart } from "@/components/cronograma/indicadores/evolucao/EvolucaoMensalChart"
 import { usePacientesHistorico } from "@/hooks/useEvolucaoIndicadores"
-import { METRICAS_PACIENTES, SERIES_PACIENTES, montarPontosPacientes } from "@/lib/cronograma/evolucaoPontos"
+import { METRICAS_PACIENTES, montarPontosPacientes, seriesPacientes } from "@/lib/cronograma/evolucaoPontos"
 import type { SegmentoEvolucao } from "@/lib/cronograma/evolucaoIndicadores"
 
 function fmtPct(valor: number, total: number): string {
@@ -388,6 +388,7 @@ export function PacientesDashboardShell() {
     () => (historico.linhas ? montarPontosPacientes(historico.linhas, segmentoEvolucao) : []),
     [historico.linhas, segmentoEvolucao],
   )
+  const seriesEvolucao = useMemo(() => seriesPacientes(segmentoEvolucao), [segmentoEvolucao])
   const mesEvolucao = useMemo(() => {
     const [ano, mes] = (periodo.mes ?? periodo.inicio).split("-").map(Number)
     return { ano, mes }
@@ -494,9 +495,9 @@ export function PacientesDashboardShell() {
       {pontosEvolucao.length >= 2 && (
         <EvolucaoMensalChart
           titulo="Evolução"
-          info={<p>Um ponto por mês, com o mês inteiro (faltas e cancelamentos contam, como no &quot;Mês completo&quot;). Total = pacientes únicos: quem vai a duas unidades conta uma vez. O mês corrente e o seguinte ainda mudam (agenda planejada) — passe o mouse no ponto para ver. Clique num ponto para abrir o mês completo.</p>}
+          info={<p>Um ponto por mês, com o mês inteiro (faltas e cancelamentos contam, como no &quot;Mês completo&quot;). Total = pacientes únicos: quem vai a duas unidades conta uma vez. No Processo Diagnóstico há também uma linha por procedimento (Avaliação Neuropsicológica, Psiquiatra/Neurologista, Triagem); quem fez dois procedimentos aparece nos dois, mas conta uma vez no Total. O mês corrente e o seguinte ainda mudam (agenda planejada) — passe o mouse no ponto para ver. Clique num ponto para abrir o mês completo.</p>}
           pontos={pontosEvolucao}
-          series={SERIES_PACIENTES}
+          series={seriesEvolucao}
           metricas={METRICAS_PACIENTES}
           metricaInicial="pacientes"
           mesSelecionado={mesEvolucao}
