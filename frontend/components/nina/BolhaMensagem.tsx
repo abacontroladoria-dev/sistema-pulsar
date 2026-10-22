@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { MessageDirection } from '@/types/nina'
 import type { NinaMessage } from './adapters/centralToNina'
 import { ChipAnexo } from './ChipAnexo'
+import { CartaoContato } from './CartaoContato'
 import { textoWhatsApp } from './textoWhatsApp'
 
 // ============================================================================
@@ -34,13 +35,17 @@ interface Props {
   // Sugestão da Maia: envia o texto como mensagem da atendente.
   aoEnviarSugestao?: (m: NinaMessage) => void
   enviandoSugestao?: boolean
+  // Cartão de contato: "Abrir conversa" leva à conversa do número, se não for
+  // esta mesma.
+  conversaAtualId?:  string | null
+  aoAbrirConversa?:  (id: string) => void
 }
 
 const acao = 'p-0.5 rounded text-muted-foreground/70 transition-colors opacity-0 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100'
 
 export const BolhaMensagem: React.FC<Props> = ({
   msg, primeiraDoGrupo, nomeAutor, destacada, aoResponder, aoEditar, aoApagar, aoIrPara,
-  aoEnviarSugestao, enviandoSugestao = false,
+  aoEnviarSugestao, enviandoSugestao = false, conversaAtualId, aoAbrirConversa,
 }) => {
   const isOutgoing = msg.direction === MessageDirection.OUTGOING
   const claro = isOutgoing && !msg.isAiDraft
@@ -97,6 +102,14 @@ export const BolhaMensagem: React.FC<Props> = ({
             <div className={`flex flex-col gap-1.5 ${msg.content ? 'mb-2' : ''}`}>
               {msg.anexos.map(a => <ChipAnexo key={a.id} anexo={a} claro={claro} />)}
             </div>
+          )}
+          {msg.contatos && (
+            <CartaoContato
+              contatos={msg.contatos}
+              claro={claro}
+              conversaAtualId={conversaAtualId}
+              aoAbrirConversa={aoAbrirConversa}
+            />
           )}
           {msg.content && textoWhatsApp(msg.content, claro)}
         </div>

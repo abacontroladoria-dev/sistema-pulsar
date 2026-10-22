@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- payload externo do Baileys/Evolution, sem tipos publicados; cada campo é lido com ?. e checagem de tipo */
 import type { AnuncioDaMensagem, NormalizedIncomingMessage } from '../types/central.types'
 import { digitosDoJid } from '../utils/telefone-br'
+import { corpoDeContatos, lerVcard } from '../utils/contato-compartilhado'
 
 // ============================================================================
 // Normalização do webhook da Evolution API → eventos do Pulsar
@@ -147,6 +148,12 @@ function normalizarMensagem(instance: string, d: DadosMensagem): EventoEvolution
   if (conteudo.protocolMessage || conteudo.editedMessage) {
     return { tipo: 'ignorado', instance, motivo: 'edição/apagamento (protocolMessage)' }
   }
+  // O WhatsApp novo manda a edição cifrada com a chave da mensagem original
+  // (secretEncType 2 = MESSAGE_EDIT, 1 = EVENT_EDIT). A Evolution não decifra:
+  // sem isto virava a bolha "[mensagem do tipo secretEncryptedMessage]".
+  if (conteudo.secretEncryptedMessage) {
+    return { tipo: 'ignorado', instance, motivo: 'edição cifrada (secretEncryptedMessage)' }
+  }
 
   const fromMe = key.fromMe === true
   const { corpo, tipo, midia, nomeArquivo, mime, citada } = interpretar(conteudo)
@@ -276,7 +283,11 @@ function interpretar(m: Record<string, any>): {
     return { corpo: nome ? `[localização: ${nome}]` : '[localização]', tipo: 'location', midia: false, citada }
   }
   if (m.contactMessage || m.contactsArrayMessage) {
-    return { corpo: '[contato compartilhado]', tipo: 'other', midia: false, citada }
+    const cartoes: Record<string, any>[] = m.contactMessage
+      ? [m.contactMessage]
+      : (Array.isArray(m.contactsArrayMessage.contacts) ? m.contactsArrayMessage.contacts : [])
+    const contatos = cartoes.map(c => lerVcard(typeof c?.vcard === 'string' ? c.vcard : '', c?.displayName))
+    return { corpo: corpoDeContatos(contatos), tipo: 'contact', midia: false, citada }
   }
   if (m.reactionMessage) {
     return {

@@ -350,6 +350,8 @@ for (const [rotulo, msg, esperado, tipoEsperado] of [
   ['figurinha', { type: 'sticker', sticker: { id: 'MID3' } }, '[figurinha]', 'image'],
   ['localização', { type: 'location', location: { latitude: -23, longitude: -46, name: 'Clínica' } }, '[localização: Clínica]', 'location'],
   ['reação', { type: 'reaction', reaction: { emoji: '👍', message_id: 'w' } }, '[reagiu 👍]', 'reaction'],
+  ['contato', { type: 'contacts', contacts: [{ name: { formatted_name: 'Ana' }, phones: [{ phone: '+55 11 91111-2222', wa_id: '5511911112222' }] }] }, '[contato compartilhado: Ana · +55 11 91111-2222]', 'contact'],
+  ['contato sem dados', { type: 'contacts' }, '[contato compartilhado]', 'contact'],
   ['tipo novo da Meta', { type: 'tipo_que_ainda_nao_existe' }, '[mensagem do tipo tipo_que_ainda_nao_existe]', 'other'],
 ] as const) {
   const n = normalizarMensagemMeta({ ...base, ...(msg as object) })

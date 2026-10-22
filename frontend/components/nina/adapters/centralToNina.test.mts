@@ -445,6 +445,31 @@ const semAlvo = toUIConversation(conv(), contato(), [nossa, reacao('r1', '[reagi
 eq(semAlvo.messages.length, 1, 'reação sem alvo carregado some em vez de virar bolha')
 
 // ---------------------------------------------------------------------------
+// Cartão de contato: o corpo vira lista, a bolha fica sem o texto entre
+// colchetes, e a lista de conversas mostra "Contato: Fulano".
+
+const cartao = toUIMessage(msg({ message_type: 'contact', body: '[contato compartilhado: UniversoABA · +55 21 99191-3429]' }))
+eq(cartao.content, '', 'cartão: o texto entre colchetes sai da bolha')
+eq(JSON.stringify(cartao.contatos), JSON.stringify([{ nome: 'UniversoABA', telefones: ['+55 21 99191-3429'] }]), 'cartão: nome e telefone')
+
+const antigo = toUIMessage(msg({ message_type: 'other', body: '[contato compartilhado]' }))
+eq(JSON.stringify(antigo.contatos), '[]', "linha antiga 'other' sem dados ainda vira cartão (vazio)")
+
+const doisCartoes = toUIMessage(msg({ message_type: 'contact', body: '[contatos compartilhados: Ana · Maria · +55 11 91111-2222; +5511933334444]' }))
+eq(JSON.stringify(doisCartoes.contatos), JSON.stringify([
+  { nome: 'Ana · Maria', telefones: ['+55 11 91111-2222'] },
+  { nome: null, telefones: ['+5511933334444'] },
+]), 'vários cartões; " · " no nome não vira telefone')
+
+eq(toUIMessage(msg({ message_type: 'text', body: '[contato compartilhado: x]' })).contatos, null,
+  'texto digitado por gente nunca vira cartão')
+
+eq(toUIConversation(conv(), contato(), [msg({ message_type: 'contact', body: '[contato compartilhado: UniversoABA · +55 21 99191-3429]' })], 'off', false).lastMessage,
+  'Contato: UniversoABA', 'prévia da lista com o histórico em mãos')
+eq(toUIConversation(conv({ last_message_preview: '[contato compartilhado: UniversoABA · +55 21 99191-3429]' }), contato(), [], 'off', false).lastMessage,
+  'Contato: UniversoABA', 'prévia da lista vinda do banco')
+
+// ---------------------------------------------------------------------------
 console.log(
   falhas === 0
     ? '\nTodos os testes passaram.'

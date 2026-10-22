@@ -1,4 +1,5 @@
 import type { AnuncioDaMensagem, NormalizedIncomingMessage } from '../types/central.types'
+import { corpoDeContatos } from '../utils/contato-compartilhado'
 
 // ============================================================================
 // Normalização do payload da Meta → NormalizedIncomingMessage
@@ -48,6 +49,10 @@ interface MensagemMeta {
   sticker?: MidiaMeta
   location?: { latitude?: number; longitude?: number; name?: string; address?: string }
   reaction?: { message_id?: string; emoji?: string }
+  contacts?: {
+    name?:   { formatted_name?: string; first_name?: string }
+    phones?: { phone?: string; wa_id?: string }[]
+  }[]
   errors?: { code?: number; title?: string; message?: string }[]
   context?: { id?: string }
   // Clique num anúncio Click-to-WhatsApp: vem na primeira mensagem que o
@@ -175,7 +180,14 @@ function interpretarConteudo(m: MensagemMeta): { corpo: string; tipo: string } {
     }
 
     case 'contacts':
-      return { corpo: '[contato compartilhado]', tipo: 'other' }
+      return {
+        corpo: corpoDeContatos((m.contacts ?? []).map(c => ({
+          nome:      c.name?.formatted_name?.trim() || c.name?.first_name?.trim() || null,
+          telefones: (c.phones ?? []).map(p => p.phone?.trim() || (p.wa_id ? `+${p.wa_id}` : '')).filter(Boolean),
+        }))),
+        // Tipo próprio: é por ele que a tela sabe que deve desenhar o cartão.
+        tipo: 'contact',
+      }
 
     case 'reaction':
       // Reação não merece turno da IA (responder a um 👍 com uma frase é ruído),

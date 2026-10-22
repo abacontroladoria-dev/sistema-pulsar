@@ -98,8 +98,49 @@ console.log('descartes com motivo')
   }))[0]
   checar(edicao?.tipo === 'ignorado', 'edição (protocolMessage) ignorada', edicao)
 
+  // Payload real (22/10, 5521920043824): a pessoa editou a mensagem anterior.
+  const edicaoCifrada = normalizarWebhookEvolution(upsert({
+    key: { remoteJid: '5521920043824@s.whatsapp.net', id: '3AAEB3065720C1EC29F5' },
+    message: { secretEncryptedMessage: { secretEncType: 2, encIv: {}, encPayload: {}, targetMessageKey: { id: '3AAF8A479CD61B7A6446' } } },
+    messageType: 'secretEncryptedMessage',
+  }))[0]
+  checar(edicaoCifrada?.tipo === 'ignorado', 'edição cifrada (secretEncryptedMessage) ignorada', edicaoCifrada)
+
   const desconhecido = normalizarWebhookEvolution({ event: 'chats.update', instance: 'x', data: {} })[0]
   checar(desconhecido?.tipo === 'ignorado', 'evento não tratado ignorado', desconhecido)
+}
+
+console.log('contato compartilhado')
+{
+  // vCard real (22/10, 5521920043824), descrição encurtada.
+  const [e] = normalizarWebhookEvolution(upsert({
+    key: { remoteJid: '5521920043824@s.whatsapp.net', fromMe: false, id: '3A16B904BD14255252D1' },
+    message: {
+      contactMessage: {
+        displayName: 'UniversoABA',
+        vcard: 'BEGIN:VCARD\nVERSION:3.0\nN:;UniversoABA;;;\nFN:UniversoABA\nX-WA-BIZ-NAME:Universo ABA\nORG:UniversoABA;\nTEL;type=CELL;type=VOICE;waid=5521991913429:+55 21 99191-3429\nEND:VCARD',
+      },
+    },
+    messageType: 'contactMessage',
+  }))
+  checar(e?.tipo === 'mensagem' && e.mensagem.body === '[contato compartilhado: UniversoABA · +55 21 99191-3429]',
+    'cartão vira nome + telefone no corpo', e?.tipo === 'mensagem' ? e.mensagem.body : e)
+  checar(e?.tipo === 'mensagem' && e.mensagem.messageType === 'contact', 'tipo contact (a tela desenha o cartão)')
+
+  const [varios] = normalizarWebhookEvolution(upsert({
+    key: { remoteJid: '5511987654321@s.whatsapp.net', id: 'CA1' },
+    message: {
+      contactsArrayMessage: {
+        contacts: [
+          { displayName: 'Ana', vcard: 'BEGIN:VCARD\nFN:Ana\nitem1.TEL;waid=5511911112222:+55 11 91111-2222\nEND:VCARD' },
+          { displayName: 'Bia', vcard: 'BEGIN:VCARD\nFN:Bia\nTEL;waid=5511933334444:\nEND:VCARD' },
+        ],
+      },
+    },
+  }))
+  checar(varios?.tipo === 'mensagem'
+    && varios.mensagem.body === '[contatos compartilhados: Ana · +55 11 91111-2222; Bia · +5511933334444]',
+    'vários cartões; grupo item1. e TEL só com waid', varios?.tipo === 'mensagem' ? varios.mensagem.body : varios)
 }
 
 console.log('@lid')

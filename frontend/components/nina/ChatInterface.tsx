@@ -936,6 +936,8 @@ const ChatInterface: React.FC = () => {
                           aoIrPara={irPara}
                           aoEnviarSugestao={handleEnviarSugestao}
                           enviandoSugestao={enviandoSugestao === msg.id}
+                          conversaAtualId={selectedId}
+                          aoAbrirConversa={setSelectedChatId}
                         />
                       </React.Fragment>
                     )

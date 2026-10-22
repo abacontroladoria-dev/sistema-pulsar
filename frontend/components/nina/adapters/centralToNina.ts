@@ -8,6 +8,11 @@ import { resolverModoEfetivo } from '@/modules/atendimento/agente/modo-efetivo'
 import { maiaTransferiu } from '@/modules/atendimento/agente/caixas'
 import { apagaParaTodos, podeEditar } from '@/modules/atendimento/utils/apagar-mensagem'
 import {
+  lerCorpoDeContatos,
+  previaDeContatos,
+  type ContatoCompartilhado,
+} from '@/modules/atendimento/utils/contato-compartilhado'
+import {
   MessageDirection,
   MessageType,
   type ConversationStatus,
@@ -66,6 +71,9 @@ export interface NinaMessage extends UIMessage {
   quandoIso:  string
   // Quem escreveu, para agrupar bolhas seguidas da mesma pessoa.
   autorId:    string
+  // Cartões de contato que vieram na mensagem. Null quando não é cartão; com
+  // cartão, `content` fica vazio e a bolha desenha CartaoContato.
+  contatos:   ContatoCompartilhado[] | null
 }
 
 // ----------------------------------------------------------------------------
@@ -273,6 +281,10 @@ export function toUIMessage(m: Message): NinaMessage {
     m.sent_by_ai && m.status === 'pending' && !m.external_message_id
 
   const anexos = (m.attachments ?? []).map(a => toAnexoUI(a, m.message_type))
+  // 'other' cobre o cartão gravado antes do tipo 'contact' existir (22/10).
+  const contatos = m.message_type === 'contact' || m.message_type === 'other'
+    ? lerCorpoDeContatos(m.body)
+    : null
 
   return {
     id:        m.id,
@@ -283,7 +295,7 @@ export function toUIMessage(m: Message): NinaMessage {
     // do anexo diz a mesma coisa e diz melhor, então o placeholder sai: repetir
     // "[imagem]" acima de um chip escrito "Imagem" é ruído, e um WhatsApp com
     // legenda ficaria com a legenda enterrada sob o marcador.
-    content:   anexos.length > 0 ? semPlaceholder(m.body) : (m.body ?? ''),
+    content:   contatos ? '' : anexos.length > 0 ? semPlaceholder(m.body) : (m.body ?? ''),
     timestamp: horaDoRelogio(m.sent_at ?? m.created_at),
     direction: mapDirection(m.direction),
     type:      mapType(m.message_type),
@@ -304,7 +316,19 @@ export function toUIMessage(m: Message): NinaMessage {
     editada:    !!m.edited_at,
     quandoIso:  m.sent_at ?? m.created_at,
     autorId:    m.direction === 'inbound' ? 'contato' : (m.sent_by_ai ? 'ia' : (m.sent_by_user_id ?? 'equipe')),
+    contatos,
   }
+}
+
+// A prévia de uma mensagem para a citação e para a lista: o cartão vira
+// "Contato: Fulano" em vez do corpo entre colchetes.
+function previaDaMensagem(m: NinaMessage): string {
+  return m.contatos ? previaDeContatos(m.contatos) : m.content
+}
+
+function previaGuardada(texto: string | null): string | null {
+  const contatos = lerCorpoDeContatos(texto)
+  return contatos ? previaDeContatos(contatos) : texto
 }
 
 // Preenche autor e prévia da citação com as mensagens em mãos. Separado de
@@ -315,7 +339,7 @@ function resolverCitacoes(mensagens: NinaMessage[], nomeContato: string): NinaMe
     if (!m.citacao) return m
     const alvo = porId.get(m.citacao.id)
     if (!alvo) return m
-    const previa = alvo.content || alvo.anexos.map(a => a.nome ?? a.rotulo).join(', ') || 'Mensagem'
+    const previa = previaDaMensagem(alvo) || alvo.anexos.map(a => a.nome ?? a.rotulo).join(', ') || 'Mensagem'
     const autor  = alvo.direction === MessageDirection.INCOMING ? nomeContato : 'Você'
     return { ...m, citacao: { id: alvo.id, autor, previa } }
   })
@@ -454,8 +478,8 @@ export function toUIConversation(
     // Na lista `mensagens` vem vazio: vale a prévia que o banco guarda na
     // conversa. "Sem mensagens" só quando é verdade — nem prévia nem
     // last_message_at; com mensagem mas sem prévia (só reação), fica vazio.
-    lastMessage:  ultima?.content
-      || c.last_message_preview
+    lastMessage:  (ultima ? previaDaMensagem(ultima) : '')
+      || previaGuardada(c.last_message_preview)
       || (c.last_message_at ? '' : 'Sem mensagens'),
     lastMessageTime: horaCurta(c.last_message_at ?? c.created_at),
     lastMessageAt:   c.last_message_at ?? c.created_at,
