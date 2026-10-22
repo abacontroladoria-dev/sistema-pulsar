@@ -1,10 +1,10 @@
 import { Suspense } from "react"
-import { RemunRPTab } from "@/components/cronograma/remuneracao/RemunRPTab"
+import { FaturamentoMensalShell } from "@/components/cronograma/remuneracao/FaturamentoMensalShell"
 
 export default function RelacionamentoPrestadorRPPage() {
   return (
     <Suspense fallback={null}>
-      <RemunRPTab />
+      <FaturamentoMensalShell />
     </Suspense>
   )
 }

@@ -167,6 +167,7 @@ const PALAVRAS_CHAVE: Record<string, string> = {
   cadastros_taxas: 'imposto',
   cronograma_ocupacao_salas: 'sala',
   relacionamento_prestador_analise: 'remuneração',
+  relacionamento_prestador_rp: 'remuneração mensal total individual contestação documento do prestador pdf word',
   tv_avisos: 'avisos',
   permissoes: 'acesso',
   api_integracao: 'integração',
@@ -185,9 +186,18 @@ export type MenuItemDef = {
   area: AreaId | null
   /** Outros nomes da tela, para a busca mestre. */
   palavrasChave?: string
+  /**
+   * Código que libera uma ABA de outra tela, sem item próprio no menu nem na
+   * busca. Continua no catálogo (e em /admin/permissoes) para ser marcado por
+   * grupo. Quem lê o menu filtra com `itemNoMenu`.
+   */
+  foraDoMenu?: boolean
 }
 
 type MenuItemBase = Omit<MenuItemDef, 'area' | 'palavrasChave'>
+
+/** O item aparece no Sidebar, na busca mestre e no seletor de áreas. */
+export const itemNoMenu = (item: MenuItemDef): boolean => !item.foraDoMenu
 
 const G = MENU_GRUPOS
 
@@ -216,6 +226,10 @@ const G = MENU_GRUPOS
 // - Ocupação de Salas em Terapêutico desde 22/10/2026 (antes em Relacionamento
 //   Prestador). A rota continua /relacionamento-prestador/ocupacao-salas.
 // - Cadastros: no Sidebar é um botão dentro de Configurações (ver MENU_GRUPOS_EM_MODAL).
+// - Faturamento de Prestadores Mensal (antes "Remuneração Total"/"Remuneração
+//   Mensal") desde 22/10/2026. A "Remuneração Individual" deixou de ser tela: a
+//   emissão do documento do prestador é a aba ?tab=contestacao, só mediante
+//   contestação. O código dela fica, fora do menu, para decidir quem emite.
 const MENU_ITENS_BASE: MenuItemBase[] = [
   { codigo: 'dashboard', label: 'Dashboard', grupo: G.geral.nome, path: '/', icon: LayoutDashboard },
 
@@ -257,8 +271,8 @@ const MENU_ITENS_BASE: MenuItemBase[] = [
   { codigo: 'cronograma_solicitacoes', label: 'Simulação de Novo Prestador', grupo: G.relacionamentoPrestador.nome, path: '/relacionamento-prestador/solicitacoes?tab=simulacao', icon: UserPlus },
   { codigo: 'cronograma_disponibilidade_interna', label: 'Ocupar Profissionais Disponíveis', grupo: G.relacionamentoPrestador.nome, path: '/relacionamento-prestador/ocupar-profissionais-disponiveis', icon: UserSearch },
   { codigo: 'relacionamento_prestador_analise', label: 'Rem. Mês - Previsão', grupo: G.relacionamentoPrestador.nome, path: '/relacionamento-prestador/analise', icon: TrendingUp },
-  { codigo: 'relacionamento_prestador_rp', label: 'Remuneração Total', grupo: G.relacionamentoPrestador.nome, path: '/relacionamento-prestador/rp', icon: Wallet },
-  { codigo: 'relacionamento_prestador_individual', label: 'Remuneração Individual', grupo: G.relacionamentoPrestador.nome, path: '/relacionamento-prestador/individual', icon: UserRound },
+  { codigo: 'relacionamento_prestador_rp', label: 'Faturamento de Prestadores Mensal', grupo: G.relacionamentoPrestador.nome, path: '/relacionamento-prestador/rp?tab=faturamento', icon: Wallet },
+  { codigo: 'relacionamento_prestador_individual', label: 'Faturamento Mensal: emissão por contestação', grupo: G.relacionamentoPrestador.nome, path: '/relacionamento-prestador/rp?tab=contestacao', icon: UserRound, foraDoMenu: true },
   { codigo: 'relacionamento_prestador_pep', label: 'Entregas PEP', grupo: G.relacionamentoPrestador.nome, path: '/relacionamento-prestador/pep', icon: ListChecks },
   { codigo: 'relacionamento_prestador_pep_historico', label: 'PEP - Histórico', grupo: G.relacionamentoPrestador.nome, path: '/relacionamento-prestador/pep-historico', icon: History },
   { codigo: 'relacionamento_prestador_auditoria_documentos', label: 'Auditoria de Documentos PEP', grupo: G.relacionamentoPrestador.nome, path: '/relacionamento-prestador/auditoria-documentos', icon: ScanText },

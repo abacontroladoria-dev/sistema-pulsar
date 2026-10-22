@@ -1,7 +1,9 @@
 "use client"
 
-// Rem. Mês - Total: lista compacta de profissionais + modal-workspace por
-// pessoa, no padrão de docs/padrao-detalhamento-modal.md.
+// Aba "Faturamento" do Faturamento de Prestadores Mensal (antes "Remuneração
+// Mensal"): lista compacta de profissionais + modal-workspace por pessoa, no
+// padrão de docs/padrao-detalhamento-modal.md. Cabeçalho e seletor de mês são
+// do FaturamentoMensalShell, comuns às duas abas.
 //
 // O que mudou em relação ao desenho anterior:
 //  • a linha não expande mais para baixo (nem abria quatro accordions dentro de
@@ -15,10 +17,9 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { HelpCircle, Download, Loader2 } from "lucide-react"
 
-import { useHeader } from "@/contexts/HeaderContext"
 import { useRemuneracaoRPContext } from "@/contexts/RemuneracaoRPContext"
 import { useProfissionaisReboot } from "@/hooks/useProfissionaisReboot"
-import { RemuneracaoGradeBadge, labelMes } from "./RemuneracaoGradeBadge"
+import { labelMes } from "./RemuneracaoGradeBadge"
 import { RemuneracaoRPDashboard } from "./RemuneracaoRPDashboard"
 import { EstadoGradeVazia } from "./EstadoGradeVazia"
 import { RemuneracaoRPSkeleton } from "./RemuneracaoRPSkeleton"
@@ -62,8 +63,7 @@ export function RemunRPTab() {
   // useEffect com setState para resetar (§3.12).
   const [aberto, setAberto] = useState<string | null>(null)
 
-  // Link direto de outra tela (ex.: causa de diferença na Visão Geral
-  // Individual): ?prestador=Nome&sessao=ID abre este profissional já com
+  // Link direto de outra tela: ?prestador=Nome&sessao=ID abre este profissional já com
   // aquela sessão localizada. Só na entrada — depois disso o usuário manda.
   const searchParams = useSearchParams()
   const prestadorLink = searchParams.get("prestador")
@@ -94,7 +94,6 @@ export function RemunRPTab() {
     })
   }, [])
   const limparEspecialidades = useCallback(() => setEspecialidadesFiltro(new Set()), [])
-  const { setHeader, setRightContent } = useHeader()
 
   const profissionaisComInconsistencia = useMemo(
     () => resultado?.filter(p => p.inconsistencias > 0) ?? [],
@@ -149,15 +148,6 @@ export function RemunRPTab() {
     () => (aberto ? resultado?.find(p => p.prof === aberto) ?? null : null),
     [aberto, resultado]
   )
-
-  useEffect(() => {
-    setHeader("Remuneração Mensal", "Relacionamento Prestador")
-    setRightContent(<RemuneracaoGradeBadge c={controlesGrade} />)
-    return () => {
-      setHeader("", "")
-      setRightContent(null)
-    }
-  }, [setHeader, setRightContent, controlesGrade])
 
   const temDado = !!resultado && resultado.length > 0
   const carregando = loading || controlesGrade.gradeLoading

@@ -1,4 +1,4 @@
-// Demonstrativo de faturamento (/relacionamento-prestador/individual).
+// Demonstrativo de faturamento (/relacionamento-prestador/rp?tab=contestacao).
 //
 // Dois compromissos travados aqui:
 //

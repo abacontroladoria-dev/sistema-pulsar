@@ -1,5 +1,8 @@
-// Visão geral de /relacionamento-prestador/individual — o que a tela mostra
-// ANTES de alguém ser escolhido no seletor.
+// Visão geral da antiga /relacionamento-prestador/individual — o que a tela
+// mostrava ANTES de alguém ser escolhido no seletor. A tela virou a aba
+// "Contestação do prestador" do Faturamento de Prestadores Mensal (22/10/2026),
+// sem a visão geral; daqui segue em uso `pendenciasDocumento`, no
+// PainelProfissional. O resto fica, com os testes, até decidirem se volta.
 //
 // Decisão do usuário (25/09/2026): os NÚMEROS agregados (total do mês, faixas
 // de valor, especialidade) continuam sem nome de pessoa — ver as duas travas de

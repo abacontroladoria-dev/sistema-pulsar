@@ -1,5 +1,5 @@
 // Conta do Demonstrativo de Faturamento — a MESMA para o PDF, o Word e a tela
-// de /relacionamento-prestador/individual.
+// da aba "Contestação do prestador" (/relacionamento-prestador/rp?tab=contestacao).
 //
 // Até aqui a conta vivia dentro de montarHtmlDocumentoFaturamento (documento.ts),
 // misturada ao HTML: a tela só poderia mostrar "o que vai no PDF" refazendo a
