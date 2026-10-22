@@ -26,8 +26,9 @@ import { foco } from "./ui/campos"
 import { getAltasClinicasDoPaciente, altaClinicaVigente } from "@/services/pacienteAltaClinica.service"
 import type { PacienteAltaClinica } from "@/types/laudos"
 
-type Aba = "cadastro" | "ficha" | "laudo" | "altas" | "escola" | "disponibilidade" | "contratos" | "financeira"
-type SecaoCadastro = "dados" | "endereco" | "filiacao"
+type Aba = "cadastro" | "ficha" | "laudo" | "altas" | "disponibilidade" | "contratos" | "financeira"
+// Escola deixou de ser aba e virou seção de Cadastro em 22/10/2026.
+type SecaoCadastro = "dados" | "endereco" | "filiacao" | "escola"
 type SecaoFicha = "basica" | "doencas"
 // Plano de saúde saiu de Cadastro para a Ficha financeira em 22/10/2026. Continua
 // no editar/salvar do cadastro: grava em `ficha`, como antes.
@@ -41,8 +42,9 @@ export function PacienteDetalhe({
   suspensaoIdInicial,
 }: {
   idPaciente: number
-  /** Deep link (ex.: vindo de Ocupação de Paciente) — abre direto nesta aba. */
-  abaInicial?: Aba
+  /** Deep link (ex.: vindo de Ocupação de Paciente) — abre direto nesta aba.
+   *  "escola" (link antigo) abre Cadastro na seção Escola. */
+  abaInicial?: Aba | "escola"
   /** Junto de `abaInicial="altas"`, abre o modal de detalhe desta suspensão. */
   suspensaoIdInicial?: number
 }) {
@@ -64,8 +66,8 @@ export function PacienteDetalhe({
     recarregar,
   } = usePacienteDetalhe(idPaciente)
 
-  const [aba, setAba] = useState<Aba>(abaInicial ?? "cadastro")
-  const [secaoCadastro, setSecaoCadastro] = useState<SecaoCadastro>("dados")
+  const [aba, setAba] = useState<Aba>(abaInicial === "escola" ? "cadastro" : abaInicial ?? "cadastro")
+  const [secaoCadastro, setSecaoCadastro] = useState<SecaoCadastro>(abaInicial === "escola" ? "escola" : "dados")
   const [secaoFicha, setSecaoFicha] = useState<SecaoFicha>("basica")
   const [secaoFinanceira, setSecaoFinanceira] = useState<SecaoFinanceira>("plano")
   const [editando, setEditando] = useState(false)
@@ -195,7 +197,6 @@ export function PacienteDetalhe({
             { value: "ficha", label: "Ficha médica" },
             { value: "laudo", label: "Laudo" },
             { value: "altas", label: "Altas e Individualidades" },
-            { value: "escola", label: "Escola" },
             { value: "disponibilidade", label: "Disponibilidade" },
             { value: "contratos", label: "Contratos" },
             { value: "financeira", label: "Ficha financeira" },
@@ -214,19 +215,28 @@ export function PacienteDetalhe({
                 { value: "dados", label: "Dados pessoais", icon: <User className={ICONE} />, alterado: cadastroSujo.dados },
                 { value: "endereco", label: "Endereço", icon: <MapPin className={ICONE} />, alterado: cadastroSujo.endereco },
                 { value: "filiacao", label: "Filiação e responsáveis", icon: <Users className={ICONE} />, alterado: cadastroSujo.filiacao },
+                { value: "escola", label: "Escola", icon: <GraduationCap className={ICONE} /> },
               ]}
             />
-            <div className="min-w-0 flex-1 rounded-lg border border-border bg-card px-4 py-4">
-              {secaoCadastro === "dados" && (
-                <DadosPessoais paciente={paciente} form={form} set={set} disabled={!editando} />
-              )}
-              {secaoCadastro === "endereco" && (
-                <Endereco form={form} set={set} disabled={!editando} />
-              )}
-              {secaoCadastro === "filiacao" && (
-                <FiliacaoResponsaveis form={form} set={set} disabled={!editando} />
-              )}
-            </div>
+            {secaoCadastro === "escola" ? (
+              // Fora do fluxo de editar/salvar do cadastro de propósito: o conteúdo é
+              // declaração do responsável, e a equipe lê sem editar. Por isso não
+              // recebe `disabled={!editando}` nem participa de `dirtyCount`. Traz as
+              // próprias caixas, então não vai dentro do cartão das outras seções.
+              <AbaEscola pacienteId={idPaciente} />
+            ) : (
+              <div className="min-w-0 flex-1 rounded-lg border border-border bg-card px-4 py-4">
+                {secaoCadastro === "dados" && (
+                  <DadosPessoais paciente={paciente} form={form} set={set} disabled={!editando} />
+                )}
+                {secaoCadastro === "endereco" && (
+                  <Endereco form={form} set={set} disabled={!editando} />
+                )}
+                {secaoCadastro === "filiacao" && (
+                  <FiliacaoResponsaveis form={form} set={set} disabled={!editando} />
+                )}
+              </div>
+            )}
           </>
         ) : aba === "ficha" ? (
           <>
@@ -266,11 +276,6 @@ export function PacienteDetalhe({
           </>
         ) : aba === "laudo" ? (
           <AbaLaudo pacienteId={idPaciente} pacienteNome={paciente.nome} />
-        ) : aba === "escola" ? (
-          // Fora do fluxo de editar/salvar do cadastro de propósito: o conteúdo é
-          // declaração do responsável, e a equipe lê sem editar. Por isso não
-          // recebe `disabled={!editando}` nem participa de `dirtyCount`.
-          <AbaEscola pacienteId={idPaciente} />
         ) : aba === "disponibilidade" ? (
           // Também fora do editar/salvar do cadastro: cada gravação é uma versão
           // nova num histórico imutável, com botão e confirmação próprios.

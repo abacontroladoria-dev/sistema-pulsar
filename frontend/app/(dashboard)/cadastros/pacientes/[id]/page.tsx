@@ -18,8 +18,8 @@ export default function PacienteDetalhePage() {
   // procurar entre Cadastro/Ficha médica/Laudo/Altas e Individualidades.
   //
   // `?aba=escola` vem da listagem de pacientes: o selo de escola no cartão abre
-  // direto na aba, para conferir o que a família declarou sem passar por
-  // Cadastro. `?aba=disponibilidade` abre a disponibilidade (link do cronograma,
+  // direto em Cadastro → Escola (seção de Cadastro desde 22/10/2026), para
+  // conferir o que a família declarou. `?aba=disponibilidade` abre a disponibilidade (link do cronograma,
   // no futuro). `?aba=contratos` vem da Status Contratos ("Abrir cadastro").
   // Lista fechada de propósito — `aba` cru viria de URL e o valor
   // precisa casar com o type `Aba`.
