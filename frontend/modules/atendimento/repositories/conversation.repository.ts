@@ -58,6 +58,10 @@ export interface ListConversationsFilters {
   // tem que mostrar abandono, e a conversa esquecida há quatro horas é
   // exatamente a que o inbox empurra para o fim da lista, onde ninguém olha.
   ordem?:          'recente' | 'espera'
+  // Só as encerradas a partir de um instante, pela marca do encerramento
+  // (resolved_at / archived_at). A triagem mostra Resolvido e Fechado "de hoje":
+  // o total histórico crescia para sempre e não dizia nada.
+  encerradaDesde?: { coluna: 'resolved_at' | 'archived_at'; desde: string }
   limit?:          number   // default 30
   offset?:         number   // default 0
 }
@@ -176,7 +180,7 @@ export class ConversationRepository {
   }
 
   // Hot path do webhook processor.
-  // Verifica se existe conversa ativa (open|assigned|waiting) para o par
+  // Verifica se existe conversa ativa (self_service|open|assigned|waiting) para o par
   // contato+canal antes de criar uma nova. Usa o índice parcial único
   // uq_conversations_active_per_contact_channel via filtro equivalente.
   async findActiveByContactAndChannel(
@@ -189,7 +193,7 @@ export class ConversationRepository {
       .select('*')
       .eq('contact_id', contactId)
       .eq('channel_id', channelId)
-      .in('status', ['open', 'assigned', 'waiting'])
+      .in('status', ['self_service', 'open', 'assigned', 'waiting'])
       .maybeSingle()
 
     if (error) throw error
@@ -222,6 +226,10 @@ export class ConversationRepository {
 
     if (filters.inboxId) {
       query = query.eq('inbox_id', filters.inboxId)
+    }
+
+    if (filters.encerradaDesde) {
+      query = query.gte(filters.encerradaDesde.coluna, filters.encerradaDesde.desde)
     }
 
     if (filters.status !== undefined) {
@@ -312,7 +320,7 @@ export class ConversationRepository {
       .select('*')
       .eq('organization_id', orgId)
       .in('contact_id', contactIds)
-      .in('status', ['open', 'assigned', 'waiting'])
+      .in('status', ['self_service', 'open', 'assigned', 'waiting'])
       .order('last_message_at', { ascending: false, nullsFirst: false })
       .limit(limit)
 
@@ -484,5 +492,87 @@ export class ConversationRepository {
     const linhas = (data ?? []) as { sent_at: string | null }[]
     // [0] é a última; queremos a de baixo dela.
     return linhas[1]?.sent_at ?? null
+  }
+
+  // O ai_mode padrão da inbox (inbox vence organização) — a mesma consulta de
+  // lerAgentSettings (agente/agent-settings.ts), que é `server-only` e por isso
+  // não entra aqui. Sem linha, 'off': na dúvida, a Maia não está atendendo.
+  async aiModePadrao(orgId: string, inboxId: string): Promise<string> {
+    const { data, error } = await (this.supabase as any)
+      .schema('central')
+      .from('agent_settings')
+      .select('ai_mode, inbox_id')
+      .eq('organization_id', orgId)
+      .or(`inbox_id.eq.${inboxId},inbox_id.is.null`)
+      .order('inbox_id', { ascending: false, nullsFirst: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (error) throw error
+    return (data as { ai_mode: string } | null)?.ai_mode ?? 'off'
+  }
+
+  // --------------------------------------------------------------------------
+  // Leitura de status pela Maia (20261022100100)
+  //
+  // Colunas próprias, escritas cruas; quem decide é workers/status.worker.ts e
+  // o ConversationService.
+  // --------------------------------------------------------------------------
+
+  // A equipe escolheu o status à mão: a Maia não o muda até mensagem nova.
+  async marcarStatusManual(id: string, quando: string): Promise<void> {
+    const { error } = await (this.supabase as any)
+      .schema('central')
+      .from('conversations')
+      .update({ status_manual_em: quando })
+      .eq('id', id)
+
+    if (error) throw error
+  }
+
+  async gravarLeituraStatus(id: string, leitura: {
+    status_ia_ate:        string | null
+    status_ia_veredito:   string
+    status_ia_confianca:  number
+    status_ia_motivo:     string
+    status_ia_pendencia:  string | null
+    status_ia_em:         string
+    status_ia_alerta_em?: null
+  }): Promise<void> {
+    const { error } = await (this.supabase as any)
+      .schema('central')
+      .from('conversations')
+      .update(leitura)
+      .eq('id', id)
+
+    if (error) throw error
+  }
+
+  async marcarAlertaParada(id: string, quando: string): Promise<void> {
+    const { error } = await (this.supabase as any)
+      .schema('central')
+      .from('conversations')
+      .update({ status_ia_alerta_em: quando })
+      .eq('id', id)
+
+    if (error) throw error
+  }
+
+  // Conversas ativas com mensagem desde `desde`, mais antigas primeiro. O
+  // worker decide em memória quais precisam de leitura nova, quais só esperam
+  // o tempo do veredito e quais estão paradas.
+  async listarAtivasParaStatus(orgId: string, desde: string, limite: number): Promise<Conversation[]> {
+    const { data, error } = await (this.supabase as any)
+      .schema('central')
+      .from('conversations')
+      .select('*')
+      .eq('organization_id', orgId)
+      .in('status', ['self_service', 'open', 'assigned', 'waiting'])
+      .gte('last_message_at', desde)
+      .order('last_message_at', { ascending: true })
+      .limit(limite)
+
+    if (error) throw error
+    return (data ?? []) as Conversation[]
   }
 }

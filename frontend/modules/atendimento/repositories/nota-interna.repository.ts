@@ -24,7 +24,7 @@ const COLUNAS = `
 export interface CriarNotaInput {
   organization_id:      string
   conversation_id:      string
-  author_user_id:       string
+  author_user_id:       string | null
   body:                 string
   mentioned_user_ids:   string[]
   delegated_to_user_id: string | null

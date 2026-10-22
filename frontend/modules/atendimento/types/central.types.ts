@@ -34,7 +34,10 @@
 export const UNIDADES = ['Realengo', 'Fazendinha', 'Padre Miguel'] as const
 export type Unidade = typeof UNIDADES[number]
 
+// 'self_service' = Autoatendimento: a Maia está conversando (20261022100000).
+// Ativo, como open/assigned/waiting — toda lista de "ativas" precisa dele.
 export type ConversationStatus =
+  | 'self_service'
   | 'open'
   | 'assigned'
   | 'waiting'
@@ -180,9 +183,25 @@ export interface Conversation {
   last_read_at:     string | null
   resolved_at:      string | null
   archived_at:      string | null
+  // Leitura de status pela Maia (20261022100100, agente/status-atendimento.ts).
+  // Opcionais porque nem todo select traz as colunas.
+  status_ia_ate?:       string | null
+  status_ia_veredito?:  VereditoStatus | null
+  status_ia_confianca?: number | null
+  status_ia_motivo?:    string | null
+  status_ia_pendencia?: string | null
+  status_ia_em?:        string | null
+  status_manual_em?:    string | null
+  status_ia_alerta_em?: string | null
   created_at:       string
   updated_at:       string
 }
+
+// Espelha ck_conversations_status_ia_veredito (20261022100100).
+export const VEREDITOS_STATUS = [
+  'em_andamento', 'aguardando_cliente', 'aguardando_clinica', 'resolvido', 'fechado',
+] as const
+export type VereditoStatus = typeof VEREDITOS_STATUS[number]
 
 export interface Message {
   id:                  string
@@ -560,7 +579,9 @@ export interface NotaInterna {
   id:                   string
   organization_id:      string
   conversation_id:      string
-  author_user_id:       string
+  // NULL = a Maia (nota de conversa parada, workers/status.worker.ts —
+  // 20261022100100). Mesma convenção de performed_by ausente na auditoria.
+  author_user_id:       string | null
   body:                 string
   // Quem a nota menciona (@). Cópia para a bolha destacar os nomes.
   mentioned_user_ids:   string[]
@@ -576,7 +597,8 @@ export interface Mencao {
   note_id:           string
   conversation_id:   string
   mentioned_user_id: string
-  author_user_id:    string
+  // NULL = a Maia (ver NotaInterna).
+  author_user_id:    string | null
   // Nulo = não lida.
   lida_em:           string | null
   created_at:        string

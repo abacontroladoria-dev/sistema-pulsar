@@ -115,7 +115,7 @@ export interface FiltroCaixa {
 // Os status vivos: tudo que não encerrou. Explícito em vez de "não encerrado"
 // porque o filtro do PostgREST precisa da lista, e um `not.in` deixaria passar
 // qualquer status novo que alguém acrescente ao enum sem pensar na triagem.
-const STATUS_ATIVOS: ConversationStatus[] = ['open', 'assigned', 'waiting']
+const STATUS_ATIVOS: ConversationStatus[] = ['self_service', 'open', 'assigned', 'waiting']
 
 // `modoPadrao` é o ai_mode da clínica já resolvido (agent_settings, inbox vence
 // org). É ele que decide se as conversas de coluna NULL entram ou não em cada

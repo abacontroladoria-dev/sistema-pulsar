@@ -8,6 +8,7 @@ import { useConversas, horaCurta, iniciais, type ConversaComContato } from '../u
 type Filter = 'all' | ConversationStatus
 
 const DOT_COLOR: Record<ConversationStatus, string> = {
+  self_service: 'bg-violet-400',
   open:     'bg-emerald-400',
   waiting:  'bg-amber-400',
   assigned: 'bg-sky-400',

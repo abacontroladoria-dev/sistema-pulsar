@@ -1,48 +1,50 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { CAIXAS, type Caixa } from '@/modules/atendimento/agente/caixas'
-import type { Contact, Conversation } from '@/modules/atendimento/types/central.types'
+import type { Contact, Conversation, ConversationStatus } from '@/modules/atendimento/types/central.types'
 import { toUIConversation, type NinaConversation } from '@/components/nina/adapters/centralToNina'
+import { STATUS_ATENDIMENTO, motivoStatusMaia } from '@/components/nina/StatusAtendimento'
 
 // ============================================================================
-// A triagem do atendimento — as quatro filas, lado a lado.
+// A triagem do atendimento — uma coluna por status, lado a lado.
 //
-// Toda a classificação acontece no SERVIDOR (/api/central/conversations/caixas).
-// Este hook não decide caixa nenhuma, e isso é deliberado: a caixa depende do
-// ai_mode EFETIVO, que mistura a coluna da conversa com o padrão da clínica, e
-// o cliente não tem o segundo. Um filtro aqui marcaria como "Humano" justamente
-// as conversas que a Maia atende por herança.
-//
-// A ordem das filas também vem do servidor (ORDER BY), não de um sort aqui: com
-// a lista cortada em `limit`, ordenar no cliente reordenaria só a fatia que
-// chegou, e o topo da coluna deixaria de ser quem espera há mais tempo na org
-// para ser quem espera há mais tempo entre os 50 que vieram.
+// O agrupamento acontece no SERVIDOR (/api/central/conversations/caixas), que
+// devolve cada status com a contagem real e as primeiras conversas. A ordem
+// também vem de lá (ORDER BY): com a lista cortada em `limit`, ordenar aqui
+// reordenaria só a fatia que chegou.
 // ============================================================================
 
 const INTERVALO_MS  = 8_000
 const TETO_CONTATOS = 200
 const POR_COLUNA    = 50
 
+const COM_RESPONSAVEL: readonly ConversationStatus[] = ['open', 'assigned', 'waiting']
+
 export interface Fila {
   conversas: NinaConversation[]
-  // A contagem REAL da caixa, que pode passar de `conversas.length` quando a
+  // A contagem REAL do status, que pode passar de `conversas.length` quando a
   // fila é maior que o teto por coluna. É este número que o cabeçalho mostra.
   total:     number
-  // Escaladas pela Maia que ninguém assumiu (priority 'high'), por id.
+  // Escaladas pela Maia (priority 'high'), por id.
   urgentes:  Set<string>
+  // Por que a Maia pôs a conversa neste status, por id — só quando a última
+  // palavra foi dela (motivoStatusMaia).
+  motivos:   Map<string, string>
+  // Nome de quem está com a conversa, por id. Só nas colunas vivas com gente
+  // (COM_RESPONSAVEL): na encerrada, o nome sozinho não diz se foi a pessoa
+  // ou a Maia quem encerrou.
+  responsaveis: Map<string, string>
 }
 
-export type Filas = Record<Caixa, Fila>
+export type Filas = Record<ConversationStatus, Fila>
 
-const FILA_VAZIA: Fila = { conversas: [], total: 0, urgentes: new Set() }
-
-const FILAS_VAZIAS: Filas = {
-  maia: FILA_VAZIA, humano: FILA_VAZIA, ninguem: FILA_VAZIA, encerradas: FILA_VAZIA,
-}
+const filasVazias = (): Filas => Object.fromEntries(
+  STATUS_ATENDIMENTO.map(s => [s.valor, { conversas: [], total: 0, urgentes: new Set(), motivos: new Map(), responsaveis: new Map() }]),
+) as unknown as Filas
 
 interface RespostaCaixas {
-  caixas:     Record<Caixa, { conversas: Conversation[]; total: number }>
+  colunas:    Record<ConversationStatus, { conversas: Conversation[]; total: number }>
+  responsaveis?: Record<string, string>
   modoPadrao: string
   inboxesMaiaResponde?: string[]
   limit:      number
@@ -51,7 +53,7 @@ interface RespostaCaixas {
 export interface UseCaixasAtendimento {
   filas:      Filas
   // O padrão da clínica. A tela avisa quando ele está 'off' — senão a coluna
-  // "Maia" vazia parece falta de movimento, quando é a IA desligada.
+  // Autoatendimento vazia parece falta de movimento, quando é a IA desligada.
   modoPadrao: string
   limitePorColuna: number
   loading:    boolean
@@ -59,13 +61,13 @@ export interface UseCaixasAtendimento {
 }
 
 export function useCaixasAtendimento(): UseCaixasAtendimento {
-  const [filas, setFilas]           = useState<Filas>(FILAS_VAZIAS)
+  const [filas, setFilas]           = useState<Filas>(filasVazias)
   const [modoPadrao, setModoPadrao] = useState<string>('off')
   const [loading, setLoading]       = useState(true)
   const [erro, setErro]             = useState<string | null>(null)
 
   // Só a primeira carga acende o loading. O polling é silencioso: piscar as
-  // quatro colunas a cada 8s tornaria a tela inutilizável para quem está lendo.
+  // colunas a cada 8s tornaria a tela inutilizável para quem está lendo.
   const primeiraCarga = useRef(true)
 
   useEffect(() => {
@@ -91,31 +93,35 @@ export function useCaixasAtendimento(): UseCaixasAtendimento {
         if (!vivo) return
 
         const porId = new Map(contatos.map(c => [c.id, c]))
-
-        // O mesmo padrão que o servidor usou para montar as colunas. Vai ao
-        // adapter para a badge DENTRO do card concordar com a coluna que o
-        // contém: sem ele, um card na coluna "Maia" exibia badge de humano.
         const padrao = corpo.modoPadrao ?? 'off'
         const maiaResponde = new Set(corpo.inboxesMaiaResponde ?? [])
 
-        const montadas = {} as Filas
-        for (const caixa of CAIXAS) {
-          const bruta = corpo.caixas?.[caixa]
+        const montadas = filasVazias()
+        for (const { valor } of STATUS_ATENDIMENTO) {
+          const bruta = corpo.colunas?.[valor]
           const cruas = bruta?.conversas ?? []
+          const motivos = new Map<string, string>()
+          const responsaveis = new Map<string, string>()
+          for (const c of cruas) {
+            const m = motivoStatusMaia(c)
+            if (m) motivos.set(c.id, m)
+            const nome = c.assigned_user_id && COM_RESPONSAVEL.includes(valor)
+              ? corpo.responsaveis?.[c.assigned_user_id] : undefined
+            if (nome) responsaveis.set(c.id, nome)
+          }
 
-          montadas[caixa] = {
+          montadas[valor] = {
             // Mensagens vazias: a triagem mostra só o cabeçalho de cada conversa.
             // O histórico é do chat, que abre quando alguém clica.
             conversas: cruas.map(c =>
               toUIConversation(c, porId.get(c.contact_id) ?? null, [], padrao,
                 maiaResponde.has(c.inbox_id))),
             total: bruta?.total ?? 0,
-            // Lê `priority` do CRU, nunca do convertido. NinaConversation não tem
-            // o campo — o adapter não o carrega — então tirar esta linha de dentro
-            // do laço sobre `cruas` faria o selo "escalada pela Maia" sumir em
-            // silêncio, sem erro de tipo, porque a origem passaria a ser um objeto
-            // onde `priority` é undefined.
+            // Lido do CRU: NinaConversation não carrega `priority` nem as
+            // colunas status_ia_*.
             urgentes: new Set(cruas.filter(c => c.priority === 'high').map(c => c.id)),
+            motivos,
+            responsaveis,
           }
         }
 

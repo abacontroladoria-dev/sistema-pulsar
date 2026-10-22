@@ -45,7 +45,7 @@ console.log('\ncaixas da triagem — status > modo > responsável\n')
 
 // 2. A Maia é só 'autonomous', e vale para qualquer status ativo.
 {
-  for (const s of ['open', 'assigned', 'waiting'] as const) {
+  for (const s of ['self_service', 'open', 'assigned', 'waiting'] as const) {
     checar(classificarCaixa(s, 'autonomous', null, false) === 'maia',
       `${s} + autonomous = Maia`)
   }
@@ -100,7 +100,7 @@ console.log('\ncaixas da triagem — status > modo > responsável\n')
 //    contar também as largadas, as mesmas conversas entram em duas caixas e a
 //    soma estoura o total — cada caixa, sozinha, parecendo correta.
 {
-  const STATUS: ConversationStatus[] = ['open', 'assigned', 'waiting', 'resolved', 'archived']
+  const STATUS: ConversationStatus[] = ['self_service', 'open', 'assigned', 'waiting', 'resolved', 'archived']
   const MODOS = ['off', 'assisted', 'autonomous'] as const
   const COLUNA: (AIMode | null)[] = [null, 'off', 'assisted', 'autonomous']
 

@@ -3,6 +3,7 @@ import type { CentralUserRepository } from '../repositories/central-user.reposit
 import type { ConversationStatus } from '../types/central.types'
 import { MencaoNaoEncontradaError } from '../types/errors.types'
 import { isTabelaAusente } from '../utils/pg-errors'
+import { AUTOR_MAIA } from './nota-interna.service'
 
 // ============================================================================
 // MencaoService
@@ -55,7 +56,8 @@ export class MencaoService {
       throw err
     }
 
-    const nomes = await this.usuarios.nomesDe(input.orgId, [...new Set(linhas.map(l => l.author_user_id))])
+    const autores = linhas.map(l => l.author_user_id).filter((id): id is string => id !== null)
+    const nomes = await this.usuarios.nomesDe(input.orgId, [...new Set(autores)])
 
     return linhas
       // A nota vem pela RLS dela; se não veio, não há o que mostrar.
@@ -67,7 +69,10 @@ export class MencaoService {
         lida:              l.lida_em !== null,
         lidaEm:            l.lida_em,
         criadaEm:          l.created_at,
-        autor:             { id: l.author_user_id, nome: nomes.get(l.author_user_id) ?? 'Alguém da equipe' },
+        // Autor nulo = a Maia (nota de conversa parada).
+        autor:             l.author_user_id
+                           ? { id: l.author_user_id, nome: nomes.get(l.author_user_id) ?? 'Alguém da equipe' }
+                           : AUTOR_MAIA,
         deMim:             l.author_user_id === input.userId,
         trecho:            l.nota!.body,
         contato:           l.conversa?.contact?.name?.trim()

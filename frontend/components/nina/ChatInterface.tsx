@@ -25,7 +25,7 @@ import { ModalDesignarTarefa } from './detalhamento/ModalDesignarTarefa'
 import { ModalApagarMensagem } from './ModalApagarMensagem'
 import { ModalEditarMensagem, ModalTransferir } from './ModaisConversa'
 import { NomeContatoPopover } from './NomeContatoPopover'
-import { StatusAtendimento } from './StatusAtendimento'
+import { StatusAtendimento, motivoStatusMaia } from './StatusAtendimento'
 import { MessageDirection } from '@/types/nina'
 import { maiaTransferiu } from '@/modules/atendimento/agente/caixas'
 import { toast } from 'sonner'
@@ -757,6 +757,8 @@ const ChatInterface: React.FC = () => {
                 <StatusAtendimento
                   status={statusCentral}
                   aoTrocar={novo => handleAcaoConversa({ action: 'set_status', status: novo })}
+                  maiaDisponivel={!canalHumano || numeroComMaia}
+                  motivoMaia={motivoStatusMaia(detalhe)}
                 />
 
                 {numeroComMaia ? (

@@ -37,7 +37,7 @@ export interface CriarMencaoInput {
   note_id:           string
   conversation_id:   string
   mentioned_user_id: string
-  author_user_id:    string
+  author_user_id:    string | null
 }
 
 export class MencaoRepository {

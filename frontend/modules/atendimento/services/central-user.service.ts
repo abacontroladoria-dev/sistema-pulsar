@@ -18,4 +18,9 @@ export class CentralUserService {
   async listarAtribuiveis(orgId: string): Promise<UsuarioCentral[]> {
     return this.repo.listarAtribuiveis(orgId)
   }
+
+  // Nome de cada responsável, para a triagem dizer quem está com a conversa.
+  async nomesDe(orgId: string, ids: string[]): Promise<Map<string, string>> {
+    return this.repo.nomesDe(orgId, ids)
+  }
 }

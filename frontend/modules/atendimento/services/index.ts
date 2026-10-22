@@ -350,6 +350,23 @@ export function createNotaInternaService(userClient: SupabaseClient): NotaIntern
   )
 }
 
+// createNotaInternaSystemService():
+//   A nota que a Maia escreve (conversa parada, workers/status.worker.ts). Sem
+//   sessão de usuário: service role nas duas pontas, como createSystemServices.
+//   Só criarPelaMaia faz sentido aqui — `criar` exige quem escreveu.
+export function createNotaInternaSystemService(): NotaInternaService {
+  const convRepo  = new ConversationRepository(supabaseService)
+  const auditRepo = new AuditRepository(supabaseService)
+  return new NotaInternaService(
+    new NotaInternaRepository(supabaseService, supabaseService),
+    new MencaoRepository(supabaseService, supabaseService),
+    convRepo,
+    new CentralUserRepository(supabaseService),
+    new ConversationService(convRepo, auditRepo, caEventBus),
+    auditRepo,
+  )
+}
+
 // createMencaoService(userClient):
 //   "Menções a mim". Mesmo arranjo: lê com o usuário (a RLS só mostra a cada um
 //   as menções a ele), marca como lida com service role filtrando pelo id da

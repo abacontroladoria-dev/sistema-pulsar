@@ -21,6 +21,7 @@ import {
 import { isUniqueViolation } from '../utils/pg-errors'
 import { CHAVE_MAIA_TRANSFERIU, maiaTransferiu } from '../agente/caixas'
 import { CHAVE_PLANTAO, plantaoDaJanela, type MarcaPlantao } from '../agente/plantao'
+import { resolverModoEfetivo } from '../agente/modo-efetivo'
 
 // ============================================================================
 // ConversationService
@@ -40,7 +41,12 @@ const CLOSED_STATUSES = ['resolved', 'archived'] as const
 type ClosedStatus = (typeof CLOSED_STATUSES)[number]
 
 // Quem tirou a Maia da conversa. Ver events.types.ts ('conversation.ai_mode_changed').
-export type OrigemEscalada = 'ferramenta_agente' | 'falha_tecnica' | 'paciente_vinculado'
+export type OrigemEscalada = 'ferramenta_agente' | 'falha_tecnica' | 'paciente_vinculado' | 'inatividade'
+
+// Quem mudou o status sem ser a equipe pelo seletor. 'maia' = a leitura da
+// conversa (workers/status.worker.ts); 'sistema' = um fato do ciclo (a Maia
+// escalou, alguém respondeu, a chave Maia/Humano virou).
+export type OrigemStatusAutomatico = 'maia' | 'sistema'
 
 export interface FindOrCreateResult {
   conversation: Conversation
@@ -81,6 +87,18 @@ export class ConversationService {
     const existing = await this.conv.findActiveByContactAndChannel(contactId, channelId)
     if (existing) return { conversation: existing, created: false }
 
+    // Conversa nova numa inbox em que a Maia atende nasce em Autoatendimento;
+    // senão, Aberto. Na dúvida (leitura falhou), Aberto: é a fila que alguém
+    // da equipe olha.
+    let statusInicial: ConversationStatus = 'open'
+    try {
+      if (await this.maiaRespondeAqui({ organization_id: orgId, inbox_id: inboxId, ai_mode: null, ai_context: null })) {
+        statusInicial = 'self_service'
+      }
+    } catch (err) {
+      console.warn('[ConversationService] status inicial: leitura da Maia falhou; nasce Aberto', err)
+    }
+
     // Tentar criar — pode colidir com outro processo concurrent
     try {
       const conversation = await this.conv.create({
@@ -88,7 +106,7 @@ export class ConversationService {
         inbox_id:        inboxId,
         channel_id:      channelId,
         contact_id:      contactId,
-        status:          'open',
+        status:          statusInicial,
       })
 
       // Side effects: não bloqueia o retorno
@@ -313,9 +331,14 @@ export class ConversationService {
     // Só ao virar 'autonomous'. Passar para 'off' ou null é o humano continuando
     // no comando — mexer no responsável ali tiraria a conversa de quem a atende.
     const soltou = aiMode === 'autonomous' && conv.assigned_user_id !== null
-    if (soltou) {
-      await this.conv.updateAssignee(conversationId, null)
-      await this.conv.updateStatus(conversationId, 'open')
+    if (soltou) await this.conv.updateAssignee(conversationId, null)
+
+    // O status acompanha a chave: Maia ligada = Autoatendimento; desligada a
+    // partir dele = Aberto (passou para a equipe e ninguém falou ainda).
+    if (aiMode === 'autonomous') {
+      await this.moverStatusAutomatico(conv, 'self_service', 'sistema', 'Maia ligada na conversa')
+    } else if (conv.status === 'self_service') {
+      await this.moverStatusAutomatico(conv, 'open', 'sistema', 'Maia desligada na conversa')
     }
 
     void this.audit.insert({
@@ -364,7 +387,8 @@ export class ConversationService {
   //     conversa da fila que existe para ela. E se JÁ houver um responsável, ele
   //     está atendendo — sobrescrever seria tirar a conversa de quem está nela.
   //   • Não rebaixa `priority`. Só escreve 'high' quando o que está lá é menor.
-  //   • Não mexe em `status`. Escalar não resolve nem arquiva.
+  //   • Não resolve nem arquiva. O status só sai de Autoatendimento para Aberto
+  //     (statusAoSairAMaia): a conversa entrou na fila da equipe.
   //
   // IDEMPOTENTE: conversa já em 'off' não é reescrita e não gera segundo evento.
   // O retorno diz qual dos dois casos ocorreu, porque quem chama precisa saber se
@@ -395,6 +419,10 @@ export class ConversationService {
       await this.conv.updatePriority(conversationId, 'high')
     }
 
+    // Autoatendimento → Aberto: a Maia passou a conversa e ninguém da equipe
+    // falou ainda. Só a partir de self_service — já com gente, fica como está.
+    await this.statusAoSairAMaia(conv, motivoEscalada)
+
     // Só o que muda de fato vira evento.
     if (!jaEstavaEscalada) {
       void this.audit.insert({
@@ -419,8 +447,8 @@ export class ConversationService {
   // CHAVE_MAIA_TRANSFERIU em `ai_context`: o worker pula a conversa, e a
   // triagem e a badge passam a tratá-la como de gente (ver maiaTransferiu).
   //
-  // Mesmas regras de escalarParaAtendimentoHumano: não mexe no responsável nem
-  // no status, só sobe a prioridade, e é idempotente.
+  // Mesmas regras de escalarParaAtendimentoHumano: não mexe no responsável, só
+  // sobe a prioridade e tira do Autoatendimento, e é idempotente.
   //
   // `ai_context` relido aqui, não recebido do chamador: o worker reivindica a
   // mensagem nessa coluna antes do turno, e mesclar sobre uma cópia velha
@@ -441,6 +469,8 @@ export class ConversationService {
     if (conv.priority !== 'high' && conv.priority !== 'urgent') {
       await this.conv.updatePriority(conversationId, 'high')
     }
+
+    await this.statusAoSairAMaia(conv, motivoEscalada)
 
     if (!jaEstavaEscalada) {
       void this.audit.insert({
@@ -483,13 +513,14 @@ export class ConversationService {
       const resto = { ...this.aiContextDe(conv) }
       delete resto[CHAVE_MAIA_TRANSFERIU]
       await this.conv.updateAiContext(conversationId, resto)
-      if (conv.assigned_user_id !== null) {
-        await this.conv.updateAssignee(conversationId, null)
-        await this.conv.updateStatus(conversationId, 'open')
-      }
+      if (conv.assigned_user_id !== null) await this.conv.updateAssignee(conversationId, null)
+      await this.moverStatusAutomatico(conv, 'self_service', 'sistema', 'Maia ligada na conversa')
     } else {
       if (!estava) return
       await this.gravarMarcaHumano(conv, { origem: 'operador', por: actorId })
+      if (conv.status === 'self_service') {
+        await this.moverStatusAutomatico(conv, 'open', 'sistema', 'Maia desligada na conversa')
+      }
     }
 
     void this.audit.insert({
@@ -801,11 +832,14 @@ export class ConversationService {
   // resolve
   // Encerra o atendimento. Preenche resolved_at.
   // -------------------------------------------------------------------------
-  async resolve(conversationId: string, actorId: string): Promise<void> {
+  // `actorId` null = a Maia encerrou (leitura de status, status.worker.ts), com
+  // o motivo na trilha. Mesma convenção de performed_by ausente da escalada.
+  async resolve(conversationId: string, actorId: string | null, motivoMaia?: string): Promise<void> {
     const conv       = await this.requireActive(conversationId)
     const resolvedAt = new Date().toISOString()
 
     await this.conv.updateStatus(conversationId, 'resolved', { resolved_at: resolvedAt })
+    if (actorId) await this.conv.marcarStatusManual(conversationId, resolvedAt)
 
     const updated: Conversation = { ...conv, status: 'resolved', resolved_at: resolvedAt }
 
@@ -813,22 +847,23 @@ export class ConversationService {
       organization_id: conv.organization_id,
       conversation_id: conversationId,
       event_type:      'conversation.resolved',
-      performed_by:    actorId,
-      payload:         { resolvedAt },
+      performed_by:    actorId ?? undefined,
+      payload:         { resolvedAt, ...(actorId ? {} : { origem: 'maia', motivo: motivoMaia ?? null }) },
     })
 
-    this.events.emit('conversation.resolved', { conversation: updated, actorId })
+    this.events.emit('conversation.resolved', { conversation: updated, actorId: actorId ?? 'system' })
   }
 
   // -------------------------------------------------------------------------
   // archive
   // Move conversa para histórico. Preenche archived_at.
   // -------------------------------------------------------------------------
-  async archive(conversationId: string, actorId: string): Promise<void> {
+  async archive(conversationId: string, actorId: string | null, motivoMaia?: string): Promise<void> {
     const conv       = await this.requireActive(conversationId)
     const archivedAt = new Date().toISOString()
 
     await this.conv.updateStatus(conversationId, 'archived', { archived_at: archivedAt })
+    if (actorId) await this.conv.marcarStatusManual(conversationId, archivedAt)
 
     const updated: Conversation = { ...conv, status: 'archived', archived_at: archivedAt }
 
@@ -836,11 +871,11 @@ export class ConversationService {
       organization_id: conv.organization_id,
       conversation_id: conversationId,
       event_type:      'conversation.archived',
-      performed_by:    actorId,
-      payload:         { archivedAt },
+      performed_by:    actorId ?? undefined,
+      payload:         { archivedAt, ...(actorId ? {} : { origem: 'maia', motivo: motivoMaia ?? null }) },
     })
 
-    this.events.emit('conversation.archived', { conversation: updated, actorId })
+    this.events.emit('conversation.archived', { conversation: updated, actorId: actorId ?? 'system' })
   }
 
   // -------------------------------------------------------------------------
@@ -855,11 +890,16 @@ export class ConversationService {
     // Já está ativa — operação idempotente, sem efeito
     if (!CLOSED_STATUSES.includes(conv.status as ClosedStatus)) return
 
-    await this.conv.updateStatus(conversationId, 'open')
+    // Volta para quem atende: a Maia, se ela responde aqui; senão a fila. As
+    // marcas de encerramento saem. A marca manual impede a Maia de reencerrar
+    // sobre o mesmo material que a tinha levado a fechar.
+    const status: ConversationStatus = (await this.maiaRespondeAqui(conv)) ? 'self_service' : 'open'
+    await this.conv.updateStatus(conversationId, status, { resolved_at: null, archived_at: null })
+    await this.conv.marcarStatusManual(conversationId, new Date().toISOString())
 
     const updated: Conversation = {
       ...conv,
-      status:      'open',
+      status,
       resolved_at: null,
       archived_at: null,
     }
@@ -884,16 +924,39 @@ export class ConversationService {
   //
   // 'assigned' sem dono é contraditório (ver `assign`), então "Em atendimento"
   // numa conversa sem responsável atribui a quem escolheu.
+  //
+  // A escolha daqui sempre vale, inclusive logo depois de a Maia mudar o
+  // status: grava status_manual_em, e a Maia não mexe até mensagem nova.
+  //
+  // Autoatendimento é "a Maia conversando", então escolhê-lo liga a Maia, e
+  // sair dele para outro status vivo a desliga — o status nunca diz Maia com
+  // gente falando, nem o contrário. Encerrar não mexe na chave: conversa
+  // encerrada não recebe turno, e a próxima mensagem abre conversa nova.
   // -------------------------------------------------------------------------
   async setStatus(conversationId: string, status: ConversationStatus, actorId: string): Promise<void> {
     const conv = await this.conv.findById(conversationId)
     if (!conv) throw new ConversationNotFoundError(conversationId)
-    if (conv.status === status) return
+    if (conv.status === status) {
+      await this.conv.marcarStatusManual(conversationId, new Date().toISOString())
+      return
+    }
 
     const fechada = CLOSED_STATUSES.includes(conv.status as ClosedStatus)
 
     if (!fechada && status === 'resolved') return this.resolve(conversationId, actorId)
     if (!fechada && status === 'archived') return this.archive(conversationId, actorId)
+
+    // A chave antes do status: ligar pode recusar (número sem "Maia
+    // responde"), e aí nada muda. Os dois caminhos já movem o status; o write
+    // abaixo fixa o escolhido de qualquer forma.
+    const numeroComMaia = await this.conv.inboxMaiaAutomatica(conv.inbox_id)
+    if (status === 'self_service') {
+      if (numeroComMaia) await this.definirMaiaNoNumero(conversationId, true, actorId)
+      else               await this.setAiMode(conversationId, 'autonomous', actorId)
+    } else if (conv.status === 'self_service') {
+      if (numeroComMaia) await this.definirMaiaNoNumero(conversationId, false, actorId)
+      else               await this.setAiMode(conversationId, 'off', actorId)
+    }
 
     const agora = new Date().toISOString()
     const marcas =
@@ -905,6 +968,7 @@ export class ConversationService {
       await this.conv.updateAssignee(conversationId, actorId)
     }
     await this.conv.updateStatus(conversationId, status, marcas)
+    await this.conv.marcarStatusManual(conversationId, agora)
 
     void this.audit.insert({
       organization_id: conv.organization_id,
@@ -984,6 +1048,82 @@ export class ConversationService {
   // -------------------------------------------------------------------------
   async listByContactIds(orgId: string, contactIds: string[], limit: number): Promise<Conversation[]> {
     return this.conv.listByContactIds(orgId, contactIds, limit)
+  }
+
+  // -------------------------------------------------------------------------
+  // Status automático
+  //
+  // Os fatos do ciclo movem o status na hora (Maia escalou → Aberto; gente
+  // respondeu → Em atendimento; chave Maia/Humano). O resto — Aguardando,
+  // Resolvido, Fechado — é leitura da conversa (agente/status-atendimento.ts),
+  // aplicada pelo worker por aplicarStatusDaMaia.
+  // -------------------------------------------------------------------------
+
+  // A Maia responde nesta conversa? Os dois caminhos de sempre: número
+  // Evolution com "Maia responde" e a conversa não transferida, ou o modo
+  // efetivo 'autonomous' (conversa → inbox → org). Ver caixas.ts.
+  async maiaRespondeAqui(
+    conv: Pick<Conversation, 'organization_id' | 'inbox_id' | 'ai_mode' | 'ai_context'>,
+  ): Promise<boolean> {
+    if (await this.conv.inboxMaiaAutomatica(conv.inbox_id)) return !maiaTransferiu(conv.ai_context)
+    const padrao = await this.conv.aiModePadrao(conv.organization_id, conv.inbox_id)
+    return resolverModoEfetivo(conv.ai_mode, padrao).modo === 'autonomous'
+  }
+
+  // Gente respondeu (pela tela ou pelo celular do número): Autoatendimento ou
+  // Aberto viram Em atendimento. Aguardando fica — responder "ainda está aí?"
+  // não muda de quem é a vez; a leitura da Maia decide.
+  //
+  // Relida: assumirAoResponder, chamado antes, pode já ter gravado 'assigned'.
+  // Não lança, pela mesma razão de assumirAoResponder: a mensagem já saiu.
+  async statusAoHumanoResponder(conversationId: string): Promise<void> {
+    try {
+      const atual = await this.getById(conversationId)
+      if (atual.status !== 'self_service' && atual.status !== 'open') return
+      await this.moverStatusAutomatico(atual, 'assigned', 'sistema', 'Atendente respondeu')
+    } catch (erro) {
+      console.error('[ConversationService] Falha ao mover status ao humano responder', {
+        conversationId,
+        erro: erro instanceof Error ? erro.message : String(erro),
+      })
+    }
+  }
+
+  // A leitura da Maia, já decidida (agente/status-atendimento.ts,
+  // decidirStatus). Encerrar passa por resolve/archive, que gravam as marcas
+  // e os eventos de sempre, com actorId nulo.
+  async aplicarStatusDaMaia(conversationId: string, para: ConversationStatus, motivo: string): Promise<void> {
+    if (para === 'resolved') return this.resolve(conversationId, null, motivo)
+    if (para === 'archived') return this.archive(conversationId, null, motivo)
+    const conv = await this.getById(conversationId)
+    await this.moverStatusAutomatico(conv, para, 'maia', motivo)
+  }
+
+  private async statusAoSairAMaia(conv: Conversation, motivo: string): Promise<void> {
+    if (conv.status !== 'self_service') return
+    await this.moverStatusAutomatico(conv, 'open', 'sistema', `Maia passou para a equipe (${motivo})`)
+  }
+
+  // Entre status vivos só. Encerrada não se move por aqui — reabrir é gesto
+  // da equipe (reopen/setStatus). Mesmo status: nada, nem evento.
+  private async moverStatusAutomatico(
+    conv:   Conversation,
+    para:   ConversationStatus,
+    origem: OrigemStatusAutomatico,
+    motivo: string,
+  ): Promise<void> {
+    if (CLOSED_STATUSES.includes(conv.status as ClosedStatus)) return
+    if (CLOSED_STATUSES.includes(para as ClosedStatus)) return
+    if (conv.status === para) return
+
+    await this.conv.updateStatus(conv.id, para)
+
+    void this.audit.insert({
+      organization_id: conv.organization_id,
+      conversation_id: conv.id,
+      event_type:      'conversation.status_changed',
+      payload:         { previousStatus: conv.status, status: para, origem, motivo },
+    })
   }
 
   // -------------------------------------------------------------------------

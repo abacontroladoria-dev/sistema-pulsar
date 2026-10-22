@@ -6,6 +6,7 @@ import { processarAgrupamento } from '@/modules/atendimento/workers/agrupamento.
 import { processarEnvios } from '@/modules/atendimento/workers/envio.worker'
 import { processarSugestoesEvolution } from '@/modules/atendimento/workers/sugestao-evolution.worker'
 import { processarSentimento } from '@/modules/atendimento/workers/sentimento.worker'
+import { processarStatus } from '@/modules/atendimento/workers/status.worker'
 import { processarAvatares } from '@/modules/atendimento/workers/avatar.worker'
 import { catalogarPendentes } from '@/modules/atendimento/meta/catalogo-anuncios'
 
@@ -70,6 +71,11 @@ export async function POST(req: NextRequest) {
   // fica depois da entrega para nunca atrasar mensagem de verdade.
   const sugestao = await tentar('sugestao', () => processarSugestoesEvolution(supabaseService, orgId))
 
+  // Status do atendimento lido pela Maia (Aguardando, Resolvido, Fechado,
+  // conversa parada). Depois de tudo que é fala: ler o pé da conversa nunca
+  // atrasa uma resposta. Orçamento próprio; CENTRAL_STATUS_IA decide se aplica.
+  const status = await tentar('status', () => processarStatus(supabaseService, orgId))
+
   // Por último, e nunca antes: a leitura de sentimento é para quem ATENDE, não
   // para quem espera resposta. Se o tique estourar o tempo, é esta que deve
   // ficar para o próximo — ela recalcula a mesma pergunta sobre o mesmo
@@ -94,6 +100,7 @@ export async function POST(req: NextRequest) {
     agrupamento,
     envio,
     sugestao,
+    status,
     sentimento,
     avatar,
     anuncios,
