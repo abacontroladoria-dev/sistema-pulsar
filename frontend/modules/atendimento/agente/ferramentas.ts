@@ -57,6 +57,10 @@ export interface ContextoAgente {
   // Turno de um número Evolution com "Maia responde": ali o ai_mode já é 'off'
   // e escalar é marcar a conversa (transferirDoMaiaResponde), não desligá-lo.
   maiaRespondeNoNumero?: boolean
+  // Plantão fora do horário (agente/plantao.ts): a conversa já é de um
+  // atendente, então escalar é encerrar o plantão — ela cala até a reabertura,
+  // e o aviso diz quando a equipe volta.
+  plantao?: { janela: string; retornoEquipe: string } | null
 }
 
 export type ResultadoFerramenta =
@@ -1263,6 +1267,18 @@ export class FerramentasAgente {
       )
     }
 
+    const plantao = this.contexto.plantao
+    if (plantao) {
+      await this.conversas.encerrarPlantao(conversationId, plantao.janela, motivoEscalada)
+      this.escalouNesteTurno = { motivoEscalada }
+      return {
+        ok: true,
+        escalada: true,
+        jaEstavaEscalada: false,
+        avisoInterno: avisoEscaladaNoPlantao(plantao.retornoEquipe),
+      }
+    }
+
     const { jaEstavaEscalada } = this.contexto.maiaRespondeNoNumero
       ? await this.conversas.transferirDoMaiaResponde(conversationId, motivoEscalada, 'ferramenta_agente')
       : await this.conversas.escalarParaAtendimentoHumano(conversationId, motivoEscalada, 'ferramenta_agente')
@@ -1599,6 +1615,11 @@ const AVISO_ESCALADA_NOVA =
 
 const AVISO_JA_ESCALADA =
   'Esta conversa já está com a equipe. Não chame esta ferramenta de novo; apenas responda ao responsável em uma frase curta.'
+
+// Fora do horário ninguém continua "por aqui" agora: o prazo é a reabertura.
+function avisoEscaladaNoPlantao(retornoEquipe: string): string {
+  return `Pronto, a conversa fica para a equipe, que volta ${retornoEquipe}. Agora escreva UMA mensagem curta ao responsável dizendo que a equipe retoma o atendimento ${retornoEquipe}. Não diga que alguém vai responder agora.`
+}
 
 // ----------------------------------------------------------------------------
 // Contexto confiável: derivado do runtime, nunca do modelo

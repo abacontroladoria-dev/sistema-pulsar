@@ -20,6 +20,7 @@ import {
 } from '../types/errors.types'
 import { isUniqueViolation } from '../utils/pg-errors'
 import { CHAVE_MAIA_TRANSFERIU, maiaTransferiu } from '../agente/caixas'
+import { CHAVE_PLANTAO, plantaoDaJanela, type MarcaPlantao } from '../agente/plantao'
 
 // ============================================================================
 // ConversationService
@@ -544,6 +545,52 @@ export class ConversationService {
         erro: erro instanceof Error ? erro.message : String(erro),
       })
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // Plantão fora do horário (agente/plantao.ts)
+  //
+  // A conversa continua do atendente (a marca de transferida fica); a marca do
+  // plantão só lembra, por janela, se a Maia já avisou que assumiu e se ela
+  // já passou o assunto para a equipe. Relida antes de mesclar pelo mesmo
+  // motivo de gravarMarcaHumano: o worker reivindica na mesma coluna.
+  // -------------------------------------------------------------------------
+
+  // Primeira resposta do plantão nesta janela: grava o aviso e audita a entrada.
+  async registrarPlantaoAnunciado(conversationId: string, janela: string): Promise<void> {
+    const conv = await this.getById(conversationId)
+    if (plantaoDaJanela(conv.ai_context, janela)?.anunciadoEm) return
+    await this.gravarPlantao(conv, { janela, anunciadoEm: new Date().toISOString() })
+    void this.audit.insert({
+      organization_id: conv.organization_id,
+      conversation_id: conversationId,
+      event_type:      'conversation.ai_mode_changed',
+      payload:         { de: conv.ai_mode, para: conv.ai_mode, maiaResponde: true, origem: 'plantao_inicio', janela },
+    })
+  }
+
+  // Ela passou o assunto para a equipe (ou o turno falhou): cala até a
+  // reabertura e a conversa sobe na fila de quem chega de manhã. Idempotente.
+  async encerrarPlantao(conversationId: string, janela: string, motivo: string): Promise<{ jaEstavaEncerrado: boolean }> {
+    const conv = await this.getById(conversationId)
+    const atual = plantaoDaJanela(conv.ai_context, janela)
+    if (atual?.encerradoEm) return { jaEstavaEncerrado: true }
+
+    await this.gravarPlantao(conv, { ...atual, janela, encerradoEm: new Date().toISOString(), motivo })
+    if (conv.priority !== 'high' && conv.priority !== 'urgent') {
+      await this.conv.updatePriority(conversationId, 'high')
+    }
+    void this.audit.insert({
+      organization_id: conv.organization_id,
+      conversation_id: conversationId,
+      event_type:      'conversation.ai_mode_changed',
+      payload:         { de: conv.ai_mode, para: conv.ai_mode, maiaResponde: false, origem: 'plantao_encerrado', motivoEscalada: motivo, janela },
+    })
+    return { jaEstavaEncerrado: false }
+  }
+
+  private async gravarPlantao(conv: Conversation, marca: MarcaPlantao): Promise<void> {
+    await this.conv.updateAiContext(conv.id, { ...this.aiContextDe(conv), [CHAVE_PLANTAO]: marca })
   }
 
   private aiContextDe(conv: Conversation): Record<string, unknown> {

@@ -19,7 +19,15 @@ import { FerramentasAgente } from '../agente/ferramentas'
 import { openAiProvider } from '../llm/openai.provider'
 import { lerAgentSettings } from '../agente/agent-settings'
 import { CHAVE_MAIA_TRANSFERIU, maiaTransferiu } from '../agente/caixas'
-import { TEXTO_ESCALADA_FALLBACK, TEXTO_SEM_AGENDAMENTO_NO_NUMERO, prometeAgendamento } from '../agente/entrega'
+import {
+  TEXTO_ESCALADA_FALLBACK, TEXTO_SEM_AGENDAMENTO_NO_NUMERO, prometeAgendamento,
+  textoEscaladaNoPlantao, textoSemAgendamentoNoPlantao,
+} from '../agente/entrega'
+import {
+  HORARIO_PADRAO, formatarRetornoEquipe, situacaoExpediente,
+  type FeriadoExpediente, type SituacaoExpediente,
+} from '../agente/horario-comercial'
+import { humanoDepoisDoFechamento, janelaDoPlantao, plantaoAnunciado, plantaoEncerrado } from '../agente/plantao'
 import { PacienteRepository } from '../repositories/paciente.repository'
 import { SessoesTitaRepository } from '../repositories/sessoes-tita.repository'
 import type { AnuncioDaConversa, TagDefinition } from '../types/central.types'
@@ -66,6 +74,16 @@ import type { AnuncioDaConversa, TagDefinition } from '../types/central.types'
 // A ficha do paciente (nome, responsável, nascimento, idade, turno, plano)
 // também não é ferramenta do turno: depois da resposta, nos dois modos, a
 // extração obrigatória (agente/extracao-ficha.ts, 21/10) lê a conversa e grava.
+//
+// Plantão fora do horário (22/10): conversa em Humano num número com "Maia
+// responde" volta a ser RESPONDIDA por ela quando a pessoa escreve depois do
+// expediente (central.organizations + public.feriados). Ela avisa uma vez que
+// está continuando o atendimento, e o que não resolve fica para a equipe "às
+// 08h". A marca de transferida não muda — às 08h a conversa volta ao rascunho
+// sozinha. Não entra se o atendente escreveu depois do fechamento (ainda está
+// lá) nem depois de ela passar o assunto para a equipe nesta janela
+// (agente/plantao.ts). Nada é varrido às 18h: sem mensagem da pessoa, a
+// conversa segue intocada.
 //
 // Falha não é definitiva (13/10): erro de envio, da OpenAI ou limite de uso
 // agenda nova tentativa da mesma mensagem (1 min, depois 5 min); esgotadas,
@@ -135,6 +153,9 @@ export async function processarSugestoesEvolution(
   const automaticas = new Set(lidas.filter(i => i.maia_automatica).map(i => i.id))
   if (inboxIds.length === 0) return r
 
+  // Só onde ela pode enviar há plantão.
+  const expediente = automaticas.size > 0 ? await lerExpediente(supabase, orgId) : null
+
   const agora = Date.now()
   const { data: conversas, error: e2 } = await db
     .from('conversations')
@@ -171,10 +192,17 @@ export async function processarSugestoesEvolution(
     // e a Maia volta ao rascunho — sugere o texto para a atendente (14/10).
     const transferida = maiaTransferiu(conv.ai_context)
     // Ela ENVIA só no número com "Maia responde" e em conversa não
-    // transferida; em todo o resto, sugere.
-    const automatica = automaticas.has(conv.inbox_id) && !transferida
+    // transferida — ou transferida, mas de plantão (decidido com o histórico,
+    // abaixo); em todo o resto, sugere.
+    let automatica = automaticas.has(conv.inbox_id) && !transferida
+    let plantao: { janela: string; retornoEquipe: string; anunciar: boolean } | null = null
     // A reivindicação deste turno; o catch precisa dela para agendar a retentativa.
     let marca: MarcaSugestao | null = null
+    // Transferência pelo sistema (falha do turno, promessa de agendamento). No
+    // plantão a conversa já é do atendente: só encerra o plantão.
+    const passarParaEquipe = (motivo: string) => plantao
+      ? conversationService.encerrarPlantao(conv.id, plantao.janela, motivo)
+      : conversationService.transferirDoMaiaResponde(conv.id, motivo, 'falha_tecnica')
 
     try {
       // Resposta da Maia que não saiu (status 'failed') não conta como resposta:
@@ -200,6 +228,21 @@ export async function processarSugestoesEvolution(
         tentativa = (sugestao.tentativa ?? 1) + 1
       }
       r.candidatas++
+
+      if (transferida && automaticas.has(conv.inbox_id) && expediente && !expediente.situacao.aberto) {
+        const { proximaAbertura, fechadoDesde } = expediente.situacao
+        const janela = janelaDoPlantao(proximaAbertura)
+        if (!plantaoEncerrado(conv.ai_context, janela) && !humanoDepoisDoFechamento(historico, fechadoDesde)) {
+          plantao = {
+            janela,
+            retornoEquipe: proximaAbertura
+              ? formatarRetornoEquipe(proximaAbertura, new Date().toISOString(), expediente.timezone)
+              : 'no próximo horário de atendimento',
+            anunciar: !plantaoAnunciado(conv.ai_context, janela),
+          }
+          automatica = true
+        }
+      }
 
       // Reivindica ANTES do turno: dois tiques podem se cruzar, e o UPDATE
       // condicional deixa só um passar. Falha não libera na hora — agenda a
@@ -278,6 +321,7 @@ export async function processarSugestoesEvolution(
         // Rascunho: quem envia é a atendente, e o texto é para converter.
         sugestaoParaAtendente: !automatica,
         pacientesVinculados: vinculados.map(v => v.nome),
+        plantao: plantao && { anunciar: plantao.anunciar, retornoEquipe: plantao.retornoEquipe },
       })
 
       const ferramentas = new FerramentasAgente(
@@ -286,6 +330,7 @@ export async function processarSugestoesEvolution(
         {
           orgId, contactId: conv.contact_id, conversationId: conv.id, maiaRespondeNoNumero: automatica,
           titaPacienteIds: vinculados.map(v => v.titaPacienteId),
+          plantao: plantao && { janela: plantao.janela, retornoEquipe: plantao.retornoEquipe },
         },
         // Para `escalar_para_humano`, só onde ela envia. No rascunho quem
         // responde já é gente — não há de quem transferir.
@@ -367,7 +412,13 @@ export async function processarSugestoesEvolution(
         // aviso de transferência: já tem gente na conversa. A transferência que
         // a própria Maia pediu neste turno também grava a marca, e o aviso dela
         // precisa sair — por isso o escaladaPedida.
-        if (!ferramentas.escaladaPedida() && await humanoAssumiu(supabase, conv.id)) {
+        //
+        // No plantão a marca já estava lá; o sinal de gente é a mensagem do
+        // atendente depois da última da pessoa.
+        const mudouDeDono = plantao
+          ? await atendenteRespondeuDepois(supabase, conv.id, ultima.created_at)
+          : await humanoAssumiu(supabase, conv.id)
+        if (!ferramentas.escaladaPedida() && mudouDeDono) {
           console.warn('[sugestao evolution] humano assumiu durante o turno; resposta descartada', {
             conversationId: conv.id,
           })
@@ -379,11 +430,9 @@ export async function processarSugestoesEvolution(
           // sem resposta para sempre. Transfere (se a ferramenta ainda não o
           // fez) e manda o aviso fixo — o modelo é que falhou aqui.
           if (!ferramentas.escaladaPedida()) {
-            await conversationService.transferirDoMaiaResponde(
-              conv.id, resultado.tipo === 'escalar' ? resultado.motivo : 'aguardar', 'falha_tecnica',
-            )
+            await passarParaEquipe(resultado.tipo === 'escalar' ? resultado.motivo : 'aguardar')
           }
-          texto = TEXTO_ESCALADA_FALLBACK
+          texto = plantao ? textoEscaladaNoPlantao(plantao.retornoEquipe) : TEXTO_ESCALADA_FALLBACK
           console.warn('[sugestao evolution] turno sem resposta; transferida para atendente', {
             conversationId: conv.id, tipo: resultado.tipo,
             detalhe: 'detalhe' in resultado ? resultado.detalhe : null,
@@ -391,16 +440,24 @@ export async function processarSugestoesEvolution(
         } else if (prometeAgendamento(texto, { modoPaciente })) {
           // Ela não agenda aqui: texto que diz que agendou é falso (Ana, 13/10).
           // Quem tentou marcar quer marcar — transfere e troca pelo aviso fixo.
-          if (!ferramentas.escaladaPedida()) {
-            await conversationService.transferirDoMaiaResponde(conv.id, 'fora_do_alcance', 'falha_tecnica')
-          }
+          if (!ferramentas.escaladaPedida()) await passarParaEquipe('fora_do_alcance')
           console.warn('[sugestao evolution] texto prometia agendamento; trocado pelo aviso', {
             conversationId: conv.id, texto,
           })
-          texto = TEXTO_SEM_AGENDAMENTO_NO_NUMERO
+          texto = plantao ? textoSemAgendamentoNoPlantao(plantao.retornoEquipe) : TEXTO_SEM_AGENDAMENTO_NO_NUMERO
         }
         await messageService.send({ conversationId: conv.id, body: texto, sentByAi: true })
         r.enviadas++
+        // Depois do envio e fora do caminho da falha: subindo para o catch, a
+        // retentativa mandaria a mesma resposta de novo. Sem a marca, o pior é
+        // ela se apresentar outra vez na próxima resposta.
+        if (plantao) {
+          try {
+            await conversationService.registrarPlantaoAnunciado(conv.id, plantao.janela)
+          } catch (err) {
+            console.warn('[sugestao evolution] marca do plantão não gravada', { conversationId: conv.id, err })
+          }
+        }
         await classificar(texto)
         continue
       }
@@ -415,15 +472,7 @@ export async function processarSugestoesEvolution(
 
       // A atendente respondeu enquanto o turno rodava: a sugestão já nasceu
       // velha.
-      const { data: respondida, error: eResp } = await db.from('messages')
-        .select('id')
-        .eq('conversation_id', conv.id)
-        .eq('direction', 'outbound')
-        .eq('sent_by_ai', false)
-        .gt('created_at', ultima.created_at)
-        .limit(1)
-      if (eResp) throw eResp
-      if ((respondida ?? []).length > 0) continue
+      if (await atendenteRespondeuDepois(supabase, conv.id, ultima.created_at)) continue
 
       // Uma sugestão viva por conversa: a anterior respondia a mensagens que
       // esta já cobre (o turno junta tudo desde a última fala enviada).
@@ -466,7 +515,7 @@ export async function processarSugestoesEvolution(
           // Esgotou: a pessoa não pode ficar sem ninguém. Vai para a caixa de
           // gente; o aviso fixo não vai junto porque o envio é o que costuma
           // estar falhando.
-          await conversationService.transferirDoMaiaResponde(conv.id, 'aguardar', 'falha_tecnica')
+          await passarParaEquipe('aguardar')
         }
       } catch (err2) {
         console.error('[sugestao evolution] falha ao tratar a falha', {
@@ -521,6 +570,62 @@ async function pacientesDoContato(
   } catch (err) {
     console.warn('[sugestao evolution] vínculo de paciente indisponível; seguindo com o turno', err)
     return []
+  }
+}
+
+// Gente da clínica escreveu depois da última mensagem da pessoa (pela tela ou
+// pelo celular do número).
+async function atendenteRespondeuDepois(supabase: SupabaseClient, conversationId: string, desdeISO: string): Promise<boolean> {
+  const { data, error } = await supabase.schema('central').from('messages')
+    .select('id')
+    .eq('conversation_id', conversationId)
+    .eq('direction', 'outbound')
+    .eq('sent_by_ai', false)
+    .gt('created_at', desdeISO)
+    .limit(1)
+  if (error) throw error
+  return (data ?? []).length > 0
+}
+
+// O expediente da organização agora, para o plantão. Falha de leitura vira
+// null — sem plantão, como antes: erro de banco não pode pôr a Maia para falar
+// em conversa de atendente. Os feriados cobrem as duas pontas que
+// situacaoExpediente procura (reabertura e fechamento, 14 dias cada).
+async function lerExpediente(
+  supabase: SupabaseClient,
+  orgId: string,
+): Promise<{ situacao: SituacaoExpediente; timezone: string } | null> {
+  try {
+    const { data: org, error } = await supabase.schema('central').from('organizations')
+      .select('timezone, business_hours_start, business_hours_end, business_days')
+      .eq('id', orgId)
+      .maybeSingle()
+    if (error) throw error
+    const o = org as {
+      timezone: string | null; business_hours_start: string | null
+      business_hours_end: string | null; business_days: number[] | null
+    } | null
+    const horario = {
+      timezone: o?.timezone ?? HORARIO_PADRAO.timezone,
+      inicio:   o?.business_hours_start ?? HORARIO_PADRAO.inicio,
+      fim:      o?.business_hours_end ?? HORARIO_PADRAO.fim,
+      dias:     o?.business_days ?? HORARIO_PADRAO.dias,
+    }
+
+    const dia = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10)
+    const { data: feriados, error: eFer } = await supabase.from('feriados')
+      .select('data, tipo, horario_inicio, horario_fim')
+      .gte('data', dia(-16))
+      .lte('data', dia(16))
+    if (eFer) throw eFer
+
+    return {
+      situacao: situacaoExpediente(new Date().toISOString(), horario, (feriados ?? []) as FeriadoExpediente[]),
+      timezone: horario.timezone,
+    }
+  } catch (err) {
+    console.warn('[sugestao evolution] horário comercial indisponível; sem plantão neste tique', err)
+    return null
   }
 }
 

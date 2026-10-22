@@ -168,6 +168,24 @@ export interface DadosContexto {
   // paciente — a Maia só informa as sessões marcadas (o worker liga junto
   // `DepsTurno.modoPaciente`, que troca as ferramentas). Null/vazio: lead.
   pacientesVinculados?: (string | null)[] | null
+  // Plantão fora do horário (22/10/2026, agente/plantao.ts): a conversa é de um
+  // atendente que já saiu, e a Maia responde até a reabertura. `anunciar` na
+  // primeira resposta da janela; `retornoEquipe` é a reabertura por extenso
+  // ("amanhã (sexta-feira, 23/10), às 08h").
+  plantao?: { anunciar: boolean; retornoEquipe: string } | null
+}
+
+// Vai por último entre as regras: as de cima dizem "um atendente vai continuar
+// por aqui", e de noite isso é promessa de resposta imediata que ninguém cumpre.
+function instrucaoPlantao(p: { anunciar: boolean; retornoEquipe: string }): string {
+  return [
+    `FORA DO HORÁRIO DE ATENDIMENTO: a equipe da clínica volta ${p.retornoEquipe}. Um atendente vinha conduzindo esta conversa — as mensagens da clínica no histórico são dele — e agora você continua o atendimento. Esta regra vale acima das anteriores e das instruções da clínica.`,
+    p.anunciar
+      ? '- Comece a resposta dizendo, em uma frase curta, que você é a Maia, assistente virtual da clínica, e que está continuando o atendimento enquanto a equipe está fora do horário. Depois responda o que a pessoa escreveu.'
+      : '- Você já avisou nesta conversa que está continuando o atendimento: não se apresente de novo.',
+    '- Siga o fio do que o atendente vinha conversando, sem repetir o que ele já disse nem desfazer o que ele combinou.',
+    `- Quando o assunto for algo que você não resolve e precisar chamar escalar_para_humano, diga que a equipe retoma ${p.retornoEquipe} — nunca que um atendente vai responder agora ou "em instantes".`,
+  ].join('\n')
 }
 
 const INSTRUCAO_SUGESTAO_VENDA = [
@@ -260,6 +278,7 @@ export function montarContexto(dados: DadosContexto): LlmMensagem[] {
     if (!dados.sugestaoParaAtendente) partes.push('', INSTRUCAO_PACIENTE_DA_CLINICA)
     if (dados.sugestaoParaAtendente) partes.push('', INSTRUCAO_SUGESTAO_VENDA)
   }
+  if (dados.plantao && !dados.sugestaoParaAtendente) partes.push('', instrucaoPlantao(dados.plantao))
 
   partes.push('', `Data e hora de agora: ${formatarAgora(dados.agoraISO)}.`)
 

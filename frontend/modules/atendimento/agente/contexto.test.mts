@@ -113,5 +113,21 @@ console.log('\n5. paciente vinculado pelo telefone (15/10/2026)')
   ok(/Não venda/.test(rasc) && !/O objetivo é converter/.test(rasc), 'rascunho de paciente: sem roteiro de venda')
 }
 
+console.log('\nplantão fora do horário (22/10)')
+{
+  const retornoEquipe = 'amanhã (sexta-feira, 23/10), às 08h'
+  const primeira = system({ plantao: { anunciar: true, retornoEquipe } })
+  ok(/FORA DO HORÁRIO DE ATENDIMENTO: a equipe da clínica volta amanhã \(sexta-feira, 23\/10\), às 08h/.test(primeira), 'diz quando a equipe volta')
+  ok(/está continuando o atendimento enquanto a equipe está fora do horário/.test(primeira), 'primeira resposta: avisa que assumiu')
+  ok(/diga que a equipe retoma amanhã/.test(primeira), 'escalada: a equipe retoma na reabertura, não "agora"')
+  ok(primeira.indexOf('FORA DO HORÁRIO') > primeira.indexOf('Paciente da clínica'), 'vem depois das regras que prometem atendente')
+
+  const seguinte = system({ plantao: { anunciar: false, retornoEquipe } })
+  ok(/não se apresente de novo/.test(seguinte) && !/está continuando o atendimento enquanto/.test(seguinte), 'respostas seguintes: não repete o aviso')
+
+  ok(!/FORA DO HORÁRIO/.test(system({ plantao: { anunciar: true, retornoEquipe }, sugestaoParaAtendente: true })), 'rascunho nunca leva a regra do plantão')
+  ok(!/FORA DO HORÁRIO/.test(system()), 'sem plantão, nada muda')
+}
+
 console.log(falhas === 0 ? '\nTodos os testes passaram.' : `\n${falhas} teste(s) FALHARAM.`)
 process.exit(falhas === 0 ? 0 : 1)

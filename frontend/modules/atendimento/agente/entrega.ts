@@ -68,6 +68,16 @@ export const TEXTO_ESCALADA_FALLBACK =
 export const TEXTO_SEM_AGENDAMENTO_NO_NUMERO =
   'Ainda não está agendado. Vou passar a conversa para a equipe, e um atendente vai finalizar o agendamento com você por aqui.'
 
+// As duas de cima no plantão fora do horário (agente/plantao.ts): "por aqui"
+// de noite soa como resposta já, e ninguém vem antes da reabertura.
+export function textoEscaladaNoPlantao(retornoEquipe: string): string {
+  return `Vou deixar sua mensagem com a equipe, que retoma o atendimento ${retornoEquipe}.`
+}
+
+export function textoSemAgendamentoNoPlantao(retornoEquipe: string): string {
+  return `Ainda não está agendado. A equipe retoma o atendimento ${retornoEquipe}, e um atendente finaliza o agendamento com você por aqui.`
+}
+
 // "Não está agendado" é o que ela DEVE dizer — sai antes da busca.
 const NEGADO = /\bnao (?:esta|foi|ficou|e) (?:ainda )?(?:agendad|marcad|reservad|confirmad)\w*/g
 const PROMETE = [

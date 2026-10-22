@@ -190,5 +190,39 @@ console.log('\n7. motivo inválido não impede a escalada')
 }
 
 // ---------------------------------------------------------------------------
+console.log('\n8. no plantão fora do horário, escalar encerra o plantão')
+
+{
+  const pedidos: { conversationId: string; janela: string; motivo: string }[] = []
+  let transferiu = false
+  const service = {
+    async encerrarPlantao(conversationId: string, janela: string, motivo: string) {
+      pedidos.push({ conversationId, janela, motivo })
+      return { jaEstavaEncerrado: false }
+    },
+    async transferirDoMaiaResponde() { transferiu = true; return { jaEstavaEscalada: true } },
+  } as unknown as ConversationService
+  const janela = '2026-10-23T11:00:00.000Z'
+  const f = new FerramentasAgente(
+    null as unknown as AppointmentService,
+    null as unknown as AppointmentRepository,
+    {
+      orgId: 'a0000000-0000-0000-0000-000000000001', contactId: 'ct1', conversationId: CONVERSA,
+      maiaRespondeNoNumero: true, plantao: { janela, retornoEquipe: 'amanhã (sexta-feira, 23/10), às 08h' },
+    },
+    service,
+  )
+  const r = await f.executar('escalar_para_humano', { motivoEscalada: 'fora_do_alcance' }) as any
+
+  checar(r.ok === true && r.jaEstavaEscalada === false, 'devolve ok, não "já estava com a equipe"', r)
+  checar(pedidos.length === 1 && pedidos[0].janela === janela && pedidos[0].motivo === 'fora_do_alcance',
+    'encerra o plantão desta janela, com o motivo', pedidos)
+  checar(!transferiu, 'não regrava a marca de transferida (a conversa já é do atendente)')
+  checar(/volta amanhã \(sexta-feira, 23\/10\), às 08h/.test(r.avisoInterno) && /Não diga que alguém vai responder agora/.test(r.avisoInterno),
+    'o aviso dá a reabertura como prazo', r.avisoInterno)
+  checar(f.escaladaPedida()?.motivoEscalada === 'fora_do_alcance', 'o flag do turno liga (o aviso sai mesmo com a marca)')
+}
+
+// ---------------------------------------------------------------------------
 console.log(falhas === 0 ? '\nTudo certo.' : `\n${falhas} teste(s) FALHARAM.`)
 process.exit(falhas === 0 ? 0 : 1)
