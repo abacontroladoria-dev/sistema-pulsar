@@ -26,9 +26,12 @@ import { foco } from "./ui/campos"
 import { getAltasClinicasDoPaciente, altaClinicaVigente } from "@/services/pacienteAltaClinica.service"
 import type { PacienteAltaClinica } from "@/types/laudos"
 
-type Aba = "cadastro" | "ficha" | "laudo" | "altas" | "escola" | "disponibilidade" | "contratos"
-type SecaoCadastro = "dados" | "endereco" | "filiacao" | "plano"
+type Aba = "cadastro" | "ficha" | "laudo" | "altas" | "escola" | "disponibilidade" | "contratos" | "financeira"
+type SecaoCadastro = "dados" | "endereco" | "filiacao"
 type SecaoFicha = "basica" | "doencas"
+// Plano de saúde saiu de Cadastro para a Ficha financeira em 22/10/2026. Continua
+// no editar/salvar do cadastro: grava em `ficha`, como antes.
+type SecaoFinanceira = "plano"
 
 const ICONE = "h-4 w-4"
 
@@ -64,6 +67,7 @@ export function PacienteDetalhe({
   const [aba, setAba] = useState<Aba>(abaInicial ?? "cadastro")
   const [secaoCadastro, setSecaoCadastro] = useState<SecaoCadastro>("dados")
   const [secaoFicha, setSecaoFicha] = useState<SecaoFicha>("basica")
+  const [secaoFinanceira, setSecaoFinanceira] = useState<SecaoFinanceira>("plano")
   const [editando, setEditando] = useState(false)
   const [verHistorico, setVerHistorico] = useState(false)
   const [verInativar, setVerInativar] = useState(false)
@@ -194,6 +198,7 @@ export function PacienteDetalhe({
             { value: "escola", label: "Escola" },
             { value: "disponibilidade", label: "Disponibilidade" },
             { value: "contratos", label: "Contratos" },
+            { value: "financeira", label: "Ficha financeira" },
           ]}
         />
       </div>
@@ -209,7 +214,6 @@ export function PacienteDetalhe({
                 { value: "dados", label: "Dados pessoais", icon: <User className={ICONE} />, alterado: cadastroSujo.dados },
                 { value: "endereco", label: "Endereço", icon: <MapPin className={ICONE} />, alterado: cadastroSujo.endereco },
                 { value: "filiacao", label: "Filiação e responsáveis", icon: <Users className={ICONE} />, alterado: cadastroSujo.filiacao },
-                { value: "plano", label: "Plano de saúde", icon: <ShieldPlus className={ICONE} /> },
               ]}
             />
             <div className="min-w-0 flex-1 rounded-lg border border-border bg-card px-4 py-4">
@@ -221,9 +225,6 @@ export function PacienteDetalhe({
               )}
               {secaoCadastro === "filiacao" && (
                 <FiliacaoResponsaveis form={form} set={set} disabled={!editando} />
-              )}
-              {secaoCadastro === "plano" && (
-                <PlanoSaude ficha={form.ficha} setFicha={setFicha} disabled={!editando} />
               )}
             </div>
           </>
@@ -244,6 +245,22 @@ export function PacienteDetalhe({
               )}
               {secaoFicha === "doencas" && (
                 <Doencas ficha={form.ficha} setFicha={setFicha} disabled={!editando} />
+              )}
+            </div>
+          </>
+        ) : aba === "financeira" ? (
+          <>
+            <SubNavVertical<SecaoFinanceira>
+              value={secaoFinanceira}
+              onChange={setSecaoFinanceira}
+              ariaLabel="Seções da ficha financeira"
+              items={[
+                { value: "plano", label: "Plano de saúde", icon: <ShieldPlus className={ICONE} /> },
+              ]}
+            />
+            <div className="min-w-0 flex-1 rounded-lg border border-border bg-card px-4 py-4">
+              {secaoFinanceira === "plano" && (
+                <PlanoSaude ficha={form.ficha} setFicha={setFicha} disabled={!editando} />
               )}
             </div>
           </>
