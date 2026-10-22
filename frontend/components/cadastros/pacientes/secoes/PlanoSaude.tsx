@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { Info } from "lucide-react"
-import { getPlanosSaude, PLANOS_SAUDE_DISPONIVEL } from "@/services/planosSaude.service"
+import { getPlanosSaude, PLANOS_SAUDE_DISPONIVEL, rotuloPlano } from "@/services/planosSaude.service"
 import type { PlanoSaude as PlanoSaudeTipo } from "@/services/planosSaude.service"
 import type { PacienteFichaMedica } from "@/types/paciente"
 import { Campo, Secao, campo, rotulo, CampoSelect } from "../ui/campos"
@@ -11,26 +11,8 @@ import { Campo, Secao, campo, rotulo, CampoSelect } from "../ui/campos"
 // Esta tela conhece apenas o contrato de planosSaude.service — o service de
 // convênios fica atrás dele, para a origem do dado poder mudar num arquivo só.
 //
-// O rótulo traz o convênio junto ("Unimed — Nacional") porque planos homônimos
-// entre convênios são comuns e o nome sozinho não desambigua. A exceção é
-// "Padrão": ver rotuloPlano.
-
-/**
- * Como o plano aparece no select.
- *
- * "Padrão" é o nome que todo convênio recebe quando não tem produto próprio
- * cadastrado (carga inicial, APLICAR_3_convenios) — repeti-lo transformaria a
- * lista em dezessete linhas terminadas na mesma palavra, que não distingue
- * nada. Nesse caso o convênio sozinho já é a resposta.
- *
- * Quando o plano tem nome de verdade ("Nacional", "Volta Redonda"), o convênio
- * continua na frente: aí os dois pedaços carregam informação.
- */
-function rotuloPlano(plano: PlanoSaudeTipo): string {
-  if (!plano.convenio_nome) return plano.nome
-  const generico = plano.nome.trim().toLowerCase() === "padrão"
-  return generico ? plano.convenio_nome : `${plano.convenio_nome} — ${plano.nome}`
-}
+// O rótulo de cada plano (convênio + plano) vem de rotuloPlano, o mesmo que o
+// histórico usa.
 
 export function PlanoSaude({
   ficha,

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import toast from "react-hot-toast"
-import { AlertCircle, User, MapPin, Users, HeartPulse, Stethoscope, ShieldPlus, FileText, Trophy, GraduationCap } from "lucide-react"
+import { AlertCircle, User, MapPin, Users, HeartPulse, ShieldPlus, FileText, Trophy, GraduationCap, Info, CirclePause, AlertTriangle } from "lucide-react"
 import { SegmentedTabs } from "@/components/cronograma/ui/SegmentedTabs"
 import { useUnsavedChangesGuard } from "@/contexts/UnsavedChangesContext"
 import { usePacienteDetalhe } from "@/hooks/usePacienteDetalhe"
@@ -18,7 +18,7 @@ import { FichaBasica } from "./secoes/FichaBasica"
 import { Doencas } from "./secoes/Doencas"
 import { PlanoSaude } from "./secoes/PlanoSaude"
 import { AbaLaudo } from "./secoes/AbaLaudo"
-import { AbaAltasIndividualidades } from "./secoes/AbaAltasIndividualidades"
+import { AbaAltasIndividualidades, type SecaoAltasIndividualidades } from "./secoes/AbaAltasIndividualidades"
 import { AbaEscola } from "./secoes/AbaEscola"
 import { AbaDisponibilidade } from "./secoes/AbaDisponibilidade"
 import { AbaContratos } from "./secoes/AbaContratos"
@@ -26,21 +26,33 @@ import { foco } from "./ui/campos"
 import { getAltasClinicasDoPaciente, altaClinicaVigente } from "@/services/pacienteAltaClinica.service"
 import type { PacienteAltaClinica } from "@/types/laudos"
 
-type Aba = "cadastro" | "ficha" | "laudo" | "altas" | "escola" | "disponibilidade" | "contratos"
-type SecaoCadastro = "dados" | "endereco" | "filiacao" | "plano"
-type SecaoFicha = "basica" | "doencas"
+type Aba = "cadastro" | "laudo" | "disponibilidade" | "contratos" | "financeira"
+// Escola e Ficha médica deixaram de ser abas e viraram seções de Cadastro em
+// 22/10/2026. A Ficha médica junta numa seção só os dois blocos que eram o menu
+// da antiga aba (Dados básicos e Doenças).
+type SecaoCadastro = "dados" | "endereco" | "filiacao" | "escola" | "ficha"
+// Plano de saúde saiu de Cadastro para a Ficha financeira em 22/10/2026. Continua
+// no editar/salvar do cadastro: grava em `ficha`, como antes.
+type SecaoFinanceira = "plano"
+// "Laudos e individualidades" (22/10/2026): a aba Laudo absorveu a antiga aba
+// "Altas e Individualidades", e cada bloco virou uma seção do menu lateral.
+export type SecaoLaudo = "laudos" | SecaoAltasIndividualidades
 
 const ICONE = "h-4 w-4"
 
 export function PacienteDetalhe({
   idPaciente,
   abaInicial,
+  secaoLaudoInicial,
   suspensaoIdInicial,
 }: {
   idPaciente: number
-  /** Deep link (ex.: vindo de Ocupação de Paciente) — abre direto nesta aba. */
-  abaInicial?: Aba
-  /** Junto de `abaInicial="altas"`, abre o modal de detalhe desta suspensão. */
+  /** Deep link (ex.: vindo de Ocupação de Paciente) — abre direto nesta aba.
+   *  "escola" (link antigo) abre Cadastro na seção Escola. */
+  abaInicial?: Aba | "escola"
+  /** Junto de `abaInicial="laudo"`, abre nesta seção. */
+  secaoLaudoInicial?: SecaoLaudo
+  /** Abre o modal de detalhe desta suspensão (seção Suspensões temporárias). */
   suspensaoIdInicial?: number
 }) {
   const {
@@ -61,14 +73,15 @@ export function PacienteDetalhe({
     recarregar,
   } = usePacienteDetalhe(idPaciente)
 
-  const [aba, setAba] = useState<Aba>(abaInicial ?? "cadastro")
-  const [secaoCadastro, setSecaoCadastro] = useState<SecaoCadastro>("dados")
-  const [secaoFicha, setSecaoFicha] = useState<SecaoFicha>("basica")
+  const [aba, setAba] = useState<Aba>(abaInicial === "escola" ? "cadastro" : abaInicial ?? "cadastro")
+  const [secaoCadastro, setSecaoCadastro] = useState<SecaoCadastro>(abaInicial === "escola" ? "escola" : "dados")
+  const [secaoFinanceira, setSecaoFinanceira] = useState<SecaoFinanceira>("plano")
+  const [secaoLaudo, setSecaoLaudo] = useState<SecaoLaudo>(secaoLaudoInicial ?? "laudos")
   const [editando, setEditando] = useState(false)
   const [verHistorico, setVerHistorico] = useState(false)
   const [verInativar, setVerInativar] = useState(false)
-  // Independente da aba "Altas e Individualidades" estar montada: o badge no
-  // header precisa saber se há alta clínica vigente mesmo em outras abas.
+  // Independente da seção "Alta clínica" estar montada: o badge no header
+  // precisa saber se há alta clínica vigente mesmo em outras abas.
   const [altaClinicaVigenteAtual, setAltaClinicaVigenteAtual] = useState<PacienteAltaClinica | null>(null)
 
   useEffect(() => {
@@ -188,12 +201,10 @@ export function PacienteDetalhe({
           ariaLabel="Seções do paciente"
           tabs={[
             { value: "cadastro", label: "Cadastro" },
-            { value: "ficha", label: "Ficha médica" },
-            { value: "laudo", label: "Laudo" },
-            { value: "altas", label: "Altas e Individualidades" },
-            { value: "escola", label: "Escola" },
+            { value: "laudo", label: "Laudos e individualidades" },
             { value: "disponibilidade", label: "Disponibilidade" },
             { value: "contratos", label: "Contratos" },
+            { value: "financeira", label: "Ficha financeira" },
           ]}
         />
       </div>
@@ -209,69 +220,95 @@ export function PacienteDetalhe({
                 { value: "dados", label: "Dados pessoais", icon: <User className={ICONE} />, alterado: cadastroSujo.dados },
                 { value: "endereco", label: "Endereço", icon: <MapPin className={ICONE} />, alterado: cadastroSujo.endereco },
                 { value: "filiacao", label: "Filiação e responsáveis", icon: <Users className={ICONE} />, alterado: cadastroSujo.filiacao },
+                { value: "escola", label: "Escola", icon: <GraduationCap className={ICONE} /> },
+                { value: "ficha", label: "Ficha médica", icon: <HeartPulse className={ICONE} />, alterado: camposSujos.has("ficha") },
+              ]}
+            />
+            {secaoCadastro === "escola" ? (
+              // Fora do fluxo de editar/salvar do cadastro, como a Disponibilidade:
+              // tem o próprio botão e cada gravação é um envio novo no histórico.
+              // Por isso não recebe `disabled={!editando}` nem participa de
+              // `dirtyCount`. Traz as próprias caixas, então não vai dentro do
+              // cartão das outras seções.
+              <AbaEscola pacienteId={idPaciente} pacienteNome={paciente.nome} dataNascimento={paciente.data_nascimento} />
+            ) : (
+              <div className="min-w-0 flex-1 rounded-lg border border-border bg-card px-4 py-4">
+                {secaoCadastro === "dados" && (
+                  <DadosPessoais paciente={paciente} form={form} set={set} disabled={!editando} />
+                )}
+                {secaoCadastro === "endereco" && (
+                  <Endereco form={form} set={set} disabled={!editando} />
+                )}
+                {secaoCadastro === "filiacao" && (
+                  <FiliacaoResponsaveis form={form} set={set} disabled={!editando} />
+                )}
+                {secaoCadastro === "ficha" && (
+                  <div className="space-y-6">
+                    <FichaBasica ficha={form.ficha} setFicha={setFicha} disabled={!editando} />
+                    <div className="border-t border-border pt-5">
+                      <Doencas ficha={form.ficha} setFicha={setFicha} disabled={!editando} />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        ) : aba === "financeira" ? (
+          <>
+            <SubNavVertical<SecaoFinanceira>
+              value={secaoFinanceira}
+              onChange={setSecaoFinanceira}
+              ariaLabel="Seções da ficha financeira"
+              items={[
                 { value: "plano", label: "Plano de saúde", icon: <ShieldPlus className={ICONE} /> },
               ]}
             />
             <div className="min-w-0 flex-1 rounded-lg border border-border bg-card px-4 py-4">
-              {secaoCadastro === "dados" && (
-                <DadosPessoais paciente={paciente} form={form} set={set} disabled={!editando} />
-              )}
-              {secaoCadastro === "endereco" && (
-                <Endereco form={form} set={set} disabled={!editando} />
-              )}
-              {secaoCadastro === "filiacao" && (
-                <FiliacaoResponsaveis form={form} set={set} disabled={!editando} />
-              )}
-              {secaoCadastro === "plano" && (
+              {secaoFinanceira === "plano" && (
                 <PlanoSaude ficha={form.ficha} setFicha={setFicha} disabled={!editando} />
               )}
             </div>
           </>
-        ) : aba === "ficha" ? (
+        ) : aba === "laudo" ? (
           <>
-            <SubNavVertical<SecaoFicha>
-              value={secaoFicha}
-              onChange={setSecaoFicha}
-              ariaLabel="Seções da ficha médica"
+            <SubNavVertical<SecaoLaudo>
+              value={secaoLaudo}
+              onChange={setSecaoLaudo}
+              ariaLabel="Seções de laudos e individualidades"
               items={[
-                { value: "basica", label: "Dados básicos", icon: <HeartPulse className={ICONE} />, alterado: camposSujos.has("ficha") },
-                { value: "doencas", label: "Doenças", icon: <Stethoscope className={ICONE} /> },
+                { value: "laudos", label: "Laudos", icon: <FileText className={ICONE} /> },
+                { value: "info", label: "Informações adicionais", icon: <Info className={ICONE} />, alterado: camposSujos.has("individualidade") },
+                { value: "altas", label: "Altas", icon: <Trophy className={ICONE} /> },
+                { value: "suspensoes", label: "Suspensões temporárias", icon: <CirclePause className={ICONE} /> },
+                { value: "altaClinica", label: "Alta clínica", icon: <AlertTriangle className={ICONE} /> },
               ]}
             />
-            <div className="min-w-0 flex-1 rounded-lg border border-border bg-card px-4 py-4">
-              {secaoFicha === "basica" && (
-                <FichaBasica ficha={form.ficha} setFicha={setFicha} disabled={!editando} />
-              )}
-              {secaoFicha === "doencas" && (
-                <Doencas ficha={form.ficha} setFicha={setFicha} disabled={!editando} />
-              )}
-            </div>
+            {secaoLaudo === "laudos" ? (
+              <AbaLaudo pacienteId={idPaciente} pacienteNome={paciente.nome} />
+            ) : (
+              // Um componente só para as quatro seções: troca de seção não recarrega
+              // altas/suspensões. "Informações adicionais" entra no Editar/Salvar
+              // do cadastro; altas, suspensões e alta clínica gravam na hora.
+              <AbaAltasIndividualidades
+                secao={secaoLaudo}
+                pacienteId={idPaciente}
+                pacienteNome={paciente.nome}
+                individualidade={form.individualidade}
+                setIndividualidade={setIndividualidade}
+                disabled={!editando}
+                suspensaoIdInicial={suspensaoIdInicial}
+                onAltaClinicaVigenteMudou={setAltaClinicaVigenteAtual}
+              />
+            )}
           </>
-        ) : aba === "laudo" ? (
-          <AbaLaudo pacienteId={idPaciente} pacienteNome={paciente.nome} />
-        ) : aba === "escola" ? (
-          // Fora do fluxo de editar/salvar do cadastro de propósito: o conteúdo é
-          // declaração do responsável, e a equipe lê sem editar. Por isso não
-          // recebe `disabled={!editando}` nem participa de `dirtyCount`.
-          <AbaEscola pacienteId={idPaciente} />
         ) : aba === "disponibilidade" ? (
           // Também fora do editar/salvar do cadastro: cada gravação é uma versão
           // nova num histórico imutável, com botão e confirmação próprios.
           <AbaDisponibilidade pacienteId={idPaciente} pacienteNome={paciente.nome} pacienteCpf={paciente.cpf} />
-        ) : aba === "contratos" ? (
+        ) : (
           // Também fora do editar/salvar: cada ação grava na hora por RPC e
           // vira evento na linha do tempo do contrato.
           <AbaContratos pacienteId={idPaciente} />
-        ) : (
-          <AbaAltasIndividualidades
-            pacienteId={idPaciente}
-            pacienteNome={paciente.nome}
-            individualidade={form.individualidade}
-            setIndividualidade={setIndividualidade}
-            disabled={!editando}
-            suspensaoIdInicial={suspensaoIdInicial}
-            onAltaClinicaVigenteMudou={setAltaClinicaVigenteAtual}
-          />
         )}
       </div>
 

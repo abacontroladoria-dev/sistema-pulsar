@@ -47,6 +47,7 @@ import {
   FileSearch,
   ScanText,
   MessagesSquare,
+  ChevronRight,
   type LucideIcon,
 } from "lucide-react"
 import { useChatEquipe, useContadoresChatEquipe } from "@/contexts/ChatEquipeContext"
@@ -61,6 +62,7 @@ import ModalPerfil from "@/components/perfil/ModalPerfil"
 import ModalAlterarSenha from "@/components/perfil/ModalAlterarSenha"
 import ModalErros from "@/components/perfil/ModalErros"
 import { SidebarGroup } from "@/components/sidebar/SidebarGroup"
+import { ModalGrupoMenu } from "@/components/sidebar/ModalGrupoMenu"
 import { ThemeSwitcher } from "@/components/sidebar/ThemeSwitcher"
 import { useTheme } from "@/contexts/ThemeContext"
 import { useImpersonation } from "@/contexts/ImpersonationContext"
@@ -69,7 +71,7 @@ import { ImpersonationSelector } from "@/components/admin/ImpersonationSelector"
 import { SeletorArea } from "@/components/sidebar/SeletorArea"
 import { BuscaMestre } from "@/components/busca/BuscaMestre"
 import { useAreaDoMenu } from "@/hooks/useAreaDoMenu"
-import { MENU_ICONE_GRUPO, MENU_ITENS, MENU_ORDEM_GRUPOS, MENU_POR_CODIGO } from "@/lib/permissions/menu"
+import { MENU_GRUPOS_EM_MODAL, MENU_ICONE_GRUPO, MENU_ITENS, MENU_ORDEM_GRUPOS, MENU_POR_CODIGO } from "@/lib/permissions/menu"
 
 type Favorito = { label: string; path: string }
 
@@ -165,6 +167,8 @@ export default function Sidebar() {
   const [modalSenha, setModalSenha] = useState(false)
   const [modalErros, setModalErros] = useState(false)
   const [favoritos, setFavoritos] = useState<Favorito[]>([])
+  // Grupo aberto no modal central (Cadastros, dentro de Configurações).
+  const [grupoEmModal, setGrupoEmModal] = useState<string | null>(null)
 
   useEffect(() => {
     try {
@@ -406,10 +410,24 @@ export default function Sidebar() {
     const base = path.split("?")[0]
     return pathname === base || pathname.startsWith(base + "/")
   }
+  const itensDoGrupo = (nome: string) =>
+    MENU_ITENS.filter(i => i.area === area && i.grupo === nome && canAccess(i.path))
+  // Grupos de MENU_GRUPOS_EM_MODAL não aparecem como grupo: viram um botão dentro
+  // do grupo que os contém, e esse grupo aparece mesmo sem item próprio liberado
+  // (quem só tem Cadastros vê "Configurações" com o botão de Cadastros).
   const gruposDaArea = MENU_ORDEM_GRUPOS
-    .map(nome => ({ nome, itens: MENU_ITENS.filter(i => i.area === area && i.grupo === nome && canAccess(i.path)) }))
-    .filter(g => g.itens.length > 0)
-    .map(g => ({ ...g, aberto: g.itens.some(i => naRota(i.path)) }))
+    .filter(nome => !(nome in MENU_GRUPOS_EM_MODAL))
+    .map(nome => ({
+      nome,
+      itens: itensDoGrupo(nome),
+      emModal: Object.keys(MENU_GRUPOS_EM_MODAL)
+        .filter(sub => MENU_GRUPOS_EM_MODAL[sub] === nome)
+        .map(sub => ({ nome: sub, itens: itensDoGrupo(sub) }))
+        .filter(sub => sub.itens.length > 0),
+    }))
+    .filter(g => g.itens.length > 0 || g.emModal.length > 0)
+    .map(g => ({ ...g, aberto: [...g.itens, ...g.emModal.flatMap(sub => sub.itens)].some(i => naRota(i.path)) }))
+  const modal = gruposDaArea.flatMap(g => g.emModal).find(sub => sub.nome === grupoEmModal)
 
   // Chat da equipe: conversas (todo usuário logado — sem código de permissão
   // desde 16/10/2026) e menções em notas internas do Connect (só para quem tem
@@ -534,6 +552,32 @@ export default function Sidebar() {
               seletor. */}
           {gruposDaArea.map(g => (
             <SidebarGroup key={`${area}:${g.nome}`} title={g.nome} icon={MENU_ICONE_GRUPO[g.nome]} defaultOpen={g.aberto}>
+              {g.emModal.map(sub => {
+                const Icone = MENU_ICONE_GRUPO[sub.nome]
+                const ativo = sub.itens.some(i => naRota(i.path))
+                return (
+                  <button
+                    key={sub.nome}
+                    type="button"
+                    onClick={() => setGrupoEmModal(sub.nome)}
+                    aria-haspopup="dialog"
+                    className={`flex w-full items-center gap-2.5 py-2 pr-2 rounded-lg text-sm transition-all duration-150 border-l-2 pl-2.5
+                    ${
+                      ativo
+                        ? "border-sidebar-primary font-semibold bg-sidebar-accent text-sidebar-accent-foreground"
+                        : "border-transparent text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"
+                    }`}
+                  >
+                    <Icone
+                      size={16}
+                      className="shrink-0"
+                      style={{ color: ativo ? "var(--color-sidebar-primary)" : "var(--color-sidebar-foreground)" }}
+                    />
+                    <span className="flex-1 text-left">{sub.nome}</span>
+                    <ChevronRight size={14} className="shrink-0 text-sidebar-foreground/40" aria-hidden="true" />
+                  </button>
+                )
+              })}
               {g.itens.map(i => <Item key={i.codigo} codigo={i.codigo} />)}
             </SidebarGroup>
           ))}
@@ -694,6 +738,18 @@ export default function Sidebar() {
         </>
       )}
       <ModalErros open={modalErros} onClose={() => setModalErros(false)} />
+      {modal && (
+        <ModalGrupoMenu
+          titulo={modal.nome}
+          icon={MENU_ICONE_GRUPO[modal.nome]}
+          itens={modal.itens}
+          aberto
+          onFechar={() => setGrupoEmModal(null)}
+          isActive={naRota}
+          isFavorito={path => favoritos.some(f => f.path === path)}
+          onAlternarFavorito={toggleFavorito}
+        />
+      )}
     </>
   )
 }

@@ -84,12 +84,12 @@ export const CODIGO_PARA_ROTAS: Record<string, string[]> = {
   cronograma_saida_profissional: ['/cronograma/saida-profissional'],
   cronograma_ocupacao_paciente: ['/cronograma/ocupacao-paciente'],
   cronograma_disponibilidade_interna: ['/relacionamento-prestador/ocupar-profissionais-disponiveis'],
-  // Mesmo padrão de Indicadores: /cronograma/ocupacao tem 3 abas
-  // (Oportunidades Recusadas, Diferença: Laudo e Oferta, Inconsistências e
-  // Exceções), cada uma com seu próprio código de permissão.
+  // Mesmo padrão de Indicadores: /cronograma/ocupacao tem 2 abas
+  // (Oportunidades Recusadas, Diferença: Laudo e Oferta), cada uma com seu
+  // próprio código de permissão. A 3ª, Inconsistências e Exceções
+  // (ocupacao_clinica_inconsistencias), saiu em 22/10/2026: ninguém usava.
   ocupacao_clinica: ['/cronograma/ocupacao?tab=oportunidades-recusadas'],
   ocupacao_clinica_gaps: ['/cronograma/ocupacao?tab=gaps'],
-  ocupacao_clinica_inconsistencias: ['/cronograma/ocupacao?tab=inconsistencias'],
   // Indicadores: uma rota só (/cronograma/indicadores), abas diferenciadas por
   // ?tab=. Cada aba tem seu próprio código de permissão — ver routeMatches()
   // abaixo, que sabe comparar rota+querystring (não só pathname) pra isso
@@ -98,7 +98,9 @@ export const CODIGO_PARA_ROTAS: Record<string, string[]> = {
   indicadores_ocupacao_unidades: ['/cronograma/indicadores?tab=unidades'],
   indicadores_pacientes: ['/cronograma/indicadores?tab=pacientes'],
   indicadores_previsao_receitas: ['/cronograma/indicadores?tab=previsao-receitas'],
-  indicadores_alimentar_bd: ['/cronograma/indicadores?tab=alimentar-bd'],
+  // `indicadores_alimentar_bd` ("Preencher Receitas Faturadas", ?tab=alimentar-bd)
+  // saiu em 22/10/2026: ninguém usava. O código continua no banco (a RLS de
+  // previsao_receitas_faturamento o usa); sem entrada aqui a aba não abre.
   indicadores_comparativo_sessoes: ['/cronograma/indicadores?tab=comparativo-sessoes'],
   indicadores_entrada_convenio: ['/cronograma/indicadores?tab=entrada-convenio'],
   reposicao_faltas: ['/cronograma/reposicao'],

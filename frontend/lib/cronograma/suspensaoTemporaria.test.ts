@@ -107,8 +107,8 @@ describe("bloqueiosDoPaciente", () => {
       ["Outro|||Fonoaudiologia", { tipo: "alta" as const, idPacientePulsar: 2, idRegistro: 5 }],
     ])
     expect(bloqueiosDoPaciente("Bia", info, ["Musicoterapia", "Psicologia"])).toEqual([
-      { esp: "Fonoaudiologia", tipo: "alta_clinica", href: "/cadastros/pacientes/1?aba=altas" },
-      { esp: "Psicologia", tipo: "suspensao", href: "/cadastros/pacientes/1?aba=altas&suspensao=8" },
+      { esp: "Fonoaudiologia", tipo: "alta_clinica", href: "/cadastros/pacientes/1?aba=laudo&secao=altaClinica" },
+      { esp: "Psicologia", tipo: "suspensao", href: "/cadastros/pacientes/1?aba=laudo&secao=suspensoes&suspensao=8" },
       { esp: "Musicoterapia", tipo: "alta_laudo", href: undefined },
     ])
   })
