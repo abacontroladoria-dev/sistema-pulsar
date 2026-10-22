@@ -158,11 +158,14 @@ checar('transcrição tem hora local', /\[\d\d\/\d\d,? \d\d:\d\d\] Família:/.te
 console.log('\n5. nota de parada')
 const nota = textoNotaParada({
   veredito: 'aguardando_cliente', motivo: 'Ficou de mandar a carteirinha.', pendencia: 'Cliente enviar a carteirinha.',
-  horasParada: 27, faseMaia: true, canalMeta: true,
+  horasParada: 27, faseMaia: true, passaParaEquipe: false, canalMeta: true,
 })
 checar('diz há quanto tempo e de quem é a vez', nota.startsWith('Conversa parada há 27h esperando a resposta do cliente.'), true)
 checar('diz o que ficou pendente', nota.includes('O que ficou pendente: Cliente enviar a carteirinha.'), true)
-checar('Maia: passou para a equipe', nota.includes('Passei a conversa para a equipe'), true)
+checar('Maia, vez do cliente: fica em Aguardando', nota.includes('Deixei a conversa em Aguardando'), true)
+checar('Maia, vez da clínica: passa para a equipe',
+  textoNotaParada({ veredito: 'aguardando_clinica', motivo: null, pendencia: null, horasParada: 30, faseMaia: true, passaParaEquipe: true, canalMeta: false })
+    .includes('Passei a conversa para a equipe'), true)
 checar('Meta: avisa da janela de 24h', nota.includes('janela de 24h'), true)
 checar('clínica: vez da clínica',
   textoNotaParada({ veredito: 'aguardando_clinica', motivo: null, pendencia: null, horasParada: 30, faseMaia: false, canalMeta: false })

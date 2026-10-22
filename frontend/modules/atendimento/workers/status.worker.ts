@@ -160,8 +160,13 @@ export async function processarStatus(
 }
 
 // Aguardando parado há 24h: nunca fecha. Nota interna explicando o que ficou
-// pendente e a conversa vai para a equipe:
-//   - com a Maia, ela transfere → Aberto (ninguém da equipe falou ainda);
+// pendente, e:
+//   - com a Maia e a vez é da CLÍNICA (ficou de ver vaga, valor…): ela
+//     transfere → Aberto, porque alguém da equipe precisa agir;
+//   - com a Maia e a vez é do CLIENTE (sumiu depois da resposta): ela fica na
+//     conversa, que vai para Aguardando. Se o cliente voltar, a Maia responde
+//     e volta a Autoatendimento (statusAoMaiaResponder). Decisão do usuário em
+//     22/10: o lead que sumiu lotava o Aberto, a fila de quem precisa de gente;
 //   - já com a equipe, fica em Aguardando e a nota avisa — mencionando o
 //     responsável, se houver (aparece em "Menções a mim").
 // Nunca devolve conversa da equipe para Aberto: Aberto é "ninguém da equipe
@@ -176,6 +181,7 @@ async function avisarParada(
   repo: ConversationRepository,
 ): Promise<void> {
   const faseMaia = conv.status === 'self_service'
+  const passaParaEquipe = faseMaia && conv.status_ia_veredito === 'aguardando_clinica'
 
   const { data: canal } = await supabase
     .schema('central')
@@ -190,6 +196,7 @@ async function avisarParada(
     pendencia:   conv.status_ia_pendencia ?? null,
     horasParada,
     faseMaia,
+    passaParaEquipe,
     canalMeta:   (canal as { provider?: string } | null)?.provider === 'meta_waba',
   })
   const mencoes = !faseMaia && conv.assigned_user_id ? [conv.assigned_user_id] : []
@@ -199,14 +206,14 @@ async function avisarParada(
   // escreve a mesma nota de novo.
   await repo.marcarAlertaParada(conv.id, new Date().toISOString())
 
-  if (faseMaia) {
+  if (passaParaEquipe) {
     const motivo = 'inatividade'
     if (await repo.inboxMaiaAutomatica(conv.inbox_id)) {
       await conversationService.transferirDoMaiaResponde(conv.id, motivo, 'inatividade')
     } else {
       await conversationService.escalarParaAtendimentoHumano(conv.id, motivo, 'inatividade')
     }
-  } else if (conv.status === 'assigned') {
+  } else if (conv.status === 'self_service' || conv.status === 'assigned') {
     await conversationService.aplicarStatusDaMaia(
       conv.id, 'waiting', conv.status_ia_motivo ?? `Parada há ${horasParada}h`,
     )

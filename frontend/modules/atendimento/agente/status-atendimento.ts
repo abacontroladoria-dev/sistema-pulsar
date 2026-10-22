@@ -179,15 +179,19 @@ export function textoNotaParada(input: {
   pendencia:   string | null
   horasParada: number
   faseMaia:    boolean
+  // Com a Maia: ela passou para a equipe (vez da clínica) ou ficou na
+  // conversa esperando o cliente (status.worker.ts, avisarParada).
+  passaParaEquipe?: boolean
   canalMeta:   boolean
 }): string {
   const quem = input.veredito === 'aguardando_clinica' ? 'uma ação da clínica' : 'a resposta do cliente'
   const linhas = [`Conversa parada há ${input.horasParada}h esperando ${quem}.`]
   if (input.motivo)    linhas.push(`O que aconteceu: ${input.motivo}`)
   if (input.pendencia) linhas.push(`O que ficou pendente: ${input.pendencia}`)
-  linhas.push(input.faseMaia
-    ? 'Passei a conversa para a equipe: vale retomar o contato.'
-    : 'Ela não foi encerrada. Vale retomar o contato ou decidir o status.')
+  linhas.push(
+    !input.faseMaia ? 'Ela não foi encerrada. Vale retomar o contato ou decidir o status.'
+    : input.passaParaEquipe ? 'Passei a conversa para a equipe: alguém precisa dar esse retorno.'
+    : 'Deixei a conversa em Aguardando. Se o cliente voltar, eu continuo; se quiser, retome o contato.')
   if (input.canalMeta) {
     linhas.push('A janela de 24h do WhatsApp fechou: para escrever ao cliente, use um modelo de mensagem.')
   }

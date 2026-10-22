@@ -286,6 +286,12 @@ export class MessageService {
       await this.conversas.statusAoHumanoResponder(conversation.id)
     }
 
+    // A Maia respondeu numa conversa que ela deixou em Aguardando (o cliente
+    // sumiu e voltou): volta a ser Autoatendimento.
+    if (input.sentByAi === true && this.conversas) {
+      await this.conversas.statusAoMaiaResponder(conversation.id)
+    }
+
     return message
   }
 

@@ -1089,6 +1089,25 @@ export class ConversationService {
     }
   }
 
+  // A Maia respondeu: se a conversa estava em Aguardando com ela (o cliente
+  // tinha sumido e a Maia a deixou ali — status.worker.ts, avisarParada),
+  // volta para Autoatendimento. Só onde a Maia responde de fato
+  // (maiaRespondeAqui): no plantão ela fala em conversa transferida, que é da
+  // equipe e não pode virar Autoatendimento. Não lança: a mensagem já saiu.
+  async statusAoMaiaResponder(conversationId: string): Promise<void> {
+    try {
+      const atual = await this.getById(conversationId)
+      if (atual.status !== 'waiting') return
+      if (!(await this.maiaRespondeAqui(atual))) return
+      await this.moverStatusAutomatico(atual, 'self_service', 'sistema', 'Cliente voltou e a Maia respondeu')
+    } catch (erro) {
+      console.error('[ConversationService] Falha ao mover status ao a Maia responder', {
+        conversationId,
+        erro: erro instanceof Error ? erro.message : String(erro),
+      })
+    }
+  }
+
   // A leitura da Maia, já decidida (agente/status-atendimento.ts,
   // decidirStatus). Encerrar passa por resolve/archive, que gravam as marcas
   // e os eventos de sempre, com actorId nulo.

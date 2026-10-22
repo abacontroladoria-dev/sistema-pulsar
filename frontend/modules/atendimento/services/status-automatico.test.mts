@@ -182,5 +182,25 @@ console.log('\n6. reabrir')
   checar('sem a Maia: Aberto', status, ['open'])
 }
 
+// --- 7 ---------------------------------------------------------------------------
+console.log('\n7. a Maia responde depois que o cliente voltou')
+{
+  const { service, status } = montar({ ...BASE, status: 'waiting' } as Conversation, { maiaAutomatica: true })
+  await service.statusAoMaiaResponder('conv-1')
+  checar('Aguardando com a Maia → Autoatendimento', status, ['self_service'])
+}
+{
+  // Plantão: a Maia fala numa conversa transferida, que é da equipe.
+  const conv = { ...BASE, status: 'waiting', ai_context: { transferida_humano: { em: 'x' } } } as unknown as Conversation
+  const { service, status } = montar(conv, { maiaAutomatica: true })
+  await service.statusAoMaiaResponder('conv-1')
+  checar('plantão: fica em Aguardando', status, [])
+}
+{
+  const { service, status } = montar({ ...BASE, status: 'assigned' } as Conversation, { maiaAutomatica: true })
+  await service.statusAoMaiaResponder('conv-1')
+  checar('fora de Aguardando: nada', status, [])
+}
+
 console.log(falhas === 0 ? '\nTudo certo.\n' : `\n${falhas} falha(s).\n`)
 process.exit(falhas === 0 ? 0 : 1)
