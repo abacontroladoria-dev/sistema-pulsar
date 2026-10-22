@@ -52,10 +52,11 @@ function modoDoAmbiente(): Modo {
 // Leituras (chamadas ao modelo) por tique. Cada conversa é lida uma vez por
 // troca de mensagens, não por tique: o teto só segura um pico.
 const LEITURAS_POR_TIQUE = 5
-// Até onde olhar para trás. Parada de 24h precisa da conversa que ficou
-// quieta ontem; uma semana cobre fim de semana e feriado.
-const JANELA_DIAS = 7
-// Conversas examinadas por tique. Ativas são ~150 hoje; o exame é em memória.
+// Sem janela de datas: TODA conversa ativa é examinada. Uma janela de 7 dias
+// deixava de fora justamente as esquecidas há semanas — que ficavam em Aberto
+// para sempre, sem leitura (visto em 22/10: 23 dias). O conjunto ativo é
+// pequeno (~150) e o exame é em memória; o custo é só a leitura, com teto.
+// Conversas examinadas por tique.
 const CONVERSAS_EXAMINADAS = 400
 const HISTORICO = 40
 const ORCAMENTO_MS = 10_000
@@ -82,8 +83,7 @@ export async function processarStatus(
   const mensagens = new MessageRepository(supabase)
   const { conversationService } = createSystemServices()
 
-  const desde = new Date(Date.now() - JANELA_DIAS * 86_400_000).toISOString()
-  const conversas = await repo.listarAtivasParaStatus(orgId, desde, CONVERSAS_EXAMINADAS)
+  const conversas = await repo.listarAtivasParaStatus(orgId, CONVERSAS_EXAMINADAS)
   let podeLer = true
 
   for (const original of conversas) {
@@ -160,9 +160,13 @@ export async function processarStatus(
 }
 
 // Aguardando parado há 24h: nunca fecha. Nota interna explicando o que ficou
-// pendente e a conversa vai para a equipe — com a Maia, ela transfere; com
-// responsável, a nota o menciona (aparece em "Menções a mim"); sem
-// responsável, volta para Aberto.
+// pendente e a conversa vai para a equipe:
+//   - com a Maia, ela transfere → Aberto (ninguém da equipe falou ainda);
+//   - já com a equipe, fica em Aguardando e a nota avisa — mencionando o
+//     responsável, se houver (aparece em "Menções a mim").
+// Nunca devolve conversa da equipe para Aberto: Aberto é "ninguém da equipe
+// falou ainda". Até 22/10 a sem responsável voltava para lá, e quem responde
+// pelo celular nunca é responsável — Aberto enchia de conversa já atendida.
 async function avisarParada(
   supabase: SupabaseClient,
   orgId: string,
@@ -202,9 +206,9 @@ async function avisarParada(
     } else {
       await conversationService.escalarParaAtendimentoHumano(conv.id, motivo, 'inatividade')
     }
-  } else if (!conv.assigned_user_id && conv.status !== 'open') {
+  } else if (conv.status === 'assigned') {
     await conversationService.aplicarStatusDaMaia(
-      conv.id, 'open', `Parada há ${horasParada}h; voltou para a fila da equipe`,
+      conv.id, 'waiting', conv.status_ia_motivo ?? `Parada há ${horasParada}h`,
     )
   }
 }

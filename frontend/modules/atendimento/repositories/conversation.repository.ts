@@ -558,17 +558,17 @@ export class ConversationRepository {
     if (error) throw error
   }
 
-  // Conversas ativas com mensagem desde `desde`, mais antigas primeiro. O
+  // Todas as conversas ativas com alguma mensagem, mais antigas primeiro. O
   // worker decide em memória quais precisam de leitura nova, quais só esperam
   // o tempo do veredito e quais estão paradas.
-  async listarAtivasParaStatus(orgId: string, desde: string, limite: number): Promise<Conversation[]> {
+  async listarAtivasParaStatus(orgId: string, limite: number): Promise<Conversation[]> {
     const { data, error } = await (this.supabase as any)
       .schema('central')
       .from('conversations')
       .select('*')
       .eq('organization_id', orgId)
       .in('status', ['self_service', 'open', 'assigned', 'waiting'])
-      .gte('last_message_at', desde)
+      .not('last_message_at', 'is', null)
       .order('last_message_at', { ascending: true })
       .limit(limite)
 
