@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import toast from "react-hot-toast"
-import { AlertCircle, User, MapPin, Users, HeartPulse, Stethoscope, ShieldPlus, FileText, Trophy, GraduationCap, Info, CirclePause, AlertTriangle } from "lucide-react"
+import { AlertCircle, User, MapPin, Users, HeartPulse, ShieldPlus, FileText, Trophy, GraduationCap, Info, CirclePause, AlertTriangle } from "lucide-react"
 import { SegmentedTabs } from "@/components/cronograma/ui/SegmentedTabs"
 import { useUnsavedChangesGuard } from "@/contexts/UnsavedChangesContext"
 import { usePacienteDetalhe } from "@/hooks/usePacienteDetalhe"
@@ -26,10 +26,11 @@ import { foco } from "./ui/campos"
 import { getAltasClinicasDoPaciente, altaClinicaVigente } from "@/services/pacienteAltaClinica.service"
 import type { PacienteAltaClinica } from "@/types/laudos"
 
-type Aba = "cadastro" | "ficha" | "laudo" | "disponibilidade" | "contratos" | "financeira"
-// Escola deixou de ser aba e virou seção de Cadastro em 22/10/2026.
-type SecaoCadastro = "dados" | "endereco" | "filiacao" | "escola"
-type SecaoFicha = "basica" | "doencas"
+type Aba = "cadastro" | "laudo" | "disponibilidade" | "contratos" | "financeira"
+// Escola e Ficha médica deixaram de ser abas e viraram seções de Cadastro em
+// 22/10/2026. A Ficha médica junta numa seção só os dois blocos que eram o menu
+// da antiga aba (Dados básicos e Doenças).
+type SecaoCadastro = "dados" | "endereco" | "filiacao" | "escola" | "ficha"
 // Plano de saúde saiu de Cadastro para a Ficha financeira em 22/10/2026. Continua
 // no editar/salvar do cadastro: grava em `ficha`, como antes.
 type SecaoFinanceira = "plano"
@@ -74,7 +75,6 @@ export function PacienteDetalhe({
 
   const [aba, setAba] = useState<Aba>(abaInicial === "escola" ? "cadastro" : abaInicial ?? "cadastro")
   const [secaoCadastro, setSecaoCadastro] = useState<SecaoCadastro>(abaInicial === "escola" ? "escola" : "dados")
-  const [secaoFicha, setSecaoFicha] = useState<SecaoFicha>("basica")
   const [secaoFinanceira, setSecaoFinanceira] = useState<SecaoFinanceira>("plano")
   const [secaoLaudo, setSecaoLaudo] = useState<SecaoLaudo>(secaoLaudoInicial ?? "laudos")
   const [editando, setEditando] = useState(false)
@@ -201,7 +201,6 @@ export function PacienteDetalhe({
           ariaLabel="Seções do paciente"
           tabs={[
             { value: "cadastro", label: "Cadastro" },
-            { value: "ficha", label: "Ficha médica" },
             { value: "laudo", label: "Laudos e individualidades" },
             { value: "disponibilidade", label: "Disponibilidade" },
             { value: "contratos", label: "Contratos" },
@@ -222,6 +221,7 @@ export function PacienteDetalhe({
                 { value: "endereco", label: "Endereço", icon: <MapPin className={ICONE} />, alterado: cadastroSujo.endereco },
                 { value: "filiacao", label: "Filiação e responsáveis", icon: <Users className={ICONE} />, alterado: cadastroSujo.filiacao },
                 { value: "escola", label: "Escola", icon: <GraduationCap className={ICONE} /> },
+                { value: "ficha", label: "Ficha médica", icon: <HeartPulse className={ICONE} />, alterado: camposSujos.has("ficha") },
               ]}
             />
             {secaoCadastro === "escola" ? (
@@ -242,28 +242,16 @@ export function PacienteDetalhe({
                 {secaoCadastro === "filiacao" && (
                   <FiliacaoResponsaveis form={form} set={set} disabled={!editando} />
                 )}
+                {secaoCadastro === "ficha" && (
+                  <div className="space-y-6">
+                    <FichaBasica ficha={form.ficha} setFicha={setFicha} disabled={!editando} />
+                    <div className="border-t border-border pt-5">
+                      <Doencas ficha={form.ficha} setFicha={setFicha} disabled={!editando} />
+                    </div>
+                  </div>
+                )}
               </div>
             )}
-          </>
-        ) : aba === "ficha" ? (
-          <>
-            <SubNavVertical<SecaoFicha>
-              value={secaoFicha}
-              onChange={setSecaoFicha}
-              ariaLabel="Seções da ficha médica"
-              items={[
-                { value: "basica", label: "Dados básicos", icon: <HeartPulse className={ICONE} />, alterado: camposSujos.has("ficha") },
-                { value: "doencas", label: "Doenças", icon: <Stethoscope className={ICONE} /> },
-              ]}
-            />
-            <div className="min-w-0 flex-1 rounded-lg border border-border bg-card px-4 py-4">
-              {secaoFicha === "basica" && (
-                <FichaBasica ficha={form.ficha} setFicha={setFicha} disabled={!editando} />
-              )}
-              {secaoFicha === "doencas" && (
-                <Doencas ficha={form.ficha} setFicha={setFicha} disabled={!editando} />
-              )}
-            </div>
           </>
         ) : aba === "financeira" ? (
           <>
