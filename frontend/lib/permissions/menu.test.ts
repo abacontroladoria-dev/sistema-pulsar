@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MENU_AREAS, MENU_ITENS, MENU_ORDEM_GRUPOS } from './menu'
+import { MENU_AREAS, MENU_GRUPOS_EM_MODAL, MENU_ITENS, MENU_ORDEM_GRUPOS } from './menu'
 import { areaDaRota } from './areas'
 import { CODIGO_PARA_ROTAS, hasRouteAccess } from './routes'
 
@@ -34,6 +34,13 @@ describe('menu × catálogo de permissões', () => {
       const [path, query] = item.path.split('?')
       const permitido = hasRouteAccess(path, query ? `?${query}` : '', CODIGO_PARA_ROTAS[item.codigo])
       expect(permitido, item.codigo).toBe(true)
+    }
+  })
+
+  it('todo grupo mostrado em modal aponta para um grupo que existe', () => {
+    for (const [grupo, dentroDe] of Object.entries(MENU_GRUPOS_EM_MODAL)) {
+      expect(MENU_ORDEM_GRUPOS, grupo).toContain(grupo)
+      expect(MENU_ORDEM_GRUPOS, dentroDe).toContain(dentroDe)
     }
   })
 
@@ -76,7 +83,8 @@ describe('áreas do seletor', () => {
 
   it('a rota aberta diz a área', () => {
     expect(areaDaRota('/cronograma/indicadores', '?tab=comparativo-sessoes')).toBe('relatorios')
-    expect(areaDaRota('/cronograma/indicadores', '?tab=alimentar-bd')).toBe('operacional')
+    expect(areaDaRota('/cronograma/indicadores', '?tab=alimentar-bd')).toBeNull()
+    expect(areaDaRota('/relacionamento-prestador/ocupacao-salas')).toBe('operacional')
     expect(areaDaRota('/insumos')).toBe('financeiro')
     expect(areaDaRota('/cadastros/pacientes/123')).toBe('operacional')
     expect(areaDaRota('/connect/inbox')).toBe('connect')

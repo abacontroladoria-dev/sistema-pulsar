@@ -43,7 +43,7 @@ import {
   RotateCcw,
   ScrollText,
   ScanText,
-  ShieldCheck,
+  Settings,
   Stethoscope,
   Tag,
   TrendingUp,
@@ -81,11 +81,19 @@ export const MENU_GRUPOS = {
   suprimentos: { nome: 'Suprimentos', icon: Package },
   cronograma: { nome: 'Cronograma', icon: CalendarRange },
   indicadores: { nome: 'Indicadores', icon: TrendingUp },
-  cadastros: { nome: 'Cadastros', icon: Database },
   relacionamentoPrestador: { nome: 'Relacionamento Prestador', icon: Handshake },
   marketing: { nome: 'Marketing', icon: Megaphone },
-  administracao: { nome: 'Administração', icon: ShieldCheck },
+  cadastros: { nome: 'Cadastros', icon: Database },
+  configuracoes: { nome: 'Configurações', icon: Settings },
 } satisfies Record<string, MenuGrupoDef>
+
+// Grupos que o Sidebar não lista como grupo: viram um botão só, dentro de outro
+// grupo, que abre um modal no centro da tela com as telas deles (decisão do
+// usuário em 22/10/2026: os 8 cadastros ocupavam o menu inteiro). A tela de
+// Permissões e o catálogo do banco continuam vendo o grupo de sempre.
+export const MENU_GRUPOS_EM_MODAL: Record<string, string> = {
+  [MENU_GRUPOS.cadastros.nome]: MENU_GRUPOS.configuracoes.nome,
+}
 
 // Áreas do seletor acima do menu. Cada tela fica numa área só, e o Sidebar mostra
 // apenas as telas da área escolhida. É agrupamento visual: o `grupo` (que a tela
@@ -145,7 +153,6 @@ const PALAVRAS_CHAVE: Record<string, string> = {
   ocupacao_clinica: 'recusa',
   ocupacao_clinica_gaps: 'gaps',
   indicadores_previsao_receitas: 'faturamento receita',
-  indicadores_alimentar_bd: 'faturamento receita',
   cadastros_pacientes: 'ficha',
   cadastros_profissionais: 'prestador terapeuta',
   cadastros_convenios: 'plano de saúde',
@@ -193,6 +200,12 @@ const G = MENU_GRUPOS
 // - Marketing é grupo próprio, não um item de Administração: quem opera a TV não
 //   administra o sistema. O rótulo diz o LUGAR ("TV da Recepção"), não o meio.
 // - Indicadores: uma permissão por aba, não uma para a rota inteira.
+// - "Preencher Receitas Faturadas" saiu do menu e da página em 22/10/2026 (ninguém
+//   usava). O código indicadores_alimentar_bd fica no banco: a RLS de
+//   previsao_receitas_faturamento ainda o usa e os lançamentos já feitos ficam.
+// - Ocupação de Salas em Terapêutico desde 22/10/2026 (antes em Relacionamento
+//   Prestador). A rota continua /relacionamento-prestador/ocupacao-salas.
+// - Cadastros: no Sidebar é um botão dentro de Configurações (ver MENU_GRUPOS_EM_MODAL).
 const MENU_ITENS_BASE: MenuItemBase[] = [
   { codigo: 'dashboard', label: 'Dashboard', grupo: G.geral.nome, path: '/', icon: LayoutDashboard },
 
@@ -208,6 +221,7 @@ const MENU_ITENS_BASE: MenuItemBase[] = [
   { codigo: 'terapeutico_auditoria_evolucoes', label: 'Auditoria de Evoluções', grupo: G.terapeutico.nome, path: '/terapeutico/auditoria-evolucoes', icon: FileSearch },
   { codigo: 'terapeutico_pdi', label: 'PDI - Controle', grupo: G.terapeutico.nome, path: '/terapeutico/prazos-pdi', icon: CalendarClock },
   { codigo: 'terapeutico_pdi_painel', label: 'PDI - Painel', grupo: G.terapeutico.nome, path: '/terapeutico/pdi-painel-analista', icon: Gauge },
+  { codigo: 'cronograma_ocupacao_salas', label: 'Ocupação de Salas', grupo: G.terapeutico.nome, path: '/relacionamento-prestador/ocupacao-salas', icon: DoorOpen },
 
   { codigo: 'auditoria_assim', label: 'Conferência ASSIM', grupo: G.autorizacao.nome, path: '/auditoria-assim?tab=auditoria', icon: ClipboardList },
   { codigo: 'reconciliacao_assim', label: 'Reconciliação ASSIM', grupo: G.autorizacao.nome, path: '/auditoria-assim?tab=reconciliacao', icon: Link2 },
@@ -228,20 +242,9 @@ const MENU_ITENS_BASE: MenuItemBase[] = [
   { codigo: 'indicadores_ocupacao_unidades', label: 'Ocupação Clínica', grupo: G.indicadores.nome, path: '/cronograma/indicadores?tab=unidades', icon: Building2 },
   { codigo: 'indicadores_pacientes', label: 'Dashboard de Pacientes', grupo: G.indicadores.nome, path: '/cronograma/indicadores?tab=pacientes', icon: UserCheck },
   { codigo: 'indicadores_previsao_receitas', label: 'Previsão de Receitas', grupo: G.indicadores.nome, path: '/cronograma/indicadores?tab=previsao-receitas', icon: Wallet },
-  { codigo: 'indicadores_alimentar_bd', label: 'Preencher Receitas Faturadas', grupo: G.indicadores.nome, path: '/cronograma/indicadores?tab=alimentar-bd', icon: Database },
   { codigo: 'indicadores_comparativo_sessoes', label: 'Comparativo de Sessões', grupo: G.indicadores.nome, path: '/cronograma/indicadores?tab=comparativo-sessoes', icon: ArrowRightLeft },
   { codigo: 'indicadores_entrada_convenio', label: 'Entrada de Pacientes (Convênio)', grupo: G.indicadores.nome, path: '/cronograma/indicadores?tab=entrada-convenio', icon: UserPlus },
 
-  { codigo: 'cadastros_pacientes', label: 'Pacientes', grupo: G.cadastros.nome, path: '/cadastros/pacientes', icon: UserRound },
-  { codigo: 'cadastros_profissionais', label: 'Profissionais', grupo: G.cadastros.nome, path: '/cadastros/profissionais', icon: Stethoscope },
-  { codigo: 'cadastros_terapias', label: 'Terapias', grupo: G.cadastros.nome, path: '/cadastros/terapias', icon: Palette },
-  { codigo: 'cadastros_convenios', label: 'Convênios', grupo: G.cadastros.nome, path: '/cadastros/convenios', icon: Building2 },
-  { codigo: 'cronograma_valores_convenio', label: 'Cadastro de Valores', grupo: G.cadastros.nome, path: '/cadastros/cadastro-valores', icon: Tag },
-  { codigo: 'cadastros_feriados', label: 'Feriados', grupo: G.cadastros.nome, path: '/cadastros/feriados', icon: Calendar },
-  { codigo: 'cadastros_taxas', label: 'Variáveis & Taxas', grupo: G.cadastros.nome, path: '/cadastros/taxas-e-parametros', icon: Percent },
-  { codigo: 'cadastros_contratos', label: 'Contratos', grupo: G.cadastros.nome, path: '/cadastros/contratos', icon: FileSignature },
-
-  { codigo: 'cronograma_ocupacao_salas', label: 'Ocupação de Salas', grupo: G.relacionamentoPrestador.nome, path: '/relacionamento-prestador/ocupacao-salas', icon: DoorOpen },
   { codigo: 'cronograma_solicitacoes', label: 'Simulação de Novo Prestador', grupo: G.relacionamentoPrestador.nome, path: '/relacionamento-prestador/solicitacoes?tab=simulacao', icon: UserPlus },
   { codigo: 'cronograma_disponibilidade_interna', label: 'Ocupar Profissionais Disponíveis', grupo: G.relacionamentoPrestador.nome, path: '/relacionamento-prestador/ocupar-profissionais-disponiveis', icon: UserSearch },
   { codigo: 'relacionamento_prestador_analise', label: 'Rem. Mês - Previsão', grupo: G.relacionamentoPrestador.nome, path: '/relacionamento-prestador/analise', icon: TrendingUp },
@@ -253,11 +256,20 @@ const MENU_ITENS_BASE: MenuItemBase[] = [
 
   { codigo: 'tv_avisos', label: 'TV da Recepção', grupo: G.marketing.nome, path: '/tv-avisos', icon: Monitor },
 
-  { codigo: 'usuarios', label: 'Usuários', grupo: G.administracao.nome, path: '/admin', icon: Users },
-  { codigo: 'permissoes', label: 'Permissões', grupo: G.administracao.nome, path: '/admin/permissoes', icon: KeyRound },
-  { codigo: 'api_integracao', label: 'API', grupo: G.administracao.nome, path: '/admin/api', icon: Plug },
-  { codigo: 'robo_sharepoint', label: 'Robô SharePoint', grupo: G.administracao.nome, path: '/admin/robo-sharepoint', icon: Bot },
-  { codigo: 'carregar_tita', label: 'Carregar do TiTa', grupo: G.administracao.nome, path: '/admin/carregar-tita', icon: CloudDownload },
+  { codigo: 'cadastros_pacientes', label: 'Pacientes', grupo: G.cadastros.nome, path: '/cadastros/pacientes', icon: UserRound },
+  { codigo: 'cadastros_profissionais', label: 'Profissionais', grupo: G.cadastros.nome, path: '/cadastros/profissionais', icon: Stethoscope },
+  { codigo: 'cadastros_terapias', label: 'Terapias', grupo: G.cadastros.nome, path: '/cadastros/terapias', icon: Palette },
+  { codigo: 'cadastros_convenios', label: 'Convênios', grupo: G.cadastros.nome, path: '/cadastros/convenios', icon: Building2 },
+  { codigo: 'cronograma_valores_convenio', label: 'Cadastro de Valores', grupo: G.cadastros.nome, path: '/cadastros/cadastro-valores', icon: Tag },
+  { codigo: 'cadastros_feriados', label: 'Feriados', grupo: G.cadastros.nome, path: '/cadastros/feriados', icon: Calendar },
+  { codigo: 'cadastros_taxas', label: 'Variáveis & Taxas', grupo: G.cadastros.nome, path: '/cadastros/taxas-e-parametros', icon: Percent },
+  { codigo: 'cadastros_contratos', label: 'Contratos', grupo: G.cadastros.nome, path: '/cadastros/contratos', icon: FileSignature },
+
+  { codigo: 'usuarios', label: 'Usuários', grupo: G.configuracoes.nome, path: '/admin', icon: Users },
+  { codigo: 'permissoes', label: 'Permissões', grupo: G.configuracoes.nome, path: '/admin/permissoes', icon: KeyRound },
+  { codigo: 'api_integracao', label: 'API', grupo: G.configuracoes.nome, path: '/admin/api', icon: Plug },
+  { codigo: 'robo_sharepoint', label: 'Robô SharePoint', grupo: G.configuracoes.nome, path: '/admin/robo-sharepoint', icon: Bot },
+  { codigo: 'carregar_tita', label: 'Carregar do TiTa', grupo: G.configuracoes.nome, path: '/admin/carregar-tita', icon: CloudDownload },
 
   { codigo: 'connect', label: 'Pulsar Connect', grupo: G.geral.nome, path: '/connect', icon: Zap },
 ]

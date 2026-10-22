@@ -98,7 +98,9 @@ export const CODIGO_PARA_ROTAS: Record<string, string[]> = {
   indicadores_ocupacao_unidades: ['/cronograma/indicadores?tab=unidades'],
   indicadores_pacientes: ['/cronograma/indicadores?tab=pacientes'],
   indicadores_previsao_receitas: ['/cronograma/indicadores?tab=previsao-receitas'],
-  indicadores_alimentar_bd: ['/cronograma/indicadores?tab=alimentar-bd'],
+  // `indicadores_alimentar_bd` ("Preencher Receitas Faturadas", ?tab=alimentar-bd)
+  // saiu em 22/10/2026: ninguém usava. O código continua no banco (a RLS de
+  // previsao_receitas_faturamento o usa); sem entrada aqui a aba não abre.
   indicadores_comparativo_sessoes: ['/cronograma/indicadores?tab=comparativo-sessoes'],
   indicadores_entrada_convenio: ['/cronograma/indicadores?tab=entrada-convenio'],
   reposicao_faltas: ['/cronograma/reposicao'],
