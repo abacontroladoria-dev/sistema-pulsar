@@ -7,6 +7,7 @@ import { processarEnvios } from '@/modules/atendimento/workers/envio.worker'
 import { processarSugestoesEvolution } from '@/modules/atendimento/workers/sugestao-evolution.worker'
 import { processarSentimento } from '@/modules/atendimento/workers/sentimento.worker'
 import { processarStatus } from '@/modules/atendimento/workers/status.worker'
+import { processarFunil } from '@/modules/atendimento/workers/funil.worker'
 import { processarAvatares } from '@/modules/atendimento/workers/avatar.worker'
 import { catalogarPendentes } from '@/modules/atendimento/meta/catalogo-anuncios'
 
@@ -76,6 +77,10 @@ export async function POST(req: NextRequest) {
   // atrasa uma resposta. Orçamento próprio; CENTRAL_STATUS_IA decide se aplica.
   const status = await tentar('status', () => processarStatus(supabaseService, orgId))
 
+  // Coluna do funil lida pela Maia (crm.deals). Mesmo lugar do status: leitura
+  // de conversa, nunca antes de uma resposta. CRM_FUNIL_IA decide se move.
+  const funil = await tentar('funil', () => processarFunil(supabaseService, orgId))
+
   // Por último, e nunca antes: a leitura de sentimento é para quem ATENDE, não
   // para quem espera resposta. Se o tique estourar o tempo, é esta que deve
   // ficar para o próximo — ela recalcula a mesma pergunta sobre o mesmo
@@ -101,6 +106,7 @@ export async function POST(req: NextRequest) {
     envio,
     sugestao,
     status,
+    funil,
     sentimento,
     avatar,
     anuncios,
