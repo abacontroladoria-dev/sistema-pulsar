@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { MENU_ITENS, MENU_ORDEM_GRUPOS } from './menu'
+import { MENU_AREAS, MENU_ITENS, MENU_ORDEM_GRUPOS } from './menu'
+import { areaDaRota } from './areas'
 import { CODIGO_PARA_ROTAS, hasRouteAccess } from './routes'
 
 // Trava a regra de 29/09/2026: o catálogo de permissões espelha o Sidebar, e cada
@@ -39,5 +40,48 @@ describe('menu × catálogo de permissões', () => {
   it('todo grupo usado pelos itens existe na ordem dos grupos', () => {
     const fora = MENU_ITENS.filter((i) => !MENU_ORDEM_GRUPOS.includes(i.grupo)).map((i) => i.codigo)
     expect(fora).toEqual([])
+  })
+})
+
+describe('áreas do seletor', () => {
+  const ids = new Set(MENU_AREAS.map((a) => a.id))
+
+  it('todo item tem área válida (ou null = todas)', () => {
+    const fora = MENU_ITENS.filter((i) => i.area !== null && !ids.has(i.area)).map((i) => i.codigo)
+    expect(fora).toEqual([])
+  })
+
+  it('só o Dashboard aparece em todas as áreas', () => {
+    expect(MENU_ITENS.filter((i) => i.area === null).map((i) => i.codigo)).toEqual(['dashboard'])
+  })
+
+  it('Financeiro, Relatórios e Connect têm as telas decididas em 22/10/2026', () => {
+    const da = (area: string) => MENU_ITENS.filter((i) => i.area === area).map((i) => i.codigo)
+    expect(da('financeiro')).toEqual(['insumos'])
+    expect(da('connect')).toEqual(['connect'])
+    expect(da('relatorios')).toEqual([
+      'exportar_evolucoes',
+      'ocupacao_profissionais',
+      'indicadores_ocupacao_unidades',
+      'indicadores_pacientes',
+      'indicadores_previsao_receitas',
+      'indicadores_comparativo_sessoes',
+      'indicadores_entrada_convenio',
+      'relacionamento_prestador_analise',
+      'relacionamento_prestador_rp',
+      'relacionamento_prestador_individual',
+      'relacionamento_prestador_pep_historico',
+    ])
+  })
+
+  it('a rota aberta diz a área', () => {
+    expect(areaDaRota('/cronograma/indicadores', '?tab=comparativo-sessoes')).toBe('relatorios')
+    expect(areaDaRota('/cronograma/indicadores', '?tab=alimentar-bd')).toBe('operacional')
+    expect(areaDaRota('/insumos')).toBe('financeiro')
+    expect(areaDaRota('/cadastros/pacientes/123')).toBe('operacional')
+    expect(areaDaRota('/connect/inbox')).toBe('connect')
+    expect(areaDaRota('/admin/permissoes')).toBe('operacional')
+    expect(areaDaRota('/')).toBeNull()
+    expect(areaDaRota('/rota-que-nao-existe')).toBeNull()
   })
 })

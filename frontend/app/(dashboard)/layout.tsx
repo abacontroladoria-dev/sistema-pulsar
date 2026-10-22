@@ -14,6 +14,7 @@ import {
 } from '@/contexts/HeaderContext'
 import { ThemeProvider } from '@/contexts/ThemeContext'
 import { ImpersonationProvider, useImpersonation } from '@/contexts/ImpersonationContext'
+import { PermissoesUsuarioProvider } from '@/contexts/PermissoesUsuarioContext'
 import { UnsavedChangesProvider } from '@/contexts/UnsavedChangesContext'
 
 const supabase = getSupabaseClient()
@@ -49,21 +50,23 @@ export default function DashboardLayout({
 
   return (
     <ImpersonationProvider>
-      <ThemeProvider>
-        <HeaderProvider>
-          <UnsavedChangesProvider>
-            <div className="min-h-screen bg-background text-foreground transition-colors duration-300">
-              <ImpersonationBar />
-              <Suspense fallback={null}>
-                <Sidebar />
-              </Suspense>
-              <DashboardShellContent>
-                {children}
-              </DashboardShellContent>
-            </div>
-          </UnsavedChangesProvider>
-        </HeaderProvider>
-      </ThemeProvider>
+      <PermissoesUsuarioProvider>
+        <ThemeProvider>
+          <HeaderProvider>
+            <UnsavedChangesProvider>
+              <div className="min-h-screen bg-background text-foreground transition-colors duration-300">
+                <ImpersonationBar />
+                <Suspense fallback={null}>
+                  <Sidebar />
+                </Suspense>
+                <DashboardShellContent>
+                  {children}
+                </DashboardShellContent>
+              </div>
+            </UnsavedChangesProvider>
+          </HeaderProvider>
+        </ThemeProvider>
+      </PermissoesUsuarioProvider>
     </ImpersonationProvider>
   )
 }

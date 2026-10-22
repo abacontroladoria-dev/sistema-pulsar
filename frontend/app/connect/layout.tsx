@@ -9,15 +9,23 @@ import { CompanySettingsProvider } from '@/hooks/nina/useCompanySettings'
 import { AuthProvider } from '@/hooks/nina/useAuth'
 import Sidebar from '@/components/nina/Sidebar'
 import { ThemeProvider, useTheme } from '@/contexts/ThemeContext'
+import { ImpersonationProvider } from '@/contexts/ImpersonationContext'
+import { PermissoesUsuarioProvider } from '@/contexts/PermissoesUsuarioContext'
 
 export default function ConnectLayout({ children }: { children: React.ReactNode }) {
   // O ThemeProvider vive no layout de (dashboard), que é um route group IRMÃO —
   // nada dele alcança /connect. Sem este wrapper o useTheme lá dentro cairia no
   // default do createContext ('light', setTheme vazio): o seletor apareceria e
   // simplesmente não faria nada, que é a falha mais difícil de diagnosticar.
+  // Impersonation + Permissões: o seletor de área e a busca mestre do sidebar do
+  // Connect leem as mesmas telas liberadas que o sidebar do Pulsar.
   return (
     <ThemeProvider>
-      <ConnectShell>{children}</ConnectShell>
+      <ImpersonationProvider>
+        <PermissoesUsuarioProvider>
+          <ConnectShell>{children}</ConnectShell>
+        </PermissoesUsuarioProvider>
+      </ImpersonationProvider>
     </ThemeProvider>
   )
 }
