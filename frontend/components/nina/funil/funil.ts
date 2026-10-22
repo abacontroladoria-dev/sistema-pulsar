@@ -1,4 +1,5 @@
 import type { DealUI, KanbanColumnUI } from '@/services/crm/adapter'
+import type { DetalheNegocio } from '@/modules/comercial/types/crm.types'
 
 // ============================================================================
 // Regras de tela do funil da diretoria — funções puras, testadas em
@@ -7,15 +8,14 @@ import type { DealUI, KanbanColumnUI } from '@/services/crm/adapter'
 
 export type FiltroTrilha = 'todas' | 'particular' | 'convenio'
 
-// Posição em andamento é coluna do board; posição de fechamento (auto_win ou
-// auto_lose) vai para a área "Encerrados". São 11 + 6 no funil da diretoria:
-// 17 colunas lado a lado não caberiam em tela nenhuma, e o que se trabalha é o
-// que está em andamento.
+// Funil clássico (20261022110000): as 6 etapas são colunas do board, inclusive
+// Atendimento, que é o ganho (auto_win) — o fim do funil fica à vista. As
+// perdas (auto_lose) vão para a área "Encerrados".
 export function separarEstagios(estagios: KanbanColumnUI[]) {
   const ordenados = [...estagios].sort((a, b) => a.order - b.order)
   return {
-    andamento:   ordenados.filter(e => !e.autoWin && !e.autoLose),
-    encerrados:  ordenados.filter(e => e.autoWin || e.autoLose),
+    andamento:   ordenados.filter(e => !e.autoLose),
+    encerrados:  ordenados.filter(e => e.autoLose),
   }
 }
 
@@ -55,13 +55,22 @@ function normalizar(s: string): string {
 }
 
 // ----------------------------------------------------------------------------
-// Tempo parado na posição
+// Detalhe do card e tempo parado
 // ----------------------------------------------------------------------------
 
+// O que era posição no funil de 28/09 e hoje é selo no card.
+export const ROTULO_DETALHE: Record<DetalheNegocio, string> = {
+  aguardando_elegibilidade: 'Elegibilidade',
+  encaminhado_humano:       'Com a equipe',
+  aguardando_cronograma:    'Cronograma',
+  em_follow_up:             'Follow-up',
+}
+
 // Prazos internos da planilha. Só "Aguardando elegibilidade" tem um escrito
-// (48 horas úteis = 2 dias úteis). Posição sem prazo não fica vermelha nunca:
-// inventar prazo seria inventar cobrança.
-const PRAZO_DIAS_UTEIS: Record<string, number> = {
+// (48 horas úteis = 2 dias úteis), contado de quando o detalhe foi marcado.
+// Detalhe sem prazo não fica vermelho nunca: inventar prazo seria inventar
+// cobrança.
+const PRAZO_DIAS_UTEIS: Partial<Record<DetalheNegocio, number>> = {
   aguardando_elegibilidade: 2,
 }
 
@@ -94,12 +103,12 @@ export function tempoNaPosicao(desdeIso: string | null, agora: Date = new Date()
 }
 
 export function prazoEstourado(
-  slug: string | null,
+  detalhe: DetalheNegocio | null,
   desdeIso: string | null,
   agora: Date = new Date(),
 ): boolean {
-  if (!slug || !desdeIso) return false
-  const prazo = PRAZO_DIAS_UTEIS[slug]
+  if (!detalhe || !desdeIso) return false
+  const prazo = PRAZO_DIAS_UTEIS[detalhe]
   if (prazo === undefined) return false
   return diasUteisEntre(new Date(desdeIso), agora) > prazo
 }

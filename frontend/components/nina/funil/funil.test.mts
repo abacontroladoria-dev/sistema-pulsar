@@ -19,8 +19,8 @@ function est(slug: string, order: number, extra: Partial<KanbanColumnUI> = {}): 
     trilha: 'ambas', exigeMotivo: false, autoWin: false, autoLose: false, isSystem: false, ...extra }
 }
 function neg(extra: Partial<DealUI> = {}): DealUI {
-  return { id: 'd', title: 'Ana Souza', status: 'open', stageId: 'novo', trilha: null, resgate: false,
-    motivo: null, stageChangedAt: null, ownerId: null, contactId: null, contactName: 'Maitê Lima',
+  return { id: 'd', title: 'Ana Souza', status: 'open', stageId: 'prospeccao', trilha: null, resgate: false,
+    motivo: null, detalhe: null, detalheDesde: null, stageChangedAt: null, ownerId: null, contactId: null, contactName: 'Maitê Lima',
     contactPhone: '+55 21 99876-5432', conversationId: null, closedReason: null, closedAt: null,
     createdByAi: false, source: null, createdAt: null, updatedAt: null, ...extra }
 }
@@ -28,18 +28,19 @@ function neg(extra: Partial<DealUI> = {}): DealUI {
 console.log('separarEstagios')
 {
   const r = separarEstagios([
-    est('perdido', 13, { autoLose: true }), est('novo', 1), est('iniciou', 11, { autoWin: true }), est('qualif', 3),
+    est('sem_interesse', 10, { autoLose: true }), est('prospeccao', 1), est('atendimento', 6, { autoWin: true }),
+    est('qualificacao', 2), est('perdido_objecao', 7, { autoLose: true }),
   ])
-  checar('andamento em ordem', r.andamento.map(e => e.slug), ['novo', 'qualif'])
-  checar('encerrados em ordem', r.encerrados.map(e => e.slug), ['iniciou', 'perdido'])
+  checar('Atendimento (ganho) é a última coluna', r.andamento.map(e => e.slug), ['prospeccao', 'qualificacao', 'atendimento'])
+  checar('Encerrados só com as perdas, em ordem', r.encerrados.map(e => e.slug), ['perdido_objecao', 'sem_interesse'])
 }
 
 console.log('trilha')
 {
-  const conv = est('eleg', 6, { trilha: 'convenio' })
+  const conv = est('perdido_nao_elegivel', 8, { trilha: 'convenio', autoLose: true })
   checar('todas mostra posição de convênio', estagioVisivel(conv, 'todas'), true)
   checar('particular esconde posição de convênio', estagioVisivel(conv, 'particular'), false)
-  checar('ambas aparece em particular', estagioVisivel(est('novo', 1), 'particular'), true)
+  checar('ambas aparece em particular', estagioVisivel(est('prospeccao', 1), 'particular'), true)
   checar('negócio sem trilha aparece em convênio', negocioVisivel(neg(), 'convenio'), true)
   checar('negócio particular some em convênio', negocioVisivel(neg({ trilha: 'particular' }), 'convenio'), false)
   checar('particular não pode ir para convênio', podeReceber(conv, { trilha: 'particular' }), false)
@@ -68,7 +69,8 @@ console.log('tempo')
   checar('elegibilidade na sexta, segunda: no prazo', prazoEstourado('aguardando_elegibilidade', '2026-09-25T10:00', agora), false)
   checar('elegibilidade na sexta, quarta: estourado',
     prazoEstourado('aguardando_elegibilidade', '2026-09-25T10:00', new Date('2026-09-30T10:00')), true)
-  checar('posição sem prazo nunca estoura', prazoEstourado('qualificado', '2026-01-01T00:00', agora), false)
+  checar('detalhe sem prazo nunca estoura', prazoEstourado('encaminhado_humano', '2026-01-01T00:00', agora), false)
+  checar('sem detalhe nunca estoura', prazoEstourado(null, '2026-01-01T00:00', agora), false)
 }
 
 console.log(falhas === 0 ? '\nTudo certo.' : `\n${falhas} falha(s).`)

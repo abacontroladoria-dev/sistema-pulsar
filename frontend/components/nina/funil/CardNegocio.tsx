@@ -3,13 +3,14 @@
 import React from 'react'
 import { Clock, RotateCcw } from 'lucide-react'
 import type { DealUI } from '@/services/crm/adapter'
-import { ROTULO_TRILHA, prazoEstourado, tempoNaPosicao } from './funil'
+import { ROTULO_DETALHE, ROTULO_TRILHA, prazoEstourado, tempoNaPosicao } from './funil'
 
 // ============================================================================
 // Card de um negócio no board.
 //
-// Mostra o que decide a próxima ação de quem olha: quem é, de que trilha, há
-// quanto tempo está parado e — quando há — o motivo. O resto (timeline,
+// Mostra o que decide a próxima ação de quem olha: quem é, de que trilha, em
+// que situação dentro da coluna (o detalhe), há quanto tempo está parado e —
+// quando há — o motivo. O resto (timeline,
 // mensagens) fica na gaveta.
 // ============================================================================
 
@@ -24,16 +25,18 @@ function iniciais(nome: string): string {
 
 export const CardNegocio: React.FC<{
   negocio:     DealUI
-  slugEstagio: string | null
   responsavel: string | null
   arrastavel:  boolean
   aoAbrir:     () => void
   aoArrastar:  (e: React.DragEvent) => void
   aoSoltar:    (e: React.DragEvent) => void
-}> = ({ negocio, slugEstagio, responsavel, arrastavel, aoAbrir, aoArrastar, aoSoltar }) => {
+}> = ({ negocio, responsavel, arrastavel, aoAbrir, aoArrastar, aoSoltar }) => {
   const nome     = negocio.contactName?.trim() || negocio.title
+  // Contato sem nome vem com o telefone no lugar do nome: não repetir.
+  const digitos  = (v: string) => v.replace(/\D/g, '')
+  const fone     = negocio.contactPhone && digitos(negocio.contactPhone) !== digitos(nome) ? negocio.contactPhone : null
   const tempo    = tempoNaPosicao(negocio.stageChangedAt)
-  const atrasado = prazoEstourado(slugEstagio, negocio.stageChangedAt)
+  const atrasado = prazoEstourado(negocio.detalhe, negocio.detalheDesde)
 
   return (
     <div
@@ -44,14 +47,14 @@ export const CardNegocio: React.FC<{
       onDragEnd={aoSoltar}
       onClick={aoAbrir}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); aoAbrir() } }}
-      aria-label={`${nome}${negocio.trilha ? `, ${ROTULO_TRILHA[negocio.trilha]}` : ''}${tempo ? `, nesta posição ${tempo}` : ''}`}
+      aria-label={`${nome}${negocio.trilha ? `, ${ROTULO_TRILHA[negocio.trilha]}` : ''}${negocio.detalhe ? `, ${ROTULO_DETALHE[negocio.detalhe]}` : ''}${tempo ? `, nesta etapa ${tempo}` : ''}`}
       className="group rounded-lg border border-border bg-card p-3 text-left shadow-sm transition-colors hover:border-cyan-500/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 cursor-grab active:cursor-grabbing"
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold leading-tight text-foreground">{nome}</p>
-          {negocio.contactPhone && (
-            <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{negocio.contactPhone}</p>
+          {fone && (
+            <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{fone}</p>
           )}
         </div>
         {responsavel && (
@@ -64,11 +67,22 @@ export const CardNegocio: React.FC<{
         )}
       </div>
 
-      {(negocio.trilha || negocio.resgate) && (
+      {(negocio.trilha || negocio.resgate || negocio.detalhe) && (
         <div className="mt-2 flex flex-wrap gap-1">
           {negocio.trilha && (
             <span className={`rounded border px-1.5 py-0.5 text-[10px] font-medium ${TRILHA_ESTILO[negocio.trilha]}`}>
               {ROTULO_TRILHA[negocio.trilha]}
+            </span>
+          )}
+          {negocio.detalhe && (
+            <span
+              className={`rounded border px-1.5 py-0.5 text-[10px] font-medium ${
+                atrasado
+                  ? 'border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300'
+                  : 'border-border bg-muted text-foreground/80'
+              }`}
+            >
+              {ROTULO_DETALHE[negocio.detalhe]}
             </span>
           )}
           {negocio.resgate && (
@@ -91,7 +105,7 @@ export const CardNegocio: React.FC<{
       {tempo && (
         <p
           className={`mt-2 flex items-center gap-1 border-t border-border pt-2 text-[11px] ${atrasado ? 'font-medium text-rose-600 dark:text-rose-400' : 'text-muted-foreground'}`}
-          title={atrasado ? 'Passou do prazo interno desta posição' : 'Tempo nesta posição'}
+          title={atrasado ? `${ROTULO_DETALHE[negocio.detalhe!]}: passou do prazo interno` : 'Tempo nesta etapa'}
         >
           <Clock className="h-3 w-3" aria-hidden="true" />
           {tempo}{atrasado ? ' · fora do prazo' : ''}

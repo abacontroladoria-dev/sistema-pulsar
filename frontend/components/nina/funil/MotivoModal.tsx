@@ -7,8 +7,7 @@ import type { KanbanColumnUI } from '@/services/crm/adapter'
 
 // ============================================================================
 // Motivo do movimento — pedido ao soltar o card numa posição com exige_motivo
-// ("Encaminhado para humano", "Perdido / Objeção", "Não elegível", "Nunca
-// respondeu"). Também serve para as perdas sem motivo obrigatório, em que o
+// ("Perdido / Objeção", "Não elegível"). Também serve para as perdas sem motivo obrigatório, em que o
 // campo fica opcional.
 //
 // As sugestões vêm da própria planilha da diretoria. Clicar preenche o campo
@@ -17,7 +16,6 @@ import type { KanbanColumnUI } from '@/services/crm/adapter'
 // ============================================================================
 
 const SUGESTOES: Record<string, string[]> = {
-  encaminhado_humano:   ['Queixa clínica', 'Pediu para falar com uma pessoa', 'RQE', 'Reclamação', 'Plano não credenciado (Rota D)', 'Advogado', 'Decisão judicial'],
   perdido_objecao:      ['Achou caro', 'Distância / localização', 'Horário não serve', 'Vai pensar'],
   perdido_nao_elegivel: ['Plano não credenciado', 'Diagnóstico fora da regra', 'Orientado para Av. Neuro pelo plano', 'Orientado para particular / reembolso'],
   nunca_respondeu:      ['Abriu e sumiu', 'Telefone inativo'],

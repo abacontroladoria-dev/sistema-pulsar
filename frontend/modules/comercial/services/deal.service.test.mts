@@ -54,7 +54,7 @@ function montar(deal: Partial<DealRow>, opcoes: { falharAoReabrir?: boolean } = 
     priority: 'medium', status: 'open', expected_close_date: null, closed_at: null,
     closed_reason: null, assigned_to: null, source: null, source_campaign: null, source_ref: null,
     created_by_ai: false, ai_score: null, ai_score_notes: null, ai_scored_at: null, tags: [],
-    trilha: null, resgate: false, motivo: null, stage_changed_at: '', created_at: null, updated_at: null,
+    trilha: null, resgate: false, motivo: null, detalhe: null, detalhe_desde: null, stage_changed_at: '', created_at: null, updated_at: null,
     ...deal,
   }
   const chamadas: string[] = []
