@@ -12,7 +12,6 @@ const PERMISSOES_LAUDOS = [
   "cronograma_saida_profissional",
   "ocupacao_clinica",
   "ocupacao_clinica_gaps",
-  "ocupacao_clinica_inconsistencias",
   "cronograma_solicitacoes",
   "cronograma_disponibilidade_interna",
   "acompanhamento_laudos",

@@ -1,6 +1,5 @@
 import {
   Activity,
-  AlertTriangle,
   ArrowRightLeft,
   BarChart3,
   Bot,
@@ -115,12 +114,20 @@ export const MENU_AREA_POR_ID: Record<AreaId, MenuAreaDef> = Object.fromEntries(
 
 // Só as telas que NÃO são Operacional (decisão do usuário em 22/10/2026).
 // Relatórios = telas de visualização e exportação, que não geram trabalho
-// operacional. "Preencher Receitas Faturadas" fica em Operacional porque é
-// digitação; as listas de Ocupação (recusadas, gaps, inconsistências) também,
-// porque são fila de trabalho. `null`: aparece em todas as áreas.
+// operacional. Na 2ª rodada do mesmo dia entraram também Status Contratos,
+// Outros Convênios, Status Laudos e Senhas, Análise de Evolução, os dois PDI e
+// "Diferença: Laudo e Oferta"; "Oportunidades recusadas" segue em Operacional
+// (é fila de trabalho). `null`: aparece em todas as áreas.
 const AREA_DO_ITEM: Record<string, AreaId | null> = {
   dashboard: null,
   insumos: 'financeiro',
+  acompanhamento_laudos: 'relatorios',
+  status_contratos: 'relatorios',
+  outros_convenios: 'relatorios',
+  analise_tratativas: 'relatorios',
+  terapeutico_pdi: 'relatorios',
+  terapeutico_pdi_painel: 'relatorios',
+  ocupacao_clinica_gaps: 'relatorios',
   ocupacao_profissionais: 'relatorios',
   indicadores_ocupacao_unidades: 'relatorios',
   indicadores_pacientes: 'relatorios',
@@ -203,6 +210,9 @@ const G = MENU_GRUPOS
 // - "Preencher Receitas Faturadas" saiu do menu e da página em 22/10/2026 (ninguém
 //   usava). O código indicadores_alimentar_bd fica no banco: a RLS de
 //   previsao_receitas_faturamento ainda o usa e os lançamentos já feitos ficam.
+// - "Inconsistências e Exceções" (/cronograma/ocupacao?tab=inconsistencias) saiu
+//   em 22/10/2026 (ninguém usava). O código ocupacao_clinica_inconsistencias fica
+//   no banco.
 // - Ocupação de Salas em Terapêutico desde 22/10/2026 (antes em Relacionamento
 //   Prestador). A rota continua /relacionamento-prestador/ocupacao-salas.
 // - Cadastros: no Sidebar é um botão dentro de Configurações (ver MENU_GRUPOS_EM_MODAL).
@@ -236,7 +246,6 @@ const MENU_ITENS_BASE: MenuItemBase[] = [
   { codigo: 'reposicao_faltas', label: 'Reposição de Faltas', grupo: G.cronograma.nome, path: '/cronograma/reposicao', icon: RotateCcw },
   { codigo: 'ocupacao_clinica', label: 'Oportunidades recusadas', grupo: G.cronograma.nome, path: '/cronograma/ocupacao?tab=oportunidades-recusadas', icon: XCircle },
   { codigo: 'ocupacao_clinica_gaps', label: 'Diferença: Laudo e Oferta', grupo: G.cronograma.nome, path: '/cronograma/ocupacao?tab=gaps', icon: BarChart3 },
-  { codigo: 'ocupacao_clinica_inconsistencias', label: 'Inconsistências e Exceções', grupo: G.cronograma.nome, path: '/cronograma/ocupacao?tab=inconsistencias', icon: AlertTriangle },
 
   { codigo: 'ocupacao_profissionais', label: 'Ocupação de Profissionais', grupo: G.indicadores.nome, path: '/cronograma/indicadores?tab=profissionais', icon: BarChart3 },
   { codigo: 'indicadores_ocupacao_unidades', label: 'Ocupação Clínica', grupo: G.indicadores.nome, path: '/cronograma/indicadores?tab=unidades', icon: Building2 },

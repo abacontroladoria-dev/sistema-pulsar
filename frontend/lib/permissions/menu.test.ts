@@ -67,7 +67,14 @@ describe('áreas do seletor', () => {
     expect(da('financeiro')).toEqual(['insumos'])
     expect(da('connect')).toEqual(['connect'])
     expect(da('relatorios')).toEqual([
+      'acompanhamento_laudos',
+      'status_contratos',
+      'outros_convenios',
+      'analise_tratativas',
+      'terapeutico_pdi',
+      'terapeutico_pdi_painel',
       'exportar_evolucoes',
+      'ocupacao_clinica_gaps',
       'ocupacao_profissionais',
       'indicadores_ocupacao_unidades',
       'indicadores_pacientes',
@@ -85,6 +92,8 @@ describe('áreas do seletor', () => {
     expect(areaDaRota('/cronograma/indicadores', '?tab=comparativo-sessoes')).toBe('relatorios')
     expect(areaDaRota('/cronograma/indicadores', '?tab=alimentar-bd')).toBeNull()
     expect(areaDaRota('/relacionamento-prestador/ocupacao-salas')).toBe('operacional')
+    expect(areaDaRota('/cronograma/ocupacao', '?tab=gaps')).toBe('relatorios')
+    expect(areaDaRota('/cronograma/ocupacao', '?tab=inconsistencias')).toBeNull()
     expect(areaDaRota('/insumos')).toBe('financeiro')
     expect(areaDaRota('/cadastros/pacientes/123')).toBe('operacional')
     expect(areaDaRota('/connect/inbox')).toBe('connect')
