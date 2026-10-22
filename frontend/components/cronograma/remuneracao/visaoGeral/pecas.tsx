@@ -1,7 +1,7 @@
 "use client"
 
-// Peças visuais das visões gerais de Relacionamento Prestador — a da
-// Remuneração Individual (individual/VisaoGeralIndividual.tsx) e a de Entregas
+// Peças visuais das visões gerais de Relacionamento Prestador — a da antiga
+// Remuneração Individual (removida em 22/10/2026) e a de Entregas
 // PEP (pep/VisaoGeralPep.tsx). Nasceram dentro da primeira; subiram para cá
 // quando a segunda precisou das mesmas, para as duas telas falarem a mesma
 // língua visual (vocabulário do dashboard do /rp: barras CSS com clip-path,

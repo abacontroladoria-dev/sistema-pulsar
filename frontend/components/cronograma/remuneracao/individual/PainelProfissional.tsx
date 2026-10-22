@@ -1,7 +1,8 @@
 "use client"
 
-// Painel do profissional escolhido na Remuneração Individual — o que vai sair no
-// PDF/Word, na tela, ANTES de exportar.
+// Painel do profissional escolhido na aba "Contestação do prestador" do
+// Faturamento de Prestadores Mensal — o que vai sair no PDF/Word, na tela, ANTES
+// de emitir.
 //
 // A prévia não calcula nada: desenha as `linhas` de montarDemonstrativo
 // (lib/remuneracao/demonstrativo.ts), exatamente as mesmas que o documento
@@ -13,7 +14,7 @@
 // composicaoRP(), a mesma régua do /rp; o detalhe linha a linha fica no
 // ModalRemuneracaoRP ("Ver sessões"), sem duplicar a tabela aqui.
 //
-// Remonta por `key={prof}` (quem monta é RemunIndividualTab) — nada de efeito
+// Remonta por `key={prof}` (quem monta é EmissaoContestacaoTab) — nada de efeito
 // para resetar estado ao trocar de pessoa (§3.12 do padrão de detalhamento).
 
 import { useMemo } from "react"

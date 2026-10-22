@@ -137,6 +137,35 @@ describe('ASSIM — uma permissão por aba', () => {
   })
 })
 
+describe('Faturamento de Prestadores Mensal — uma permissão por aba', () => {
+  const ROTA = '/relacionamento-prestador/rp'
+
+  it('quem só tem o faturamento não abre a emissão por contestação', () => {
+    const so = new Set(['relacionamento_prestador_rp'])
+    expect(podeAcessarRota('rp', so, ROTA, '?tab=faturamento')).toBe(true)
+    expect(podeAcessarRota('rp', so, ROTA, '?tab=contestacao')).toBe(false)
+  })
+
+  it('quem só tem a emissão não abre o faturamento', () => {
+    const so = new Set(['relacionamento_prestador_individual'])
+    expect(podeAcessarRota('rp', so, ROTA, '?tab=contestacao')).toBe(true)
+    expect(podeAcessarRota('rp', so, ROTA, '?tab=faturamento')).toBe(false)
+  })
+
+  it('a antiga tela individual não abre para ninguém além do admin', () => {
+    const todos = new Set(['relacionamento_prestador_rp', 'relacionamento_prestador_individual'])
+    expect(podeAcessarRota('rp', todos, '/relacionamento-prestador/individual')).toBe(false)
+  })
+
+  it('URL pura vai para a primeira aba liberada, sem perder ?prestador= e ?sessao=', () => {
+    expect(abaPadraoLiberada('rp', new Set(['relacionamento_prestador_rp']), ROTA, '?prestador=Ana%20Lima&sessao=42'))
+      .toBe(`${ROTA}?tab=faturamento&prestador=Ana+Lima&sessao=42`)
+    expect(abaPadraoLiberada('rp', new Set(['relacionamento_prestador_individual']), ROTA))
+      .toBe(`${ROTA}?tab=contestacao`)
+    expect(abaPadraoLiberada('rp', new Set(), ROTA)).toBeNull()
+  })
+})
+
 describe('subpágina com código próprio', () => {
   // O prefixo de '/admin' (usuarios) abria /admin/permissoes e /admin/api.
   it('Usuários não abre Permissões nem API', () => {

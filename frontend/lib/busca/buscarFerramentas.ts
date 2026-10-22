@@ -1,5 +1,5 @@
 import { normTxt } from "@/lib/cronograma/constants"
-import { MENU_AREA_POR_ID, MENU_ITENS, type MenuItemDef } from "@/lib/permissions/menu"
+import { MENU_AREA_POR_ID, MENU_ITENS, itemNoMenu, type MenuItemDef } from "@/lib/permissions/menu"
 
 export type ResultadoFerramenta = {
   item: MenuItemDef
@@ -29,7 +29,7 @@ export function buscarFerramentas(
     const area = item.area ? MENU_AREA_POR_ID[item.area].nome : ""
     const resto = normTxt(`${item.grupo} ${area} ${item.palavrasChave ?? ""}`)
     const nota = nome.startsWith(t) ? 0 : nome.includes(t) ? 1 : resto.includes(t) ? 2 : -1
-    if (nota < 0 || !podeAbrir(item.path)) return
+    if (nota < 0 || !itemNoMenu(item) || !podeAbrir(item.path)) return
     achados.push({ item, nota, ordem })
   })
 
