@@ -10,7 +10,8 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 // duas cópias, as duas superfícies discordariam um dia.
 //
 // Também é por aqui que o worker do funil (workers/funil.worker.ts) lista os
-// cards abertos e grava a leitura (funil_ia_*, 20261022140000).
+// cards que precisam de leitura e grava a leitura (funil_ia_*, 20261022140000
+// e 20261022150000).
 //
 // Precisa de cliente service role: a função só tem EXECUTE para service_role.
 // ============================================================================
@@ -61,69 +62,32 @@ export class FunilMaiaService {
     return data as ResultadoFunil
   }
 
-  // Cards abertos com conversa, mais nova primeiro. Fora: contato vinculado a
-  // paciente do TiTa — conversa de paciente não é venda; o ganho dele vem da
-  // 1ª presença (crm.funil_regras_do_sistema).
-  //
-  // Três consultas, não um embed: o PostgREST não embute entre schemas (crm →
-  // central dá PGRST200).
-  async listarAbertosParaLeitura(orgId: string, limite: number): Promise<CardParaLeitura[]> {
-    const { data: deals, error } = await this.supabase
+  // Só os cards que precisam de leitura, mais nova primeiro — o filtro é do
+  // banco (crm.funil_cards_para_ler, 20261022150000): marca d'água, calma,
+  // contato vinculado a paciente fora. A conversa é a MAIS RECENTE do contato,
+  // não a do card: deals.conversation_id fica na conversa em que ele nasceu.
+  async listarParaLeitura(orgId: string, limite: number, calmaMs: number): Promise<CardParaLeitura[]> {
+    const { data, error } = await this.supabase
       .schema('crm')
-      .from('deals')
-      .select('id, contact_id, conversation_id, trilha, funil_ia_ate, stage:pipeline_stages!inner(slug)')
-      .eq('organization_id', orgId)
-      .eq('status', 'open')
-      .not('conversation_id', 'is', null)
-      .not('contact_id', 'is', null)
-      .limit(limite)
-    if (error) throw new Error(`[funil] deals abertos: ${error.message}`)
-    const linhas = (deals ?? []) as unknown as Array<{
-      id: string; contact_id: string; conversation_id: string
-      trilha: 'particular' | 'convenio' | null; funil_ia_ate: string | null
-      stage: { slug: string | null } | { slug: string | null }[] | null
-    }>
-    if (linhas.length === 0) return []
-
-    const [{ data: convs, error: eConv }, { data: links, error: eLink }] = await Promise.all([
-      this.supabase
-        .schema('central')
-        .from('conversations')
-        .select('id, last_message_at, tags')
-        .in('id', linhas.map((d) => d.conversation_id)),
-      this.supabase
-        .schema('central')
-        .from('contact_patient_links')
-        .select('contact_id')
-        .eq('organization_id', orgId)
-        .in('contact_id', linhas.map((d) => d.contact_id)),
-    ])
-    if (eConv) throw new Error(`[funil] conversas dos cards: ${eConv.message}`)
-    if (eLink) throw new Error(`[funil] vínculos dos cards: ${eLink.message}`)
-
-    const porConversa = new Map(
-      ((convs ?? []) as Array<{ id: string; last_message_at: string | null; tags: string[] | null }>)
-        .map((c) => [c.id, c]),
-    )
-    const vinculados = new Set(((links ?? []) as Array<{ contact_id: string }>).map((l) => l.contact_id))
-
-    return linhas
-      .filter((d) => !vinculados.has(d.contact_id) && porConversa.has(d.conversation_id))
-      .map((d) => {
-        const conv = porConversa.get(d.conversation_id)!
-        const stage = Array.isArray(d.stage) ? d.stage[0] : d.stage
-        return {
-          id:              d.id,
-          contactId:       d.contact_id,
-          conversationId:  d.conversation_id,
-          etapa:           stage?.slug ?? null,
-          trilha:          d.trilha,
-          funil_ia_ate:    d.funil_ia_ate,
-          last_message_at: conv.last_message_at,
-          tags:            conv.tags ?? [],
-        }
+      .rpc('funil_cards_para_ler', {
+        p_org:    orgId,
+        p_limite: limite,
+        p_calma:  `${Math.round(calmaMs / 1000)} seconds`,
       })
-      .sort((a, b) => (b.last_message_at ?? '').localeCompare(a.last_message_at ?? ''))
+    if (error) throw new Error(`[funil] funil_cards_para_ler: ${error.message}`)
+    return ((data ?? []) as Array<{
+      deal_id: string; contact_id: string; conversation_id: string; etapa: string | null
+      trilha: string | null; funil_ia_ate: string | null; last_message_at: string | null; tags: string[] | null
+    }>).map((d) => ({
+      id:              d.deal_id,
+      contactId:       d.contact_id,
+      conversationId:  d.conversation_id,
+      etapa:           d.etapa,
+      trilha:          d.trilha === 'particular' || d.trilha === 'convenio' ? d.trilha : null,
+      funil_ia_ate:    d.funil_ia_ate,
+      last_message_at: d.last_message_at,
+      tags:            d.tags ?? [],
+    }))
   }
 
   async gravarLeitura(dealId: string, colunas: LeituraFunilColunas): Promise<void> {
@@ -133,5 +97,17 @@ export class FunilMaiaService {
       .update(colunas)
       .eq('id', dealId)
     if (error) throw new Error(`[funil] gravar leitura: ${error.message}`)
+  }
+
+  // Só a marca d'água, sem tocar na última leitura: conversa sem texto para
+  // ler (áudio, foto) ou resposta do modelo fora do formato. O card volta a
+  // ser lido na próxima mensagem, e a leitura válida anterior continua lá.
+  async avancarMarca(dealId: string, ate: string | null): Promise<void> {
+    const { error } = await this.supabase
+      .schema('crm')
+      .from('deals')
+      .update({ funil_ia_ate: ate })
+      .eq('id', dealId)
+    if (error) throw new Error(`[funil] avançar marca: ${error.message}`)
   }
 }
