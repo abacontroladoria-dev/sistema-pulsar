@@ -32,10 +32,11 @@ import {
 //
 // CHAVE CENTRAL_STATUS_IA
 //
-//   'observar' (padrão) — lê e grava o veredito, não mexe no status nem
-//                         escreve nota. Para medir antes de ligar.
-//   'aplicar'           — faz tudo.
-//   'desligado'         — não roda.
+//   'aplicar' (padrão) — faz tudo. Padrão desde 22/10, a pedido do usuário,
+//                        sem o dia de observação.
+//   'observar'         — lê e grava o veredito, não mexe no status nem
+//                        escreve nota. Para medir sem agir.
+//   'desligado'        — não roda.
 //
 // Os fatos do ciclo (Maia escalou, gente respondeu, chave Maia/Humano) movem
 // o status na hora pelo ConversationService e independem desta chave.
@@ -45,7 +46,7 @@ type Modo = 'observar' | 'aplicar' | 'desligado'
 
 function modoDoAmbiente(): Modo {
   const v = process.env.CENTRAL_STATUS_IA
-  return v === 'aplicar' || v === 'desligado' ? v : 'observar'
+  return v === 'observar' || v === 'desligado' ? v : 'aplicar'
 }
 
 // Leituras (chamadas ao modelo) por tique. Cada conversa é lida uma vez por
