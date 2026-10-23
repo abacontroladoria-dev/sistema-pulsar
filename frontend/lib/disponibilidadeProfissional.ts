@@ -282,7 +282,9 @@ export function conflitosDeLocal(
   for (const f of r.faixas) {
     if (!f.localId || !ativos.has(f.dia)) continue
     const local = locais.get(f.localId)
-    if (!local) continue
+    // AT Externo (Escola / Casa): cada AT atende na escola ou casa de um paciente diferente,
+    // então nunca há compartilhamento do mesmo espaço físico entre profissionais.
+    if (!local || local.unidade_nome === "AT Externo") continue
     const ini = paraMin(f.inicio), fim = paraMin(f.fim)
     const outros = new Map<number, string>()
     for (const o of ocupacoes) {
@@ -342,7 +344,10 @@ export function faixasDaGrade(horarios: HorarioGrade[]): { faixas: FaixaRascunho
       if (!h.localId && h.salaTita) semCasamento.add(h.salaTita)
       const grupo = chaveGrupo(h)
       const ini = paraMin(h.inicio)
-      if (atual && atual.grupo === grupo && atual.f.duracao === dur) {
+      // Slot fracionado (< 30 min, comum no fim de turno de AT Externo no TiTa)
+      // colado na faixa anterior do mesmo local/terapia estende o fim da faixa,
+      // em vez de abrir faixa avulsa menor que a duração mínima (30 min).
+      if (atual && atual.grupo === grupo && (atual.f.duracao === dur || (dur < DURACOES[0] && ini === atual.ultimoFim))) {
         const buraco = ini - atual.ultimoFim
         if (buraco === 0) {
           atual.f.fim = h.fim

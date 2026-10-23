@@ -25,6 +25,7 @@ const HORAS = opcoesHorario().map(h => ({ valor: h, rotulo: h }))
 const OPCOES_DURACAO = DURACOES.map(d => ({ valor: String(d), rotulo: `${d} min` }))
 
 function rotuloLocal(l: LocalDisponivel): string {
+  if (l.unidade_nome === "AT Externo") return `${l.unidade_nome} · ${l.nome_exibicao}`
   const extra = l.capacidade === "multiplo" ? " · compartilhado" : l.capacidade === "duplo" ? " · até 2 pessoas" : ""
   return `${l.unidade_nome} · ${l.nome_exibicao}${extra}`
 }
