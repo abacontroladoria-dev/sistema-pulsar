@@ -20,19 +20,21 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 
-// Dois grupos: as conversas (onde a atendente passa o dia) primeiro, e a
-// gestão depois. O Chat da equipe entra no fim do grupo de conversas.
+// Dashboard solto no topo; depois as conversas (onde a atendente passa o dia)
+// e a gestão. O Chat da equipe entra na gestão, antes de Configurações.
+const topoItems = [
+  { id: 'crm',       label: 'Dashboard',     icon: LayoutDashboard },
+]
 const conversaItems = [
   { id: 'inbox',     label: 'Inbox',         icon: MessageSquare },
   { id: 'atendimentos', label: 'Atendimentos', icon: InboxIcon },
+  { id: 'pipeline',  label: 'Funil',         icon: Funnel },
 ]
 const gestaoItems = [
-  { id: 'crm',       label: 'Dashboard',     icon: LayoutDashboard },
   { id: 'contacts',  label: 'Contatos',      icon: Users },
-  { id: 'pipeline',  label: 'Funil',         icon: Funnel },
-  { id: 'analytics', label: 'Agendamentos',  icon: Calendar },
-  { id: 'settings',  label: 'Configurações', icon: SettingsIcon },
+  { id: 'analytics', label: 'Agenda',        icon: Calendar },
 ]
+const configItem = { id: 'settings', label: 'Configurações', icon: SettingsIcon }
 
 // Altura dos itens encolhe em telas baixas para tudo caber sem rolagem.
 // Só com mouse: no toque o item mantém a altura cheia, que é a área de toque.
@@ -135,13 +137,15 @@ const SidebarContent = ({ collapsed }: { collapsed: boolean }) => {
         {!collapsed && (
           <span className="text-sm font-medium truncate">{item.label}</span>
         )}
-        {/* Atendimentos recolhido: só um ponto — o número berrava num
-            menu de ícones; aberto, o contador volta. */}
-        {collapsed && item.id === 'atendimentos' ? (
-          contagem > 0 && <span aria-hidden className="pointer-events-none absolute right-2 top-1.5 h-2 w-2 rounded-full bg-destructive ring-2 ring-sidebar" />
+        {/* Atendimentos: recolhido, só um ponto; aberto, o número discreto no
+            fim da linha — a bolinha vermelha grande berrava mais que o rótulo. */}
+        {contagem > 0 && (collapsed ? (
+          <span aria-hidden className="pointer-events-none absolute right-2 top-1.5 h-2 w-2 rounded-full bg-destructive ring-2 ring-sidebar" />
         ) : (
-          <BolinhaNaoLidas n={contagem} compacta={collapsed} />
-        )}
+          <span aria-hidden className="ml-auto rounded-full bg-destructive/12 px-1.5 py-0.5 text-[11px] font-semibold leading-none text-destructive tabular-nums">
+            {contagem > 99 ? '99+' : contagem}
+          </span>
+        ))}
         <Dica texto={`${item.label}${rotuloContagem}`} ativa={collapsed} />
       </Link>
     )
@@ -173,22 +177,24 @@ const SidebarContent = ({ collapsed }: { collapsed: boolean }) => {
           a lista rola, para nenhum item ficar por baixo do rodapé. */}
       <div className="flex flex-col flex-1 min-h-0 px-2 [@media(max-height:560px)]:overflow-y-auto [@media(max-height:560px)]:overflow-x-hidden">
         <nav aria-label="Módulos do Connect" className="flex flex-col gap-0.5">
+          {topoItems.map(renderItem)}
+
+          <div role="separator" className="my-2 mx-3 border-t border-sidebar-border/70 [@media(max-height:620px)]:my-1" />
           <div role="group" aria-labelledby="menu-grupo-conversas" className="flex flex-col gap-0.5">
           <p id="menu-grupo-conversas" className={`px-3 pb-1 text-xs font-medium text-sidebar-foreground/45 ${collapsed ? 'sr-only' : ''}`}>Conversas</p>
           {conversaItems.map(renderItem)}
-
-
-          {/* Chat da equipe: não navega — abre o painel lateral do layout raiz,
-              o mesmo que o item do sidebar do Pulsar abre. "Menções a mim"
-              (/connect/mencoes) era um item de página aqui; a página continua
-              existindo para quem tem o link salvo. */}
-          <ItemChatEquipe collapsed={collapsed} naoLidas={naoLidas} aberto={chat.aberto} aoClicar={chat.alternar} />
           </div>
 
           <div role="separator" className="my-2 mx-3 border-t border-sidebar-border/70 [@media(max-height:620px)]:my-1" />
           <div role="group" aria-labelledby="menu-grupo-gestao" className="flex flex-col gap-0.5">
           <p id="menu-grupo-gestao" className={`px-3 pb-1 text-xs font-medium text-sidebar-foreground/45 ${collapsed ? 'sr-only' : ''}`}>Gestão</p>
           {gestaoItems.map(renderItem)}
+          {/* Chat da equipe: não navega — abre o painel lateral do layout raiz,
+              o mesmo que o item do sidebar do Pulsar abre. "Menções a mim"
+              (/connect/mencoes) era um item de página aqui; a página continua
+              existindo para quem tem o link salvo. */}
+          <ItemChatEquipe collapsed={collapsed} naoLidas={naoLidas} aberto={chat.aberto} aoClicar={chat.alternar} />
+          {renderItem(configItem)}
           </div>
         </nav>
       </div>
