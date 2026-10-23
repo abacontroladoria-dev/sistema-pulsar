@@ -252,7 +252,15 @@ export function responsavelDo(setor: string): Responsavel {
   return RESPONSAVEIS[setor] ?? { pessoas: "", faz: "" }
 }
 
-export const ROTULO_LINK: Record<string, string> = { aut: "Autorização", crm: "CRM", crono: "Cronograma" }
+export const ROTULO_LINK: Record<string, string> = { aut: "Autorização", crm: "CRM", crono: "Cronograma", chat: "Chat" }
+
+/** Canal do Chat de autorização no ClickUp (workspace 9011600909), de onde vêm os pedidos sem formulário. */
+export const CANAL_CHAT_AUTORIZACAO = {
+  chave: "chat",
+  rotulo: "Chat",
+  id: "8cj47gd-16071",
+  url: "https://app.clickup.com/9011600909/chat/r/8cj47gd-16071",
+} as const
 
 /** O que fazer em cada etapa (verbo) e qual tarefa do ClickUp abrir para isso. */
 export const ACAO_POR_ETAPA: Record<string, { acao: string; link: string }> = {
@@ -301,13 +309,21 @@ export function linkClickUp(taskId: string): string {
   return `https://app.clickup.com/t/${encodeURIComponent(taskId)}`
 }
 
+export function linkCanalClickUp(channelId: string): string {
+  return `https://app.clickup.com/9011600909/chat/r/${encodeURIComponent(channelId)}`
+}
+
 const ehIdValido = (id: unknown): id is string => typeof id === "string" && !!id.trim() && id !== "TASK_ID"
 
 /** Links reais do paciente (o exemplo do pacote traz "TASK_ID" no lugar do id). */
 export function linksDoPaciente(p: PacienteEntrada): { chave: string; rotulo: string; id: string; url: string }[] {
   return Object.entries(p.links ?? {})
     .filter((par): par is [string, string] => ehIdValido(par[1]))
-    .map(([chave, id]) => ({ chave, rotulo: ROTULO_LINK[chave] ?? chave, id: id.trim(), url: linkClickUp(id.trim()) }))
+    .map(([chave, raw]) => {
+      const id = raw.trim()
+      const url = /^https?:\/\//i.test(id) ? id : chave === "chat" ? linkCanalClickUp(id) : linkClickUp(id)
+      return { chave, rotulo: ROTULO_LINK[chave] ?? chave, id, url }
+    })
 }
 
 /** Id da tarefa do formulário em Solicitações Autorização (links.aut), ou null. */
@@ -316,11 +332,15 @@ export function idFormulario(p: PacienteEntrada): string | null {
   return ehIdValido(id) ? id.trim() : null
 }
 
-/** Link da tarefa do ClickUp onde a etapa atual se resolve (cai no primeiro link válido). */
-export function linkDaEtapa(p: PacienteEntrada): { chave: string; rotulo: string; id: string; url: string } | null {
+/**
+ * Link do ClickUp onde a etapa atual se resolve: tarefa da etapa, primeira
+ * tarefa válida ou, quando ainda não há nenhuma task (pedido só no chat, sem
+ * formulário aberto), o canal do Chat de autorização.
+ */
+export function linkDaEtapa(p: PacienteEntrada): { chave: string; rotulo: string; id: string; url: string } {
   const links = linksDoPaciente(p)
   const chave = p.atual ? ACAO_POR_ETAPA[p.atual.etapa]?.link : undefined
-  return links.find(l => l.chave === chave) ?? links[0] ?? null
+  return links.find(l => l.chave === chave) ?? links[0] ?? CANAL_CHAT_AUTORIZACAO
 }
 
 /** Data de hoje (AAAA-MM-DD) no horário de Brasília. */

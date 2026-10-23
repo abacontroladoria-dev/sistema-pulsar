@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
+  CANAL_CHAT_AUTORIZACAO,
   FILTRO_INICIAL,
   PRAZOS_PADRAO,
   aplicarPrazos,
@@ -112,12 +113,13 @@ describe("prazo e ação em linguagem de gente", () => {
     expect(proximaAcao(estranho).texto).toBe("Etapa nova")
   })
 
-  it("link da etapa abre a tarefa certa e cai no primeiro link válido", () => {
+  it("link da etapa abre a tarefa certa, cai no primeiro link válido ou no chat de autorização", () => {
     const links = { aut: "a1", crm: "c1", crono: "k1" }
-    expect(linkDaEtapa(paciente("X", { links }, { etapa: "E2" }))?.id).toBe("c1")
-    expect(linkDaEtapa(paciente("X", { links }, { etapa: "E7" }))?.id).toBe("k1")
-    expect(linkDaEtapa(paciente("X", { links: { aut: "a1" } }, { etapa: "E4" }))?.id).toBe("a1")
-    expect(linkDaEtapa(paciente("X", { links: null }))).toBeNull()
+    expect(linkDaEtapa(paciente("X", { links }, { etapa: "E2" })).id).toBe("c1")
+    expect(linkDaEtapa(paciente("X", { links }, { etapa: "E7" })).id).toBe("k1")
+    expect(linkDaEtapa(paciente("X", { links: { aut: "a1" } }, { etapa: "E4" })).id).toBe("a1")
+    expect(linkDaEtapa(paciente("X", { links: null }))).toEqual(CANAL_CHAT_AUTORIZACAO)
+    expect(linkDaEtapa(paciente("X", { links: {}, aberto: null }, { etapa: "E0", setor: "Gestão" }))).toEqual(CANAL_CHAT_AUTORIZACAO)
   })
 
   it("avisos de registro aceitam texto e objeto, sem os resolvidos", () => {
@@ -362,9 +364,12 @@ describe("formatação", () => {
     expect(fmtDataHora("2026-10-09T10:52:00Z")).toBe("09/10 às 07:52")
   })
 
-  it("links do ClickUp descartam o placeholder do exemplo", () => {
-    const p = paciente("X", { links: { aut: "86abc", crm: "TASK_ID" } })
-    expect(linksDoPaciente(p)).toEqual([{ chave: "aut", rotulo: "Autorização", id: "86abc", url: "https://app.clickup.com/t/86abc" }])
+  it("links do ClickUp descartam o placeholder do exemplo e montam link de chat ou task", () => {
+    const p = paciente("X", { links: { aut: "86abc", crm: "TASK_ID", chat: "8cj47gd-16071" } })
+    expect(linksDoPaciente(p)).toEqual([
+      { chave: "aut", rotulo: "Autorização", id: "86abc", url: "https://app.clickup.com/t/86abc" },
+      { chave: "chat", rotulo: "Chat", id: "8cj47gd-16071", url: "https://app.clickup.com/9011600909/chat/r/8cj47gd-16071" },
+    ])
   })
 })
 
