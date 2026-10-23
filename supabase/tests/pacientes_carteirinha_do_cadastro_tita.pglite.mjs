@@ -7,7 +7,7 @@
 // cadastro prevalece sobre a do agendamento; cadastro sem carteirinha ou cópia
 // velha mantém a do agendamento; carteirinha chega mesmo com o convênio em
 // conflito; texto sem dígito ("Não informado") não cobre a do agendamento e o
-// estrago da 1ª versão é desfeito pelo log; as migrations rerodam.
+// estrago da 1ª versão é desfeito (vazia + reimportação); as migrations rerodam.
 //
 //   mkdir /tmp/pg && cd /tmp/pg && npm i @electric-sql/pglite
 //   cp <repo>/supabase/tests/pacientes_carteirinha_do_cadastro_tita.pglite.mjs /tmp/pg/
@@ -102,14 +102,13 @@ ok(beto?.mudancas.some(m => m.campo === 'Carteirinha' && m.de === '111' && m.par
 ok(await cart(6) === 'Não informado', '1ª versão (20261023160000): Gil 0000 → "Não informado" — o estrago de 23/10')
 
 console.log('3. correção 20261023170000')
-await db.query(`update public.pacientes_importacoes_log set iniciado_em = '2026-10-23 17:06:19+00' where id = $1`, [r.log_id])
 const mig2 = arquivo('20261023170000')
 await db.exec(mig2)
 await db.exec(mig2)
-ok(await cart(6) === '0000', 'Gil volta ao valor anterior, tirado do log (e a migration reroda)')
+ok(await cart(6) === null, 'Gil: carteirinha sem dígito vira vazia (e a migration reroda)')
 ok(await cart(2) === '222' && await cart(1) === '73723094402', 'carteirinha de verdade não é desfeita')
 const r2 = (await um(`select public.pacientes_importar_tita('cron') r`)).r
-ok(r2.sucesso && await cart(6) === '0000', 'nova importação: "Não informado" não cobre mais a do agendamento')
+ok(r2.sucesso && await cart(6) === '0000', 'nova importação: Gil recupera a do agendamento; "Não informado" não a cobre mais')
 ok(await cart(1) === '73723094402' && await cart(5) === '555', 'nova importação: carteirinha com dígito continua vindo do cadastro')
 
 console.log(falhas ? `\n${falhas} FALHA(S)` : '\nTudo certo.')

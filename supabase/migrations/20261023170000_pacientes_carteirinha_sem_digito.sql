@@ -7,11 +7,11 @@
 --
 --   1. pacientes_importar_tita: a carteirinha do cadastro só vale se tiver
 --      algum dígito. O resto do corpo é o de 20261023160000.
---   2. Desfaz o estrago: quem recebeu um valor sem dígito naquela importação
---      e ainda está com ele volta para o valor anterior, tirado do próprio log.
---      Quem estava vazio (de = null) e recebeu texto sem dígito volta a vazio.
+--   2. Desfaz o estrago: carteirinha sem dígito vira vazia e a importação
+--      seguinte a repõe com a do agendamento. O valor anterior não sai do log
+--      da importação, que guarda a carteirinha mascarada.
 --
--- Idempotente (o passo 2 só pega quem ainda está com o valor sem dígito).
+-- Idempotente.
 
 set lock_timeout = '5s';
 
@@ -539,20 +539,12 @@ grant execute on function public.pacientes_importar_tita(text) to authenticated,
 -- ═════════════════════════════════════════════════════════════════════════════
 -- 2. Desfaz a troca por "Não informado"
 -- ═════════════════════════════════════════════════════════════════════════════
+-- O log da importação guarda a carteirinha MASCARADA (••••mado), então o valor
+-- anterior não sai dele. Carteirinha sem dígito vira vazia, e a próxima
+-- importação (já corrigida acima) a preenche com a do agendamento, se houver.
 select set_config('pulsar.autor', 'Sistema (correção 20261023170000)', true);
 select set_config('pulsar.origem_mudanca', 'Correção: carteirinha "Não informado" do TiTa', true);
 
-update public.pacientes p
-   set numero_carteirinha = x.antes
-  from (
-    select (a->>'id')::bigint as id_paciente, m->>'de' as antes, m->>'para' as depois
-    from public.pacientes_importacoes_log l,
-         jsonb_array_elements(l.detalhes->'atualizados') a,
-         jsonb_array_elements(a->'mudancas') m
-    where l.iniciado_em >= '2026-10-23 17:00:00+00'
-      and l.status = 'sucesso'
-      and m->>'campo' = 'Carteirinha'
-      and m->>'para' !~ '[0-9]'
-  ) x
- where p.id_paciente = x.id_paciente
-   and p.numero_carteirinha = x.depois;
+update public.pacientes
+   set numero_carteirinha = null
+ where numero_carteirinha !~ '[0-9]';
