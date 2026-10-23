@@ -100,6 +100,21 @@ export class AnexoIndisponivelError extends CentralError {
   }
 }
 
+// Pedido de transcrição para um anexo que não é áudio. 422: repetir não passa.
+export class TranscricaoRecusadaError extends CentralError {
+  constructor(anexoId: string, motivo: string) {
+    super(motivo, 'TRANSCRICAO_RECUSADA', { anexoId })
+  }
+}
+
+// Outro tique ou outra atendente já está transcrevendo este áudio. 409: o
+// texto chega sozinho no próximo poll, não há o que refazer.
+export class TranscricaoEmAndamentoError extends CentralError {
+  constructor(anexoId: string) {
+    super('Este áudio já está sendo transcrito.', 'TRANSCRICAO_EM_ANDAMENTO', { anexoId })
+  }
+}
+
 // Editar mensagem fora da regra de podeEditar (utils/apagar-mensagem.ts).
 export class EdicaoRecusadaError extends CentralError {
   constructor(motivo: string) {

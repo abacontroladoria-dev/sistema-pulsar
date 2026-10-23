@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type {
   Message,
+  MessageAttachment,
   Channel,
   ProviderType,
   ProviderResolver,
@@ -479,6 +480,41 @@ export class MessageService {
       return this.storage.urlAssinada(anexo.storage_path)
     }
 
+    const { path } = await this.armazenar(anexo, orgId)
+    return this.storage.urlAssinada(path)
+  }
+
+  // -------------------------------------------------------------------------
+  // bytesDoAnexo
+  //
+  // O arquivo em si, para quem precisa processá-lo no servidor (a transcrição).
+  // NÃO confere acesso: recebe o anexo já lido — pelo client do usuário na rota,
+  // ou com service role no worker, que não tem usuário. Se não estiver no
+  // bucket, baixa do provider e guarda, como urlDoAnexo: o primeiro a precisar
+  // paga a ida à Graph, e a atendente que depois der play lê do bucket.
+  // -------------------------------------------------------------------------
+  async bytesDoAnexo(
+    anexo: MessageAttachment,
+    orgId: string,
+  ): Promise<{ bytes: ArrayBuffer; mimeType: string }> {
+    if (anexo.organization_id !== orgId) throw new AnexoNaoEncontradoError(anexo.id)
+
+    if (anexo.storage_status === 'stored' && anexo.storage_path) {
+      const bytes = await this.storage.baixar(anexo.storage_path)
+      return { bytes, mimeType: anexo.file_type ?? '' }
+    }
+
+    const { bytes, mimeType } = await this.armazenar(anexo, orgId)
+    return { bytes, mimeType }
+  }
+
+  // Traz do provider para o bucket. Grava o motivo quando falha.
+  private async armazenar(
+    anexo: MessageAttachment,
+    orgId: string,
+  ): Promise<{ path: string; bytes: ArrayBuffer; mimeType: string }> {
+    const anexoId = anexo.id
+
     // Não está no bucket. `external_url` guarda o media ID da Meta — que vale
     // 7 dias para mídia recebida, contra os 5 MINUTOS da URL que a Graph
     // devolve. É por isso que o webhook guarda o id e não a URL.
@@ -521,7 +557,7 @@ export class MessageService {
       file_size: baixado.fileSize,
     })
 
-    return this.storage.urlAssinada(path)
+    return { path, bytes: baixado.bytes, mimeType: baixado.mimeType }
   }
 
   // -------------------------------------------------------------------------

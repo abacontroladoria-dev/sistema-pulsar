@@ -243,9 +243,20 @@ export interface MessageAttachment {
   storage_error:   string | null
   duration_secs:   number | null
   thumbnail_path:  string | null
+  // Transcrição do áudio (20261023120000). Opcionais porque a linha lida antes
+  // da migration não as traz; ausente e NULL significam o mesmo — nunca pedida.
+  transcricao?:             string | null
+  transcricao_status?:      TranscricaoStatus | null
+  transcricao_erro?:        string | null
+  transcricao_modelo?:      string | null
+  transcricao_ms?:          number | null
+  transcricao_iniciada_em?: string | null
+  transcricao_em?:          string | null
   created_at:      string
   updated_at:      string
 }
+
+export type TranscricaoStatus = 'processing' | 'completed' | 'failed'
 
 export interface Contact {
   id:                     string
