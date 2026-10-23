@@ -1,5 +1,6 @@
 import type { LLMProvider, LlmMensagem } from '../llm/tipos'
 import type { Message, TagDefinition } from '../types/central.types'
+import { falaDaMensagem, type MensagemComAnexos } from './fala-do-contato'
 import {
   montarFerramentaRegistrarTags,
   interpretarArgumentosTags,
@@ -101,13 +102,16 @@ Grupos:
  * não está no histórico: foi enfileirada ou gravada depois da leitura.
  */
 export function falasDoHistorico(
-  historico: readonly Pick<Message, 'direction' | 'body' | 'message_type' | 'deleted_at'>[],
+  historico: readonly (Pick<Message, 'message_type' | 'deleted_at'> & MensagemComAnexos)[],
   respostaDoTurno: string | null,
 ): FalaClassificacao[] {
+  // Áudio entra pela transcrição: é por ela que a ficha pega "meu filho tem 4
+  // anos" dito em voz (fala-do-contato.ts).
   const falas: FalaClassificacao[] = [...historico]
     .reverse()
-    .filter((m) => !m.deleted_at && m.message_type !== 'reaction' && m.body?.trim())
-    .map((m) => ({ de: m.direction === 'inbound' ? 'familia' : 'clinica', texto: m.body ?? '' }))
+    .filter((m) => !m.deleted_at && m.message_type !== 'reaction')
+    .map((m) => ({ de: m.direction === 'inbound' ? 'familia' as const : 'clinica' as const, texto: falaDaMensagem(m) }))
+    .filter((f) => f.texto.trim())
   if (respostaDoTurno?.trim()) falas.push({ de: 'clinica', texto: respostaDoTurno })
   return falas
 }

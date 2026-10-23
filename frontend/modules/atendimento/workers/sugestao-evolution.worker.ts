@@ -2,7 +2,8 @@ import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-import { createAppointmentSystemService, createSystemServices } from '../services'
+import { createAppointmentSystemService, createSystemServices, createTranscricaoSystemService } from '../services'
+import { falaDaMensagem } from '../agente/fala-do-contato'
 import { MessageRepository } from '../repositories/message.repository'
 import { AppointmentRepository } from '../repositories/appointment.repository'
 import { AuditRepository } from '../repositories/audit.repository'
@@ -104,6 +105,9 @@ const JANELA_MS = 6 * 3_600_000
 // custa a leitura; com 30 e a janela de 6 h, as novas ficavam de fora.
 const CONVERSAS_POR_TIQUE = 200
 const MAX_POR_TIQUE = 3
+// Teto da transcrição feita dentro do turno, quando o worker de transcrição
+// ainda não pegou o áudio.
+const TIMEOUT_TRANSCRICAO_MS = 15_000
 // Falha (envio, OpenAI, limite de uso) não encerra a tentativa: a mesma
 // mensagem volta depois destas esperas. Esgotadas, a conversa vai para gente.
 const ESPERAS_RETENTATIVA_MS = [60_000, 5 * 60_000]
@@ -173,6 +177,7 @@ export async function processarSugestoesEvolution(
   const auditoria = new AuditRepository(supabase)
   const { conversationService, messageService } = createSystemServices()
   const fichas = createFichaService(supabase)
+  const transcricao = createTranscricaoSystemService()
 
   // Catálogo de tags, lido uma vez por tique: para a ORIGEM que o sistema
   // aplica em toda conversa e para `registrar_tags`, que só vai onde ela
@@ -251,14 +256,21 @@ export async function processarSugestoesEvolution(
       marca = await reivindicar(supabase, conv, sugestao?.em ?? null, ultima.id, tentativa, transferida)
       if (!marca) continue
 
+      const n = historico.findIndex(m => m.direction !== 'inbound')
+      const qtdInbound = n === -1 ? historico.length : n
+
+      // Áudio da pessoa vira texto antes do turno (fala-do-contato.ts). Quase
+      // sempre o worker de transcrição já fez nos 15s de espera; senão é aqui.
+      // Substitui no próprio histórico: a classificação e a ficha leem dele.
+      historico.splice(0, qtdInbound, ...await transcricao.completarTurno(
+        historico.slice(0, qtdInbound), orgId, TIMEOUT_TRANSCRICAO_MS))
+
       // As mensagens do paciente desde a última fala nossa viram o turno.
       const doTurno: string[] = []
       for (const m of historico) {
         if (m.direction !== 'inbound') break
-        if (m.message_type !== 'reaction') doTurno.unshift(m.body ?? '')
+        if (m.message_type !== 'reaction') doTurno.unshift(falaDaMensagem(m))
       }
-      const n = historico.findIndex(m => m.direction !== 'inbound')
-      const qtdInbound = n === -1 ? historico.length : n
       if (doTurno.filter(t => t.trim()).length === 0) continue
 
       // ORIGEM pelo sistema (15/10): a Maia nunca a aplicava, e toda conversa

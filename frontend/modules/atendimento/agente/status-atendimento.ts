@@ -1,4 +1,5 @@
 import type { LLMProvider, LlmFerramenta, LlmMensagem } from '../llm/tipos'
+import { falaDaMensagem, type MensagemComAnexos } from './fala-do-contato'
 import {
   VEREDITOS_STATUS,
   type Conversation,
@@ -206,21 +207,24 @@ export function textoNotaParada(input: {
 // ordem cronológica. Fora: apagada, reação, sem texto, rascunho da Maia que
 // não saiu e envio que falhou — a família nunca leu nenhum dos dois.
 export function falasParaStatus(
-  historico: readonly Pick<Message,
-    'direction' | 'body' | 'message_type' | 'deleted_at' | 'sent_by_ai' | 'status' | 'external_message_id' | 'created_at'
-  >[],
+  historico: readonly (Pick<Message,
+    'message_type' | 'deleted_at' | 'sent_by_ai' | 'status' | 'external_message_id' | 'created_at'
+  > & MensagemComAnexos)[],
 ): FalaStatus[] {
+  // Áudio entra pela transcrição, quando o histórico veio com os anexos
+  // (fala-do-contato.ts); sem eles, fica o aviso '[áudio de voz]', como antes.
   return [...historico]
     .reverse()
-    .filter((m) => !m.deleted_at && m.message_type !== 'reaction' && m.body?.trim())
+    .filter((m) => !m.deleted_at && m.message_type !== 'reaction')
     .filter((m) => !(m.direction === 'outbound' && (
       m.status === 'failed' || (m.sent_by_ai && m.status === 'pending' && !m.external_message_id)
     )))
-    .map((m) => ({
+    .map((m): FalaStatus => ({
       quem:  m.direction === 'inbound' ? 'familia' : m.sent_by_ai ? 'maia' : 'atendente',
-      texto: m.body ?? '',
+      texto: falaDaMensagem(m),
       em:    m.created_at,
     }))
+    .filter((f) => f.texto.trim())
 }
 
 const ROTULO: Record<QuemFala, string> = { familia: 'Família', maia: 'Maia', atendente: 'Atendente' }

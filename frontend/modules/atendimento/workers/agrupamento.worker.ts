@@ -2,7 +2,8 @@ import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-import { createSystemServices, createAppointmentSystemService } from '../services'
+import { createSystemServices, createAppointmentSystemService, createTranscricaoSystemService } from '../services'
+import { falaDaMensagem } from '../agente/fala-do-contato'
 import { ContactRepository } from '../repositories/contact.repository'
 import { MessageRepository } from '../repositories/message.repository'
 import { ConversationRepository } from '../repositories/conversation.repository'
@@ -28,7 +29,7 @@ import { createFichaService } from '../services/ficha.service'
 import { PacienteRepository } from '../repositories/paciente.repository'
 import { SessoesTitaRepository } from '../repositories/sessoes-tita.repository'
 import { FunilMaiaService } from '../services/funil-maia.service'
-import type { AnuncioDaMensagem, FichaPaciente, TagDefinition } from '../types/central.types'
+import type { AnuncioDaMensagem, FichaPaciente, Message, TagDefinition } from '../types/central.types'
 
 // ============================================================================
 // Worker de agrupamento — o miolo do pipeline
@@ -70,6 +71,10 @@ const TAMANHO_LOTE = 5
 // intervalo do cron para dois tiques não se empilharem; o lease de 2 minutos
 // recupera o que ficar pela metade.
 const ORCAMENTO_MS = 25_000
+
+// Teto da transcrição feita dentro do turno (quando o worker de transcrição
+// ainda não pegou o áudio). Menor que o padrão: a mãe está esperando.
+const TIMEOUT_TRANSCRICAO_MS = 15_000
 
 export interface ResultadoAgrupamento {
   reivindicados: number
@@ -211,12 +216,12 @@ async function processarContato(
 
   // 4. Gravar as mensagens recebidas ANTES de chamar a IA. Se a OpenAI falhar,
   //    a conversa já está na Central e um humano pode assumir.
-  const textos: string[] = []
+  const recebidas: Message[] = []
   let anuncio: AnuncioDaMensagem | null = null
   for (const item of itens) {
     const normalizada = normalizarMensagemMeta(item.message_data)
     anuncio ??= normalizada.anuncio ?? null
-    await messageService.receive({
+    const recebida = await messageService.receive({
       conversationId: conversation.id,
       orgId,
       externalMessageId: normalizada.externalMessageId,
@@ -230,9 +235,16 @@ async function processarContato(
     // Reação não merece turno da IA — responder a um 👍 com uma frase é ruído.
     // Fica gravada no histórico, mas não provoca resposta.
     if (normalizada.messageType !== 'reaction') {
-      textos.push(normalizada.body ?? '')
+      recebidas.push(recebida)
     }
   }
+
+  // 4.0. Áudio vira texto ANTES de tudo que lê a fala: a Maia, a ORIGEM, o
+  // "Trabalhe conosco". Normalmente o worker de transcrição já fez; quando não,
+  // é feito aqui (uma tentativa, ~3–5s). Sem texto, segue com '[áudio de voz]'.
+  const comAudio = await createTranscricaoSystemService()
+    .completarTurno(recebidas, orgId, TIMEOUT_TRANSCRICAO_MS)
+  const textos = comAudio.map(falaDaMensagem)
 
   // 4.1. Anúncio de origem (Click-to-WhatsApp, `referral`): primeiro toque na
   // conversa, e os nomes pela Marketing API sem segurar o turno. Falha isolada.
