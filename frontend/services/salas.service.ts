@@ -70,6 +70,9 @@ export async function listarSalas(cliente?: ClienteLeitura): Promise<Sala[]> {
   const { data, error } = await sb
     .from(TABLE)
     .select("*")
+    // "AT Externo" (Escola / Casa) existe em cronograma_salas apenas como local
+    // de disponibilidade do profissional e da Grade — não é sala física da clínica.
+    .neq("unidade_nome", "AT Externo")
     .order("unidade_nome")
 
   if (error) throw new Error(error.message)
