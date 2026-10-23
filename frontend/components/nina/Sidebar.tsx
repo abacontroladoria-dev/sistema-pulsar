@@ -223,7 +223,9 @@ const SidebarContent = ({ collapsed }: { collapsed: boolean }) => {
             dois lados do sistema não precisar procurar. */}
         <ThemeSwitcher compacto={collapsed} dica={(r) => <Dica texto={r} ativa />} />
         <div
-          className="relative flex items-center gap-3 p-2 rounded-xl hover:bg-sidebar-accent/60 transition-colors"
+          // Recolhido, a coluna tem 64px: avatar e Sair lado a lado não cabem e o
+          // botão vazava para dentro da página. Empilha.
+          className={`relative flex items-center rounded-xl hover:bg-sidebar-accent/60 transition-colors ${collapsed ? 'flex-col gap-1 py-2' : 'gap-3 p-2'}`}
           title={collapsed ? undefined : usuario.email}
         >
           <div
