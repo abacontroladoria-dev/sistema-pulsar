@@ -47,7 +47,7 @@ Não gera faturamento: quem gera é **sessões enviadas** (manual ou XML TISS). 
 ## Fases
 
 0. **Saneamento do cadastro:** registro ANS dos convênios, carteirinhas, atributos da terapia (modalidade e "exige fila"), tabela sala→unidade, de-para de convênio.
-   Andamento (23/10): carteirinha vem do cadastro do TiTa (20261023160000/170000; os 6 sem carteirinha são inativos sem carteirinha no TiTa); `cadastro_terapias.modalidade` e `exige_presenca_fila` (20261023180100); `convenio_aliases` + `convenio_id_por_nome()` (20261023190100; MEMORIAL→ASSIM, UNIMED RIO→UNIMED FERJ, nenhuma grafia sem par); `unidade_da_sala()` e `modalidade_da_sala()` (20261023200000). Falta: registro ANS de 8 convênios e decidir Fundação Itaú (só no AXIUM).
+   Andamento (23/10): carteirinha vem do cadastro do TiTa (20261023160000/170000; os 6 sem carteirinha são inativos sem carteirinha no TiTa); `cadastro_terapias.modalidade` e `exige_presenca_fila` (20261023180100); `convenio_aliases` + `convenio_id_por_nome()` (20261023190100; MEMORIAL→ASSIM, UNIMED RIO→UNIMED FERJ, nenhuma grafia sem par); `unidade_da_sala()` e `modalidade_da_sala()` (20261023200000). Registro ANS preenchido em todas as operadoras (23/10, por SQL; FuSEx é assistência militar, sem ANS). Falta: decidir Fundação Itaú (só no AXIUM).
 1. **Fundação:** empresas e unidades (`empresas` e `usuarios_empresas` já existem em produção), RLS por empresa via `auth.uid()`.
 2. **Schema do faturamento:** lançamento, NF, pagamento, glosa, preços com vigência, prazos e retenção. Absorve `previsao_receitas_faturamento` e unifica com `cronograma_convenio_valores`.
 3. **Conferência presença × evolução:** função SQL incremental (mês corrente e anterior), alerta R11 no lançamento e tela de conferência sessão a sessão.
