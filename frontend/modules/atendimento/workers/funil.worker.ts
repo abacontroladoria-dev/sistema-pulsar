@@ -88,7 +88,7 @@ export async function processarFunil(
       // durante a chamada fica depois dela e pede outra leitura.
       const ate = card.last_message_at
       const historico = await mensagens.listByConversation({
-        conversationId: card.conversationId, limit: HISTORICO, withAttachments: false,
+        conversationId: card.conversationId, limit: HISTORICO,  // com anexos: a transcrição do áudio entra na leitura
       })
       const falas = falasParaStatus(historico)
       // Só áudio, foto ou figurinha: nada para ler. A marca anda, senão o

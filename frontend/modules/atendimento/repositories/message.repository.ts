@@ -282,6 +282,125 @@ export class MessageRepository {
     if (error) throw error
   }
 
+  // --------------------------------------------------------------------------
+  // Transcrição (20261023120000)
+  //
+  // A reivindicação é um UPDATE condicional: só pega o anexo sem estado, que
+  // falhou, ou cujo 'processing' passou do lease (o processo que o pegou pode
+  // ter morrido no meio). Dois tiques — ou um tique e um clique — disputando o
+  // mesmo áudio: o Postgres serializa os dois UPDATEs na linha, o segundo
+  // reavalia o WHERE e não casa. Quem recebe `false` não transcreve.
+  //
+  // `forcar` deixa reivindicar um 'completed' — é o "Transcrever de novo" da
+  // tela. Nunca um 'processing' dentro do lease: seriam duas chamadas pagas
+  // para o mesmo áudio.
+  // --------------------------------------------------------------------------
+  async reivindicarTranscricao(id: string, leaseMs: number, forcar = false): Promise<boolean> {
+    const agora  = new Date()
+    const vencido = new Date(agora.getTime() - leaseMs).toISOString()
+    const livres = [
+      'transcricao_status.is.null',
+      'transcricao_status.eq.failed',
+      `and(transcricao_status.eq.processing,transcricao_iniciada_em.lt."${vencido}")`,
+      ...(forcar ? ['transcricao_status.eq.completed'] : []),
+    ].join(',')
+
+    const { data, error } = await (this.escrita as any)
+      .schema('central')
+      .from('message_attachments')
+      .update({
+        transcricao_status:      'processing',
+        transcricao_iniciada_em: agora.toISOString(),
+        transcricao_erro:        null,
+      })
+      .eq('id', id)
+      .or(livres)
+      .select('id')
+
+    if (error) throw error
+    return Array.isArray(data) && data.length > 0
+  }
+
+  async concluirTranscricao(
+    id: string,
+    r: { texto: string; modelo: string; ms: number },
+  ): Promise<void> {
+    const { error } = await (this.escrita as any)
+      .schema('central')
+      .from('message_attachments')
+      .update({
+        transcricao:        r.texto,
+        transcricao_status: 'completed',
+        transcricao_erro:   null,
+        transcricao_modelo: r.modelo,
+        transcricao_ms:     r.ms,
+        transcricao_em:     new Date().toISOString(),
+      })
+      .eq('id', id)
+
+    if (error) throw error
+  }
+
+  // Desfaz a reivindicação sem culpar o áudio: rate limit, saldo ou chave
+  // ausente. O status volta ao que o worker procura (NULL) — ou ao 'completed'
+  // quando já havia texto, que é o caso de quem pediu para refazer.
+  async liberarTranscricao(id: string): Promise<void> {
+    const { error } = await (this.escrita as any)
+      .schema('central')
+      .from('message_attachments')
+      .update({ transcricao_status: null, transcricao_iniciada_em: null })
+      .eq('id', id)
+      .is('transcricao', null)
+    if (error) throw error
+
+    const { error: e2 } = await (this.escrita as any)
+      .schema('central')
+      .from('message_attachments')
+      .update({ transcricao_status: 'completed', transcricao_iniciada_em: null })
+      .eq('id', id)
+      .not('transcricao', 'is', null)
+    if (e2) throw e2
+  }
+
+  // A transcrição anterior, se havia, FICA: uma retentativa que falhou não
+  // deve apagar um texto que estava certo.
+  async falharTranscricao(id: string, motivo: string): Promise<void> {
+    const { error } = await (this.escrita as any)
+      .schema('central')
+      .from('message_attachments')
+      .update({
+        transcricao_status: 'failed',
+        transcricao_erro:   motivo.slice(0, 500),
+        transcricao_em:     new Date().toISOString(),
+      })
+      .eq('id', id)
+
+    if (error) throw error
+  }
+
+  // Áudios RECEBIDOS desde `desde` que ninguém transcreveu, mais antigos
+  // primeiro (quem mandou antes espera há mais tempo). Usa o índice parcial
+  // idx_message_attachments_audio_sem_transcricao.
+  async audiosSemTranscricao(orgId: string, desde: string, limite: number): Promise<MessageAttachment[]> {
+    const { data, error } = await (this.supabase as any)
+      .schema('central')
+      .from('message_attachments')
+      .select('*, mensagem:messages!inner(direction, deleted_at)')
+      .eq('organization_id', orgId)
+      .is('transcricao_status', null)
+      .like('file_type', 'audio/%')
+      .gte('created_at', desde)
+      .eq('mensagem.direction', 'inbound')
+      .is('mensagem.deleted_at', null)
+      .order('created_at', { ascending: true })
+      .limit(limite)
+
+    if (error) throw error
+    // A mensagem embutida só serviu de filtro; o anexo sai sem ela.
+    return ((data ?? []) as (MessageAttachment & { mensagem?: unknown })[])
+      .map(a => { delete a.mensagem; return a as MessageAttachment })
+  }
+
   async buscarAnexo(id: string): Promise<MessageAttachment | null> {
     const { data, error } = await (this.supabase as any)
       .schema('central')

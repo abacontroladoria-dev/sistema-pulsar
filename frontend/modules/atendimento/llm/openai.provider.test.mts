@@ -307,6 +307,61 @@ __limparCacheConfiguracao()
 globalThis.fetch = fetchOriginal
 
 // ----------------------------------------------------------------------------
+console.log('\n8. transcrição: multipart, nome de arquivo pela extensão, erros')
+
+let urlChamada = ''
+let formEnviado: FormData | null = null
+function fingirTranscricao(status: number, corpo: unknown) {
+  globalThis.fetch = (async (url: string, init?: RequestInit) => {
+    urlChamada = url
+    formEnviado = init?.body as FormData
+    const texto = typeof corpo === 'string' ? corpo : JSON.stringify(corpo)
+    return new Response(texto, { status, headers: { 'Content-Type': 'application/json' } })
+  }) as typeof globalThis.fetch
+}
+
+const bytesAudio = new Uint8Array([1, 2, 3, 4]).buffer
+
+fingirTranscricao(200, { text: '  Boa tarde, quero remarcar.  ' })
+const tr = await provider.transcrever({ bytes: bytesAudio, mimeType: 'audio/ogg; codecs=opus' })
+checar(urlChamada.endsWith('/audio/transcriptions'), 'bate em /audio/transcriptions', urlChamada)
+checar(tr.texto === 'Boa tarde, quero remarcar.', 'texto vem aparado', tr.texto)
+const form = formEnviado as FormData | null
+const arquivo = form?.get('file') as File | null
+checar(arquivo?.name === 'audio.ogg', 'ogg com codecs vira audio.ogg', arquivo?.name)
+checar(form?.get('model') === 'gpt-4o-mini-transcribe', 'modelo de transcrição, não o OPENAI_MODEL')
+checar(form?.get('language') === 'pt', 'idioma fixo em português')
+
+fingirTranscricao(200, { text: '' })
+checar((await provider.transcrever({ bytes: bytesAudio, mimeType: 'audio/mpeg' })).texto === '',
+  'áudio sem fala devolve string vazia, não erro')
+
+fingirTranscricao(200, { outra: 'coisa' })
+checar(await capturar(() => provider.transcrever({ bytes: bytesAudio, mimeType: 'audio/ogg' })) instanceof LlmProviderError,
+  '200 sem `text` é contrato quebrado, não silêncio')
+
+let tocou = false
+globalThis.fetch = (async () => { tocou = true; return new Response('{}') }) as typeof globalThis.fetch
+const eAmr = await capturar(() => provider.transcrever({ bytes: bytesAudio, mimeType: 'audio/amr' }))
+checar(eAmr instanceof LlmRecusadoError && !tocou, 'AMR recusa antes de gastar requisição', eAmr)
+
+fingirTranscricao(429, { error: { type: 'insufficient_quota', code: 'insufficient_quota', message: 'sem saldo' } })
+checar(await capturar(() => provider.transcrever({ bytes: bytesAudio, mimeType: 'audio/ogg' })) instanceof LlmBudgetExceededError,
+  '429 sem saldo também é orçamento na transcrição')
+
+// Transcrição não depende de OPENAI_MODEL: um typo no modelo da Maia não pode
+// derrubar o texto dos áudios.
+const modeloSalvo = process.env.OPENAI_MODEL
+process.env.OPENAI_MODEL = 'gpt4o-mini-typo'
+__limparCacheConfiguracao()
+fingirTranscricao(200, { text: 'oi' })
+checar((await capturar(() => provider.transcrever({ bytes: bytesAudio, mimeType: 'audio/ogg' }))) === null,
+  'OPENAI_MODEL inválido não afeta a transcrição')
+process.env.OPENAI_MODEL = modeloSalvo
+__limparCacheConfiguracao()
+globalThis.fetch = fetchOriginal
+
+// ----------------------------------------------------------------------------
 console.log(
   falhas === 0
     ? '\nTodas as asserções passaram.\n'

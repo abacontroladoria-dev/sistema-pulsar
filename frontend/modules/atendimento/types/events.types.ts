@@ -74,6 +74,12 @@ export type ConversationEventType =
   | 'message.deleted'
   | 'message.edited'
   | 'message.status_updated'
+  // Transcrição de áudio (20261023120000). payload: { messageId, anexoId,
+  // origem: 'auto' | 'manual', modelo, ms, caracteres } — e { motivo } na falha.
+  // performed_by ausente = o worker; preenchido = alguém clicou em Transcrever.
+  // O texto NÃO vai no payload: é dado de paciente e já está no anexo, sob RLS.
+  | 'audio.transcribed'
+  | 'audio.transcription_failed'
   // Contatos
   | 'contact.created'
   | 'contact.updated'

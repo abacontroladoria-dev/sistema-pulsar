@@ -98,7 +98,7 @@ export async function processarStatus(
         // durante a chamada fica depois dela e pede outra leitura.
         const ate = conv.last_message_at
         const historico = await mensagens.listByConversation({
-          conversationId: conv.id, limit: HISTORICO, withAttachments: false,
+          conversationId: conv.id, limit: HISTORICO,  // com anexos: a transcrição do áudio entra na leitura
         })
         const falas = falasParaStatus(historico)
         if (falas.length > 0) {

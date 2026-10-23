@@ -9,6 +9,7 @@ import { processarSentimento } from '@/modules/atendimento/workers/sentimento.wo
 import { processarStatus } from '@/modules/atendimento/workers/status.worker'
 import { processarFunil } from '@/modules/atendimento/workers/funil.worker'
 import { processarAvatares } from '@/modules/atendimento/workers/avatar.worker'
+import { processarTranscricoes } from '@/modules/atendimento/workers/transcricao.worker'
 import { catalogarPendentes } from '@/modules/atendimento/meta/catalogo-anuncios'
 
 // ============================================================================
@@ -72,6 +73,11 @@ export async function POST(req: NextRequest) {
   // fica depois da entrega para nunca atrasar mensagem de verdade.
   const sugestao = await tentar('sugestao', () => processarSugestoesEvolution(supabaseService, orgId))
 
+  // Texto dos áudios recebidos, para a atendente ler em vez de ouvir. Depois
+  // da entrega (nunca atrasa resposta) e antes das leituras de gestão: quem
+  // usa isto está atendendo agora. Orçamento próprio de 12s.
+  const transcricao = await tentar('transcricao', () => processarTranscricoes(supabaseService, orgId))
+
   // Status do atendimento lido pela Maia (Aguardando, Resolvido, Fechado,
   // conversa parada). Depois de tudo que é fala: ler o pé da conversa nunca
   // atrasa uma resposta. Orçamento próprio; CENTRAL_STATUS_IA decide se aplica.
@@ -105,6 +111,7 @@ export async function POST(req: NextRequest) {
     agrupamento,
     envio,
     sugestao,
+    transcricao,
     status,
     funil,
     sentimento,

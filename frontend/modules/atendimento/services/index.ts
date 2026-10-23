@@ -33,6 +33,7 @@ import { TaskService }          from './task.service'
 import { SentimentoService }    from './sentimento.service'
 import { NotaInternaService }   from './nota-interna.service'
 import { MencaoService }        from './mencao.service'
+import { TranscricaoService }   from './transcricao.service'
 
 import { MetaWabaProvider } from '../providers/meta-waba.provider'
 import { EvolutionProvider } from '../providers/evolution.provider'
@@ -378,6 +379,32 @@ export function createMencaoService(userClient: SupabaseClient): MencaoService {
   )
 }
 
+// createTranscricaoService(userClient):
+//   O botão "Transcrever" da bolha. O anexo é lido com o client do usuário — a
+//   RLS de message_attachments é o portão, como em urlDoAnexo — e gravado com
+//   service role, porque a tabela não tem UPDATE para `authenticated`. Os bytes
+//   vêm de createMessageService, o mesmo caminho do play.
+//
+// createTranscricaoSystemService():
+//   O worker do tique. Service role em tudo; a organização é do caller.
+export function createTranscricaoService(userClient: SupabaseClient): TranscricaoService {
+  return new TranscricaoService(
+    new MessageRepository(userClient, supabaseService),
+    createMessageService(userClient),
+    openAiProvider,
+    new AuditRepository(supabaseService),   // sempre service role
+  )
+}
+
+export function createTranscricaoSystemService(): TranscricaoService {
+  return new TranscricaoService(
+    new MessageRepository(supabaseService),
+    createSystemServices().messageService,
+    openAiProvider,
+    new AuditRepository(supabaseService),
+  )
+}
+
 // Exportar para permitir que Sprint 2 registre providers no bootstrap
 export { providerFactory }
 
@@ -393,3 +420,4 @@ export { TaskService }          from './task.service'
 export { SentimentoService }    from './sentimento.service'
 export { NotaInternaService }   from './nota-interna.service'
 export { MencaoService }        from './mencao.service'
+export { TranscricaoService }   from './transcricao.service'

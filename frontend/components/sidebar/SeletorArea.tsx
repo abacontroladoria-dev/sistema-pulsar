@@ -17,12 +17,14 @@ type Props = {
   onEscolher: (area: AreaId) => void
   /** Sidebar recolhido do Connect: só o ícone. */
   compacto?: boolean
+  /** Quem desenha a própria dica (Connect) dispensa o title nativo. */
+  semTitle?: boolean
 }
 
 // Seletor acima do menu: Operacional · Financeiro · Relatórios · Pulsar Connect.
 // Troca só o que o Sidebar lista, sem navegar — exceto Connect, que tem tela
 // própria. Quem só tem uma área vê o nome dela, sem lista para abrir.
-export function SeletorArea({ area, areas, onEscolher, compacto = false }: Props) {
+export function SeletorArea({ area, areas, onEscolher, compacto = false, semTitle = false }: Props) {
   const atual = MENU_AREA_POR_ID[area]
   const Icone = atual.icon
   // Lista só quando há para onde ir. Quem só tem o Connect, fora dele, ainda
@@ -51,7 +53,7 @@ export function SeletorArea({ area, areas, onEscolher, compacto = false }: Props
         <button
           type="button"
           aria-label={compacto ? `Área: ${atual.nome}` : undefined}
-          title={compacto ? `Área: ${atual.nome}` : undefined}
+          title={compacto && !semTitle ? `Área: ${atual.nome}` : undefined}
           className={`flex h-10 items-center gap-2.5 rounded-lg border border-sidebar-ring/60 bg-card text-sm font-semibold text-sidebar-accent-foreground transition-colors hover:bg-sidebar-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring ${
             compacto ? "w-10 justify-center" : "w-full px-3"
           }`}

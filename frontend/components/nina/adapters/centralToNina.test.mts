@@ -38,6 +38,7 @@ import {
   contarNaoLidas,
   temNaoLidas,
   toAnexoUI,
+  toTranscricaoUI,
 } from './centralToNina.js'
 import type {
   Conversation, Message, Contact, MessageAttachment,
@@ -468,6 +469,34 @@ eq(toUIConversation(conv(), contato(), [msg({ message_type: 'contact', body: '[c
   'Contato: UniversoABA', 'prévia da lista com o histórico em mãos')
 eq(toUIConversation(conv({ last_message_preview: '[contato compartilhado: UniversoABA · +55 21 99191-3429]' }), contato(), [], 'off', false).lastMessage,
   'Contato: UniversoABA', 'prévia da lista vinda do banco')
+
+// ---------------------------------------------------------------------------
+console.log('\n10. Transcrição do áudio')
+
+const audio = (over: Partial<MessageAttachment> = {}) => anexo({ file_type: 'audio/ogg; codecs=opus', ...over })
+
+eq(toAnexoUI(anexo({ file_type: 'image/jpeg' }), 'image').transcricao, null, 'imagem não tem transcrição')
+eq(toAnexoUI(audio(), 'audio').transcricao?.fase, 'nenhuma', 'áudio sem estado oferece o botão')
+const pronta = toAnexoUI(audio({ transcricao_status: 'completed', transcricao: 'quero remarcar' }), 'audio').transcricao
+ok(pronta?.fase === 'pronta' && pronta.texto === 'quero remarcar', 'completed traz o texto')
+eq(toAnexoUI(audio({ transcricao_status: 'failed', transcricao_erro: 'expirou' }), 'audio').transcricao?.fase,
+  'falhou', 'failed sem texto é falha')
+eq(toAnexoUI(audio({ transcricao_status: 'failed', transcricao: 'texto antigo' }), 'audio').transcricao?.fase,
+  'pronta', 'refazer que falhou mantém o texto anterior')
+
+// O lease: 'processing' recente é "transcrevendo"; velho é processo morto e
+// volta a oferecer o botão — o worker não pega mais esse áudio sozinho.
+const agoraT = Date.parse('2026-10-23T12:00:00Z')
+eq(toTranscricaoUI(audio({ transcricao_status: 'processing', transcricao_iniciada_em: '2026-10-23T11:59:30Z' }), agoraT).fase,
+  'processando', 'processing dentro do lease')
+eq(toTranscricaoUI(audio({ transcricao_status: 'processing', transcricao_iniciada_em: '2026-10-23T11:50:00Z' }), agoraT).fase,
+  'nenhuma', 'processing com lease vencido volta ao botão')
+
+// Só o que o contato mandou: o áudio que sai é nosso.
+const audioSaida = toUIMessage(msg({ direction: 'outbound', message_type: 'audio', body: '', attachments: [audio()] }))
+eq(audioSaida.anexos[0]?.transcricao, null, 'áudio enviado por nós não oferece transcrição')
+const audioEntrada = toUIMessage(msg({ direction: 'inbound', message_type: 'audio', body: '[áudio de voz]', attachments: [audio()] }))
+eq(audioEntrada.anexos[0]?.transcricao?.fase, 'nenhuma', 'áudio recebido oferece')
 
 // ---------------------------------------------------------------------------
 console.log(

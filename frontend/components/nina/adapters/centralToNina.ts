@@ -109,6 +109,37 @@ export interface AnexoUI {
   // tamanho, o que acontece mais do que se imagina.
   detalhe:    string | null
   disponivel: boolean
+  // Só áudio tem; null para os outros tipos. Ver toTranscricaoUI.
+  transcricao: TranscricaoUI | null
+}
+
+// O que a bolha diz embaixo do player. 'nenhuma' = ninguém pediu (áudio antigo,
+// ou enviado por nós): a bolha oferece o botão. 'processando' com lease vencido
+// volta a ser 'nenhuma' — o processo que pegou morreu e o worker não volta lá.
+export type TranscricaoUI =
+  | { fase: 'nenhuma' }
+  | { fase: 'processando' }
+  | { fase: 'pronta'; texto: string }
+  | { fase: 'falhou'; motivo: string | null }
+
+const LEASE_TRANSCRICAO_MS = 120_000
+
+export function toTranscricaoUI(a: MessageAttachment, agora = Date.now()): TranscricaoUI {
+  switch (a.transcricao_status) {
+    case 'completed':
+      return { fase: 'pronta', texto: a.transcricao ?? '' }
+    case 'failed':
+      // Refazer que falhou mantém o texto antigo — ele ainda vale.
+      return a.transcricao
+        ? { fase: 'pronta', texto: a.transcricao }
+        : { fase: 'falhou', motivo: a.transcricao_erro ?? null }
+    case 'processing': {
+      const desde = a.transcricao_iniciada_em ? new Date(a.transcricao_iniciada_em).getTime() : 0
+      return agora - desde < LEASE_TRANSCRICAO_MS ? { fase: 'processando' } : { fase: 'nenhuma' }
+    }
+    default:
+      return { fase: 'nenhuma' }
+  }
 }
 
 const ROTULO_ANEXO: Record<string, string> = {
@@ -161,9 +192,10 @@ function semPlaceholder(body: string | null): string {
 }
 
 export function toAnexoUI(a: MessageAttachment, messageType: string): AnexoUI {
+  const rotulo = rotuloAnexo(a, messageType)
   return {
     id:      a.id,
-    rotulo:  rotuloAnexo(a, messageType),
+    rotulo,
     nome:    a.file_name?.trim() || null,
     detalhe: detalheAnexo(a),
     // O arquivo JÁ é nosso? 'stored' é o único estado em que ele está no
@@ -171,6 +203,7 @@ export function toAnexoUI(a: MessageAttachment, messageType: string): AnexoUI {
     // na Meta e guarda —, mas mudam o que a bolha promete: o primeiro acesso
     // paga uma ida à Graph, os seguintes leem do bucket.
     disponivel: a.storage_status === 'stored',
+    transcricao: rotulo === 'Áudio' ? toTranscricaoUI(a) : null,
   }
 }
 
@@ -280,7 +313,12 @@ export function toUIMessage(m: Message): NinaMessage {
   const isAiDraft =
     m.sent_by_ai && m.status === 'pending' && !m.external_message_id
 
-  const anexos = (m.attachments ?? []).map(a => toAnexoUI(a, m.message_type))
+  // Transcrição só no que o contato mandou: o áudio que sai é da atendente ou
+  // a voz da Maia, cujo texto a clínica já tem.
+  const anexos = (m.attachments ?? []).map(a => {
+    const ui = toAnexoUI(a, m.message_type)
+    return m.direction === 'inbound' ? ui : { ...ui, transcricao: null }
+  })
   // 'other' cobre o cartão gravado antes do tipo 'contact' existir (22/10).
   const contatos = m.message_type === 'contact' || m.message_type === 'other'
     ? lerCorpoDeContatos(m.body)
@@ -339,7 +377,10 @@ function resolverCitacoes(mensagens: NinaMessage[], nomeContato: string): NinaMe
     if (!m.citacao) return m
     const alvo = porId.get(m.citacao.id)
     if (!alvo) return m
-    const previa = previaDaMensagem(alvo) || alvo.anexos.map(a => a.nome ?? a.rotulo).join(', ') || 'Mensagem'
+    // Áudio transcrito cita o que foi dito, não "Áudio".
+    const previa = previaDaMensagem(alvo)
+      || alvo.anexos.map(a => (a.transcricao?.fase === 'pronta' && a.transcricao.texto) || a.nome || a.rotulo).join(', ')
+      || 'Mensagem'
     const autor  = alvo.direction === MessageDirection.INCOMING ? nomeContato : 'Você'
     return { ...m, citacao: { id: alvo.id, autor, previa } }
   })

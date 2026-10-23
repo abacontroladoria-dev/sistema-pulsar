@@ -21,6 +21,8 @@ import {
   TaskNotFoundError,
   AnexoNaoEncontradoError,
   AnexoIndisponivelError,
+  TranscricaoRecusadaError,
+  TranscricaoEmAndamentoError,
   EdicaoRecusadaError,
   NotaRecusadaError,
   MencaoNaoEncontradaError,
@@ -82,6 +84,8 @@ export function mapCentralError(err: unknown): NextResponse {
   // 422 e não 404: o anexo EXISTE, o arquivo é que não veio. A mensagem carrega
   // o motivo, que é o que diz se adianta tentar de novo.
   if (err instanceof AnexoIndisponivelError)      return unprocessable(err.code, err.message)
+  if (err instanceof TranscricaoRecusadaError)    return unprocessable(err.code, err.message)
+  if (err instanceof TranscricaoEmAndamentoError) return conflict(err.code, err.message)
   if (err instanceof EdicaoRecusadaError)         return unprocessable(err.code, err.message)
   if (err instanceof NotaRecusadaError)           return unprocessable(err.code, err.message)
   if (err instanceof MencaoNaoEncontradaError)    return notFound(err.code, err.message)

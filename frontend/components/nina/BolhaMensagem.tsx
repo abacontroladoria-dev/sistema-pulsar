@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { MessageDirection } from '@/types/nina'
 import type { NinaMessage } from './adapters/centralToNina'
 import { ChipAnexo } from './ChipAnexo'
+import { TranscricaoAudio } from './TranscricaoAudio'
 import { CartaoContato } from './CartaoContato'
 import { textoWhatsApp } from './textoWhatsApp'
 
@@ -100,7 +101,12 @@ export const BolhaMensagem: React.FC<Props> = ({
           {/* Anexo primeiro, legenda depois — é a ordem do WhatsApp. */}
           {msg.anexos.length > 0 && (
             <div className={`flex flex-col gap-1.5 ${msg.content ? 'mb-2' : ''}`}>
-              {msg.anexos.map(a => <ChipAnexo key={a.id} anexo={a} claro={claro} />)}
+              {msg.anexos.map(a => (
+                <React.Fragment key={a.id}>
+                  <ChipAnexo anexo={a} claro={claro} />
+                  {a.transcricao && <TranscricaoAudio anexoId={a.id} transcricao={a.transcricao} claro={claro} />}
+                </React.Fragment>
+              ))}
             </div>
           )}
           {msg.contatos && (

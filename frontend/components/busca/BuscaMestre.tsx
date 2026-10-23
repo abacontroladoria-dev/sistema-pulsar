@@ -50,7 +50,7 @@ const LIMITE_POR_CATEGORIA = 6
  * mesma regra do menu); pacientes, profissionais, convênios e terapias vêm do
  * servidor, que só devolve as categorias que a pessoa pode ver.
  */
-export function BuscaMestre({ compacto = false }: { compacto?: boolean }) {
+export function BuscaMestre({ compacto = false, semTitle = false }: { compacto?: boolean; semTitle?: boolean }) {
   const router = useRouter()
   const { canAccess } = usePermissoesUsuario()
   const [aberto, setAberto] = useState(false)
@@ -135,7 +135,7 @@ export function BuscaMestre({ compacto = false }: { compacto?: boolean }) {
         type="button"
         onClick={() => setAberto(true)}
         aria-label={compacto ? "Buscar (Ctrl K)" : undefined}
-        title={compacto ? "Buscar (Ctrl K)" : undefined}
+        title={compacto && !semTitle ? "Buscar (Ctrl K)" : undefined}
         className={`flex h-10 items-center gap-2 rounded-lg border border-sidebar-border bg-card text-sm text-muted-foreground transition-colors hover:border-sidebar-ring hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring ${
           compacto ? "w-10 justify-center" : "w-full pl-3 pr-2"
         }`}

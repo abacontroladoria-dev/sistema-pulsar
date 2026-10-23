@@ -2,8 +2,11 @@ import 'server-only'
 
 import {
   resolverConfiguracaoOpenAI,
+  resolverChaveOpenAI,
   MAX_TOKENS_SAIDA_PADRAO,
   TEMPERATURA_PADRAO,
+  MODELO_TRANSCRICAO,
+  IDIOMA_TRANSCRICAO,
 } from './modelo'
 import {
   LlmRateLimitError,
@@ -19,6 +22,9 @@ import type {
   LlmMensagem,
   LlmChamadaFerramenta,
   LlmMotivoParada,
+  TranscricaoProvider,
+  TranscricaoRequisicao,
+  TranscricaoResposta,
 } from './tipos'
 
 // ============================================================================
@@ -26,8 +32,8 @@ import type {
 //
 // POR QUE fetch E NÃO O SDK `openai`
 //
-// O pacote não está instalado, e a superfície que usamos é UM endpoint:
-// POST /v1/chat/completions. O SDK entregaria streaming (que não usamos — a
+// O pacote não está instalado, e a superfície que usamos são DOIS endpoints:
+// POST /v1/chat/completions e /v1/audio/transcriptions. O SDK entregaria streaming (que não usamos — a
 // resposta vai para uma fila, não para uma tela) e retry automático (que não
 // queremos: `erros.ts` define reações DIFERENTES por classe de falha, e um
 // retry cego apagaria essa distinção — retentar um LlmRecusadoError reproduz o
@@ -171,8 +177,49 @@ function extrairErro(corpo: string): string {
 }
 
 // ----------------------------------------------------------------------------
+// Transcrição: o nome do arquivo é o que decide o formato
+//
+// /audio/transcriptions olha a EXTENSÃO do arquivo enviado, não o Content-Type.
+// O áudio do WhatsApp é ogg/opus e chega como 'audio/ogg; codecs=opus'. AMR
+// (gravador de celular antigo) não está na lista da OpenAI — lança aqui, antes
+// de pagar uma ida que seria recusada.
+// ----------------------------------------------------------------------------
+const EXTENSAO_TRANSCRICAO: Record<string, string> = {
+  'audio/ogg':  'ogg',
+  'audio/opus': 'ogg',
+  'audio/mpeg': 'mp3',
+  'audio/mp3':  'mp3',
+  'audio/mp4':  'm4a',
+  'audio/m4a':  'm4a',
+  'audio/x-m4a': 'm4a',
+  'audio/aac':  'm4a',
+  'audio/wav':  'wav',
+  'audio/x-wav': 'wav',
+  'audio/webm': 'webm',
+  'audio/flac': 'flac',
+  'video/mp4':  'mp4',
+}
 
-export class OpenAIProvider implements LLMProvider {
+// 25 MB é o teto do endpoint. O WhatsApp limita áudio a 16 MB, então isto só
+// pega arquivo que não deveria ter chegado aqui.
+const TETO_TRANSCRICAO_BYTES = 25 * 1024 * 1024
+
+export function nomeArquivoTranscricao(mimeType: string): string {
+  const limpo = mimeType.split(';')[0].trim().toLowerCase()
+  const ext = EXTENSAO_TRANSCRICAO[limpo]
+  if (!ext) {
+    throw new LlmRecusadoError(415, `formato de áudio não suportado para transcrição: ${limpo || 'desconhecido'}`)
+  }
+  return `audio.${ext}`
+}
+
+interface RespostaBrutaTranscricao {
+  text?: string
+}
+
+// ----------------------------------------------------------------------------
+
+export class OpenAIProvider implements LLMProvider, TranscricaoProvider {
   readonly nome = 'openai'
 
   async chat(requisicao: LlmRequisicao): Promise<LlmResposta> {
@@ -199,30 +246,80 @@ export class OpenAIProvider implements LLMProvider {
       temperature: requisicao.temperatura ?? TEMPERATURA_PADRAO,
     }
 
-    const resposta = await this.despachar(corpo, chaveApi)
+    const resposta = await this.despachar('/chat/completions', JSON.stringify(corpo), chaveApi)
     return this.interpretar(resposta, iniciadoEm)
+  }
+
+  // POST /audio/transcriptions. Mesma classificação de erro do chat — 429 de
+  // saldo esgotado aqui também não é throttling.
+  async transcrever(requisicao: TranscricaoRequisicao): Promise<TranscricaoResposta> {
+    const chaveApi = resolverChaveOpenAI()
+    const nome = nomeArquivoTranscricao(requisicao.mimeType)
+
+    if (requisicao.bytes.byteLength === 0) {
+      throw new LlmRecusadoError(400, 'arquivo de áudio vazio')
+    }
+    if (requisicao.bytes.byteLength > TETO_TRANSCRICAO_BYTES) {
+      throw new LlmRecusadoError(413, `áudio de ${Math.round(requisicao.bytes.byteLength / 1_048_576)} MB passa do teto de 25 MB`)
+    }
+
+    const form = new FormData()
+    form.append('file', new Blob([requisicao.bytes], { type: requisicao.mimeType.split(';')[0].trim() }), nome)
+    form.append('model', MODELO_TRANSCRICAO)
+    form.append('language', IDIOMA_TRANSCRICAO)
+    form.append('response_format', 'json')
+
+    const iniciadoEm = Date.now()
+    const resposta = await this.despachar('/audio/transcriptions', form, chaveApi, requisicao.timeoutMs)
+
+    let json: RespostaBrutaTranscricao
+    try {
+      json = (await resposta.json()) as RespostaBrutaTranscricao
+    } catch {
+      throw new LlmProviderError('transcrição 200 com corpo ilegível', resposta.status)
+    }
+    // Sem `text` é contrato quebrado, não áudio mudo: áudio mudo vem com
+    // `text: ""`. Tratar os dois igual gravaria "transcrição vazia" por defeito.
+    if (typeof json.text !== 'string') {
+      throw new LlmProviderError('transcrição sem o campo text', resposta.status)
+    }
+
+    return {
+      texto: json.text.trim(),
+      // /audio/transcriptions não devolve `model`; o pedido é o que vale.
+      modelo: MODELO_TRANSCRICAO,
+      latenciaMs: Date.now() - iniciadoEm,
+    }
   }
 
   // Rede. Separado de `interpretar` porque as duas etapas falham por motivos
   // diferentes e a classificação de cada uma é independente.
-  private async despachar(corpo: unknown, chaveApi: string): Promise<Response> {
+  //
+  // `corpo` string é JSON; FormData é multipart, e aí o Content-Type fica de
+  // fora para o fetch montar o boundary.
+  private async despachar(
+    caminho:   string,
+    corpo:     string | FormData,
+    chaveApi:  string,
+    timeoutMs: number = TIMEOUT_MS,
+  ): Promise<Response> {
     let resposta: Response
     try {
-      resposta = await fetch(`${BASE_URL}/chat/completions`, {
+      resposta = await fetch(`${BASE_URL}${caminho}`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${chaveApi}`,
-          'Content-Type': 'application/json',
+          ...(typeof corpo === 'string' ? { 'Content-Type': 'application/json' } : {}),
         },
-        body: JSON.stringify(corpo),
-        signal: AbortSignal.timeout(TIMEOUT_MS),
+        body: corpo,
+        signal: AbortSignal.timeout(timeoutMs),
         cache: 'no-store',
       })
     } catch (err) {
       // AbortSignal.timeout produz TimeoutError; distinguir importa porque
       // timeout e falha de rede pedem reações diferentes do orquestrador.
       if (err instanceof Error && err.name === 'TimeoutError') {
-        throw new LlmTimeoutError(TIMEOUT_MS)
+        throw new LlmTimeoutError(timeoutMs)
       }
       // status 0 = a requisição não chegou lá. Convenção herdada de
       // elevenlabs.ts, e é uma distinção útil: 0 nunca foi cobrado.
