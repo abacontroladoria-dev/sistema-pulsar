@@ -20,14 +20,22 @@ set lock_timeout = '5s';
 insert into public.cronograma_salas (
   unidade_nome, numero_sala, nome_exibicao, capacidade, status, sala_nome_referencia, observacoes
 )
-values
+select v.unidade_nome, v.numero_sala, v.nome_exibicao, v.capacidade, v.status, v.ref, v.obs
+from (values
   ('AT Externo', 'Escola', 'Escola', 'multiplo', 'adm', 'AT Externo Escola', 'Local virtual para disponibilidade e Grade de AT Externo (não aparece em Ocupação de Salas).'),
   ('AT Externo', 'Casa',   'Casa',   'multiplo', 'adm', 'AT Externo Casa',   'Local virtual para disponibilidade e Grade de AT Externo (não aparece em Ocupação de Salas).')
-on conflict (unidade_nome, numero_sala) do update
-  set nome_exibicao        = excluded.nome_exibicao,
-      capacidade           = excluded.capacidade,
-      status               = excluded.status,
-      sala_nome_referencia = excluded.sala_nome_referencia;
+) as v(unidade_nome, numero_sala, nome_exibicao, capacidade, status, ref, obs)
+where not exists (
+  select 1 from public.cronograma_salas s
+  where s.unidade_nome = v.unidade_nome and s.numero_sala = v.numero_sala
+);
+
+update public.cronograma_salas
+   set nome_exibicao = numero_sala,
+       capacidade = 'multiplo',
+       status = 'adm',
+       sala_nome_referencia = 'AT Externo ' || numero_sala
+ where unidade_nome = 'AT Externo' and numero_sala in ('Escola', 'Casa');
 
 -- ═════════════════════════════════════════════════════════════════════════════
 -- 2) Inativação de quem já saiu (ID TiTa 8647 e prefixo INATIVO no nome)
