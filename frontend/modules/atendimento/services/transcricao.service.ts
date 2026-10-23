@@ -1,4 +1,4 @@
-import type { MessageAttachment } from '../types/central.types'
+import type { Message, MessageAttachment } from '../types/central.types'
 import type { MessageRepository } from '../repositories/message.repository'
 import type { AuditRepository } from '../repositories/audit.repository'
 import type { TranscricaoProvider } from '../llm/tipos'
@@ -25,9 +25,9 @@ import {
 //     áudio antigo, o que falhou, ou o que alguém quer refazer.
 //
 // O ÁUDIO CONTINUA SENDO O REGISTRO. A transcrição fica ao lado, no anexo, e
-// nunca substitui o `body` da mensagem: o placeholder '[áudio de voz]' segue lá,
-// e a Maia continua vendo só ele. Pôr o texto no contexto da Maia é outra
-// decisão — o prompt (§22) manda pedir que escrevam, e precisaria mudar junto.
+// nunca substitui o `body` da mensagem: o placeholder '[áudio de voz]' segue lá.
+// A Maia lê o texto por agente/fala-do-contato.ts, e os workers dela chamam
+// completarTurno antes do turno para o texto existir a tempo.
 //
 // O QUE NÃO VIRA "FALHOU"
 //
@@ -41,6 +41,11 @@ import {
 // Quanto tempo um 'processing' é respeitado antes de outro poder retomá-lo. A
 // chamada tem teto de 60s; 2 minutos cobrem download + transcrição + folga.
 export const LEASE_TRANSCRICAO_MS = 120_000
+
+// Quanto o turno da Maia espera um áudio que OUTRO processo está transcrevendo
+// (o worker ou alguém que clicou). Áudio de WhatsApp volta em 3–5s; passado
+// isso, ela responde com o aviso em vez de deixar a mãe esperando.
+const ESPERA_OUTRO_PROCESSO_MS = 8_000
 
 export type Origem = 'auto' | 'manual'
 
@@ -101,6 +106,67 @@ export class TranscricaoService {
 
     const r = await this.executar(anexo, orgId, 'auto', undefined, timeoutMs)
     return r.ok ? { tipo: 'transcrita', texto: r.texto } : { tipo: 'falhou', motivo: r.motivo }
+  }
+
+  // -------------------------------------------------------------------------
+  // completarTurno — a Maia lê o áudio
+  //
+  // Chamado pelos workers da Maia ANTES do turno, com as mensagens da pessoa
+  // que o turno vai responder. O worker de transcrição quase sempre chegou
+  // antes (ele roda a cada tique, e o turno espera a pessoa parar de
+  // escrever), mas "quase" não serve: sem o texto, a Maia responde a um
+  // '[áudio de voz]' e pede para a mãe escrever o que acabou de falar.
+  //
+  // Por áudio:
+  //   • já tem texto ou terminou sem fala → nada a fazer;
+  //   • outro processo está transcrevendo (lease vivo) → espera um pouco;
+  //   • nunca tentado, ou falhou antes → transcreve aqui, uma tentativa.
+  // Nunca lança: sem texto, a mensagem segue com o aviso e o prompt (§22)
+  // sabe o que fazer. Devolve as mensagens com os anexos atualizados.
+  // -------------------------------------------------------------------------
+  async completarTurno<T extends Message>(mensagens: T[], orgId: string, timeoutMs?: number): Promise<T[]> {
+    const saida: T[] = []
+    for (const m of mensagens) {
+      if (m.direction !== 'inbound' || m.message_type !== 'audio') { saida.push(m); continue }
+      try {
+        // receive() devolve a mensagem recém-criada sem os anexos.
+        const anexos = m.attachments?.length
+          ? m.attachments
+          : (await this.msg.findById(m.id))?.attachments ?? []
+        const prontos: MessageAttachment[] = []
+        for (const a of anexos) prontos.push(ehAudio(a) ? await this.garantir(a, orgId, timeoutMs) : a)
+        saida.push({ ...m, attachments: prontos })
+      } catch (err) {
+        console.warn('[transcricao] áudio do turno sem texto; segue com o aviso', {
+          messageId: m.id, motivo: err instanceof Error ? err.message : String(err),
+        })
+        saida.push(m)
+      }
+    }
+    return saida
+  }
+
+  private async garantir(anexo: MessageAttachment, orgId: string, timeoutMs?: number): Promise<MessageAttachment> {
+    if (anexo.transcricao?.trim() || anexo.transcricao_status === 'completed') return anexo
+
+    const iniciada = anexo.transcricao_iniciada_em ? Date.parse(anexo.transcricao_iniciada_em) : 0
+    if (anexo.transcricao_status === 'processing' && Date.now() - iniciada < LEASE_TRANSCRICAO_MS) {
+      const limite = Date.now() + ESPERA_OUTRO_PROCESSO_MS
+      while (Date.now() < limite) {
+        await new Promise(r => setTimeout(r, 1_000))
+        const atual = await this.msg.buscarAnexo(anexo.id)
+        if (!atual || atual.transcricao_status !== 'processing') return atual ?? anexo
+      }
+      return anexo
+    }
+
+    try {
+      await this.transcreverAutomatico(anexo, orgId, timeoutMs)
+    } catch {
+      // Rate limit, saldo, chave: o áudio já foi devolvido à fila; o turno
+      // segue sem o texto.
+    }
+    return (await this.msg.buscarAnexo(anexo.id)) ?? anexo
   }
 
   // Falha do áudio vira desfecho; falha da organização é relançada depois de

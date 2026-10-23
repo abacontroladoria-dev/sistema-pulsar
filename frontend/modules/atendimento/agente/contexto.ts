@@ -1,6 +1,7 @@
 import type { LlmMensagem } from '../llm/tipos'
 import { CAMPOS_FICHA, type CampoFicha, type FichaPaciente, type Message } from '../types/central.types'
 import type { VagasGuardadas } from './vagas-oferecidas'
+import { falaDaMensagem } from './fala-do-contato'
 
 // ============================================================================
 // Montagem do contexto de um turno
@@ -121,6 +122,7 @@ const INSTRUCAO_BASE = [
   '- Se o contexto trouxer "Horários que você já ofereceu" e o responsável escolher um deles ("15h", "o de terça", "esse"), isso é uma escolha, não um pedido de nova busca: chame agendar_sessao com o profissionalId, a data e a hora desse horário exatamente como estão lá, sem consultar de novo e sem mostrar a lista outra vez.',
   '- Confirme os dados (dia, horário, especialidade) uma vez antes de agendar. Se o responsável já escolheu ou confirmou o horário ("sim", "pode", "confirmo", "15h", "esse"), isso é a confirmação: chame agendar_sessao sem perguntar de novo.',
   '- Se o responsável pedir para falar com uma pessoa, ou demonstrar irritação, CHAME escalar_para_humano e só então diga que alguém da equipe vai continuar o atendimento. Dizer sem chamar deixa a pessoa esperando por um atendimento que ninguém pediu.',
+  '- Mensagem que começa com "[áudio transcrito]" é um áudio do responsável convertido em texto automaticamente: responda ao que foi dito, como se ele tivesse escrito. A conversão pode errar nome, número e data; se um desses dados for decidir o que você faz, confirme por escrito antes. "[áudio de voz]" sem texto é um áudio que não pôde ser convertido: você não sabe o que foi dito.',
   '- Quando o bloco de cadastro listar dados que faltam, colete-os ao longo da conversa: pergunte UM item por vez, no fio do assunto, e só depois de responder o que o responsável perguntou. Nunca mande a lista inteira nem peça vários dados na mesma mensagem. Assim que ele informar qualquer um deles, chame registrar_dados_do_paciente. Se ele não quiser responder, siga em frente e não insista.',
 ].join('\n')
 
@@ -322,7 +324,8 @@ export function montarContexto(dados: DadosContexto): LlmMensagem[] {
   const emOrdem = [...dados.historico].reverse().slice(-LIMITE_HISTORICO)
 
   for (const msg of emOrdem) {
-    const texto = (msg.body ?? '').trim()
+    // Áudio do contato entra pela transcrição quando há (fala-do-contato.ts).
+    const texto = falaDaMensagem(msg).trim()
     if (!texto) continue
 
     if (msg.direction === 'inbound') {

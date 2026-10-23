@@ -129,5 +129,25 @@ console.log('\nplantão fora do horário (22/10)')
   ok(!/FORA DO HORÁRIO/.test(system()), 'sem plantão, nada muda')
 }
 
+console.log('\n9. áudio do contato chega à Maia pela transcrição')
+
+{
+  const audio = (transcricao: string | null, status: 'completed' | 'failed' | null) => ({
+    direction: 'inbound', body: '[áudio de voz]', message_type: 'audio',
+    attachments: [{ transcricao, transcricao_status: status }],
+  }) as unknown as Message
+
+  const ms = montarContexto({ ...BASE, historico: [
+    audio('Quero remarcar a sessão do Pedro.', 'completed'),
+    audio(null, 'failed'),
+    msg('outbound', '[áudio de voz]'),
+  ] })
+  const users = ms.filter((m) => m.papel === 'user').map((m) => m.conteudo)
+  ok(users.includes('[áudio de voz]'), 'áudio que falhou segue como aviso', users)
+  ok(users.includes('[áudio transcrito] Quero remarcar a sessão do Pedro.'), 'áudio transcrito vai marcado, no papel user', users)
+  ok(ms.some((m) => m.papel === 'assistant' && m.conteudo === '[áudio de voz]'), 'o que a clínica mandou não usa transcrição')
+  ok(/\[áudio transcrito\]/.test(system()), 'a regra base explica a marca')
+}
+
 console.log(falhas === 0 ? '\nTodos os testes passaram.' : `\n${falhas} teste(s) FALHARAM.`)
 process.exit(falhas === 0 ? 0 : 1)
