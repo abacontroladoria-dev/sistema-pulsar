@@ -24,6 +24,7 @@ export interface FavorecidoSituacao {
   nome: string
   situacao: SituacaoFavorecido
   planoSaude: string
+  numeroCarteirinha: string
   unidadeNome: string
 }
 
@@ -133,6 +134,9 @@ export async function buscarSituacaoFavorecidos(): Promise<ResultadoSituacao> {
   const idxSit = acharColuna(headers, ["situacao", "situacao favorecido", "status"])
   const idxPlano = acharColuna(headers, ["plano saude", "plano de saude", "plano", "convenio"])
   const idxUnid = acharColuna(headers, ["nome unidade", "unidade nome", "unidade"])
+  // "Número da Carteirinha"; sem o candidato solto "carteirinha", que também
+  // casaria "Validade da Carteirinha".
+  const idxCart = acharColuna(headers, ["numero da carteirinha", "numero carteirinha"])
 
   if (idxNome < 0 || idxSit < 0) {
     console.error(
@@ -162,6 +166,7 @@ export async function buscarSituacaoFavorecidos(): Promise<ResultadoSituacao> {
       nome,
       situacao,
       planoSaude: idxPlano >= 0 ? (v[idxPlano] ?? "").trim() : "",
+      numeroCarteirinha: idxCart >= 0 ? (v[idxCart] ?? "").trim() : "",
       unidadeNome: idxUnid >= 0 ? (v[idxUnid] ?? "").trim() : "",
     })
   }

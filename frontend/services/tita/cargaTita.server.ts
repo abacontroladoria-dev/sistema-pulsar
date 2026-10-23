@@ -55,6 +55,7 @@ export async function gravarCopiaCadastroTita(sb: SupabaseClient): Promise<
       situacao: f.situacao,
       plano_saude: mapa.porPacienteId.get(f.id) ?? null,
       plano_em_conflito: mapa.conflitos.has(f.id),
+      numero_carteirinha: f.numeroCarteirinha || null,
       unidade_nome: f.unidadeNome || null,
       sincronizado_em: agora,
     })
@@ -67,7 +68,7 @@ export async function gravarCopiaCadastroTita(sb: SupabaseClient): Promise<
       return {
         ok: false,
         migrationPendente: pendente,
-        mensagem: pendente ? "Falta aplicar a migration 20261016140000." : `Não foi possível gravar a cópia do cadastro do TiTa: ${error.message}`,
+        mensagem: pendente ? "Falta aplicar a migration 20261023160000 (e as anteriores do cadastro do TiTa)." : `Não foi possível gravar a cópia do cadastro do TiTa: ${error.message}`,
       }
     }
   }
