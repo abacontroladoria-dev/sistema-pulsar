@@ -5,7 +5,7 @@
 
 import { pm, cleanTxt } from "./helpers"
 import { normalizarUnidadeOcupacao } from "./ocupacaoProf"
-import { PROCESSO_DIAGNOSTICO_IDS, PROCESSO_DIAGNOSTICO_NAMES } from "./constants"
+import { PROCEDIMENTO_DIAGNOSTICO_POR_ID, PROCESSO_DIAGNOSTICO_IDS, PROCESSO_DIAGNOSTICO_NAMES } from "./constants"
 import { isFakePatient } from "../remuneracao/pacientes"
 import { dowDeDiaSemana } from "./salas"
 import { DOW_PT } from "./ocupacaoConst"
@@ -37,6 +37,8 @@ interface AgendamentoNormalizado {
   convenioFonte: FonteConvenio
   convenioAgenda: string
   terapia: string
+  /** Nome da terapia como a agenda chama — chave das linhas "Por procedimento". */
+  procedimento: string
   unidade: string
   ch: number
   data: string
@@ -65,6 +67,20 @@ export function isTerapiaDiagnostico(r: AgendaSalaRow): boolean {
   const acao = cleanTxt(r.terapia_nome)
   if (acao) return PROCESSO_DIAGNOSTICO_NAMES.has(acao)
   return PROCESSO_DIAGNOSTICO_NAMES.has(cleanTxt(r.terapia_exibicao_nome))
+}
+
+/** Campo pelo qual as tabelas do dashboard agrupam (e a gaveta "Ver pacientes" filtra). */
+export type CampoGrupoPacientes = "convenio" | "unidade" | "procedimento"
+
+/**
+ * Nome de agenda da terapia: pelo id quando é um procedimento do Processo
+ * Diagnóstico (o nome de exibição pode ter sido renomeado no TiTa), senão o
+ * nome da ação, caindo no de exibição.
+ */
+function procedimentoDaLinha(r: AgendaSalaRow): string {
+  const id = r.terapia_id ?? r.terapia_exibicao_id
+  const porId = id !== null && id !== undefined ? PROCEDIMENTO_DIAGNOSTICO_POR_ID.get(id) : undefined
+  return porId ?? (cleanTxt(r.terapia_nome) || cleanTxt(r.terapia_exibicao_nome))
 }
 
 /**
@@ -104,7 +120,7 @@ export function semanasNoPeriodo(datas: string[]): number {
 
 function resumoGrupo(
   agendamentos: AgendamentoNormalizado[],
-  campo: "convenio" | "unidade",
+  campo: CampoGrupoPacientes,
   semanas: number,
 ): ResumoPacientesGrupo[] {
   const grupos = new Map<string, { pacientes: Set<string>; sessoes: number; ch: number }>()
@@ -164,6 +180,7 @@ function normalizarLinha(r: AgendaSalaRow, mapa: MapaConvenioCadastro | null | u
     convenioFonte: conv.fonte,
     convenioAgenda: conv.convenioAgenda,
     terapia: cleanTxt(r.terapia_exibicao_nome) || cleanTxt(r.terapia_nome),
+    procedimento: procedimentoDaLinha(r),
     // `unidade_nome` em csv_grades_profissionais é sempre o nome da clínica
     // ("CLÍNICA UNIVERSO ABA"), não a unidade física — a unidade real só
     // existe dentro do texto livre de `sala_nome` (ex.: "Unid. Realengo -
@@ -202,6 +219,7 @@ function montarResumo(agendamentos: AgendamentoNormalizado[], periodo: PeriodoPa
     mediaSessoesPorPaciente: pacientesUnicos ? agendamentos.length / pacientesUnicos : 0,
     porConvenio: resumoGrupo(agendamentos, "convenio", semanas),
     porUnidade: resumoGrupo(agendamentos, "unidade", semanas),
+    porProcedimento: resumoGrupo(agendamentos, "procedimento", semanas),
     porDia: resumoPorDia(agendamentos, semanas),
     fonteConvenio: { cadastro: pacientesConvenioCadastro, agenda: pacientesUnicos - pacientesConvenioCadastro },
   }
@@ -227,10 +245,21 @@ function montarResumo(agendamentos: AgendamentoNormalizado[], periodo: PeriodoPa
  */
 export function calcularDashboardPacientes(rows: AgendaSalaRow[], mapa?: MapaConvenioCadastro | null, periodo?: PeriodoPacientes): DashboardPacientesGeral {
   const { multidisciplinar, processoDiagnostico } = normalizarPorSegmento(rows, mapa)
+  const diagnostico = montarResumo(processoDiagnostico, periodo)
   return {
     multidisciplinar: montarResumo(multidisciplinar, periodo),
-    processoDiagnostico: montarResumo(processoDiagnostico, periodo),
+    processoDiagnostico: { ...diagnostico, porProcedimento: comTodosProcedimentos(diagnostico.porProcedimento) },
   }
+}
+
+/** Os três procedimentos sempre aparecem (zerados quando não há sessão); um nome fora da lista, se vier, entra no fim. */
+function comTodosProcedimentos(linhas: ResumoPacientesGrupo[]): ResumoPacientesGrupo[] {
+  const porChave = new Map(linhas.map(l => [l.chave, l]))
+  const fixos = [...PROCEDIMENTO_DIAGNOSTICO_POR_ID.values()].map(chave => porChave.get(chave) ?? {
+    chave, pacientesUnicos: 0, sessoesTotal: 0, chSemanalTotal: 0, chMediaMensalTotal: 0, mediaSessoesPorPaciente: 0,
+  })
+  const conhecidos = new Set(fixos.map(l => l.chave))
+  return [...fixos, ...linhas.filter(l => !conhecidos.has(l.chave))]
 }
 
 function normalizarPorSegmento(rows: AgendaSalaRow[], mapa: MapaConvenioCadastro | null | undefined) {
@@ -244,7 +273,8 @@ function normalizarPorSegmento(rows: AgendaSalaRow[], mapa: MapaConvenioCadastro
 export type SegmentoPacientes = keyof DashboardPacientesGeral
 
 /**
- * Pacientes de UMA linha das tabelas "convênio" / "Por unidade" (o clique em
+ * Pacientes de UMA linha das tabelas "convênio" / "Por unidade" / "Por
+ * procedimento" (o clique em
  * "Ver pacientes"). Mesmo pipeline e mesma chave de `calcularDashboardPacientes`
  * — filtro, segmento por sessão, `pacienteKey` por nome normalizado — para a
  * lista ter exatamente o número da coluna "Pacientes" daquela linha. CH semanal
@@ -254,7 +284,7 @@ export function listarPacientesDoGrupo(
   rows: AgendaSalaRow[],
   mapa: MapaConvenioCadastro | null | undefined,
   segmento: SegmentoPacientes,
-  campo: "convenio" | "unidade",
+  campo: CampoGrupoPacientes,
   chave: string,
   periodo?: PeriodoPacientes,
 ): PacienteDoGrupo[] {

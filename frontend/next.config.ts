@@ -105,6 +105,20 @@ const nextConfig: NextConfig = {
   // programa, então nada de lá é compilado. Sob Turbopack o hook não roda em dev
   // de todo modo.
 
+  // Telas que viraram aba de outra. Roda antes do proxy: o favorito antigo cai na
+  // aba nova, e o proxy decide a permissão dela como de qualquer outra.
+  async redirects() {
+    return [
+      {
+        // "Remuneração Individual" virou a aba "Contestação do prestador" do
+        // Faturamento de Prestadores Mensal em 22/10/2026.
+        source: '/relacionamento-prestador/individual',
+        destination: '/relacionamento-prestador/rp/?tab=contestacao',
+        permanent: false,
+      },
+    ];
+  },
+
   async headers() {
     return [
       {

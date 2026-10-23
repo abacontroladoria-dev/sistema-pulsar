@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { usePermissoesUsuario } from "@/contexts/PermissoesUsuarioContext"
 import { areaDaRota } from "@/lib/permissions/areas"
-import { MENU_AREAS, MENU_ITENS, type AreaId, type MenuAreaDef } from "@/lib/permissions/menu"
+import { MENU_AREAS, MENU_ITENS, itemNoMenu, type AreaId, type MenuAreaDef } from "@/lib/permissions/menu"
 
 // Última área escolhida, por navegador. Só conveniência: sem storage (aba
 // anônima, bloqueado) o menu abre em Operacional ou na área da tela aberta.
@@ -32,7 +32,7 @@ export function guardarArea(area: AreaId) {
 export function useAreasVisiveis(): MenuAreaDef[] {
   const { canAccess } = usePermissoesUsuario()
   return useMemo(
-    () => MENU_AREAS.filter((a) => MENU_ITENS.some((i) => i.area === a.id && canAccess(i.path))),
+    () => MENU_AREAS.filter((a) => MENU_ITENS.some((i) => i.area === a.id && itemNoMenu(i) && canAccess(i.path))),
     [canAccess]
   )
 }

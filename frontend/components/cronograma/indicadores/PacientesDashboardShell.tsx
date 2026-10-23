@@ -39,7 +39,7 @@ import { useConvenioCadastroPacientes } from "@/hooks/useConvenioCadastroPacient
 import {
   HISTORICO_INICIO, fmtDataBR, historicoFim, mesCorrente, mesVizinho, resolverPeriodo, rotuloMes, type PeriodoResolvido,
 } from "@/lib/cronograma/periodoPacientes"
-import { calcularDashboardPacientes, listarPacientesDoGrupo, type SegmentoPacientes } from "@/lib/cronograma/pacientesDashboard"
+import { calcularDashboardPacientes, listarPacientesDoGrupo, type CampoGrupoPacientes, type SegmentoPacientes } from "@/lib/cronograma/pacientesDashboard"
 import { exportarDashboardPacientesXlsx } from "@/lib/cronograma/exportPacientesDashboard"
 import { PacientesGrupoDrawer, type GrupoSelecionado } from "@/components/cronograma/indicadores/PacientesGrupoDrawer"
 import { AvisoConvenioCadastro } from "@/components/cronograma/indicadores/AvisoConvenioCadastro"
@@ -47,7 +47,7 @@ import type { ResumoPacientesGrupo, ResumoPacientesSalas, ResumoPacientesDia } f
 import { ChaveDupla } from "@/components/cronograma/ui/ChaveDupla"
 import { EvolucaoMensalChart } from "@/components/cronograma/indicadores/evolucao/EvolucaoMensalChart"
 import { usePacientesHistorico } from "@/hooks/useEvolucaoIndicadores"
-import { METRICAS_PACIENTES, SERIES_PACIENTES, montarPontosPacientes } from "@/lib/cronograma/evolucaoPontos"
+import { METRICAS_PACIENTES, montarPontosPacientes, seriesPacientes } from "@/lib/cronograma/evolucaoPontos"
 import type { SegmentoEvolucao } from "@/lib/cronograma/evolucaoIndicadores"
 
 function fmtPct(valor: number, total: number): string {
@@ -178,11 +178,14 @@ function BarrasPorDia({
 // `tituloConvenio` é o nome do dashboard (ex.: "Tratamento Multidisciplinar",
 // "Processo Diagnóstico") — vai DIRETO no título da tabela por convênio, sem
 // header separado por cima. "Por unidade" continua com o mesmo nome nos dois.
+// `procedimentos` liga a tabela "Por procedimento" (só no Processo
+// Diagnóstico: Avaliação Neuropsicológica, Psiquiatra/Neurologista, Triagem).
 function DashboardBloco({
   tituloConvenio,
   d,
   longo,
   cadastroDisponivel,
+  procedimentos = false,
   onAbrir,
 }: {
   tituloConvenio: string
@@ -190,7 +193,8 @@ function DashboardBloco({
   /** Período maior que uma semana — ver cabeçalho do arquivo. */
   longo: boolean
   cadastroDisponivel: boolean
-  onAbrir: (campo: "convenio" | "unidade", chave: string) => void
+  procedimentos?: boolean
+  onAbrir: (campo: CampoGrupoPacientes, chave: string) => void
 }) {
   return (
     <div className="flex flex-col gap-3">
@@ -230,6 +234,9 @@ function DashboardBloco({
           )}
         </div>
         <TabelaGrupo titulo="Por unidade" linhas={d.porUnidade} totalPacientes={d.pacientesUnicos} totalChSemanal={d.chSemanalTotal} longo={longo} onAbrir={chave => onAbrir("unidade", chave)} />
+        {procedimentos && (
+          <TabelaGrupo titulo="Por procedimento" linhas={d.porProcedimento} totalPacientes={d.pacientesUnicos} totalChSemanal={d.chSemanalTotal} longo={longo} onAbrir={chave => onAbrir("procedimento", chave)} />
+        )}
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -381,6 +388,7 @@ export function PacientesDashboardShell() {
     () => (historico.linhas ? montarPontosPacientes(historico.linhas, segmentoEvolucao) : []),
     [historico.linhas, segmentoEvolucao],
   )
+  const seriesEvolucao = useMemo(() => seriesPacientes(segmentoEvolucao), [segmentoEvolucao])
   const mesEvolucao = useMemo(() => {
     const [ano, mes] = (periodo.mes ?? periodo.inicio).split("-").map(Number)
     return { ano, mes }
@@ -467,7 +475,7 @@ export function PacientesDashboardShell() {
   const { multidisciplinar, processoDiagnostico } = dashboardPacientes
 
   const cadastroDisponivel = !!cadastro.mapa
-  const abrir = (segmento: SegmentoPacientes) => (campo: "convenio" | "unidade", chave: string) =>
+  const abrir = (segmento: SegmentoPacientes) => (campo: CampoGrupoPacientes, chave: string) =>
     setGrupoAberto({
       segmento,
       segmentoLabel: SEGMENTO_LABEL[segmento],
@@ -487,9 +495,9 @@ export function PacientesDashboardShell() {
       {pontosEvolucao.length >= 2 && (
         <EvolucaoMensalChart
           titulo="Evolução"
-          info={<p>Um ponto por mês, com o mês inteiro (faltas e cancelamentos contam, como no &quot;Mês completo&quot;). Total = pacientes únicos: quem vai a duas unidades conta uma vez. O mês corrente e o seguinte ainda mudam (agenda planejada) — passe o mouse no ponto para ver. Clique num ponto para abrir o mês completo.</p>}
+          info={<p>Um ponto por mês, com o mês inteiro (faltas e cancelamentos contam, como no &quot;Mês completo&quot;). Total = pacientes únicos: quem vai a duas unidades conta uma vez. No Processo Diagnóstico há também uma linha por procedimento (Avaliação Neuropsicológica, Psiquiatra/Neurologista, Triagem); quem fez dois procedimentos aparece nos dois, mas conta uma vez no Total. O mês corrente e o seguinte ainda mudam (agenda planejada) — passe o mouse no ponto para ver. Clique num ponto para abrir o mês completo.</p>}
           pontos={pontosEvolucao}
-          series={SERIES_PACIENTES}
+          series={seriesEvolucao}
           metricas={METRICAS_PACIENTES}
           metricaInicial="pacientes"
           mesSelecionado={mesEvolucao}
@@ -507,7 +515,7 @@ export function PacientesDashboardShell() {
       )}
       <DashboardBloco tituloConvenio={SEGMENTO_LABEL.multidisciplinar} d={multidisciplinar} longo={longo} cadastroDisponivel={cadastroDisponivel} onAbrir={abrir("multidisciplinar")} />
       <div className="border-t border-border" />
-      <DashboardBloco tituloConvenio={SEGMENTO_LABEL.processoDiagnostico} d={processoDiagnostico} longo={longo} cadastroDisponivel={cadastroDisponivel} onAbrir={abrir("processoDiagnostico")} />
+      <DashboardBloco tituloConvenio={SEGMENTO_LABEL.processoDiagnostico} d={processoDiagnostico} longo={longo} cadastroDisponivel={cadastroDisponivel} procedimentos onAbrir={abrir("processoDiagnostico")} />
       {grupoVisivel && (
         <PacientesGrupoDrawer grupo={grupoVisivel} pacientes={pacientesDoGrupo} onClose={() => setGrupoAberto(null)} />
       )}

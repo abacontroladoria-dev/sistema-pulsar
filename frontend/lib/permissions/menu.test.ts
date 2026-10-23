@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MENU_AREAS, MENU_GRUPOS_EM_MODAL, MENU_ITENS, MENU_ORDEM_GRUPOS } from './menu'
+import { MENU_AREAS, MENU_GRUPOS_EM_MODAL, MENU_ITENS, MENU_ORDEM_GRUPOS, MENU_POR_CODIGO, itemNoMenu } from './menu'
 import { areaDaRota } from './areas'
 import { CODIGO_PARA_ROTAS, hasRouteAccess } from './routes'
 
@@ -63,7 +63,7 @@ describe('áreas do seletor', () => {
   })
 
   it('Financeiro, Relatórios e Connect têm as telas decididas em 22/10/2026', () => {
-    const da = (area: string) => MENU_ITENS.filter((i) => i.area === area).map((i) => i.codigo)
+    const da = (area: string) => MENU_ITENS.filter((i) => i.area === area && itemNoMenu(i)).map((i) => i.codigo)
     expect(da('financeiro')).toEqual(['insumos'])
     expect(da('connect')).toEqual(['connect'])
     expect(da('relatorios')).toEqual([
@@ -83,9 +83,17 @@ describe('áreas do seletor', () => {
       'indicadores_entrada_convenio',
       'relacionamento_prestador_analise',
       'relacionamento_prestador_rp',
-      'relacionamento_prestador_individual',
       'relacionamento_prestador_pep_historico',
     ])
+  })
+
+  it('a emissão por contestação é aba do Faturamento mensal: fora do menu, dentro do catálogo', () => {
+    const emissao = MENU_POR_CODIGO.relacionamento_prestador_individual
+    expect(emissao.foraDoMenu).toBe(true)
+    expect(emissao.path).toBe('/relacionamento-prestador/rp?tab=contestacao')
+    expect(MENU_POR_CODIGO.relacionamento_prestador_rp.label).toBe('Faturamento de Prestadores Mensal')
+    expect(MENU_ITENS.filter((i) => !itemNoMenu(i)).map((i) => i.codigo)).toEqual(['relacionamento_prestador_individual'])
+    expect(areaDaRota('/relacionamento-prestador/rp', '?tab=contestacao')).toBe('relatorios')
   })
 
   it('a rota aberta diz a área', () => {

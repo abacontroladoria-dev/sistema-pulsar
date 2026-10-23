@@ -7,9 +7,10 @@
 
 import { describe, expect, it } from "vitest"
 import {
-  UNIDADE_REDE, UNIDADE_TOTAL, diasUteisDaCompetencia, fechamentosForaDoMes, ocupacaoDaCompetencia,
+  PREFIXO_PROCEDIMENTO, UNIDADE_REDE, UNIDADE_TOTAL, diasUteisDaCompetencia, fechamentosForaDoMes, ocupacaoDaCompetencia,
   pacientesDaCompetencia, semanasDaCompetencia,
 } from "./evolucaoIndicadores"
+import { seriesPacientes } from "./evolucaoPontos"
 import { calcularOcupacaoClinica } from "./ocupacaoClinica"
 import { calcularOcupacaoDaSala } from "./salas"
 import type { AgendaSalaRow, AlocacaoSala, Sala } from "./salasTypes"
@@ -133,5 +134,40 @@ describe("pacientes do mês", () => {
     const r = pacientesDaCompetencia(rows, "2026-11")
     expect(r.find(x => x.segmento === "multidisciplinar" && x.unidade === UNIDADE_TOTAL)!.sessoes).toBe(0)
     expect(r.find(x => x.segmento === "diagnostico" && x.unidade === UNIDADE_TOTAL)!.sessoes).toBe(1)
+  })
+
+  it("Processo Diagnóstico grava uma linha por procedimento (as três, sempre); multidisciplinar não", () => {
+    const rows = [
+      linha({ paciente_id: 1, paciente_nome: "Gabi", terapia_id: 2268, terapia_nome: "Avaliação Neuropsicológica", data: "2026-11-03" }),
+      linha({ paciente_id: 1, paciente_nome: "Gabi", terapia_id: 2270, terapia_nome: "Triagem", data: "2026-11-04" }),
+      linha({ paciente_id: 2, paciente_nome: "Hugo", terapia_id: 2270, terapia_nome: "Triagem", data: "2026-11-05" }),
+    ]
+    const r = pacientesDaCompetencia(rows, "2026-11")
+    const proc = r.filter(x => x.unidade.startsWith(PREFIXO_PROCEDIMENTO))
+    expect(proc.every(x => x.segmento === "diagnostico")).toBe(true)
+    expect(Object.fromEntries(proc.map(x => [x.unidade, x.pacientes]))).toEqual({
+      "proc:Avaliação Neuropsicológica": 1,
+      "proc:Psiquiatra/Neurologista": 0,
+      "proc:Triagem": 2,
+    })
+    // Gabi fez dois procedimentos: aparece nos dois, uma vez só no total.
+    expect(r.find(x => x.segmento === "diagnostico" && x.unidade === UNIDADE_TOTAL)!.pacientes).toBe(2)
+  })
+})
+
+describe("séries do gráfico de Pacientes", () => {
+  it("só o Processo Diagnóstico ganha as linhas de procedimento, antes do Total", () => {
+    expect(seriesPacientes("multidisciplinar").map(s => s.key)).toEqual(["Fazendinha", "Padre Miguel", "Realengo", UNIDADE_TOTAL])
+    expect(seriesPacientes("diagnostico").map(s => s.label)).toEqual([
+      "Fazendinha", "Padre Miguel", "Realengo", "Avaliação Neuropsicológica", "Psiquiatra/Neurologista", "Triagem", "Total",
+    ])
+  })
+})
+
+describe("legenda do gráfico de Pacientes em linhas", () => {
+  it("UNIDADE, PROCEDIMENTO e TOTAL em linhas próprias", () => {
+    const grupos = seriesPacientes("diagnostico").map(s => s.grupo)
+    expect(grupos).toEqual(["Unidade", "Unidade", "Unidade", "Procedimento", "Procedimento", "Procedimento", "Total"])
+    expect(seriesPacientes("multidisciplinar").map(s => s.grupo)).toEqual(["Unidade", "Unidade", "Unidade", "Total"])
   })
 })

@@ -1,44 +1,45 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { UserRound, XCircle, ChevronDown, Search } from "lucide-react"
-import { useHeader } from "@/contexts/HeaderContext"
+import { UserRound, XCircle, ChevronDown, Search, AlertTriangle, FileWarning } from "lucide-react"
 import { useRemuneracaoRPContext } from "@/contexts/RemuneracaoRPContext"
 import { useParametrosGerais } from "@/hooks/useParametrosGerais"
 import { useTaxasEspecialidade } from "@/hooks/useTaxasEspecialidade"
 import { usePepApuracaoResumo } from "@/hooks/usePepApuracaoResumo"
-import { useProfissionaisReboot } from "@/hooks/useProfissionaisReboot"
+import { useConfirmacao } from "@/components/ui/pastel/confirmacao"
 import { exportResumoSessoesPdf } from "@/lib/remuneracao/exportResumoSessoesPdf"
 import { gerarPDF, gerarWord, montarInfoDocumentoPrestador, type PdfOpts } from "@/lib/remuneracao/documento"
 import { montarDemonstrativo, pepDasLinhas } from "@/lib/remuneracao/demonstrativo"
-import { resumoGeralIndividual } from "@/lib/remuneracao/visaoGeralIndividual"
-import { calcularTotalPorEspecialidade } from "@/lib/remuneracao/dashboardRP"
-import { normKey } from "@/lib/remuneracao/constants"
 import { parseDateBR, competenciaDeLinhas } from "@/lib/remuneracao/datas"
 import { getApuracaoMes } from "@/services/pepApuracao.service"
 import type { PepApuracaoMensal } from "@/types/pep"
-import { RemuneracaoGradeBadge, labelMes } from "./RemuneracaoGradeBadge"
+import { labelMes } from "./RemuneracaoGradeBadge"
 import { EstadoGradeVazia } from "./EstadoGradeVazia"
 import { RemuneracaoRPSkeleton } from "./RemuneracaoRPSkeleton"
 import { ModalRemuneracaoRP } from "./ModalRemuneracaoRP"
-import { VisaoGeralIndividual } from "./individual/VisaoGeralIndividual"
 import { PainelProfissional } from "./individual/PainelProfissional"
 
-// ─── Componente principal ─────────────────────────────────────────────────────
+// ─── Aba "Contestação do prestador" do Faturamento de Prestadores Mensal ─────
 //
-// Sem ninguém escolhido, a aba mostra a visão geral do mês SEM NOMES
-// (VisaoGeralIndividual). Escolhido um nome, mostra o demonstrativo dele na
-// tela antes de exportar (PainelProfissional) — a mesma conta que o PDF/Word
-// imprime, de lib/remuneracao/demonstrativo.ts.
+// Era a tela /relacionamento-prestador/individual (até 22/10/2026). O documento
+// do prestador (PDF/Word da apuração e o PDF das sessões) NÃO é enviado de
+// rotina: só sai quando o prestador contesta o valor do mês. Por isso a faixa
+// fixa no topo e a confirmação antes de cada emissão. Quem vê a aba é decidido
+// pelo código relacionamento_prestador_individual (lib/permissions/routes.ts).
+//
+// Escolhido um nome, mostra o demonstrativo dele na tela antes de emitir
+// (PainelProfissional) — a mesma conta que o PDF/Word imprime, de
+// lib/remuneracao/demonstrativo.ts. Sem ninguém escolhido, só o seletor: a
+// visão do mês inteiro é a aba Faturamento.
 
-export function RemunIndividualTab() {
+export function EmissaoContestacaoTab() {
   const {
     resultado, evoRows, loading, error,
     cadastroPrestadores, controlesGrade,
   } = useRemuneracaoRPContext()
   const { parametros } = useParametrosGerais()
   const { taxas_pa } = useTaxasEspecialidade()
-  const { setHeader, setRightContent } = useHeader()
+  const { confirmar, dialogo } = useConfirmacao()
 
   const [profSelecionado, setProfSelecionado] = useState<string>("")
   const [selectOpen, setSelectOpen]         = useState(false)
@@ -46,15 +47,6 @@ export function RemunIndividualTab() {
   const [highlightIdx, setHighlightIdx]     = useState(0)
   const [sessoesAbertas, setSessoesAbertas] = useState(false)
   const selectRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    setHeader("Remuneração Individual", "Relacionamento Prestador")
-    setRightContent(<RemuneracaoGradeBadge c={controlesGrade} />)
-    return () => {
-      setHeader("", "")
-      setRightContent(null)
-    }
-  }, [setHeader, setRightContent, controlesGrade])
 
   // Limpa a seleção quando o resultado muda (novo CSV carregado)
   useEffect(() => {
@@ -137,32 +129,9 @@ export function RemunIndividualTab() {
     pepApuracao,
   }
 
-  // Visão geral: PEP de todos os prestadores da competência (uma consulta só) e
-  // a especialidade geral cadastrada — as mesmas entradas do dashboard do /rp,
-  // para os valores por especialidade baterem com os de lá.
-  const { resumo: pepResumo, loading: pepResumoCarregando } = usePepApuracaoResumo(competencia)
-  const { profissionais: profissionaisReboot } = useProfissionaisReboot()
-  const especialidadeGeralPorProf = useMemo(() => {
-    const mapa = new Map<string, string>()
-    profissionaisReboot.forEach(p => {
-      if (p.especialidade?.trim()) mapa.set(normKey(p.nome), p.especialidade.trim())
-    })
-    return mapa
-  }, [profissionaisReboot])
-
-  const resumoGeral = useMemo(() => {
-    if (!resultado || resultado.length === 0) return null
-    const { porEspecialidade } = calcularTotalPorEspecialidade(resultado, pepResumo, cadastroPrestadores, especialidadeGeralPorProf)
-    return resumoGeralIndividual(resultado, {
-      demonstrativoDe: p => {
-        const pep = pepResumo.get(p.prof)
-        // O resumo não traz a contagem de pacientes — só o total entra na conta.
-        return montarDemonstrativo(p, { ccPA, etaBonus, taxasPA, pep: pep ? { total: pep.alcancado, pacientes: 0 } : null })
-      },
-      infoDe: p => montarInfoDocumentoPrestador(p, cadastroPrestadores),
-      porEspecialidade,
-    })
-  }, [resultado, pepResumo, cadastroPrestadores, especialidadeGeralPorProf, ccPA, etaBonus, taxasPA])
+  // PEP de todos os prestadores da competência — só para o "Ver sessões"
+  // (ModalRemuneracaoRP), o mesmo indicador do card na aba Faturamento.
+  const { resumo: pepResumo } = usePepApuracaoResumo(competencia)
 
   const demonstrativoSel = useMemo(
     () => dadosProfSelecionado
@@ -175,6 +144,24 @@ export function RemunIndividualTab() {
     [dadosProfSelecionado, cadastroPrestadores]
   )
 
+  // Toda emissão passa por aqui: sem confirmar que houve contestação, nada sai.
+  async function emitir(documento: string, gerar: () => void) {
+    if (!dadosProfSelecionado) return
+    const ok = await confirmar({
+      titulo: `Houve contestação de ${dadosProfSelecionado.prof}?`,
+      texto: (
+        <>
+          <strong>{documento}</strong> só pode ser emitido mediante contestação do prestador. Se ele não contestou o valor do mês, não emita.
+        </>
+      ),
+      confirmar: "Sim, houve contestação: emitir",
+      cancelar: "Cancelar",
+      t: "amber",
+      Icone: AlertTriangle,
+    })
+    if (ok) gerar()
+  }
+
   const carregando = loading || controlesGrade.gradeLoading
   // O mesmo rótulo do seletor no cabeçalho ("Agosto de 2026").
   const periodoTexto = labelMes(controlesGrade.periodoCarregado ?? controlesGrade.periodo)
@@ -182,24 +169,33 @@ export function RemunIndividualTab() {
   // ── Estado: sem dados ──
   //
   // Sem nada na tela e a grade a caminho → esqueleto no formato do layout real
-  // (o mesmo da Remuneração Mensal). Depois da carga, EstadoGradeVazia separa
-  // "nada no mês" de "grade reprovada".
+  // (o mesmo da aba Faturamento). Depois da carga, EstadoGradeVazia separa
+  // "nada no mês" de "grade reprovada". A faixa fica em cima nos dois casos.
   if ((!resultado || resultado.length === 0) && carregando) {
-    return <RemuneracaoRPSkeleton periodo={periodoTexto} />
+    return (
+      <div className="space-y-5">
+        <FaixaContestacao />
+        <RemuneracaoRPSkeleton periodo={periodoTexto} />
+      </div>
+    )
   }
 
   if (!resultado || resultado.length === 0) {
     return (
-      <EstadoGradeVazia
-        carregando={carregando}
-        periodo={controlesGrade.periodo}
-        erroResumo={controlesGrade.gradeErroResumo}
-      />
+      <div className="space-y-5">
+        <FaixaContestacao />
+        <EstadoGradeVazia
+          carregando={carregando}
+          periodo={controlesGrade.periodo}
+          erroResumo={controlesGrade.gradeErroResumo}
+        />
+      </div>
     )
   }
 
   return (
     <div className="space-y-5">
+      <FaixaContestacao />
       {loading && <p className="text-sm text-muted-foreground">Calculando…</p>}
       {error   && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
@@ -209,7 +205,7 @@ export function RemunIndividualTab() {
         {/* Select estilizado */}
         <div>
           <label htmlFor="select-profissional" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-            Profissional ({profissionais.length})
+            Prestador que contestou ({profissionais.length})
           </label>
           <div className="relative" ref={selectRef}>
             <button
@@ -295,12 +291,7 @@ export function RemunIndividualTab() {
         </div>
       </div>
 
-      {/* ── Sem seleção: visão geral sem nomes ── */}
-      {!profSelecionado && resumoGeral && (
-        <VisaoGeralIndividual resumo={resumoGeral} periodoTexto={periodoTexto} pepCarregando={pepResumoCarregando} />
-      )}
-
-      {/* ── Com seleção: o demonstrativo na tela, antes de exportar ── */}
+      {/* ── Com seleção: o demonstrativo na tela, antes de emitir ── */}
       {dadosProfSelecionado && demonstrativoSel && infoSel && (
         <PainelProfissional
           key={dadosProfSelecionado.prof}
@@ -310,15 +301,15 @@ export function RemunIndividualTab() {
           pepCarregando={pepCarregando}
           remPeriodo={remPeriodo}
           competencia={competencia}
-          onGerarPdf={() => gerarPDF(dadosProfSelecionado, pdfOpts)}
-          onGerarWord={() => gerarWord(dadosProfSelecionado, pdfOpts)}
-          onResumoSessoes={() => exportResumoSessoesPdf(infoSel, dadosProfSelecionado.sessoes || [])}
+          onGerarPdf={() => emitir("O PDF da apuração do faturamento", () => gerarPDF(dadosProfSelecionado, pdfOpts))}
+          onGerarWord={() => emitir("O Word da apuração do faturamento", () => gerarWord(dadosProfSelecionado, pdfOpts))}
+          onResumoSessoes={() => emitir("O PDF da apuração das sessões", () => exportResumoSessoesPdf(infoSel, dadosProfSelecionado.sessoes || []))}
           onVerSessoes={() => setSessoesAbertas(true)}
         />
       )}
 
-      {/* O mesmo detalhamento do /rp. `key` remonta a cada pessoa: aba, página
-          e busca local nascem limpas. */}
+      {/* O mesmo detalhamento da aba Faturamento. `key` remonta a cada pessoa:
+          aba, página e busca local nascem limpas. */}
       <ModalRemuneracaoRP
         key={sessoesAbertas && dadosProfSelecionado ? dadosProfSelecionado.prof : "fechado"}
         p={sessoesAbertas ? dadosProfSelecionado : null}
@@ -326,6 +317,20 @@ export function RemunIndividualTab() {
         pepResumo={sessoesAbertas && dadosProfSelecionado ? pepResumo.get(dadosProfSelecionado.prof) ?? null : null}
         onClose={() => setSessoesAbertas(false)}
       />
+      {dialogo}
+    </div>
+  )
+}
+
+/** Fixa no topo da aba, com ou sem prestador escolhido — inclusive com a grade vazia. */
+function FaixaContestacao() {
+  return (
+    <div role="note" className="flex items-start gap-3 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/40 dark:text-amber-100">
+      <FileWarning size={20} className="mt-0.5 shrink-0" aria-hidden />
+      <div className="text-sm leading-snug">
+        <p className="font-bold uppercase tracking-wide">Emitir somente mediante contestação do prestador</p>
+        <p className="mt-0.5 text-amber-800 dark:text-amber-200/90">Este documento não é enviado de rotina: só sai quando o prestador contesta o valor do mês.</p>
+      </div>
     </div>
   )
 }

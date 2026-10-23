@@ -4,6 +4,8 @@ import { useCallback, useMemo, useState } from "react"
 import { ESP_CLINICO, TERAPIA_TO_ESP } from "@/lib/cronograma/constants"
 import {
   buildSugestoesManual,
+  alternarTurno,
+  type TurnoManual,
   type SugestaoManual, type SugestoesManualResult,
 } from "@/lib/cronograma/novoCronograma"
 import { construirProfissionaisOcupados, profissionalEstaOcupado } from "@/lib/cronograma/helpers"
@@ -57,7 +59,9 @@ function novaLinha(usadas: Set<string>): LinhaTerapia | null {
 // action bar no rodapé da grade é o que materializa "não há o que confirmar aqui".
 export function OrcamentoPacMode({ cRows }: Props) {
   const [linhas, setLinhas] = useState<LinhaTerapia[]>(() => [novaLinha(new Set())!])
-  const [turno, setTurno] = useState<"manha" | "tarde">("manha")
+  // Manhã e tarde podem ficar marcadas juntas: aí cada dia oferece os dois
+  // turnos e o operador escolhe — dá para montar seg de manhã e ter à tarde.
+  const [turnos, setTurnos] = useState<TurnoManual[]>(["manha"])
   const [unidades, setUnidades] = useState<string[]>([])
   const [multiplas, setMultiplas] = useState(false)
   const [result, setResult] = useState<SugestoesManualResult | null>(null)
@@ -114,7 +118,7 @@ export function OrcamentoPacMode({ cRows }: Props) {
         "Qtd autorizada": l.quantidade,
         "Situação": "Vigente",
       }))
-    const r = buildSugestoesManual(PACIENTE_SIMULADO, unidades, turno, laudoSimulado, livreSlots)
+    const r = buildSugestoesManual(PACIENTE_SIMULADO, unidades, turnos, laudoSimulado, livreSlots)
     setResult(r)
     setSelectedIds(new Set())
     setProfSelIdx({})
@@ -349,16 +353,16 @@ export function OrcamentoPacMode({ cRows }: Props) {
           )}
         </WorkbenchArea>
 
-        <WorkbenchArea label="Turno">
+        <WorkbenchArea label="Turno (um ou os dois)">
           <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", width: "100%" }}>
             {(["manha", "tarde"] as const).map(t => {
-              const active = turno === t
+              const active = turnos.includes(t)
               return (
                 <button
                   key={t}
                   type="button"
                   aria-pressed={active}
-                  onClick={() => { setTurno(t); setResult(null); setSelectedIds(new Set()) }}
+                  onClick={() => { setTurnos(alternarTurno(turnos, t)); setResult(null); setSelectedIds(new Set()) }}
                   className="crono-wb-toggle"
                   style={{
                     flex: 1,
@@ -456,7 +460,7 @@ export function OrcamentoPacMode({ cRows }: Props) {
             espResumo={espResumo}
             antes={0}
             avisos={avisos}
-            vazioMsg="Nenhuma vaga livre encontrada para este turno/unidade."
+            vazioMsg="Nenhuma vaga livre encontrada para o turno/unidade escolhidos."
             interativo
             selectedIds={selectedIds}
             onToggle={handleToggle}

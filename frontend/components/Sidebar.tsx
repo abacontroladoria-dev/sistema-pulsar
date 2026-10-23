@@ -71,7 +71,7 @@ import { ImpersonationSelector } from "@/components/admin/ImpersonationSelector"
 import { SeletorArea } from "@/components/sidebar/SeletorArea"
 import { BuscaMestre } from "@/components/busca/BuscaMestre"
 import { useAreaDoMenu } from "@/hooks/useAreaDoMenu"
-import { MENU_GRUPOS_EM_MODAL, MENU_ICONE_GRUPO, MENU_ITENS, MENU_ORDEM_GRUPOS, MENU_POR_CODIGO } from "@/lib/permissions/menu"
+import { MENU_GRUPOS_EM_MODAL, MENU_ICONE_GRUPO, MENU_ITENS, MENU_ORDEM_GRUPOS, MENU_POR_CODIGO, itemNoMenu } from "@/lib/permissions/menu"
 
 type Favorito = { label: string; path: string }
 
@@ -121,7 +121,6 @@ const pathIconLegado: Record<string, LucideIcon> = {
   "/terapeutico/auditoria-evolucoes": FileSearch,
   "/relacionamento-prestador/analise": TrendingUp,
   "/relacionamento-prestador/rp": Wallet,
-  "/relacionamento-prestador/individual": UserRound,
   "/relacionamento-prestador/pep": ListChecks,
   "/relacionamento-prestador/pep-historico": History,
   "/relacionamento-prestador/auditoria-documentos": ScanText,
@@ -411,7 +410,7 @@ export default function Sidebar() {
     return pathname === base || pathname.startsWith(base + "/")
   }
   const itensDoGrupo = (nome: string) =>
-    MENU_ITENS.filter(i => i.area === area && i.grupo === nome && canAccess(i.path))
+    MENU_ITENS.filter(i => i.area === area && i.grupo === nome && itemNoMenu(i) && canAccess(i.path))
   // Grupos de MENU_GRUPOS_EM_MODAL não aparecem como grupo: viram um botão dentro
   // do grupo que os contém, e esse grupo aparece mesmo sem item próprio liberado
   // (quem só tem Cadastros vê "Configurações" com o botão de Cadastros).

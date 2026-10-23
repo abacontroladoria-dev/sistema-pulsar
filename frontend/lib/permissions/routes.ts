@@ -115,8 +115,12 @@ export const CODIGO_PARA_ROTAS: Record<string, string[]> = {
   cadastros_convenios: ['/cadastros/convenios'],
   analise_tratativas: ['/analise-tratativas'],
   relacionamento_prestador_analise: ['/relacionamento-prestador/analise'],
-  relacionamento_prestador_rp: ['/relacionamento-prestador/rp'],
-  relacionamento_prestador_individual: ['/relacionamento-prestador/individual'],
+  // Faturamento de Prestadores Mensal: duas abas, cada uma com o seu código
+  // (22/10/2026). A emissão do documento do prestador (PDF/Word) era a tela
+  // /relacionamento-prestador/individual e virou a aba ?tab=contestacao — o
+  // código antigo continua decidindo quem emite, ninguém ganhou acesso novo.
+  relacionamento_prestador_rp: ['/relacionamento-prestador/rp?tab=faturamento'],
+  relacionamento_prestador_individual: ['/relacionamento-prestador/rp?tab=contestacao'],
   relacionamento_prestador_pep: ['/relacionamento-prestador/pep'],
   relacionamento_prestador_pep_historico: ['/relacionamento-prestador/pep-historico'],
   relacionamento_prestador_auditoria_documentos: ['/relacionamento-prestador/auditoria-documentos'],
@@ -174,6 +178,7 @@ export const CODIGO_PARA_ROTAS: Record<string, string[]> = {
 // primeira aba desta lista que a pessoa tem. A ordem é a do Sidebar.
 export const ABAS_POR_ROTA: Record<string, string[]> = {
   '/auditoria-assim': ['auditoria', 'reconciliacao'],
+  '/relacionamento-prestador/rp': ['faturamento', 'contestacao'],
 }
 
 // Rotas de todo usuário logado, sem código de permissão: o início, o Chat da

@@ -83,9 +83,10 @@ export function podeAcessarRota(
 
 /**
  * Para uma rota de ABAS_POR_ROTA aberta sem `?tab=`: o endereço da primeira aba
- * liberada. `null` quando a rota não é dessas, quando o `?tab=` já veio, ou
- * quando nenhuma aba está liberada (aí a checagem normal manda para
- * /sem-permissao).
+ * liberada, com os outros parâmetros que vieram (ex.: `?prestador=` do
+ * Faturamento de Prestadores Mensal). `null` quando a rota não é dessas, quando
+ * o `?tab=` já veio, ou quando nenhuma aba está liberada (aí a checagem normal
+ * manda para /sem-permissao).
  */
 export function abaPadraoLiberada(
   role: string,
@@ -94,10 +95,13 @@ export function abaPadraoLiberada(
   search = ""
 ): string | null {
   const abas = ABAS_POR_ROTA[pathname]
-  if (!abas || new URLSearchParams(search).has("tab")) return null
+  const params = new URLSearchParams(search)
+  if (!abas || params.has("tab")) return null
   for (const aba of abas) {
     const alvo = `?tab=${aba}`
-    if (podeAcessarRota(role, codigos, pathname, alvo)) return `${pathname}${alvo}`
+    if (!podeAcessarRota(role, codigos, pathname, alvo)) continue
+    const resto = params.toString()
+    return `${pathname}${alvo}${resto ? `&${resto}` : ""}`
   }
   return null
 }
