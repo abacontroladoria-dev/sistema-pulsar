@@ -2,29 +2,20 @@
 
 import { useCallback, useMemo, useState } from 'react'
 import {
-  Bot, Check, CheckCircle2, Copy, ExternalLink, FileSpreadsheet, FileWarning, FolderSearch, Hand, Pencil,
-  Pointer, Send, UserCheck, Users,
+  Bot, CheckCircle2, ExternalLink, FileSpreadsheet, FileWarning, FolderSearch,
 } from 'lucide-react'
+import { btnSecundario, selo } from '@/components/cronograma/grade/estilo'
+import { SegmentedTabs } from '@/components/cronograma/ui/SegmentedTabs'
+import { CabecalhoSecao, EstadoVazio, Progresso, cartaoPadrao } from '@/components/ui/padrao'
 import { numero, rotuloMotivo } from '@/lib/roboSharepoint/rotulos'
 import type { SpFilaPendencias, SpItem, SpPendenciaPasta } from '@/types/roboSharepoint'
-import { CartaoPrestador } from './precisaDeVoce/CartaoPrestador'
 import { CATEGORIAS, CartaoPasta, ORDEM_CATEGORIAS, categoriaDa, type CategoriaPasta } from './precisaDeVoce/CartaoPasta'
-import { AnelProgresso, BotaoAjuda, Comemoracao, Fluxo, TudoEmDia, tom, type PassoFluxo, type Tom } from '@/components/ui/pastel/pecas'
+import { CartaoPrestador } from './precisaDeVoce/CartaoPrestador'
 
 // "O que precisa de você" — o que o robô não conseguiu resolver sozinho, como
-// TAREFAS para quem nem sabe o que é PEP. Redesenho de 02/10/2026: abas-cartão
-// coloridas com o contador grande, o "como resolver" em 3 ícones e cartões que
-// ficam verdes quando a pessoa age. Pouco texto: a cor e o ícone dizem o que
-// fazer, a explicação mora no "?" e nos title.
-//
-// Cores (tokens .pp-* em app/globals.css, pastéis): âmbar = esperando o
-// prestador; aço da marca = ação que se faz aqui e "Comece aqui"; verde =
-// feito; violeta = o robô (mesmo sentido do resto da PEP); azul/rosa/coral =
-// os três motivos de pasta sem dono.
-//
-// Só a camada visual mudou: os dados (listarPendenciasDePasta), a mensagem
-// copiada (mensagemPedirPlanilha) e a gravação do vínculo (sp_pep_vincular_pasta)
-// são os de antes.
+// tarefas diretas. Só a camada visual mudou: os dados (listarPendenciasDePasta),
+// a mensagem copiada (mensagemPedirPlanilha) e a gravação do vínculo
+// (sp_pep_vincular_pasta) são os mesmos.
 
 const MOTIVOS_DE_PASTA = new Set([
   'planilha_ausente', 'cnpj_ausente', 'cnpj_invalido', 'cnpj_nao_cadastrado', 'cnpj_duplicado',
@@ -60,73 +51,29 @@ function gravarAvisados(v: Record<string, string>) {
 // ── Abas ─────────────────────────────────────────────────────────────────────
 
 type AbaId = 'planilha' | 'pasta' | 'arquivo'
-type Aba = {
-  id: AbaId; t: Tom; Icone: typeof Bot; titulo: string
-  pendentes: number; MetaIcone: typeof Bot; meta: string
-}
 
-const FLUXOS: Record<AbaId, PassoFluxo[]> = {
-  planilha: [
-    { t: 'amber', Icone: Copy, rotulo: 'Copie' },
-    { t: 'amber', Icone: Send, rotulo: 'Envie' },
-    { t: 'violeta', Icone: Bot, rotulo: 'O robô libera' },
-  ],
-  pasta: [
-    { t: 'aco', Icone: Pointer, rotulo: 'Toque' },
-    { t: 'aco', Icone: UserCheck, rotulo: 'Escolha' },
-    { t: 'verde', Icone: CheckCircle2, rotulo: 'Liberado' },
-  ],
-  arquivo: [
-    { t: 'coral', Icone: ExternalLink, rotulo: 'Abra' },
-    { t: 'coral', Icone: Pencil, rotulo: 'Corrija' },
-    { t: 'violeta', Icone: Bot, rotulo: 'O robô confere' },
-  ],
-}
-
-function AbaCartao({ a, ativa, onSelecionar, onTecla }: {
-  a: Aba; ativa: boolean; onSelecionar: () => void; onTecla: (e: React.KeyboardEvent<HTMLButtonElement>) => void
-}) {
-  const zerada = a.pendentes === 0
-  const Icone = zerada ? Check : a.Icone
-  return (
-    <button
-      type="button"
-      role="tab"
-      id={`pp-aba-${a.id}`}
-      aria-selected={ativa}
-      aria-controls={`pp-painel-${a.id}`}
-      tabIndex={ativa ? 0 : -1}
-      onClick={onSelecionar}
-      onKeyDown={onTecla}
-      className={`${tom(a.t)} pp-aba ${zerada ? 'is-zerada' : ''}`}
-    >
-      <span className="pp-aba-marca" aria-hidden><a.Icone /></span>
-      <span className="pp-aba-icone" aria-hidden><Icone className="h-6 w-6" strokeWidth={zerada ? 3 : 2} /></span>
-      <span className="relative min-w-0 flex-1">
-        <span className="block text-[17px] font-extrabold leading-tight">{a.titulo}</span>
-        <span className="pp-aba-meta"><a.MetaIcone className="h-3.5 w-3.5 shrink-0" aria-hidden /> <span className="truncate">{a.meta}</span></span>
-      </span>
-      <span className="pp-aba-num">{numero(a.pendentes)}</span>
-    </button>
-  )
+const PASSOS: Record<AbaId, string> = {
+  planilha: 'Como resolver: 1. Copie a mensagem · 2. Envie ao prestador · 3. O robô libera quando a planilha entrar',
+  pasta: 'Como resolver: 1. Toque em Escolher · 2. Selecione a pessoa certa · 3. Pasta liberada na hora',
+  arquivo: 'Como resolver: 1. Abra no SharePoint · 2. Corrija o nome ou a pasta · 3. O robô confere na próxima leitura',
 }
 
 function ListaArquivos({ itens }: { itens: SpItem[] }) {
   return (
-    <ul className={`${tom('coral')} flex flex-col gap-2`}>
+    <ul className={`${cartaoPadrao} divide-y divide-border`}>
       {itens.slice(0, 50).map(i => (
-        <li key={i.sp_id} className="flex flex-col gap-2 rounded-2xl bg-[var(--pp-surface)] px-4 py-3 shadow-[inset_0_0_0_2px_var(--c-linha)] sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+        <li key={i.sp_id} className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
           <div className="min-w-0">
-            <p className="flex min-w-0 items-center gap-2">
-              <span className="truncate text-sm font-extrabold" title={i.nome}>{i.nome}</span>
-              <span className="pp-selo pp-selo-motivo">{rotuloMotivo(i.motivo)}</span>
+            <p className="flex min-w-0 flex-wrap items-center gap-2">
+              <span className="truncate text-sm font-semibold text-foreground" title={i.nome}>{i.nome}</span>
+              <span className={selo('red')}>{rotuloMotivo(i.motivo)}</span>
             </p>
-            <p className="truncate text-xs font-semibold text-[var(--pp-ink-muted)]" title={i.caminho ?? undefined}>
+            <p className="mt-0.5 break-words text-xs text-muted-foreground" title={i.caminho ?? undefined}>
               {i.competencia ? `${i.competencia.split('-').reverse().join('/')} · ` : ''}{i.caminho ?? ''}
             </p>
           </div>
           {i.web_url && (
-            <a href={i.web_url} target="_blank" rel="noreferrer" className="pp-btn pp-btn-suave shrink-0">
+            <a href={i.web_url} target="_blank" rel="noreferrer" className={`${btnSecundario} min-h-11 shrink-0 sm:min-h-0`}>
               Abrir <ExternalLink className="h-4 w-4" aria-hidden />
             </a>
           )}
@@ -138,7 +85,7 @@ function ListaArquivos({ itens }: { itens: SpItem[] }) {
 
 // ── Tela ─────────────────────────────────────────────────────────────────────
 
-const GRADE = 'grid grid-cols-1 gap-4 pt-3 @xl:grid-cols-2 @4xl:grid-cols-4'
+const GRADE = 'grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4'
 
 export function FilaNaoReconhecidos({ fila, itens, onAtualizar }: {
   fila: SpFilaPendencias
@@ -194,25 +141,12 @@ export function FilaNaoReconhecidos({ fila, itens, onAtualizar }: {
   const total = prestadores.length + totalPastas
   const feitas = prestadores.length - prestadoresPendentes.length + resolvidas.size
 
-  const abas: Aba[] = [
-    {
-      id: 'planilha', t: 'amber', Icone: FileSpreadsheet, titulo: 'Pedir planilha',
-      pendentes: prestadoresPendentes.length, MetaIcone: prestadoresPendentes.length ? Users : Check,
-      meta: prestadoresPendentes.length
-        ? plural(pacientesParados, 'paciente parado', 'pacientes parados')
-        : prestadores.length ? 'Todos avisados' : 'Tudo certo',
-    },
-    {
-      id: 'pasta', t: 'aco', Icone: FolderSearch, titulo: 'De quem é a pasta?',
-      pendentes: pastasPendentes.length, MetaIcone: pastasPendentes.length ? Hand : Check,
-      meta: pastasPendentes.length ? '1 toque cada' : 'Tudo certo',
-    },
+  const abas: { id: AbaId; titulo: string; pendentes: number }[] = [
+    { id: 'planilha', titulo: 'Pedir planilha', pendentes: prestadoresPendentes.length },
+    { id: 'pasta', titulo: 'De quem é a pasta?', pendentes: pastasPendentes.length },
   ]
   if (itensDoArquivo.length > 0) {
-    abas.push({
-      id: 'arquivo', t: 'coral', Icone: FileWarning, titulo: 'Arquivos com problema',
-      pendentes: itensDoArquivo.length, MetaIcone: ExternalLink, meta: 'Corrigir no SharePoint',
-    })
+    abas.push({ id: 'arquivo', titulo: 'Arquivos com problema', pendentes: itensDoArquivo.length })
   }
 
   const [escolhida, setEscolhida] = useState<AbaId>(() =>
@@ -221,86 +155,80 @@ export function FilaNaoReconhecidos({ fila, itens, onAtualizar }: {
         : itensDoArquivo.length ? 'arquivo' : 'planilha')
   const ativa = abas.find(a => a.id === escolhida) ?? abas[0]
 
-  function teclaNaAba(e: React.KeyboardEvent<HTMLButtonElement>) {
-    const i = abas.findIndex(a => a.id === ativa.id)
-    const destino =
-      e.key === 'ArrowRight' ? abas[(i + 1) % abas.length]
-        : e.key === 'ArrowLeft' ? abas[(i - 1 + abas.length) % abas.length]
-          : e.key === 'Home' ? abas[0]
-            : e.key === 'End' ? abas[abas.length - 1] : null
-    if (!destino) return
-    e.preventDefault()
-    setEscolhida(destino.id)
-    document.getElementById(`pp-aba-${destino.id}`)?.focus()
-  }
-
   const nadaAFazer = prestadores.length === 0 && totalPastas === 0 && itensDoArquivo.length === 0
 
   return (
-    <div className="pp @container">
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <h2 id="titulo-precisa-de-voce" className="text-[22px] font-extrabold leading-7">O que precisa de você</h2>
-          <BotaoAjuda />
-        </div>
-        {!nadaAFazer && <AnelProgresso feitas={feitas} total={total} />}
-      </div>
+    <div>
+      <CabecalhoSecao
+        id="titulo-precisa-de-voce"
+        titulo="O que precisa de você"
+        apoio="O que o robô não conseguiu resolver sozinho"
+        ajuda={[
+          { Icone: FileSpreadsheet, tone: 'amber', texto: 'Pedir planilha: copie a mensagem pronta e envie ao prestador.' },
+          { Icone: FolderSearch, tone: 'blue', texto: 'De quem é a pasta?: escolha o paciente ou prestador certo com 1 toque.' },
+          { Icone: FileWarning, tone: 'red', texto: 'Arquivos com problema: abra no SharePoint e corrija o nome ou a pasta.' },
+          { Icone: Bot, tone: 'purple', texto: 'Depois que a planilha entra ou a pasta é vinculada, o robô libera os arquivos.' },
+        ]}
+        rotuloAjuda="Como funciona esta fila"
+        direita={!nadaAFazer ? <Progresso feitas={feitas} total={total} rotulo="resolvidas" tone="green" /> : undefined}
+      />
 
-      {nadaAFazer ? <TudoEmDia /> : (
-        <>
-          <div
-            role="tablist"
-            aria-label="Tarefas"
-            className={`grid grid-cols-1 gap-4 ${abas.length === 3 ? '@xl:grid-cols-2 @4xl:grid-cols-3' : '@xl:grid-cols-2'}`}
-          >
-            {abas.map(a => (
-              <AbaCartao
-                key={a.id}
-                a={a}
-                ativa={a.id === ativa.id}
-                onSelecionar={() => setEscolhida(a.id)}
-                onTecla={teclaNaAba}
-              />
-            ))}
-          </div>
+      {nadaAFazer ? (
+        <EstadoVazio
+          Icone={CheckCircle2}
+          titulo="Tudo em dia!"
+          texto="Nenhuma planilha faltando, nenhuma pasta sem dono e nenhum arquivo com problema."
+        />
+      ) : (
+        <div className="space-y-4">
+          <SegmentedTabs<AbaId>
+            size="lg"
+            value={ativa.id}
+            onChange={setEscolhida}
+            ariaLabel="Tarefas"
+            tabs={abas.map(a => ({ value: a.id, label: a.titulo, count: a.pendentes }))}
+          />
 
-          <div role="tabpanel" id={`pp-painel-${ativa.id}`} aria-labelledby={`pp-aba-${ativa.id}`} className="mt-6 space-y-3">
+          <div className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <Fluxo passos={FLUXOS[ativa.id]} />
+              <p className="text-xs text-muted-foreground">
+                {PASSOS[ativa.id]}
+                {ativa.id === 'planilha' && prestadoresPendentes.length > 0 && pacientesParados > 0
+                  ? ` · ${plural(pacientesParados, 'paciente parado', 'pacientes parados')}`
+                  : ''}
+              </p>
               {ativa.id === 'pasta' && categoriasPresentes.length > 1 && pastasPendentes.length > 0 && (
-                <div className="flex flex-wrap gap-2" role="group" aria-label="Filtrar por motivo">
-                  {categoriasPresentes.map(c => {
-                    const cat = CATEGORIAS[c]
-                    return (
-                      <button
-                        key={c}
-                        type="button"
-                        aria-pressed={filtro === c}
-                        title={cat.explica}
-                        onClick={() => setFiltro(f => (f === c ? null : c))}
-                        className={`${tom(cat.t)} pp-pilula`}
-                      >
-                        <span className="pp-pilula-bola"><cat.Icone className="h-3.5 w-3.5" aria-hidden /></span>
-                        {cat.rotulo} <span className="tabular-nums">{pendentesPorCategoria(c)}</span>
-                      </button>
-                    )
-                  })}
-                </div>
+                <SegmentedTabs<'todas' | CategoriaPasta>
+                  size="sm"
+                  value={filtro ?? 'todas'}
+                  onChange={v => setFiltro(v === 'todas' ? null : v)}
+                  ariaLabel="Filtrar por motivo"
+                  tabs={[
+                    { value: 'todas', label: 'Todas', count: pastasPendentes.length },
+                    ...categoriasPresentes.map(c => ({
+                      value: c,
+                      label: CATEGORIAS[c].rotulo,
+                      count: pendentesPorCategoria(c),
+                    })),
+                  ]}
+                />
               )}
             </div>
 
             {ativa.id === 'planilha' && (
               prestadoresPendentes.length === 0 && !verAvisados ? (
-                <Comemoracao
+                <EstadoVazio
+                  Icone={CheckCircle2}
                   titulo={prestadores.length ? 'Todos os prestadores foram avisados!' : 'Todos os prestadores têm planilha!'}
                   texto="Agora é com o robô."
-                >
-                  {prestadores.length > 0 && (
-                    <button type="button" onClick={() => setVerAvisados(true)} className="pp-btn pp-btn-suave mt-2">
-                      Ver os avisados
-                    </button>
-                  )}
-                </Comemoracao>
+                  acao={
+                    prestadores.length > 0 ? (
+                      <button type="button" onClick={() => setVerAvisados(true)} className={btnSecundario}>
+                        Ver os avisados
+                      </button>
+                    ) : undefined
+                  }
+                />
               ) : (
                 <ul className={GRADE}>
                   {prestadores.map(p => (
@@ -319,7 +247,7 @@ export function FilaNaoReconhecidos({ fila, itens, onAtualizar }: {
 
             {ativa.id === 'pasta' && (
               pastasPendentes.length === 0 ? (
-                <Comemoracao titulo="Todas as pastas têm dono!" texto="Arquivos liberados." />
+                <EstadoVazio Icone={CheckCircle2} titulo="Todas as pastas têm dono!" texto="Arquivos liberados." />
               ) : (
                 <ul className={GRADE}>
                   {pastasVisiveis.map(p => (
@@ -340,7 +268,7 @@ export function FilaNaoReconhecidos({ fila, itens, onAtualizar }: {
 
             {ativa.id === 'arquivo' && <ListaArquivos itens={itensDoArquivo} />}
           </div>
-        </>
+        </div>
       )}
     </div>
   )

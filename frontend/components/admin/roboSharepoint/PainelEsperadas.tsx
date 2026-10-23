@@ -2,15 +2,16 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { CalendarDays, CalendarRange, Check, FileCheck2, FileX, FolderOpen, Loader2, Target, UserRound, Users } from 'lucide-react'
-import { AnelProgresso, BotaoAjuda, NumeroPastel, tom, type LinhaAjuda } from '@/components/ui/pastel/pecas'
+import { aviso, seletorOpcao, seletorTrilha, selo } from '@/components/cronograma/grade/estilo'
 import { MultiSearchCombobox } from '@/components/cronograma/ui/MultiSearchCombobox'
-import { rotuloMes } from '@/lib/roboSharepoint/relatorioPrestador'
-import { nomeCurtoPrestador, numero } from '@/lib/roboSharepoint/rotulos'
+import { CabecalhoSecao, Indicador, Progresso, cartaoPadrao, type LinhaAjudaPadrao } from '@/components/ui/padrao'
 import {
   esperadasDoAno, esperadasPorEntrega, evidenciasEsperadasPorAnalista,
   type DadosAno, type DadosSituacao, type EsperadasPorEntrega, type EvidenciaDoMes,
 } from '@/lib/remuneracao/situacaoEntregasPep'
 import type { AnalistaDaGrade } from '@/lib/remuneracao/visaoGeralPep'
+import { rotuloMes } from '@/lib/roboSharepoint/relatorioPrestador'
+import { nomeCurtoPrestador, numero } from '@/lib/roboSharepoint/rotulos'
 import { carregarDadosAno, carregarDadosSituacao, listarEvidenciasDoMes } from '@/services/pepSituacao.service'
 import { EsperadasChart } from './EsperadasChart'
 
@@ -129,7 +130,7 @@ export type ResultadoEsperadas = {
   naPasta: number
 }
 
-/** O desenho do painel, sem buscar nada (visual pastel, docs/PLANO_PEP_VISUAL_PASTEL.md fase 1). */
+/** O desenho do painel, sem buscar nada. */
 export function ConteudoEsperadas({ competencia, anoNum, periodo, onPeriodo, filtro, estado, resultado, quem, rotuloPeriodo, rotuloCurto }: {
   competencia: string
   anoNum: number
@@ -144,70 +145,87 @@ export function ConteudoEsperadas({ competencia, anoNum, periodo, onPeriodo, fil
   rotuloCurto: string
 }) {
   const pct = resultado && resultado.esperadas > 0 ? Math.round((resultado.naPasta / resultado.esperadas) * 100) : 0
-  const ajuda: LinhaAjuda[] = [
-    { t: 'verde', Icone: CalendarDays, texto: <span className="flex flex-col gap-0.5"><strong className="font-extrabold leading-none">STC e ETC</strong> <span className="text-[12px] font-medium opacity-80">Uma por semana do mês (3 em mês de recesso).</span></span> },
-    { t: 'amber', Icone: Users, texto: <span className="flex flex-col gap-0.5"><strong className="font-extrabold leading-none">TAP</strong> <span className="text-[12px] font-medium opacity-80">2 por paciente por mês.</span></span> },
-    { t: 'amber', Icone: Users, texto: <span className="flex flex-col gap-0.5"><strong className="font-extrabold leading-none">TOP</strong> <span className="text-[12px] font-medium opacity-80">1 por paciente por mês.</span></span> },
-    { t: 'teal', Icone: CalendarRange, texto: <span className="flex flex-col gap-0.5"><strong className="font-extrabold leading-none">PIC, RT e OE</strong> <span className="text-[12px] font-medium opacity-80">1 por planejamento semestral cadastrado{periodo === 'mes' ? ' que já venceu' : ' que vence no ano'}. Sem planejamento, não se espera.</span></span> },
-    { t: 'aco', Icone: UserRound, texto: <span className="flex flex-col gap-0.5"><strong className="font-extrabold leading-none">Pacientes</strong> <span className="text-[12px] font-medium opacity-80">Os pacientes de cada profissional são os da Grade de {rotuloMes(competencia)}.</span></span> },
-    { t: 'cinza', Icone: FileCheck2, texto: <span className="flex flex-col gap-0.5"><strong className="font-extrabold leading-none">Na pasta</strong> <span className="text-[12px] font-medium opacity-80">Conta só arquivo com o nome no padrão, no máximo o esperado de cada item.</span></span> },
+  const ajuda: LinhaAjudaPadrao[] = [
+    { tone: 'green', Icone: CalendarDays, texto: <span><strong className="font-semibold">STC e ETC:</strong> uma por semana do mês (3 em mês de recesso).</span> },
+    { tone: 'amber', Icone: Users, texto: <span><strong className="font-semibold">TAP:</strong> 2 por paciente por mês.</span> },
+    { tone: 'amber', Icone: Users, texto: <span><strong className="font-semibold">TOP:</strong> 1 por paciente por mês.</span> },
+    { tone: 'blue', Icone: CalendarRange, texto: <span><strong className="font-semibold">PIC, RT e OE:</strong> 1 por planejamento semestral cadastrado{periodo === 'mes' ? ' que já venceu' : ' que vence no ano'}. Sem planejamento, não se espera.</span> },
+    { tone: 'slate', Icone: UserRound, texto: <span><strong className="font-semibold">Pacientes:</strong> os pacientes de cada profissional são os da Grade de {rotuloMes(competencia)}.</span> },
+    { tone: 'slate', Icone: FileCheck2, texto: <span><strong className="font-semibold">Na pasta:</strong> conta só arquivo com o nome no padrão, no máximo o esperado de cada item.</span> },
   ]
 
   return (
-    <div className="rounded-[20px] p-4 shadow-[inset_0_0_0_1px_var(--pp-border)] sm:p-5">
-      <div className="mb-4 flex flex-col gap-3 @5xl:flex-row @5xl:items-start @5xl:justify-between">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className={`${tom('verde')} flex size-9 shrink-0 items-center justify-center rounded-xl bg-[var(--c)] text-[var(--c-sobre)]`} aria-hidden>
-              <Target className="h-[18px] w-[18px]" />
-            </span>
-            <h3 className="text-[17px] font-extrabold">Evidências esperadas</h3>
-            <span className={`${tom('cinza')} pp-selo`}>{rotuloCurto}</span>
-            <BotaoAjuda linhas={ajuda} rotulo="Como o esperado é calculado" />
+    <div className={`${cartaoPadrao} px-4 py-4`}>
+      <CabecalhoSecao
+        nivel="h3"
+        Icone={Target}
+        titulo={
+          <span className="inline-flex flex-wrap items-center gap-2">
+            Evidências esperadas
+            <span className={selo('slate')}>{rotuloCurto}</span>
+          </span>
+        }
+        apoio={`O que se espera para ${rotuloPeriodo}, de ${quem}, e o que já está na pasta.`}
+        ajuda={ajuda}
+        rotuloAjuda="Como o esperado é calculado"
+        direita={
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className={seletorTrilha} role="group" aria-label="Período do esperado">
+              <button
+                type="button"
+                aria-pressed={periodo === 'mes'}
+                onClick={() => onPeriodo('mes')}
+                className={seletorOpcao(periodo === 'mes')}
+              >
+                {rotuloMes(competencia)}
+              </button>
+              <button
+                type="button"
+                aria-pressed={periodo === 'ano'}
+                onClick={() => onPeriodo('ano')}
+                className={seletorOpcao(periodo === 'ano')}
+              >
+                Ano {anoNum}
+              </button>
+            </div>
+            <div className="sm:w-64">{filtro}</div>
           </div>
-          <p className="mt-1.5 text-[13px] font-semibold leading-snug text-[var(--pp-ink-muted)]">
-            O que se espera para {rotuloPeriodo}, de {quem}, e o que já está na pasta.
-          </p>
-        </div>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center @5xl:shrink-0">
-          <div className="inline-flex rounded-[14px] bg-[var(--pp-muted)] p-1" role="group" aria-label="Período do esperado">
-            <button type="button" aria-pressed={periodo === 'mes'} onClick={() => onPeriodo('mes')}
-              className={`h-8 rounded-[10px] px-3.5 text-[13px] font-bold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                periodo === 'mes' ? 'bg-[var(--pp-surface)] text-[var(--pp-ink)] shadow-sm' : 'text-[var(--pp-ink-muted)] hover:text-[var(--pp-ink)]'}`}>
-              {rotuloMes(competencia)}
-            </button>
-            <button type="button" aria-pressed={periodo === 'ano'} onClick={() => onPeriodo('ano')}
-              className={`h-8 rounded-[10px] px-3.5 text-[13px] font-bold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                periodo === 'ano' ? 'bg-[var(--pp-surface)] text-[var(--pp-ink)] shadow-sm' : 'text-[var(--pp-ink-muted)] hover:text-[var(--pp-ink)]'}`}>
-              Ano {anoNum}
-            </button>
-          </div>
-          <div className="sm:w-64">{filtro}</div>
-        </div>
-      </div>
+        }
+      />
 
       {estado === 'carregando' || !resultado ? (
-        <p className="flex items-center gap-2 py-6 text-sm font-semibold text-[var(--pp-ink-muted)]"><Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden /> Calculando o esperado de {rotuloPeriodo}…</p>
+        <p className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden /> Calculando o esperado de {rotuloPeriodo}…
+        </p>
       ) : estado === 'erro' ? (
-        <p className="py-4 text-sm font-semibold text-[var(--pp-ink-muted)]">Não foi possível calcular o esperado de {rotuloPeriodo}.</p>
+        <p className="py-4 text-sm text-muted-foreground">Não foi possível calcular o esperado de {rotuloPeriodo}.</p>
       ) : estado === 'vazio' ? (
-        <p className="py-4 text-sm font-semibold text-[var(--pp-ink-muted)]">Nada esperado para {quem} em {rotuloPeriodo}.</p>
+        <p className="py-4 text-sm text-muted-foreground">Nada esperado para {quem} em {rotuloPeriodo}.</p>
       ) : (
         <>
-          <div className="mb-4 grid gap-3 @3xl:grid-cols-[minmax(0,1fr)_auto] @3xl:items-center">
+          <div className="mb-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
             {/* A conta que explica o total: do que está na pasta, só o nome no padrão conta. */}
-            <div className="grid gap-2 @md:grid-cols-3">
-              <NumeroPastel compacto t="cinza" Icone={FolderOpen} valor={numero(resultado.naPastaTotal)} rotulo={`na pasta (${rotuloCurto})`} />
-              <NumeroPastel compacto t="verde" Icone={Check} valor={numero(resultado.naPasta)} rotulo="no padrão (contam)" />
-              <NumeroPastel compacto t="amber" Icone={FileX} valor={numero(Math.max(0, resultado.naPastaTotal - resultado.naPasta))} rotulo="não contam"
-                title="Fora do padrão, repetidas ou além do esperado" apoio="fora do padrão ou a mais" />
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Indicador Icone={FolderOpen} valor={numero(resultado.naPastaTotal)} rotulo={`Na pasta (${rotuloCurto})`} />
+              <Indicador tone="green" Icone={Check} valor={numero(resultado.naPasta)} rotulo="No padrão (contam)" />
+              <Indicador
+                tone="amber"
+                Icone={FileX}
+                valor={numero(Math.max(0, resultado.naPastaTotal - resultado.naPasta))}
+                rotulo="Não contam"
+                title="Fora do padrão, repetidas ou além do esperado"
+                apoio="fora do padrão ou a mais"
+                apagado={resultado.naPastaTotal - resultado.naPasta <= 0}
+              />
             </div>
-            <AnelProgresso feitas={resultado.naPasta} total={resultado.esperadas} rotulo={`esperadas na pasta (${pct}%)`} />
+            <Progresso feitas={resultado.naPasta} total={resultado.esperadas} rotulo={`esperadas na pasta (${pct}%)`} tone="green" />
           </div>
           {resultado.ate && (
-            <p className={`${tom('aco')} mb-4 rounded-2xl bg-[var(--c-suave)] px-4 py-2.5 text-[13px] font-semibold leading-snug shadow-[inset_0_0_0_1px_var(--c-linha)]`}>
-              Até {rotuloMes(competencia)} já eram exigíveis <strong className="font-extrabold">{numero(resultado.ate.esperadas)}</strong>:{' '}
-              <strong className="font-extrabold">{numero(resultado.ate.naPasta)}</strong> estão na pasta. O resto é de meses que ainda não chegaram.
+            <p className={`mb-4 ${aviso('slate')}`}>
+              <span>
+                Até {rotuloMes(competencia)} já eram exigíveis <strong className="font-semibold">{numero(resultado.ate.esperadas)}</strong>:{' '}
+                <strong className="font-semibold">{numero(resultado.ate.naPasta)}</strong> estão na pasta. O resto é de meses que ainda não chegaram.
+              </span>
             </p>
           )}
           <EsperadasChart entregas={resultado.porEntrega} />

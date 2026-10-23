@@ -3,25 +3,26 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Building2, Check, Folder, IdCard, Pointer, Search, UserSearch, X } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { campo, foco } from '@/components/cadastros/pacientes/ui/campos'
+import { btnSecundario, selo } from '@/components/cronograma/grade/estilo'
+import type { Tone } from '@/components/cronograma/ui/tones'
+import { cartaoPadrao } from '@/components/ui/padrao'
 import { grupoMotivo, nomeCurtoPrestador } from '@/lib/roboSharepoint/rotulos'
 import {
   buscarPacientes, listarNomesDePrestadores, vincularPasta, vincularPastaAoPaciente, type PacienteParaVinculo,
 } from '@/services/roboSharepoint.service'
 import type { SpPendenciaPasta } from '@/types/roboSharepoint'
-import { abreviar, avisoFeito, confete, iniciais, tom, type Tom } from '@/components/ui/pastel/pecas'
 
-// Uma pasta sem dono. O motivo vira cor + selo curto ("Nome?", "CPF duplo",
-// "CNPJ?"); a frase inteira do motivo fica no title. "Nome?" é verde-azulado,
-// não azul: na PEP azul quer dizer pessoa. "Escolher" abre as opções
-// coladas à base do cartão — a mesma busca e a mesma RPC (sp_pep_vincular_pasta)
-// da gaveta de antes.
+// Uma pasta sem dono. O motivo vira selo curto ("Nome?", "CPF duplo", "CNPJ?");
+// a frase inteira do motivo fica no title. "Escolher" abre as opções coladas à
+// base do cartão — a mesma busca e a mesma RPC (sp_pep_vincular_pasta) de antes.
 
 export type CategoriaPasta = 'nome' | 'cpf' | 'cnpj'
 
-export const CATEGORIAS: Record<CategoriaPasta, { t: Tom; Icone: typeof Folder; rotulo: string; explica: string }> = {
-  nome: { t: 'teal', Icone: UserSearch, rotulo: 'Nome?', explica: 'O nome da pasta não está na planilha do prestador. Escolha o paciente certo.' },
-  cpf: { t: 'rosa', Icone: IdCard, rotulo: 'CPF duplo', explica: 'Há duas fichas com o mesmo CPF. Escolha a ficha certa.' },
-  cnpj: { t: 'coral', Icone: Building2, rotulo: 'CNPJ?', explica: 'Este CNPJ não está em nenhum contrato. Escolha o prestador.' },
+export const CATEGORIAS: Record<CategoriaPasta, { tone: Tone; Icone: typeof Folder; rotulo: string; explica: string }> = {
+  nome: { tone: 'blue', Icone: UserSearch, rotulo: 'Nome?', explica: 'O nome da pasta não está na planilha do prestador. Escolha o paciente certo.' },
+  cpf: { tone: 'purple', Icone: IdCard, rotulo: 'CPF duplo', explica: 'Há duas fichas com o mesmo CPF. Escolha a ficha certa.' },
+  cnpj: { tone: 'amber', Icone: Building2, rotulo: 'CNPJ?', explica: 'Este CNPJ não está em nenhum contrato. Escolha o prestador.' },
 }
 export const ORDEM_CATEGORIAS: CategoriaPasta[] = ['nome', 'cpf', 'cnpj']
 
@@ -35,11 +36,10 @@ export function categoriaDa(p: SpPendenciaPasta): CategoriaPasta {
 // o vínculo é pelo id). Prestador: só o nome do contrato.
 type Opcao = { nome: string; cpfFinal: string | null; paciente?: PacienteParaVinculo }
 
-function Seletor({ pendencia, categoria, onCancelar, onEscolhido }: {
+function Seletor({ pendencia, onCancelar, onEscolhido }: {
   pendencia: SpPendenciaPasta
-  categoria: CategoriaPasta
   onCancelar: () => void
-  onEscolhido: (nome: string, origem: Element) => void
+  onEscolhido: (nome: string) => void
 }) {
   const ehPrestador = pendencia.tipo === 'prestador'
   // Começa com o nome da pasta (duas primeiras palavras) para a lista já vir
@@ -72,7 +72,7 @@ function Seletor({ pendencia, categoria, onCancelar, onEscolhido }: {
       .slice(0, 30).map(nome => ({ nome, cpfFinal: null }))
   }, [ehPrestador, pacientes, prestadores, termo])
 
-  async function escolher(o: Opcao, origem: Element) {
+  async function escolher(o: Opcao) {
     setSalvando(true)
     try {
       if (!ehPrestador && o.paciente) {
@@ -80,7 +80,7 @@ function Seletor({ pendencia, categoria, onCancelar, onEscolhido }: {
       } else {
         await vincularPasta({ pastaId: pendencia.pasta_id, tipo: pendencia.tipo, prestadorNome: o.nome })
       }
-      onEscolhido(o.nome, origem)
+      onEscolhido(o.nome)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Não foi possível salvar o vínculo')
       setSalvando(false)
@@ -89,31 +89,33 @@ function Seletor({ pendencia, categoria, onCancelar, onEscolhido }: {
 
   const id = `pp-busca-${pendencia.pasta_id}`
   return (
-    <div className="pp-seletor" role="dialog" aria-label={`De quem é a pasta ${pendencia.nome_pasta}?`}>
+    <div className="space-y-2 rounded-lg border border-border bg-muted/30 p-3" role="dialog" aria-label={`De quem é a pasta ${pendencia.nome_pasta}?`}>
       <label htmlFor={id} className="sr-only">{ehPrestador ? 'Buscar prestador' : 'Buscar paciente'}</label>
       <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--pp-ink-muted)]" aria-hidden />
+        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
         <input
           id={id}
           autoFocus
           value={termo}
           onChange={e => setTermo(e.target.value)}
           placeholder={ehPrestador ? 'Digite para filtrar…' : 'Ao menos 3 letras do nome…'}
-          className="pp-busca"
+          className={`${campo} pl-8`}
           autoComplete="off"
         />
       </div>
 
-      <ul className="flex max-h-64 flex-col gap-2 overflow-y-auto p-0.5">
+      <ul className="max-h-64 divide-y divide-border overflow-y-auto rounded-md border border-border bg-card">
         {opcoes.map(o => (
           <li key={`${o.nome}-${o.paciente?.id_paciente ?? o.cpfFinal ?? ''}`}>
-            <button type="button" disabled={salvando} onClick={e => escolher(o, e.currentTarget)} className="pp-opcao">
-              <span className="pp-avatar" aria-hidden>
-                {categoria === 'cpf' ? <IdCard className="h-4 w-4" /> : iniciais(o.nome)}
-              </span>
+            <button
+              type="button"
+              disabled={salvando}
+              onClick={() => escolher(o)}
+              className={`flex min-h-11 w-full items-center justify-between gap-2 px-3 py-2 text-left transition-colors hover:bg-muted/50 disabled:opacity-50 ${foco}`}
+            >
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-[13px] font-extrabold text-[var(--pp-ink)]">{o.nome}</span>
-                <span className="block truncate text-[11px] font-semibold tabular-nums text-[var(--pp-ink-muted)]">
+                <span className="block break-words text-sm font-medium text-foreground">{o.nome}</span>
+                <span className="block text-xs tabular-nums text-muted-foreground">
                   {o.cpfFinal ? `CPF •••${o.cpfFinal}` : ehPrestador ? 'Contrato' : 'Sem CPF no cadastro'}
                 </span>
               </span>
@@ -121,13 +123,13 @@ function Seletor({ pendencia, categoria, onCancelar, onEscolhido }: {
           </li>
         ))}
         {opcoes.length === 0 && (
-          <li className="px-1 py-2 text-xs font-semibold text-[var(--pp-ink-muted)]">
+          <li className="px-3 py-2.5 text-xs text-muted-foreground">
             {!ehPrestador && termo.trim().length < 3 ? 'Digite ao menos 3 letras.' : 'Ninguém com esse nome. Tente outra parte do nome.'}
           </li>
         )}
       </ul>
 
-      <button type="button" onClick={onCancelar} className="pp-btn pp-btn-suave w-full">
+      <button type="button" onClick={onCancelar} className={`w-full min-h-11 sm:min-h-0 ${btnSecundario}`}>
         <X className="h-4 w-4" aria-hidden /> Cancelar
       </button>
     </div>
@@ -159,30 +161,46 @@ export function CartaoPasta({ p, escolhido, proximo, aberto, onAbrir, onFechar, 
     return () => { document.removeEventListener('mousedown', fora); document.removeEventListener('keydown', esc) }
   }, [aberto, onFechar])
 
-  const prestador = p.tipo === 'prestador' ? 'Pasta de prestador' : abreviar(nomeCurtoPrestador(p.prestador_pasta_nome))
+  const prestador = p.tipo === 'prestador' ? 'Pasta de prestador' : nomeCurtoPrestador(p.prestador_pasta_nome)
   const arquivos = p.arquivos > 0 ? ` · ${p.arquivos} ${p.arquivos === 1 ? 'arquivo esperando' : 'arquivos esperando'}` : ''
 
   return (
-    <li ref={raiz} className={`${tom(feito ? 'verde' : cat.t)} pp-cartao ${proximo ? 'is-next' : ''} ${feito ? 'is-done' : ''} ${aberto ? 'is-open' : ''}`}>
-      {proximo && <span className={`${tom('aco')} pp-selo pp-selo-flutua pp-selo-next`}><Pointer className="h-3 w-3" aria-hidden /> Comece aqui</span>}
+    <li ref={raiz} className={`${cartaoPadrao} flex flex-col justify-between gap-3 p-4`}>
+      <div>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {proximo && !feito && (
+              <span className={selo('blue')}>
+                <Pointer className="h-3 w-3" aria-hidden /> Comece aqui
+              </span>
+            )}
+            {feito ? (
+              <span className={selo('green')}>
+                <Check className="h-3 w-3" aria-hidden /> Resolvido
+              </span>
+            ) : (
+              <span className={selo(cat.tone)} title={`${grupoMotivo(p.motivo).titulo}. ${grupoMotivo(p.motivo).porque}`}>
+                <cat.Icone className="h-3 w-3" aria-hidden /> {cat.rotulo}
+              </span>
+            )}
+          </div>
+        </div>
 
-      <div className="flex items-start gap-3">
-        <span key={feito ? 'feito' : 'pendente'} className={`pp-avatar ${feito ? 'pp-pop' : ''}`} aria-hidden>
-          {feito ? <Check className="h-5 w-5" strokeWidth={3} /> : <cat.Icone className="h-5 w-5" />}
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="pp-nome" title={p.nome_pasta}>{p.tipo === 'prestador' ? nomeCurtoPrestador(p.nome_pasta) : p.nome_pasta}</p>
+        <div className="min-w-0">
+          <p className="break-words text-md font-semibold text-foreground" title={p.nome_pasta}>
+            {p.tipo === 'prestador' ? nomeCurtoPrestador(p.nome_pasta) : p.nome_pasta}
+          </p>
           {feito ? (
-            <p className="pp-apoio text-[var(--c-tinta)]"><Check className="h-3.5 w-3.5" aria-hidden /> {escolhido}</p>
+            <p className="mt-0.5 flex items-center gap-1.5 break-words text-xs font-medium text-emerald-700 dark:text-emerald-400">
+              <Check className="h-3.5 w-3.5 shrink-0" aria-hidden /> {escolhido}
+            </p>
           ) : (
-            <p className="pp-apoio" title={`${p.prestador_pasta_nome ?? p.nome_pasta}${arquivos}`}>
-              <Folder className="h-3.5 w-3.5" aria-hidden /> {prestador}
+            <p className="mt-0.5 flex items-start gap-1.5 break-words text-xs text-muted-foreground" title={`${p.prestador_pasta_nome ?? p.nome_pasta}${arquivos}`}>
+              <Folder className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+              <span>{prestador}{arquivos}</span>
             </p>
           )}
         </div>
-        {!feito && (
-          <span className="pp-selo pp-selo-motivo" title={`${grupoMotivo(p.motivo).titulo}. ${grupoMotivo(p.motivo).porque}`}>{cat.rotulo}</span>
-        )}
       </div>
 
       {!feito && (
@@ -191,7 +209,7 @@ export function CartaoPasta({ p, escolhido, proximo, aberto, onAbrir, onFechar, 
           type="button"
           onClick={aberto ? onFechar : onAbrir}
           aria-expanded={aberto}
-          className="pp-btn pp-btn-bloco"
+          className={`w-full min-h-11 sm:min-h-0 ${btnSecundario}`}
         >
           <Pointer className="h-4 w-4" aria-hidden /> Escolher
         </button>
@@ -200,11 +218,9 @@ export function CartaoPasta({ p, escolhido, proximo, aberto, onAbrir, onFechar, 
       {aberto && !feito && (
         <Seletor
           pendencia={p}
-          categoria={categoria}
           onCancelar={() => { onFechar(); botao.current?.focus() }}
-          onEscolhido={(nome, origem) => {
-            confete(origem)
-            avisoFeito('Liberado!')
+          onEscolhido={nome => {
+            toast.success('Liberado!')
             onResolvido(p, nome)
           }}
         />

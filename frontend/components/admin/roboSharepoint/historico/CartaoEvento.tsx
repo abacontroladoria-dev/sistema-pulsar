@@ -1,9 +1,9 @@
 'use client'
 
 import { ArrowRight, CalendarCheck2, ExternalLink, FileMinus2, FilePen, FilePlus2, FileX2, FolderInput, Lock, RotateCcw, Undo2 } from 'lucide-react'
+import { ChipOrigem } from '@/components/cronograma/remuneracao/pep/origem'
 import { TONE_CHIP } from '@/components/ui/tones'
 import type { Tone } from '@/hooks/useToneColor'
-import { ChipOrigem } from '@/components/cronograma/remuneracao/pep/origem'
 import { dataHora, diasNaPasta, EVENTOS_EVIDENCIA, mesBR, nomeCurtoPrestador } from '@/lib/roboSharepoint/rotulos'
 import type { EventoEvidencia, EventoEvidenciaTipo } from '@/types/roboSharepoint'
 
@@ -74,21 +74,31 @@ export function CartaoEvento({ e, compacto = false }: { e: EventoEvidencia; comp
   const contexto = [prestador(e.prestador_nome), e.paciente_nome, e.sigla, e.competencia ? mesBR(e.competencia) : null].filter(Boolean)
 
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-3 sm:flex-row sm:items-start sm:gap-4">
+    <div
+      className={
+        compacto
+          ? 'flex flex-col gap-3 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-start sm:gap-4'
+          : 'flex flex-col gap-3 rounded-xl border border-border bg-card p-3 sm:flex-row sm:items-start sm:gap-4'
+      }
+    >
       <div className="flex min-w-0 flex-1 items-start gap-3">
-        <span className={`flex size-11 shrink-0 items-center justify-center rounded-xl ${t.bg} ${t.text}`}>
-          <Icone className="h-5 w-5" aria-hidden />
+        <span className={`flex size-9 shrink-0 items-center justify-center rounded-lg ${t.bg} ${t.text}`}>
+          <Icone className="h-4 w-4" aria-hidden />
         </span>
         <div className="min-w-0 flex-1">
           <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span className={`text-sm font-bold ${t.text}`}>{EVENTOS_EVIDENCIA[e.evento].rotulo}</span>
+            <span className={`text-sm font-semibold ${t.text}`}>{EVENTOS_EVIDENCIA[e.evento].rotulo}</span>
             {e.entregue_por && <ChipOrigem origem={e.entregue_por} />}
-            {e.entregue_por && e.entregue_em && <span className="text-[11px] text-muted-foreground">entregue em {dataHora(e.entregue_em)}</span>}
+            {e.entregue_por && e.entregue_em && <span className="text-xs text-muted-foreground">entregue em {dataHora(e.entregue_em)}</span>}
           </p>
           <p className="mt-0.5 flex min-w-0 items-center gap-1">
             {linkVivo ? (
-              <a href={e.web_url!} target="_blank" rel="noreferrer"
-                className="inline-flex min-w-0 items-center gap-1 rounded text-sm font-semibold text-foreground hover:text-sky-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:hover:text-sky-400">
+              <a
+                href={e.web_url!}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex min-w-0 items-center gap-1 rounded text-sm font-semibold text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
                 <span className="truncate">{e.nome ?? e.sp_id}</span>
                 <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
                 <span className="sr-only">(abre no SharePoint)</span>
@@ -97,7 +107,7 @@ export function CartaoEvento({ e, compacto = false }: { e: EventoEvidencia; comp
               <span className={`truncate text-sm font-semibold ${saiu ? 'text-muted-foreground line-through decoration-1' : 'text-foreground'}`}>{e.nome ?? e.sp_id}</span>
             )}
           </p>
-          {contexto.length > 0 && <p className="mt-0.5 truncate text-xs text-muted-foreground">{contexto.join(' · ')}</p>}
+          {contexto.length > 0 && <p className="mt-0.5 break-words text-xs text-muted-foreground">{contexto.join(' · ')}</p>}
           {!compacto && (
             <p className="mt-1.5 text-xs leading-relaxed text-foreground/80"><Consequencia e={e} /></p>
           )}
@@ -109,7 +119,7 @@ export function CartaoEvento({ e, compacto = false }: { e: EventoEvidencia; comp
       <div className="flex shrink-0 items-center gap-2 border-t border-border pt-2 text-xs text-muted-foreground sm:w-36 sm:flex-col sm:items-end sm:border-0 sm:pt-0 sm:text-right">
         <CalendarCheck2 className="h-3.5 w-3.5 sm:hidden" aria-hidden />
         <span>
-          <span className="block text-[11px]">percebido em</span>
+          <span className="block text-xs">percebido em</span>
           <span className="block font-semibold tabular-nums text-foreground">{dataHora(e.em)}</span>
         </span>
       </div>

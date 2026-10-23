@@ -2,12 +2,14 @@
 
 import { useMemo, useState } from 'react'
 import { Cloud, Download, Files, FolderOpen, FolderTree, Users } from 'lucide-react'
+import { selo } from '@/components/cronograma/grade/estilo'
+import { SegmentedTabs } from '@/components/cronograma/ui/SegmentedTabs'
+import { CabecalhoSecao, Cartao } from '@/components/ui/padrao'
 import { nomeCurtoPrestador, numero, segundos } from '@/lib/roboSharepoint/rotulos'
 import type { ResumoExecucao, RoboEtapa, RoboExecucao } from '@/types/roboSharepoint'
 import { Bloco, corBarra, Ladrilho, Ladrilhos, Lead, Rotulo } from './Blocos'
 import { ExploradorPastas } from './ExploradorPastas'
 import { ListaArquivos, type FiltroArquivos } from './ListaArquivos'
-import { CabecalhoPastel, PilulaFiltro, tom } from '@/components/ui/pastel/pecas'
 
 // Listar = o passeio pelo site: onde o robô andou, o que achou em cada
 // prestador, e a lista inteira, arquivo por arquivo.
@@ -90,15 +92,26 @@ export function AbaListar({ execucao, etapa, resumo, competencia, simples = fals
       </>}
 
       {simples ? (
-        <section className="mt-8 space-y-4">
-          <CabecalhoPastel id="h-prestadores" titulo="Todas as pastas, prestador por prestador" Icone={FolderOpen} direita={<span className={`${tom('aco')} pp-selo`}>{numero(resumo.prestadores.length)} prestadores</span>} />
-          <div className="flex flex-wrap gap-2">
-            <PilulaFiltro t="cinza" rotulo="Todos" contagem={resumo.prestadores.length} ativo={destaque === null} onClick={() => setDestaque(null)} />
-            <PilulaFiltro t="azul" rotulo="Com arquivo" contagem={comArquivo} ativo={destaque === 'com'} onClick={() => setDestaque('com')} />
-            <PilulaFiltro t="cinza" rotulo="Sem arquivo" contagem={resumo.prestadores.length - comArquivo} ativo={destaque === 'sem'} onClick={() => setDestaque('sem')} />
-          </div>
+        <Cartao titulo="h-prestadores" className="space-y-4">
+          <CabecalhoSecao
+            id="h-prestadores"
+            titulo="Todas as pastas, prestador por prestador"
+            Icone={FolderOpen}
+            direita={<span className={selo('slate')}>{numero(resumo.prestadores.length)} prestadores</span>}
+            className="mb-0"
+          />
+          <SegmentedTabs<'todos' | 'com' | 'sem'>
+            value={destaque ?? 'todos'}
+            onChange={v => setDestaque(v === 'todos' ? null : v)}
+            ariaLabel="Quais prestadores destacar"
+            tabs={[
+              { value: 'todos', label: 'Todos', count: resumo.prestadores.length },
+              { value: 'com', label: 'Com arquivo', count: comArquivo },
+              { value: 'sem', label: 'Sem arquivo', count: resumo.prestadores.length - comArquivo },
+            ]}
+          />
           <ExploradorPastas execucaoId={execucao.id} resumoPrestadores={resumo.prestadores} filtroPrestador={destaque} competencia={competencia} pastel={simples} />
-        </section>
+        </Cartao>
       ) : (
         <Bloco icone={FolderOpen} titulo="Todas as pastas, prestador por prestador"
           subtitulo="abra um prestador e desça até cada pasta de paciente e suas 7 subpastas"
@@ -120,23 +133,33 @@ export function AbaListar({ execucao, etapa, resumo, competencia, simples = fals
       )}
 
       {simples ? (
-        <section className="mt-8 space-y-4">
-          <CabecalhoPastel id="h-arquivos" titulo="Onde estão os arquivos" Icone={Users} direita={<span className={`${tom('aco')} pp-selo`}>{numero(resumo.total)} arquivos</span>} />
+        <Cartao titulo="h-arquivos" className="space-y-4">
+          <CabecalhoSecao
+            id="h-arquivos"
+            titulo="Onde estão os arquivos"
+            Icone={Users}
+            direita={<span className={selo('slate')}>{numero(resumo.total)} arquivos</span>}
+            className="mb-0"
+          />
           <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {prestadores.filter(p => p.arquivos > 0).map(p => {
               const ativo = filtro.prestadorPastaId === p.pasta_id
               const apagado = !!filtro.prestadorPastaId && !ativo
               return (
                 <li key={p.pasta_id}>
-                  <button type="button" aria-pressed={ativo}
+                  <button
+                    type="button"
+                    aria-pressed={ativo}
                     onClick={() => setFiltro(ativo ? {} : { prestadorPastaId: p.pasta_id, rotulo: nomeCurtoPrestador(p.nome) })}
-                    className={`pp-cartao w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                      ativo ? 'is-done' : ''} ${apagado ? 'opacity-40' : ''}`}>
-                    <span className="pp-nome">{nomeCurtoPrestador(p.nome)}</span>
-                    <div className="mt-auto flex items-end justify-between">
-                      <span className="text-2xl font-black tabular-nums text-[var(--pp-ink)]">{numero(p.arquivos)}</span>
-                      <div className="flex h-2 w-16 overflow-hidden rounded-full bg-[var(--c-linha)]" role="img" aria-label={`${p.evidencias} evidências, ${p.ignorados} fora do PEP, ${p.arquivos - p.evidencias - p.ignorados} outros`}>
-                        <span className="h-full bg-sky-500" style={{ width: `${(p.evidencias / Math.max(p.arquivos, 1)) * 100}%` }} />
+                    className={`flex w-full flex-col justify-between gap-2 rounded-lg border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                      ativo ? 'border-foreground/30 bg-muted' : 'border-border bg-card hover:bg-muted/50'
+                    } ${apagado ? 'opacity-40' : ''}`}
+                  >
+                    <span className="break-words text-sm font-semibold text-foreground">{nomeCurtoPrestador(p.nome)}</span>
+                    <div className="mt-auto flex items-end justify-between gap-2">
+                      <span className="text-xl font-semibold tabular-nums text-foreground">{numero(p.arquivos)}</span>
+                      <div className="flex h-1.5 w-16 overflow-hidden rounded-full bg-muted" role="img" aria-label={`${p.evidencias} evidências, ${p.ignorados} fora do PEP, ${p.arquivos - p.evidencias - p.ignorados} outros`}>
+                        <span className="h-full bg-emerald-500" style={{ width: `${(p.evidencias / Math.max(p.arquivos, 1)) * 100}%` }} />
                         <span className="h-full bg-slate-400" style={{ width: `${(p.ignorados / Math.max(p.arquivos, 1)) * 100}%` }} />
                         <span className="h-full bg-slate-300" style={{ width: `${(Math.max(p.arquivos - p.evidencias - p.ignorados, 0) / Math.max(p.arquivos, 1)) * 100}%` }} />
                       </div>
@@ -146,7 +169,7 @@ export function AbaListar({ execucao, etapa, resumo, competencia, simples = fals
               )
             })}
           </ul>
-        </section>
+        </Cartao>
       ) : (
         <Bloco icone={Users} titulo="Onde estão os arquivos" subtitulo="toque num prestador para ver só os arquivos dele na lista abaixo" contagem={`${numero(resumo.total)} arquivos`}>
           <ul className="space-y-1">
@@ -181,8 +204,8 @@ export function AbaListar({ execucao, etapa, resumo, competencia, simples = fals
       )}
 
       {simples ? (
-        <section className="mt-8 space-y-4">
-          <CabecalhoPastel id="h-arquivos-lista" titulo={`Os ${numero(resumo.total)} arquivos, um por um`} Icone={Files} />
+        <Cartao titulo="h-arquivos-lista" className="space-y-4">
+          <CabecalhoSecao id="h-arquivos-lista" titulo={`Os ${numero(resumo.total)} arquivos, um por um`} Icone={Files} className="mb-0" />
           <ListaArquivos
             execucaoId={execucao.id}
             filtro={filtro}
@@ -190,7 +213,7 @@ export function AbaListar({ execucao, etapa, resumo, competencia, simples = fals
             onLimparFiltro={() => setFiltro({})}
             pastel={simples}
           />
-        </section>
+        </Cartao>
       ) : (
         <Bloco icone={Files} titulo={`Os ${numero(resumo.total)} arquivos, um por um`} subtitulo="toque num arquivo para ver tudo o que o robô sabe dele">
           <ListaArquivos
