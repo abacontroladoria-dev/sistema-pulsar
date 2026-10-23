@@ -10,7 +10,7 @@ const COLUNAS = "id, nome, tipo, cor_hex, tita_terapia_id, icone, modalidade, ex
 const COLUNAS_SEM_ICONE = "id, nome, tipo, cor_hex, tita_terapia_id, ativo, atualizado_em"
 
 // O localhost usa o banco de produção: enquanto as migrations 20261006150000
-// (coluna `icone`) e 20261023180000 (`modalidade`, `exige_presenca_fila`) não
+// (coluna `icone`) e 20261023180100 (`modalidade`, `exige_presenca_fila`) não
 // estiverem aplicadas, a tela segue sem essas colunas em vez de quebrar.
 let semColunaIcone = false
 const colunas = () => (semColunaIcone ? COLUNAS_SEM_ICONE : COLUNAS)

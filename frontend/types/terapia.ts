@@ -3,7 +3,7 @@
 
 export type TipoTerapia = "terapia" | "procedimento"
 
-/** Ver supabase/migrations/20261023180000_cadastro_terapias_modalidade_e_fila.sql. */
+/** Ver supabase/migrations/20261023180100_cadastro_terapias_modalidade_e_fila.sql. */
 export type ModalidadeTerapia = "clinica" | "at_externo" | "terceirizada"
 
 export type CadastroTerapia = {
