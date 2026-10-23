@@ -12,8 +12,9 @@
 
 import { useEffect, useState } from "react"
 import { ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Loader2 } from "lucide-react"
+import { btnSecundario, selo } from "@/components/cronograma/grade/estilo"
 import { ScheduleModal } from "@/components/cronograma/ui/ScheduleModal"
-import { TONE_SOLID } from "@/components/cronograma/ui/tones"
+import type { Tone } from "@/components/cronograma/ui/tones"
 import {
   camposAlterados,
   camposSnapshot,
@@ -36,7 +37,7 @@ interface Props {
 }
 
 const ACAO_LABEL: Record<PepTrilhaAcao, string> = { criar: "Criação", editar: "Edição", excluir: "Exclusão", reverter: "Desfeito" }
-const ACAO_TONE: Record<PepTrilhaAcao, keyof typeof TONE_SOLID> = { criar: "green", editar: "blue", excluir: "red", reverter: "slate" }
+const ACAO_TONE: Record<PepTrilhaAcao, Tone> = { criar: "green", editar: "blue", excluir: "red", reverter: "slate" }
 const TABELA_LABEL: Record<PepTrilhaTabela, string> = {
   registro_entrega: "Entrega",
   planejamento_semestral: "Planejamento",
@@ -104,13 +105,13 @@ function DiffEvidencias({ antes, depois }: { antes: unknown; depois: unknown }) 
     <ul className="flex flex-col gap-0.5">
       {removidas.map(e => (
         <li key={`-${e.caminho}`} className="flex min-w-0 gap-1.5 text-muted-foreground">
-          <span className="shrink-0 font-bold text-rose-600 dark:text-rose-400" aria-label="Removido">−</span>
+          <span className="shrink-0 font-semibold text-rose-700 dark:text-rose-400" aria-label="Removido">−</span>
           <LinkEvidencia evidencia={e} riscado />
         </li>
       ))}
       {adicionadas.map(e => (
         <li key={`+${e.caminho}`} className="flex min-w-0 gap-1.5">
-          <span className="shrink-0 font-bold text-[var(--status-ok)]" aria-label="Adicionado">+</span>
+          <span className="shrink-0 font-semibold text-[var(--status-ok)]" aria-label="Adicionado">+</span>
           <LinkEvidencia evidencia={e} />
         </li>
       ))}
@@ -120,7 +121,7 @@ function DiffEvidencias({ antes, depois }: { antes: unknown; depois: unknown }) 
 
 /** Rótulo à esquerda, valor à direita; no celular, um embaixo do outro. */
 const GRADE = "grid grid-cols-1 gap-x-3 gap-y-1 text-sm sm:grid-cols-[max-content_minmax(0,1fr)] sm:gap-y-1.5"
-const ROTULO = "text-[12px] font-semibold text-muted-foreground sm:text-sm"
+const ROTULO = "text-xs font-semibold text-muted-foreground sm:text-sm"
 const VALOR = "mb-1.5 min-w-0 break-words text-foreground sm:mb-0"
 
 const ITENS_POR_PAGINA = 30
@@ -133,9 +134,13 @@ export function PepHistoricoModal({ prestadorNome, catalogo, onClose }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [expandidoId, setExpandidoId] = useState<string | null>(null)
 
-  useEffect(() => {
+  function mudarPagina(novaPagina: number) {
     setLoading(true)
     setExpandidoId(null)
+    setPagina(novaPagina)
+  }
+
+  useEffect(() => {
     getTrilhaAuditoria({ prestadorNome, limite: ITENS_POR_PAGINA, pagina })
       .then(({ data, total, error }) => {
         if (error) setError("Não foi possível carregar o histórico.")
@@ -161,117 +166,118 @@ export function PepHistoricoModal({ prestadorNome, catalogo, onClose }: Props) {
           <Loader2 size={14} className="animate-spin" /> Carregando histórico...
         </div>
       )}
-      {error && <div className="text-sm font-semibold text-rose-600 dark:text-rose-400">{error}</div>}
+      {error && <div className="text-sm font-semibold text-rose-700 dark:text-rose-400">{error}</div>}
       {!loading && !error && itens.length === 0 && (
         <div className="text-sm text-muted-foreground">Nenhuma alteração registrada ainda.</div>
       )}
 
-      <div className="flex flex-col gap-1.5">
-        {itens.map(item => {
-          const tone = TONE_SOLID[ACAO_TONE[item.acao]]
-          const expandido = expandidoId === item.id
-          // Edição do robô vem sem `antes`: mostra o estado gravado, sem "— → valor".
-          const comoDiff = item.acao === "editar" && !semEstadoAnterior(item)
-          const alteracoes = comoDiff ? camposAlterados(item) : []
-          const snapshot = comoDiff ? [] : camposSnapshot(item).filter(c => c.valor !== "—")
-          const temDetalhe = alteracoes.length > 0 || snapshot.length > 0 || !!item.motivo
-          const resumo = resumoDaLinha(item)
-          // Aberto, o detalhe diz tudo e a linha curta só repetiria. A do robô é
-          // uma frase que o detalhe não tem, então fica.
-          const mostrarResumo = !!resumo && (!expandido || item.ator === "robo" || item.acao === "reverter")
-          return (
-            <div key={item.id} className="rounded-lg border border-border px-2.5 py-2">
-              <button
-                type="button"
-                onClick={() => temDetalhe && setExpandidoId(expandido ? null : item.id)}
-                aria-expanded={temDetalhe ? expandido : undefined}
-                className={`flex w-full items-start gap-2 text-left ${temDetalhe ? "cursor-pointer" : "cursor-default"}`}
-              >
-                <span className="mt-0.5 w-3.5 shrink-0 text-muted-foreground">
-                  {temDetalhe && (expandido ? <ChevronDown size={14} /> : <ChevronRight size={14} />)}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="flex flex-wrap items-center gap-1.5">
-                    <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-bold ${tone.bg} ${tone.text}`}>{ACAO_LABEL[item.acao]}</span>
-                    <ChipOrigem origem={item.ator === "robo" ? "robo" : "humano"} />
-                    <span className="text-[11px] font-semibold text-muted-foreground">{TABELA_LABEL[item.tabela]}</span>
+      {itens.length > 0 && (
+        <ul className="divide-y divide-border rounded-lg border border-border">
+          {itens.map(item => {
+            const expandido = expandidoId === item.id
+            // Edição do robô vem sem `antes`: mostra o estado gravado, sem "— → valor".
+            const comoDiff = item.acao === "editar" && !semEstadoAnterior(item)
+            const alteracoes = comoDiff ? camposAlterados(item) : []
+            const snapshot = comoDiff ? [] : camposSnapshot(item).filter(c => c.valor !== "—")
+            const temDetalhe = alteracoes.length > 0 || snapshot.length > 0 || !!item.motivo
+            const resumo = resumoDaLinha(item)
+            // Aberto, o detalhe diz tudo e a linha curta só repetiria. A do robô é
+            // uma frase que o detalhe não tem, então fica.
+            const mostrarResumo = !!resumo && (!expandido || item.ator === "robo" || item.acao === "reverter")
+            return (
+              <li key={item.id} className="px-3 py-2.5">
+                <button
+                  type="button"
+                  onClick={() => temDetalhe && setExpandidoId(expandido ? null : item.id)}
+                  aria-expanded={temDetalhe ? expandido : undefined}
+                  className={`flex w-full items-start gap-2 text-left ${temDetalhe ? "cursor-pointer" : "cursor-default"}`}
+                >
+                  <span className="mt-0.5 w-3.5 shrink-0 text-muted-foreground">
+                    {temDetalhe && (expandido ? <ChevronDown size={14} /> : <ChevronRight size={14} />)}
                   </span>
-                  <span className="mt-1 line-clamp-2 text-sm font-semibold text-foreground">{nomeContextual(item, catalogo)}</span>
-                  {mostrarResumo && (
-                    <span className="mt-0.5 line-clamp-2 text-[12px] text-muted-foreground">{resumo}</span>
-                  )}
-                </span>
-                <span className="max-w-[40%] shrink-0 text-right text-[11px] leading-snug text-muted-foreground">
-                  <span className="block">{item.usuario_nome ?? "Usuário desconhecido"}</span>
-                  <span className="block tabular-nums">{formatarDataHora(item)}</span>
-                </span>
-              </button>
-              {expandido && (
-                <div className="mt-2 border-t border-border pt-2 sm:pl-[22px]">
-                  {alteracoes.length === 0 && snapshot.length === 0 && !item.motivo && (
-                    <div className="text-sm text-muted-foreground">Nenhum outro detalhe registrado pra essa alteração.</div>
-                  )}
-                  {alteracoes.length > 0 && (
-                    <dl className={GRADE}>
-                      {alteracoes.map(c => (
-                        <div key={c.campo} className="contents">
-                          <dt className={ROTULO}>{c.label}</dt>
-                          <dd className={VALOR}>
-                            {c.campo === "evidencias" ? (
-                              <DiffEvidencias antes={c.antesBruto} depois={c.depoisBruto} />
-                            ) : (
-                              <>
-                                <span className="text-muted-foreground line-through">{c.antes}</span>
-                                <span className="mx-1.5 text-muted-foreground" aria-label="passou a ser">→</span>
-                                <span className="font-semibold">{c.depois}</span>
-                              </>
-                            )}
-                          </dd>
-                        </div>
-                      ))}
-                    </dl>
-                  )}
-                  {snapshot.length > 0 && (
-                    <dl className={GRADE}>
-                      {snapshot.map(c => (
-                        <div key={c.campo} className="contents">
-                          <dt className={ROTULO}>{c.label}</dt>
-                          <dd className={VALOR}>
-                            {c.campo === "evidencias" ? <ListaEvidencias valor={c.valorBruto} /> : c.valor}
-                          </dd>
-                        </div>
-                      ))}
-                    </dl>
-                  )}
-                  {item.motivo && (
-                    <dl className={`${GRADE} mt-1.5`}>
-                      <dt className={ROTULO}>Motivo</dt>
-                      <dd className={VALOR}>{item.motivo}</dd>
-                    </dl>
-                  )}
-                </div>
-              )}
-            </div>
-          )
-        })}
-      </div>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex flex-wrap items-center gap-1.5">
+                      <span className={selo(ACAO_TONE[item.acao])}>{ACAO_LABEL[item.acao]}</span>
+                      <ChipOrigem origem={item.ator === "robo" ? "robo" : "humano"} />
+                      <span className="text-xs font-semibold text-muted-foreground">{TABELA_LABEL[item.tabela]}</span>
+                    </span>
+                    <span className="mt-1 block break-words text-sm font-semibold text-foreground">{nomeContextual(item, catalogo)}</span>
+                    {mostrarResumo && (
+                      <span className="mt-0.5 block break-words text-xs text-muted-foreground">{resumo}</span>
+                    )}
+                  </span>
+                  <span className="max-w-[40%] shrink-0 text-right text-xs leading-snug text-muted-foreground">
+                    <span className="block break-words">{item.usuario_nome ?? "Usuário desconhecido"}</span>
+                    <span className="block tabular-nums">{formatarDataHora(item)}</span>
+                  </span>
+                </button>
+                {expandido && (
+                  <div className="mt-2 border-t border-border pt-2 sm:pl-[22px]">
+                    {alteracoes.length === 0 && snapshot.length === 0 && !item.motivo && (
+                      <div className="text-sm text-muted-foreground">Nenhum outro detalhe registrado pra essa alteração.</div>
+                    )}
+                    {alteracoes.length > 0 && (
+                      <dl className={GRADE}>
+                        {alteracoes.map(c => (
+                          <div key={c.campo} className="contents">
+                            <dt className={ROTULO}>{c.label}</dt>
+                            <dd className={VALOR}>
+                              {c.campo === "evidencias" ? (
+                                <DiffEvidencias antes={c.antesBruto} depois={c.depoisBruto} />
+                              ) : (
+                                <>
+                                  <span className="text-muted-foreground line-through">{c.antes}</span>
+                                  <span className="mx-1.5 text-muted-foreground" aria-label="passou a ser">→</span>
+                                  <span className="font-semibold">{c.depois}</span>
+                                </>
+                              )}
+                            </dd>
+                          </div>
+                        ))}
+                      </dl>
+                    )}
+                    {snapshot.length > 0 && (
+                      <dl className={GRADE}>
+                        {snapshot.map(c => (
+                          <div key={c.campo} className="contents">
+                            <dt className={ROTULO}>{c.label}</dt>
+                            <dd className={VALOR}>
+                              {c.campo === "evidencias" ? <ListaEvidencias valor={c.valorBruto} /> : c.valor}
+                            </dd>
+                          </div>
+                        ))}
+                      </dl>
+                    )}
+                    {item.motivo && (
+                      <dl className={`${GRADE} mt-1.5`}>
+                        <dt className={ROTULO}>Motivo</dt>
+                        <dd className={VALOR}>{item.motivo}</dd>
+                      </dl>
+                    )}
+                  </div>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+      )}
 
       {!loading && !error && total > ITENS_POR_PAGINA && (
         <div className="mt-3 flex items-center justify-between border-t border-border pt-3">
           <button
             type="button"
-            onClick={() => setPagina(p => Math.max(1, p - 1))}
+            onClick={() => mudarPagina(Math.max(1, pagina - 1))}
             disabled={pagina === 1}
-            className="flex items-center gap-1 rounded-md px-2 py-1 text-sm font-semibold text-foreground disabled:cursor-not-allowed disabled:opacity-40 enabled:hover:bg-muted"
+            className={`${btnSecundario} min-h-11 sm:min-h-0`}
           >
             <ChevronLeft size={14} /> Anterior
           </button>
-          <span className="text-[12px] text-muted-foreground">Página {pagina} de {totalPaginas}</span>
+          <span className="text-xs text-muted-foreground">Página {pagina} de {totalPaginas}</span>
           <button
             type="button"
-            onClick={() => setPagina(p => Math.min(totalPaginas, p + 1))}
+            onClick={() => mudarPagina(Math.min(totalPaginas, pagina + 1))}
             disabled={pagina === totalPaginas}
-            className="flex items-center gap-1 rounded-md px-2 py-1 text-sm font-semibold text-foreground disabled:cursor-not-allowed disabled:opacity-40 enabled:hover:bg-muted"
+            className={`${btnSecundario} min-h-11 sm:min-h-0`}
           >
             Próxima <ChevronRight size={14} />
           </button>
