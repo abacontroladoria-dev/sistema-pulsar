@@ -163,9 +163,11 @@ export interface LlmRequisicao {
 // ----------------------------------------------------------------------------
 // A interface
 //
-// Um método só, por enquanto. `chatStream()` e `transcribe()` entram quando
-// houver consumidor: interface com método que ninguém implementa é promessa que
-// o TypeScript cobra e o runtime não cumpre.
+// Um método só, por enquanto. `chatStream()` entra quando houver consumidor:
+// interface com método que ninguém implementa é promessa que o TypeScript cobra
+// e o runtime não cumpre. A transcrição ganhou consumidor (o áudio do inbox) e
+// mora numa interface própria logo abaixo — quem só conversa não precisa
+// implementá-la.
 // ----------------------------------------------------------------------------
 
 export interface LLMProvider {
@@ -177,4 +179,35 @@ export interface LLMProvider {
   // ferramentas". O loop é do orquestrador (Fase 3), porque é lá que moram os
   // tetos de iteração e a detecção de repetição.
   chat(requisicao: LlmRequisicao): Promise<LlmResposta>
+}
+
+// ----------------------------------------------------------------------------
+// Transcrição de áudio
+//
+// Recebe os BYTES, não uma URL: o arquivo está num bucket privado e a URL
+// assinada seria mais um segredo viajando para fora. Quem chama já tem os bytes
+// (acabou de baixá-los da Meta/Evolution ou do bucket).
+// ----------------------------------------------------------------------------
+
+export interface TranscricaoRequisicao {
+  bytes:    ArrayBuffer
+  // MIME como veio ('audio/ogg; codecs=opus'). O provider deriva dele o nome
+  // do arquivo — a OpenAI decide o formato pela extensão.
+  mimeType: string
+  // Teto da chamada. O worker passa um menor que o padrão: ele divide 60s de
+  // tique com a entrega de mensagens.
+  timeoutMs?: number
+}
+
+export interface TranscricaoResposta {
+  // Pode ser '' — áudio só com ruído, ou um "hum" que o modelo descarta.
+  texto:      string
+  // O modelo que respondeu. Mesma regra de LlmUso.modelo.
+  modelo:     string
+  latenciaMs: number
+}
+
+export interface TranscricaoProvider {
+  readonly nome: string
+  transcrever(requisicao: TranscricaoRequisicao): Promise<TranscricaoResposta>
 }

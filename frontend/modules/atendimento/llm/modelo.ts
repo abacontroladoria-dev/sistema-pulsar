@@ -74,6 +74,39 @@ export const MAX_TOKENS_SAIDA_PADRAO = 700
 export const TEMPERATURA_PADRAO = 0.3
 
 // ----------------------------------------------------------------------------
+// Modelo de transcrição
+//
+// Constante, e não variável de ambiente: pela mesma regra da allowlist acima,
+// trocar de modelo é compromisso de custo e passa por revisão de código. Não
+// segue OPENAI_MODEL porque é outra família — os modelos de chat não
+// transcrevem e vice-versa.
+//
+// gpt-4o-mini-transcribe: ~US$ 0,003/min de áudio (metade do whisper-1) e erra
+// menos que ele em português com ruído de fundo. Um mês de áudios da clínica
+// fica na casa de centavos a poucos dólares.
+//
+// Idioma fixo em português: os contatos são todos daqui, e áudio curto ("oi,
+// tudo bem?") é exatamente onde a detecção automática erra o idioma e devolve
+// tradução em vez de transcrição.
+// ----------------------------------------------------------------------------
+export const MODELO_TRANSCRICAO = 'gpt-4o-mini-transcribe'
+export const IDIOMA_TRANSCRICAO = 'pt'
+
+// Só a chave. A transcrição não depende de OPENAI_MODEL: exigir a variável do
+// chat aqui faria um typo no modelo da Maia derrubar também a transcrição.
+export function resolverChaveOpenAI(): string {
+  const chaveApi = (process.env.OPENAI_API_KEY ?? '').trim()
+  if (!chaveApi) {
+    throw new LlmConfiguracaoError(
+      'OPENAI_API_KEY não está definida. Defina-a como variável de RUNTIME no '
+      + 'Coolify (nunca como ARG do Dockerfile, que a gravaria na imagem).',
+      'OPENAI_API_KEY',
+    )
+  }
+  return chaveApi
+}
+
+// ----------------------------------------------------------------------------
 
 interface ConfiguracaoOpenAI {
   chaveApi: string
@@ -90,16 +123,8 @@ let cache: ConfiguracaoOpenAI | null = null
 export function resolverConfiguracaoOpenAI(): ConfiguracaoOpenAI {
   if (cache) return cache
 
-  const chaveApi = (process.env.OPENAI_API_KEY ?? '').trim()
+  const chaveApi = resolverChaveOpenAI()
   const modeloBruto = (process.env.OPENAI_MODEL ?? '').trim()
-
-  if (!chaveApi) {
-    throw new LlmConfiguracaoError(
-      'OPENAI_API_KEY não está definida. Defina-a como variável de RUNTIME no '
-      + 'Coolify (nunca como ARG do Dockerfile, que a gravaria na imagem).',
-      'OPENAI_API_KEY',
-    )
-  }
 
   if (!modeloBruto) {
     throw new LlmConfiguracaoError(
