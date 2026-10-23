@@ -5,9 +5,11 @@ import toast from "react-hot-toast"
 import {
   AlertTriangle, CalendarRange, Check, ChevronDown, Info, Loader2, MapPin, Minus, Plus, Replace, Trash2, Users, X,
 } from "lucide-react"
-import { CampoSelect, rotulo } from "@/components/cadastros/pacientes/ui/campos"
+import { CampoSelect, campo, foco, rotulo } from "@/components/cadastros/pacientes/ui/campos"
+import { aviso, btnIcone, btnPrimario, btnSecundario } from "@/components/cronograma/grade/estilo"
 import { MultiSearchCombobox } from "@/components/cronograma/ui/MultiSearchCombobox"
-import { CabecalhoPastel, SecaoPastel, avisoFeito, tom } from "@/components/ui/pastel/pecas"
+import { CabecalhoSecao } from "@/components/ui/padrao"
+import { COR_NEUTRA } from "@/lib/cadastros/terapias"
 import { useConfirmacao } from "@/components/ui/pastel/confirmacao"
 import { DatePicker } from "@/components/ui/date-picker"
 import {
@@ -99,7 +101,7 @@ export function EditorDisponibilidade({
       .map(l => ({ valor: l.id, rotulo: rotuloLocal(l) }))
   }, [locais])
 
-  const corDaTerapia = (id: number) => catalogoPorId.get(id)?.cor_hex ?? "#CBD5E1"
+  const corDaTerapia = (id: number) => catalogoPorId.get(id)?.cor_hex ?? COR_NEUTRA
   const ate = indeterminado ? null : vigenteAte || null
 
   const validacao = useMemo(() => validarRascunho(r, habSet), [r, habSet])
@@ -167,7 +169,7 @@ export function EditorDisponibilidade({
 
   const salvar = async () => {
     if (semMudanca) {
-      avisoFeito("Nada mudou nos horários — nenhuma versão nova")
+      toast.success("Nada mudou nos horários — nenhuma versão nova")
       onSemMudanca()
       return
     }
@@ -207,7 +209,7 @@ export function EditorDisponibilidade({
         origem: restauradaDe ? "restaurada" : origem,
         restauradaDe: restauradaDe?.id ?? null,
       })
-      avisoFeito(editandoExistente ? "Disponibilidade salva — a anterior ficou no histórico" : "Disponibilidade salva")
+      toast.success(editandoExistente ? "Disponibilidade salva — a anterior ficou no histórico" : "Disponibilidade salva")
       onSalvo()
     } catch (e) {
       toast.error(String((e as Error)?.message ?? e), { duration: 8000 })
@@ -217,19 +219,18 @@ export function EditorDisponibilidade({
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       {/* ── Vigência ─────────────────────────────────────────────────── */}
-      <SecaoPastel titulo="disp-vigencia">
-        <CabecalhoPastel
+      <section aria-labelledby="disp-vigencia" className="rounded-lg border border-border bg-card px-4 py-4">
+        <CabecalhoSecao
           id="disp-vigencia"
           titulo={restauradaDe ? `Restaurar a versão nº ${restauradaDe.numero}` : editandoExistente ? "Editar disponibilidade" : "Cadastrar disponibilidade"}
-          t="teal"
           Icone={CalendarRange}
           apoio={editandoExistente
             ? "Se algo mudar, o sistema cria uma versão nova e guarda a atual no histórico"
             : "Nada é apagado: toda mudança futura fica guardada no histórico"}
         />
-        <div className="grid gap-4 @2xl:grid-cols-[repeat(2,minmax(0,13rem))_minmax(0,1fr)] @2xl:items-start">
+        <div className="grid gap-4 md:grid-cols-[repeat(2,minmax(0,13rem))_minmax(0,1fr)] md:items-start">
           <div>
             <span className={rotulo}>Vale a partir de</span>
             <div className="mt-1"><DatePicker value={vigenteDe} onChange={setVigenteDe} /></div>
@@ -237,8 +238,8 @@ export function EditorDisponibilidade({
           <div>
             <span className={rotulo}>Até</span>
             <div className="mt-1 space-y-2">
-              <label className="flex cursor-pointer items-center gap-2 text-sm font-semibold">
-                <input type="checkbox" checked={indeterminado} onChange={e => setIndeterminado(e.target.checked)} className="h-4 w-4 accent-[var(--pp-foco)]" />
+              <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-foreground sm:min-h-0">
+                <input type="checkbox" checked={indeterminado} onChange={e => setIndeterminado(e.target.checked)} className={`h-4 w-4 rounded border-border accent-primary ${foco}`} />
                 Prazo indeterminado
               </label>
               {!indeterminado && <DatePicker value={vigenteAte} onChange={setVigenteAte} />}
@@ -248,16 +249,16 @@ export function EditorDisponibilidade({
             <label htmlFor="disp-motivo" className={rotulo}>Motivo (fica no histórico)</label>
             <input id="disp-motivo" value={motivo} onChange={e => setMotivo(e.target.value)} maxLength={500}
               placeholder="Ex.: passou a atender às sextas"
-              className="mt-1 w-full rounded-md border border-border bg-transparent px-2 py-1.5 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-ring" />
+              className={`mt-1 ${campo}`} />
           </div>
         </div>
         <div className="mt-4 space-y-2">
           {efeitoVigencia.bloqueio ? (
-            <p className={`${tom("vermelho")} flex items-start gap-2 rounded-[14px] bg-[var(--c-suave)] px-3 py-2 text-[13px] font-bold text-[var(--c-tinta)]`}>
+            <p className={`${aviso("red")} font-semibold`}>
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden /> {efeitoVigencia.bloqueio}
             </p>
           ) : !semMudanca && (efeitoVigencia.encerra || efeitoVigencia.substitui.length > 0 || (ate && ate < hoje)) ? (
-            <p className={`${tom("teal")} flex items-start gap-2 rounded-[14px] bg-[var(--c-suave)] px-3 py-2 text-[13px] font-bold text-[var(--c-tinta)]`}>
+            <p className={aviso("blue")}>
               <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
               <span>
                 {efeitoVigencia.encerra && `Ao salvar, a versão nº ${efeitoVigencia.encerra.numero} passa a terminar em ${dataBR(somarDias(vigenteDe, -1))}.`}
@@ -267,15 +268,15 @@ export function EditorDisponibilidade({
             </p>
           ) : null}
           {validacao.gerais.map(g => (
-            <p key={g} className="text-[13px] font-bold text-rose-600 dark:text-rose-400">{g}</p>
+            <p key={g} className="text-sm font-semibold text-rose-700 dark:text-rose-400">{g}</p>
           ))}
           {opcoesTerapia.length === 0 && (
-            <p className={`${tom("amber")} rounded-[14px] bg-[var(--c-suave)] px-3 py-2 text-[13px] font-bold text-[var(--c-tinta)]`}>
+            <p className={aviso("amber")}>
               Nenhuma terapia habilitada — habilite na aba Terapias antes de montar a disponibilidade.
             </p>
           )}
         </div>
-      </SecaoPastel>
+      </section>
 
       {/* ── Dias ─────────────────────────────────────────────────────── */}
       {DIAS_SEMANA.map(d => (
@@ -293,7 +294,7 @@ export function EditorDisponibilidade({
           onCopiar={para => {
             setR(prev => copiarDia(prev, d.n, para))
             const nomes = DIAS_SEMANA.filter(x => para.includes(x.n)).map(x => x.nome.replace("-feira", "").toLowerCase())
-            avisoFeito(`${d.nome} replicada em ${nomes.length > 1 ? `${nomes.slice(0, -1).join(", ")} e ${nomes.at(-1)}` : nomes[0]}`)
+            toast.success(`${d.nome} replicada em ${nomes.length > 1 ? `${nomes.slice(0, -1).join(", ")} e ${nomes.at(-1)}` : nomes[0]}`)
           }}
           onMudar={mudar}
           onRemover={remover}
@@ -312,22 +313,22 @@ export function EditorDisponibilidade({
 
       {/* ── Rodapé fixo ──────────────────────────────────────────────── */}
       <div className="sticky bottom-3 z-20">
-        <div className="flex flex-col gap-3 rounded-[20px] bg-[var(--pp-surface)] p-4 shadow-[var(--pp-sombra-alta),inset_0_0_0_1px_var(--pp-border)] @2xl:flex-row @2xl:items-center">
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-1 text-[13px] font-bold">
-            <span><span className="text-[20px] font-extrabold tabular-nums">{totais.sessoes}</span> sessões/semana</span>
-            <span className="text-[var(--pp-ink-muted)]">{Math.floor(totais.minutos / 60)}h{String(totais.minutos % 60).padStart(2, "0")} de atendimento</span>
+        <div className="flex flex-col gap-3 rounded-lg border border-border bg-card px-4 py-3 shadow-sm md:flex-row md:items-center">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-1 text-sm text-foreground">
+            <span><span className="text-xl font-semibold tabular-nums">{totais.sessoes}</span> sessões/semana</span>
+            <span className="text-muted-foreground">{Math.floor(totais.minutos / 60)}h{String(totais.minutos % 60).padStart(2, "0")} de atendimento</span>
             {[...totais.porTerapia].map(([id, n]) => (
-              <span key={id} className="inline-flex items-center gap-1 text-xs text-[var(--pp-ink-muted)]">
+              <span key={id} className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                 <span className="h-2 w-2 rounded-full" style={{ background: corDaTerapia(id) }} aria-hidden />
                 {catalogoPorId.get(id)?.nome ?? `#${id}`} {n}
               </span>
             ))}
           </div>
           <div className="flex gap-2">
-            <button type="button" onClick={onCancelar} className={`${tom("cinza")} pp-btn pp-btn-suave`} disabled={salvando}>
+            <button type="button" onClick={onCancelar} className={btnSecundario} disabled={salvando}>
               <X className="h-4 w-4" aria-hidden /> Cancelar
             </button>
-            <button type="button" onClick={salvar} className={`${tom("verde")} pp-btn`}
+            <button type="button" onClick={salvar} className={btnPrimario}
               disabled={salvando || (!semMudanca && (validacao.bloqueia || !!efeitoVigencia.bloqueio))}
               title={semMudanca ? "Nada mudou ainda — salvar só fecha o editor" : undefined}>
               {salvando ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Check className="h-4 w-4" aria-hidden />}
@@ -374,7 +375,7 @@ function CartaoDia(p: {
   const conflitantes = new Set(p.faixas.filter(f => p.erros.get(f.chave)?.some(e => e.startsWith("Cruza"))).map(f => f.chave))
 
   return (
-    <SecaoPastel titulo={`dia-${p.dia}`} className={p.ligado ? "" : "!bg-[var(--pp-muted)] !shadow-none"}>
+    <section aria-labelledby={`dia-${p.dia}`} className={`rounded-lg border border-border px-4 py-4 ${p.ligado ? "bg-card" : "bg-muted/40"}`}>
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
@@ -382,16 +383,16 @@ function CartaoDia(p: {
           aria-checked={p.ligado}
           aria-label={`${p.nome}: ${p.ligado ? "atende" : "não atende"}`}
           onClick={p.onAlternarDia}
-          className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors ${p.ligado ? "bg-[oklch(0.62_0.11_190)]" : "bg-[var(--pp-border-strong)]"}`}
+          className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors motion-reduce:transition-none ${foco} ${p.ligado ? "bg-primary" : "bg-muted-foreground/30"}`}
         >
-          <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transition-transform motion-reduce:transition-none ${p.ligado ? "translate-x-6" : "translate-x-1"}`} />
+          <span className={`inline-block h-5 w-5 rounded-full bg-background shadow-sm transition-transform motion-reduce:transition-none ${p.ligado ? "translate-x-5" : "translate-x-0.5"}`} />
         </button>
-        <h3 id={`dia-${p.dia}`} className={`text-[17px] font-extrabold ${p.ligado ? "" : "text-[var(--pp-ink-muted)]"}`}>{p.nome}</h3>
-        <span className="text-[13px] font-semibold text-[var(--pp-ink-muted)]">
+        <h3 id={`dia-${p.dia}`} className={`text-base font-semibold ${p.ligado ? "text-foreground" : "text-muted-foreground"}`}>{p.nome}</h3>
+        <span className="text-sm text-muted-foreground">
           {p.ligado ? `${p.sessoes} sessões` : p.faixas.length ? "Desligado — as faixas ficam guardadas" : "Não atende"}
         </span>
         {p.ligado && p.faixas.length > 0 && (
-          <button type="button" onClick={abrirReplicar} className={`${tom("teal")} pp-btn pp-btn-suave ml-auto !min-h-9 text-[13px]`}
+          <button type="button" onClick={abrirReplicar} className={`${btnSecundario} ml-auto`}
             title={`Repetir os horários de ${p.nome.toLowerCase()} em outros dias`} aria-expanded={copiando}>
             Replicar
           </button>
@@ -399,7 +400,7 @@ function CartaoDia(p: {
       </div>
 
       {copiando && (
-        <div className="mt-3 flex flex-wrap items-end gap-2 rounded-[16px] bg-[var(--pp-muted)] p-3">
+        <div className="mt-3 flex flex-wrap items-end gap-2 rounded-md bg-muted/60 p-3">
           <div className="min-w-[14rem] flex-1">
             <span className={rotulo}>Replicar {p.nome.toLowerCase()} em</span>
             <div className="mt-1">
@@ -419,10 +420,10 @@ function CartaoDia(p: {
           </div>
           <button type="button" disabled={!destinos.size}
             onClick={() => { p.onCopiar([...destinos]); setCopiando(false); setDestinos(new Set()) }}
-            className={`${tom("teal")} pp-btn`}>
+            className={btnPrimario}>
             <Check className="h-4 w-4" aria-hidden /> Replicar
           </button>
-          <p className="w-full text-xs font-semibold text-[var(--pp-ink-muted)]">As faixas dos dias escolhidos são substituídas.</p>
+          <p className="w-full text-xs text-muted-foreground">As faixas dos dias escolhidos são substituídas.</p>
         </div>
       )}
 
@@ -447,12 +448,12 @@ function CartaoDia(p: {
               titaIdDe={p.titaIdDe}
             />
           ))}
-          <button type="button" onClick={p.onAdicionar} className={`${tom("teal")} pp-btn pp-btn-suave !min-h-9 text-[13px]`}>
+          <button type="button" onClick={p.onAdicionar} className={btnSecundario}>
             <Plus className="h-4 w-4" aria-hidden /> Adicionar horário
           </button>
         </div>
       )}
-    </SecaoPastel>
+    </section>
   )
 }
 
@@ -466,15 +467,15 @@ function PacientesPorHorario({ valor, onMudar }: { valor: number; onMudar: (v: n
       <span className={rotulo} id={idRotulo}>Pacientes por horário</span>
       <div className="mt-1 flex items-center gap-1.5" role="group" aria-labelledby={idRotulo}>
         <button type="button" onClick={() => mudar(valor - 1)} disabled={valor <= CAPACIDADE_MIN}
-          className="pp-iconbtn h-9 w-9" aria-label="Um paciente a menos por horário">
+          className={btnIcone} aria-label="Um paciente a menos por horário">
           <Minus className="h-4 w-4" aria-hidden />
         </button>
-        <output aria-live="polite" className="min-w-8 text-center text-base font-extrabold tabular-nums">{valor}</output>
+        <output aria-live="polite" className="min-w-8 text-center text-base font-semibold tabular-nums">{valor}</output>
         <button type="button" onClick={() => mudar(valor + 1)} disabled={valor >= CAPACIDADE_MAX}
-          className="pp-iconbtn h-9 w-9" aria-label="Um paciente a mais por horário">
+          className={btnIcone} aria-label="Um paciente a mais por horário">
           <Plus className="h-4 w-4" aria-hidden />
         </button>
-        <span className="text-xs font-semibold text-[var(--pp-ink-muted)]">{valor === 1 ? "individual" : "em grupo"}</span>
+        <span className="text-xs text-muted-foreground">{valor === 1 ? "individual" : "em grupo"}</span>
       </div>
     </div>
   )
@@ -506,17 +507,17 @@ function CartaoFaixa({
   const localSumiu = f.localId && !local
 
   return (
-    <div className={`rounded-[18px] bg-[var(--pp-surface)] ${temErro ? "shadow-[inset_0_0_0_2px_theme(colors.rose.400)]" : "shadow-[inset_0_0_0_1px_var(--pp-border)]"}`}>
+    <div className={`rounded-md border bg-card ${temErro ? "border-rose-400 dark:border-rose-700" : "border-border"}`}>
       <div className="flex items-center gap-2 p-3">
-        <button type="button" onClick={onAlternar} aria-expanded={aberta} className="flex min-w-0 flex-1 items-center gap-2 text-left">
-          <ChevronDown className={`h-4 w-4 shrink-0 text-[var(--pp-ink-muted)] transition-transform ${aberta ? "" : "-rotate-90"}`} aria-hidden />
+        <button type="button" onClick={onAlternar} aria-expanded={aberta} className={`flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded text-left sm:min-h-0 ${foco}`}>
+          <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none ${aberta ? "" : "-rotate-90"}`} aria-hidden />
           <span className="flex -space-x-1" aria-hidden>
             {(f.terapias.length ? f.terapias : [0]).slice(0, 4).map(t => (
-              <span key={t} className="h-3.5 w-3.5 rounded-full ring-2 ring-[var(--pp-surface)]" style={{ background: t ? corDaTerapia(t) : "var(--pp-border-strong)" }} />
+              <span key={t} className="h-3.5 w-3.5 rounded-full ring-2 ring-card" style={{ background: t ? corDaTerapia(t) : COR_NEUTRA }} />
             ))}
           </span>
-          <span className="shrink-0 whitespace-nowrap font-extrabold tabular-nums">{f.inicio}–{f.fim}</span>
-          <span className="truncate text-xs font-semibold text-[var(--pp-ink-muted)]">
+          <span className="shrink-0 whitespace-nowrap text-sm font-semibold tabular-nums text-foreground">{f.inicio}–{f.fim}</span>
+          <span className="min-w-0 text-xs text-muted-foreground">
             · {f.duracao} min · {sessoes.length} {sessoes.length === 1 ? "sessão" : "sessões"}
             {f.capacidade > 1 && ` · ${f.capacidade} pacientes por horário`}
             {local ? ` · ${local.nome_exibicao}` : f.localNome ? ` · ${f.localNome}` : " · sem local"}
@@ -524,22 +525,22 @@ function CartaoFaixa({
           </span>
         </button>
         {temErro && <AlertTriangle className="h-4 w-4 shrink-0 text-rose-500" aria-label="Há pendências nesta faixa" />}
-        <button type="button" onClick={onRemover} className="pp-iconbtn h-8 w-8" title="Remover faixa" aria-label={`Remover faixa ${f.inicio}–${f.fim}`}>
+        <button type="button" onClick={onRemover} className={btnIcone} title="Remover faixa" aria-label={`Remover faixa ${f.inicio}–${f.fim}`}>
           <Trash2 className="h-4 w-4" aria-hidden />
         </button>
       </div>
 
       {aberta && (
-        <div className="space-y-4 border-t border-[var(--pp-border)] p-4">
-          <div className="grid gap-3 @lg:grid-cols-3">
+        <div className="space-y-4 border-t border-border p-4">
+          <div className="grid gap-3 sm:grid-cols-3">
             <CampoSelect label="Início" value={f.inicio} onChange={v => v && onMudar({ inicio: v })} disabled={false} opcoes={HORAS} vazio="—" />
             <CampoSelect label="Fim" value={f.fim} onChange={v => v && onMudar({ fim: v })} disabled={false} opcoes={HORAS} vazio="—" />
             <CampoSelect label="Tempo entre horários" value={String(f.duracao)} onChange={v => v && onMudar({ duracao: Number(v) })} disabled={false} opcoes={OPCOES_DURACAO} vazio="—" />
           </div>
 
           <div className="flex flex-wrap items-end gap-3">
-            <label className="flex cursor-pointer items-center gap-2 pb-1.5 text-sm font-bold">
-              <input type="checkbox" checked={f.intervaloAtivo} onChange={e => onMudar({ intervaloAtivo: e.target.checked })} className="h-4 w-4 accent-[var(--pp-foco)]" />
+            <label className="flex min-h-11 cursor-pointer items-center gap-2 pb-1.5 text-sm text-foreground sm:min-h-0">
+              <input type="checkbox" checked={f.intervaloAtivo} onChange={e => onMudar({ intervaloAtivo: e.target.checked })} className={`h-4 w-4 rounded border-border accent-primary ${foco}`} />
               Intervalo
             </label>
             {f.intervaloAtivo && (
@@ -551,7 +552,7 @@ function CartaoFaixa({
             <PacientesPorHorario valor={f.capacidade} onMudar={capacidade => onMudar({ capacidade })} />
           </div>
 
-          <div className="grid gap-3 @2xl:grid-cols-2">
+          <div className="grid gap-3 md:grid-cols-2">
             <div>
               <span className={rotulo}>Terapias neste horário</span>
               <div className="mt-1">
@@ -566,12 +567,12 @@ function CartaoFaixa({
                 />
               </div>
               {f.terapias.length > 1 && (
-                <p className="mt-1 text-xs font-semibold text-[var(--pp-ink-muted)]">Pode prestar qualquer uma delas neste horário.</p>
+                <p className="mt-1 text-xs text-muted-foreground">Pode prestar qualquer uma delas neste horário.</p>
               )}
             </div>
             <div>
               <CampoSelect label="Local" value={f.localId} onChange={v => onMudar({ localId: v })} disabled={false} opcoes={opcoesLocal} vazio="Escolha o local" />
-              {localSumiu && <p className="mt-1 text-xs font-semibold text-[var(--status-atencao)]">O local gravado ({f.localNome}) não existe mais em Ocupação de Salas.</p>}
+              {localSumiu && <p className="mt-1 text-xs text-[var(--status-atencao)]">O local gravado ({f.localNome}) não existe mais em Ocupação de Salas.</p>}
             </div>
           </div>
 
@@ -580,19 +581,19 @@ function CartaoFaixa({
             <span className={rotulo}>Sessões geradas</span>
             <div className="mt-1.5 flex flex-wrap gap-1.5">
               {sessoes.length ? sessoes.map(s => (
-                <span key={s} className="rounded-lg bg-[var(--pp-muted)] px-2 py-1 text-xs font-bold tabular-nums">{s}</span>
-              )) : <span className="text-xs font-semibold text-[var(--pp-ink-muted)]">Nenhuma</span>}
+                <span key={s} className="rounded-md bg-muted px-2 py-1 text-xs font-semibold tabular-nums text-foreground">{s}</span>
+              )) : <span className="text-xs text-muted-foreground">Nenhuma</span>}
             </div>
           </div>
         </div>
       )}
 
       {(erros.length > 0 || avisos.length > 0 || conflito || exclusiva) && (
-        <ul className="space-y-1 px-4 pb-3 text-[12px] font-bold">
-          {erros.map(e => <li key={e} className="flex items-start gap-1.5 text-rose-600 dark:text-rose-400"><AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden />{e}</li>)}
+        <ul className="space-y-1 px-4 pb-3 text-sm font-semibold">
+          {erros.map(e => <li key={e} className="flex items-start gap-1.5 text-rose-700 dark:text-rose-400"><AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden />{e}</li>)}
           {avisos.map(a => <li key={a} className="flex items-start gap-1.5 text-[var(--status-atencao)]"><Info className="mt-0.5 h-3 w-3 shrink-0" aria-hidden />{a}</li>)}
           {conflito && (
-            <li className={`flex items-start gap-1.5 ${conflito.excedeu ? "text-rose-600 dark:text-rose-400" : "text-[var(--pp-ink-muted)]"}`}>
+            <li className={`flex items-start gap-1.5 ${conflito.excedeu ? "text-rose-700 dark:text-rose-400" : "text-muted-foreground"}`}>
               {conflito.excedeu ? <MapPin className="mt-0.5 h-3 w-3 shrink-0" aria-hidden /> : <Users className="mt-0.5 h-3 w-3 shrink-0" aria-hidden />}
               {conflito.excedeu
                 ? `${conflito.local.nome_exibicao} já está ocupada nesse horário: ${conflito.outros.join(", ")}.`

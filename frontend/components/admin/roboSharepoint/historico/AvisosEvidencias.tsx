@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { ChevronDown, FolderMinus, History, Lock } from 'lucide-react'
-import { CabecalhoPastel, SecaoPastel, tom, type LinhaAjuda } from '@/components/ui/pastel/pecas'
+import { btnSecundario, selo } from '@/components/cronograma/grade/estilo'
+import { CabecalhoSecao, Cartao, type LinhaAjudaPadrao } from '@/components/ui/padrao'
 import { listarAvisosEvidencias } from '@/services/roboSharepoint.service'
 import type { EventoEvidencia } from '@/types/roboSharepoint'
 import { CartaoEvento } from './CartaoEvento'
@@ -27,35 +28,32 @@ export function AvisosEvidencias() {
   if (!avisos || avisos.length === 0) return null
   const visiveis = todos ? avisos : avisos.slice(0, INICIAIS)
 
-  // Visual pastel (docs/PLANO_PEP_VISUAL_PASTEL.md, fase 7): só a moldura muda;
-  // o CartaoEvento é o mesmo do histórico completo.
   return (
-    <SecaoPastel titulo="titulo-avisos-evidencias">
-      <CabecalhoPastel
+    <Cartao titulo="titulo-avisos-evidencias">
+      <CabecalhoSecao
         id="titulo-avisos-evidencias"
         titulo="Entregas que mudaram com o SharePoint"
-        tamanho="medio"
-        t="amber"
+        nivel="h3"
         Icone={History}
         apoio="Últimos 30 dias"
         ajuda={AJUDA}
         rotuloAjuda="Por que a entrega mudou?"
-        direita={<span className={`${tom('amber')} pp-selo`}>{avisos.length} {avisos.length === 1 ? 'mudança' : 'mudanças'}</span>}
+        direita={<span className={selo('amber')}>{avisos.length} {avisos.length === 1 ? 'mudança' : 'mudanças'}</span>}
       />
-      <ul className="space-y-2">
+      <ul className="divide-y divide-border">
         {visiveis.map(e => <li key={e.id}><CartaoEvento e={e} compacto /></li>)}
       </ul>
       {avisos.length > INICIAIS && (
-        <button type="button" onClick={() => setTodos(v => !v)} aria-expanded={todos} className={`${tom('aco')} pp-btn pp-btn-suave mt-3`}>
+        <button type="button" onClick={() => setTodos(v => !v)} aria-expanded={todos} className={`mt-3 ${btnSecundario}`}>
           {todos ? 'Mostrar menos' : `Ver as ${avisos.length}`}
           <ChevronDown className={`h-4 w-4 transition-transform motion-reduce:transition-none ${todos ? 'rotate-180' : ''}`} aria-hidden />
         </button>
       )}
-    </SecaoPastel>
+    </Cartao>
   )
 }
 
-const AJUDA: LinhaAjuda[] = [
-  { t: 'amber', Icone: FolderMinus, texto: 'Quando uma evidência sai da pasta, a entrega e o valor acompanham.' },
-  { t: 'verde', Icone: Lock, texto: 'Mês já liberado não muda.' },
+const AJUDA: LinhaAjudaPadrao[] = [
+  { tone: 'amber', Icone: FolderMinus, texto: 'Quando uma evidência sai da pasta, a entrega e o valor acompanham.' },
+  { tone: 'green', Icone: Lock, texto: 'Mês já liberado não muda.' },
 ]

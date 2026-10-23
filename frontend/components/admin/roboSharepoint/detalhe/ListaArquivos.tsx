@@ -2,6 +2,10 @@
 
 import { useEffect, useState } from 'react'
 import { ChevronLeft, ChevronRight, ExternalLink, FileSpreadsheet, FileText, FileX, Search } from 'lucide-react'
+import { campo } from '@/components/cadastros/pacientes/ui/campos'
+import { btnSecundario, seletorOpcao, seletorTrilha, selo } from '@/components/cronograma/grade/estilo'
+import { SegmentedTabs } from '@/components/cronograma/ui/SegmentedTabs'
+import { TONE_SOFT, type Tone as ToneCrono } from '@/components/cronograma/ui/tones'
 import { StatusChip, TONE_CHIP } from '@/components/ui/tones'
 import { dataHora, numero, partesDoCaminho, rotuloMotivo, TIPOS_ARQUIVO } from '@/lib/roboSharepoint/rotulos'
 import { listarArquivosLidos, type OrdemArquivos } from '@/services/roboSharepoint.service'
@@ -14,8 +18,6 @@ import { ModalArquivo } from './ModalArquivo'
 // direita, separadas por divisórias, competência, envio e a situação no
 // Pulsar. Clicar na linha abre o modal com tudo o que se sabe do arquivo;
 // clicar no nome abre o arquivo no SharePoint.
-
-import { PilulaFiltro, tom } from '@/components/ui/pastel/pecas'
 
 export type FiltroArquivos = {
   tipo?: TipoArquivoLido | null
@@ -46,13 +48,13 @@ const ORDENS: { valor: OrdemArquivos; rotulo: string }[] = [
   { valor: 'nome', rotulo: 'Por nome' },
 ]
 
-const SITUACAO: Record<SpItemStatus, { rotulo: string; tom: 'verde' | 'amber' | 'azul' | 'cinza'; fallback: 'green' | 'amber' | 'blue' | 'gray' }> = {
-  sugerido: { rotulo: 'sugestão', tom: 'azul', fallback: 'blue' },
-  confirmado: { rotulo: 'confirmada', tom: 'verde', fallback: 'green' },
-  nao_reconhecido: { rotulo: 'não reconhecido', tom: 'amber', fallback: 'amber' },
-  ignorado: { rotulo: 'ignorada', tom: 'cinza', fallback: 'gray' },
-  removido: { rotulo: 'apagado', tom: 'cinza', fallback: 'gray' },
-  revertido: { rotulo: 'desfeita por pessoa', tom: 'cinza', fallback: 'gray' },
+const SITUACAO: Record<SpItemStatus, { rotulo: string; tone: ToneCrono; fallback: 'green' | 'amber' | 'blue' | 'gray' }> = {
+  sugerido: { rotulo: 'sugestão', tone: 'slate', fallback: 'blue' },
+  confirmado: { rotulo: 'confirmada', tone: 'green', fallback: 'green' },
+  nao_reconhecido: { rotulo: 'não reconhecido', tone: 'amber', fallback: 'amber' },
+  ignorado: { rotulo: 'ignorada', tone: 'slate', fallback: 'gray' },
+  removido: { rotulo: 'apagado', tone: 'slate', fallback: 'gray' },
+  revertido: { rotulo: 'desfeita por pessoa', tone: 'slate', fallback: 'gray' },
 }
 
 const mesBR = (c: string | null | undefined) => (c ? c.split('-').reverse().join('/') : '—')
@@ -60,17 +62,17 @@ const mesBR = (c: string | null | undefined) => (c ? c.split('-').reverse().join
 function Ladrinho({ a, pastel }: { a: ArquivoLidoCompleto; pastel?: boolean }) {
   const Icone = a.tipo === 'removido' ? FileX : a.tipo === 'planilha' ? FileSpreadsheet : FileText
   const tFallback = TONE_CHIP[TOM[a.tipo]]
-  const tomPastel = a.tipo === 'evidencia' ? 'verde' : a.tipo === 'planilha' ? 'azul' : a.tipo === 'fora_padrao' ? 'amber' : 'cinza'
-  
+  const toneNeutro: ToneCrono = a.tipo === 'evidencia' ? 'green' : a.tipo === 'fora_padrao' ? 'amber' : 'slate'
+
   if (pastel) {
     return (
-      <span className={`${tom(tomPastel)} flex size-12 shrink-0 flex-col items-center justify-center rounded-xl bg-[var(--c-suave)] text-[var(--c-tinta)] border border-[var(--c-linha)]`}>
+      <span className={`flex size-11 shrink-0 flex-col items-center justify-center rounded-lg ${TONE_SOFT[toneNeutro].bg} ${TONE_SOFT[toneNeutro].text}`}>
         <Icone className="h-4 w-4" aria-hidden />
-        <span className="mt-0.5 text-[9px] font-black uppercase tracking-wide">{a.sigla ?? (a.tipo === 'planilha' ? 'xlsx' : a.tipo === 'evidencia' ? 'pep' : '—')}</span>
+        <span className="mt-0.5 text-xs font-semibold uppercase">{a.sigla ?? (a.tipo === 'planilha' ? 'xlsx' : a.tipo === 'evidencia' ? 'pep' : '—')}</span>
       </span>
     )
   }
-  
+
   return (
     <span className={`flex size-12 shrink-0 flex-col items-center justify-center rounded-xl ${tFallback.bg} ${tFallback.text}`}>
       <Icone className="h-4 w-4" aria-hidden />
@@ -134,45 +136,55 @@ export function ListaArquivos({ execucaoId, filtro, contagens, onLimparFiltro, p
   const paginas = Math.max(1, Math.ceil(total / TAMANHO))
   const temFiltroExterno = !!(filtro.sigla || filtro.motivo || filtro.prestadorPastaId || filtro.pacientePastaId || filtro.situacao || filtro.motivoPulsar || filtro.soNovos)
 
+  const fichasVisiveis = FICHAS.filter(f => !f.tipo || contagens?.[f.tipo])
+
   return (
-    <div className={`space-y-3 ${pastel ? 'pp' : ''}`}>
+    <div className="space-y-3">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
         <div className="relative w-full xl:max-w-xs">
           <label htmlFor={`busca-arquivos-${execucaoId}`} className="sr-only">Buscar arquivo, paciente ou pasta</label>
-          <Search className={`pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${pastel ? 'text-[var(--pp-ink-muted)]' : 'text-muted-foreground'}`} aria-hidden />
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
           <input id={`busca-arquivos-${execucaoId}`} value={busca} onChange={e => setBusca(e.target.value)}
             placeholder="Buscar arquivo, paciente ou pasta"
             className={pastel
-              ? "pp-busca pl-9"
+              ? `${campo} pl-9`
               : "h-11 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-[13px] font-semibold text-foreground placeholder:font-normal placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"} />
         </div>
-        <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1" role="group" aria-label="Tipo de arquivo">
-          {FICHAS.map(f => {
-            const n = f.tipo ? contagens?.[f.tipo] : contagens?.total
-            if (f.tipo && !n) return null
-            const ativo = tipo === f.tipo
-            if (pastel) {
+        {pastel ? (
+          <SegmentedTabs<string>
+            size="sm"
+            value={tipo ?? 'todos'}
+            onChange={v => { setTipo(v === 'todos' ? null : (v as TipoArquivoLido)); setPagina(0) }}
+            ariaLabel="Tipo de arquivo"
+            tabs={fichasVisiveis.map(f => ({
+              value: f.tipo ?? 'todos',
+              label: f.rotulo,
+              count: f.tipo ? contagens?.[f.tipo] : contagens?.total,
+            }))}
+          />
+        ) : (
+          <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1" role="group" aria-label="Tipo de arquivo">
+            {fichasVisiveis.map(f => {
+              const n = f.tipo ? contagens?.[f.tipo] : contagens?.total
+              const ativo = tipo === f.tipo
               return (
-                <PilulaFiltro key={f.rotulo} t={f.tipo === 'evidencia' ? 'verde' : f.tipo === 'planilha' ? 'azul' : f.tipo === 'fora_padrao' ? 'amber' : 'cinza'} rotulo={f.rotulo} contagem={n} ativo={ativo} onClick={() => { setTipo(f.tipo); setPagina(0) }} />
+                <button key={f.rotulo} type="button" aria-pressed={ativo} onClick={() => { setTipo(f.tipo); setPagina(0) }}
+                  className={`inline-flex h-11 shrink-0 items-center gap-1.5 rounded-lg border px-3 text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                    ativo ? 'border-foreground bg-foreground text-background' : 'border-border bg-background text-foreground hover:bg-muted/50'}`}>
+                  {f.rotulo}
+                  {n != null && <span className={`rounded-full px-1.5 text-[10px] font-bold tabular-nums ${ativo ? 'bg-white/20' : 'bg-muted text-muted-foreground'}`}>{numero(n)}</span>}
+                </button>
               )
-            }
-            return (
-              <button key={f.rotulo} type="button" aria-pressed={ativo} onClick={() => { setTipo(f.tipo); setPagina(0) }}
-                className={`inline-flex h-11 shrink-0 items-center gap-1.5 rounded-lg border px-3 text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                  ativo ? 'border-foreground bg-foreground text-background' : 'border-border bg-background text-foreground hover:bg-muted/50'}`}>
-                {f.rotulo}
-                {n != null && <span className={`rounded-full px-1.5 text-[10px] font-bold tabular-nums ${ativo ? 'bg-white/20' : 'bg-muted text-muted-foreground'}`}>{numero(n)}</span>}
-              </button>
-            )
-          })}
-        </div>
-        <div className={`flex shrink-0 gap-1 rounded-xl p-1 xl:ml-auto ${pastel ? 'bg-[var(--c-suave)] border border-[var(--c-linha)]' : 'border border-border bg-muted/40'}`} role="group" aria-label="Ordenar">
+            })}
+          </div>
+        )}
+        <div className={pastel ? `${seletorTrilha} shrink-0 xl:ml-auto` : 'flex shrink-0 gap-1 rounded-xl border border-border bg-muted/40 p-1 xl:ml-auto'} role="group" aria-label="Ordenar">
           {ORDENS.map(o => (
             <button key={o.valor} type="button" aria-pressed={ordem === o.valor} onClick={() => { setOrdem(o.valor); setPagina(0) }}
-              className={`h-9 rounded-lg px-3 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 ${
-                ordem === o.valor 
-                  ? (pastel ? 'bg-[var(--pp-surface)] text-[var(--pp-ink)] shadow-[var(--pp-sombra)]' : 'bg-card text-foreground shadow-sm') 
-                  : (pastel ? 'text-[var(--pp-ink-muted)] hover:text-[var(--pp-ink)]' : 'text-muted-foreground hover:text-foreground')}`}>
+              className={pastel
+                ? seletorOpcao(ordem === o.valor)
+                : `h-9 rounded-lg px-3 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 ${
+                  ordem === o.valor ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
               {o.rotulo}
             </button>
           ))}
@@ -181,10 +193,10 @@ export function ListaArquivos({ execucaoId, filtro, contagens, onLimparFiltro, p
 
       {temFiltroExterno && onLimparFiltro && <Mostrando rotulo={filtro.rotulo ?? 'seleção'} total={total} onLimpar={onLimparFiltro} />}
 
-      {erro && <p className="rounded-xl border border-border px-4 py-6 text-sm text-rose-700 dark:text-rose-400">{erro}</p>}
-      {!erro && !dados && carregando && <p className={`rounded-xl border px-4 py-10 text-center text-sm ${pastel ? 'border-[var(--pp-border)] text-[var(--pp-ink-muted)]' : 'border-border text-muted-foreground'}`}>Carregando arquivos…</p>}
+      {erro && <p className="rounded-lg border border-border px-4 py-6 text-sm text-rose-700 dark:text-rose-400">{erro}</p>}
+      {!erro && !dados && carregando && <p className="rounded-lg border border-border px-4 py-10 text-center text-sm text-muted-foreground">Carregando arquivos…</p>}
       {!erro && dados && dados.arquivos.length === 0 && !carregando && (
-        <p className={`rounded-xl border px-4 py-10 text-center text-sm ${pastel ? 'border-[var(--pp-border)] text-[var(--pp-ink-muted)]' : 'border-border text-muted-foreground'}`}>Nenhum arquivo com esse filtro.</p>
+        <p className="rounded-lg border border-border px-4 py-10 text-center text-sm text-muted-foreground">Nenhum arquivo com esse filtro.</p>
       )}
 
       <ul className={`space-y-2 transition-opacity ${carregando && dados ? 'opacity-50' : ''}`} aria-busy={carregando}>
@@ -195,86 +207,86 @@ export function ListaArquivos({ execucaoId, filtro, contagens, onLimparFiltro, p
             ? (a.detalhe.usada ? 'planilha lida pelo robô' : rotuloMotivo(a.detalhe.motivo))
             : a.tipo === 'ignorado' || a.tipo === 'fora_padrao' ? rotuloMotivo(a.motivo)
               : a.situacao === 'nao_reconhecido' ? rotuloMotivo(a.motivo_pulsar) : null
-          
-          const tomPastelDefault = a.tipo === 'evidencia' ? 'verde' : a.tipo === 'planilha' ? 'azul' : a.tipo === 'fora_padrao' ? 'amber' : 'cinza'
-          
+
+          const tonePadrao: ToneCrono = a.tipo === 'evidencia' ? 'green' : a.tipo === 'fora_padrao' ? 'amber' : 'slate'
+
           return (
             <li key={a.sp_id}>
               <div role="button" tabIndex={0} onClick={() => setAberto(a)}
                 onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setAberto(a) } }}
                 className={pastel
-                  ? "group pp-cartao flex cursor-pointer flex-col gap-3 p-3 transition-colors lg:flex-row lg:items-center lg:gap-4"
+                  ? "group flex cursor-pointer flex-col gap-3 rounded-lg border border-border bg-card p-3 transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:flex-row lg:items-center lg:gap-4"
                   : "group flex cursor-pointer flex-col gap-3 rounded-xl border border-border bg-card p-3 transition-colors hover:border-foreground/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:flex-row lg:items-center lg:gap-4"
                 }>
                 <div className="flex min-w-0 flex-1 items-center gap-3">
                   <Ladrinho a={a} pastel={pastel} />
                   <div className="min-w-0">
-                    <div className="flex min-w-0 items-center gap-2">
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
                       {a.web_url && a.tipo !== 'removido' ? (
                         <a href={a.web_url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}
-                          className={`inline-flex min-w-0 items-center gap-1 rounded text-sm font-bold focus-visible:outline-none focus-visible:ring-2 ${pastel ? 'text-[var(--pp-ink)] hover:text-[var(--c-forte)]' : 'text-foreground hover:text-sky-700 dark:hover:text-sky-400'}`}>
+                          className={`inline-flex min-w-0 items-center gap-1 rounded text-sm font-semibold text-foreground focus-visible:outline-none focus-visible:ring-2 ${pastel ? 'hover:underline' : 'hover:text-sky-700 dark:hover:text-sky-400'}`}>
                           <span className="truncate">{a.nome}</span>
-                          <ExternalLink className={`h-3.5 w-3.5 shrink-0 ${pastel ? 'text-[var(--pp-ink-muted)]' : 'text-muted-foreground'}`} aria-hidden />
+                          <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
                           <span className="sr-only">(abre no SharePoint)</span>
                         </a>
                       ) : (
-                        <span className={`truncate text-sm font-bold ${a.tipo === 'removido' ? (pastel ? 'text-[var(--pp-ink-muted)] line-through' : 'text-muted-foreground line-through') : (pastel ? 'text-[var(--pp-ink)]' : 'text-foreground')}`}>{a.nome}</span>
+                        <span className={`truncate text-sm font-semibold ${a.tipo === 'removido' ? 'text-muted-foreground line-through' : 'text-foreground'}`}>{a.nome}</span>
                       )}
-                      {a.novo && (pastel ? <span className={`${tom('azul')} pp-selo-motivo`}>novo</span> : <StatusChip tone="blue" dense>novo</StatusChip>)}
+                      {a.novo && (pastel ? <span className={selo('slate')}>novo</span> : <StatusChip tone="blue" dense>novo</StatusChip>)}
                     </div>
-                    <p className={`mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1 text-xs ${pastel ? 'text-[var(--pp-ink-muted)]' : 'text-muted-foreground'}`}>
+                    <p className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1 text-xs text-muted-foreground">
                       {[p.prestador, p.paciente, p.pasta].filter(Boolean).map((seg, i, arr) => (
                         <span key={i} className="inline-flex min-w-0 items-center gap-1">
-                          <span className="truncate">{seg}</span>
+                          <span className={pastel ? 'break-words' : 'truncate'}>{seg}</span>
                           {i < arr.length - 1 && <ChevronRight className="h-3 w-3 shrink-0 opacity-50" aria-hidden />}
                         </span>
                       ))}
                     </p>
-                    {nota && <p className={`mt-0.5 truncate text-[11px] ${pastel ? 'text-[var(--pp-ink-muted)]' : 'text-muted-foreground/90'}`}>{nota}</p>}
+                    {nota && <p className="mt-0.5 truncate text-xs text-muted-foreground/90">{nota}</p>}
                   </div>
                 </div>
 
-                <div className={`grid grid-cols-3 divide-x text-left lg:w-[27rem] lg:shrink-0 ${pastel ? 'divide-[var(--pp-border)]' : 'divide-border'}`}>
+                <div className="grid grid-cols-3 divide-x divide-border text-left lg:w-[27rem] lg:shrink-0">
                   <div className="px-3 first:pl-0 lg:first:pl-3">
-                    <p className={`text-[11px] font-medium ${pastel ? 'text-[var(--pp-ink-muted)]' : 'text-muted-foreground'}`}>Competência</p>
-                    <p className={`text-base font-black leading-tight tabular-nums ${pastel ? 'text-[var(--pp-ink)]' : 'text-foreground'}`}>{mesBR(a.competencia_pulsar ?? a.competencia)}</p>
+                    <p className="text-xs font-medium text-muted-foreground">Competência</p>
+                    <p className={`leading-tight tabular-nums text-foreground ${pastel ? 'text-sm font-semibold' : 'text-base font-black'}`}>{mesBR(a.competencia_pulsar ?? a.competencia)}</p>
                   </div>
                   <div className="px-3">
-                    <p className={`text-[11px] font-medium ${pastel ? 'text-[var(--pp-ink-muted)]' : 'text-muted-foreground'}`}>Enviado</p>
-                    <p className={`text-sm font-bold leading-tight tabular-nums ${pastel ? 'text-[var(--pp-ink)]' : 'text-foreground'}`}>{a.criado_em_sp ? dataHora(a.criado_em_sp) : '—'}</p>
-                    <p className={`truncate text-[11px] ${pastel ? 'text-[var(--pp-ink-muted)]' : 'text-muted-foreground'}`}>{a.criado_por ?? ''}</p>
+                    <p className="text-xs font-medium text-muted-foreground">Enviado</p>
+                    <p className="text-sm font-semibold leading-tight tabular-nums text-foreground">{a.criado_em_sp ? dataHora(a.criado_em_sp) : '—'}</p>
+                    <p className={`text-xs text-muted-foreground ${pastel ? 'break-words' : 'truncate'}`}>{a.criado_por ?? ''}</p>
                   </div>
                   <div className="px-3">
-                    <p className={`text-[11px] font-medium ${pastel ? 'text-[var(--pp-ink-muted)]' : 'text-muted-foreground'}`}>Situação</p>
+                    <p className="text-xs font-medium text-muted-foreground">Situação</p>
                     <div className="mt-0.5 flex flex-wrap gap-1">
                       {pastel ? (
-                        sit ? <span className={`${tom(sit.tom)} pp-selo-motivo`}>{sit.rotulo}</span> : <span className={`${tom(tomPastelDefault)} pp-selo-motivo`}>{TIPOS_ARQUIVO[a.tipo]?.rotulo}</span>
+                        sit ? <span className={selo(sit.tone)}>{sit.rotulo}</span> : <span className={selo(tonePadrao)}>{TIPOS_ARQUIVO[a.tipo]?.rotulo}</span>
                       ) : (
                         sit ? <StatusChip tone={sit.fallback} dense>{sit.rotulo}</StatusChip> : <StatusChip tone={TOM[a.tipo]} dense>{TIPOS_ARQUIVO[a.tipo]?.rotulo}</StatusChip>
                       )}
                     </div>
                   </div>
                 </div>
-                <ChevronRight className={`hidden h-4 w-4 shrink-0 transition-transform group-hover:translate-x-0.5 lg:block ${pastel ? 'text-[var(--pp-ink-muted)]' : 'text-muted-foreground'}`} aria-hidden />
+                <ChevronRight className="hidden h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 lg:block" aria-hidden />
               </div>
             </li>
           )
         })}
       </ul>
 
-      <div className={`flex items-center justify-between gap-2 text-xs ${pastel ? 'text-[var(--pp-ink-muted)]' : 'text-muted-foreground'}`}>
+      <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
         <span aria-live="polite">{numero(total)} arquivo(s){paginas > 1 ? ` · página ${pagina + 1} de ${paginas}` : ''}</span>
         {paginas > 1 && (
           <div className="flex gap-1.5">
             <button type="button" disabled={pagina === 0 || carregando} onClick={() => setPagina(p => p - 1)}
-              className={pastel 
-                ? `${tom('cinza')} pp-btn pp-btn-suave !h-11 disabled:opacity-40` 
+              className={pastel
+                ? `${btnSecundario} min-h-11 sm:min-h-0`
                 : "inline-flex h-11 items-center gap-1 rounded-lg border border-border px-3 text-[13px] font-semibold text-foreground hover:bg-muted disabled:opacity-40"}>
               <ChevronLeft className="h-4 w-4" aria-hidden /> Anterior
             </button>
             <button type="button" disabled={pagina + 1 >= paginas || carregando} onClick={() => setPagina(p => p + 1)}
-              className={pastel 
-                ? `${tom('cinza')} pp-btn pp-btn-suave !h-11 disabled:opacity-40` 
+              className={pastel
+                ? `${btnSecundario} min-h-11 sm:min-h-0`
                 : "inline-flex h-11 items-center gap-1 rounded-lg border border-border px-3 text-[13px] font-semibold text-foreground hover:bg-muted disabled:opacity-40"}>
               Próxima <ChevronRight className="h-4 w-4" aria-hidden />
             </button>

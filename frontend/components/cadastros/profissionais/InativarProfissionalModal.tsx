@@ -1,11 +1,11 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import { CircleSlash, Loader2, ShieldCheck, Trash2, UserRoundX } from "lucide-react"
 import toast from "react-hot-toast"
 import { campo, rotulo } from "@/components/cadastros/pacientes/ui/campos"
-import { aviso, btnPerigoCheio, btnSecundario } from "@/components/cronograma/grade/estilo"
-import { useModalLayer, Z_MODAL } from "@/components/cronograma/ui/useModalLayer"
+import { aviso, btnPerigoCheio, btnSecundario, opcaoForm } from "@/components/cronograma/grade/estilo"
+import { ScheduleModal } from "@/components/cronograma/ui/ScheduleModal"
 import { DatePicker } from "@/components/ui/date-picker"
 import { useConfirmacao } from "@/components/ui/pastel/confirmacao"
 import { dataBR, hojeBrasilia } from "@/lib/disponibilidadeProfissional"
@@ -37,8 +37,6 @@ export function InativarProfissionalModal({
   const [contagem, setContagem] = useState<{ data: string; sessoes: number; pacientes: number } | null>(null)
   const [semGrade, setSemGrade] = useState(false)
   const [salvando, setSalvando] = useState(false)
-  const cardRef = useRef<HTMLDivElement | null>(null)
-  useModalLayer(cardRef, onFechar)
   const { confirmar: pedirConfirmacao, dialogo } = useConfirmacao()
 
   useEffect(() => {
@@ -97,21 +95,23 @@ export function InativarProfissionalModal({
   }
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center bg-black/45 p-4" style={{ zIndex: Z_MODAL }}
-      onClick={e => { if (e.target === e.currentTarget) onFechar() }}>
-      <div ref={cardRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="inativar-titulo"
-        className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-xl border border-border bg-card p-6 text-foreground shadow-lg outline-none">
-        <div className="flex items-start gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400" aria-hidden>
-            <CircleSlash className="h-5 w-5" />
-          </span>
-          <div>
-            <h2 id="inativar-titulo" className="text-base font-bold leading-6">Inativar {profissional.nome}</h2>
-            <p className="mt-0.5 text-sm text-muted-foreground">Cadastro, disponibilidade e histórico continuam guardados.</p>
-          </div>
-        </div>
-
-        <div className="mt-5 space-y-4">
+    <>
+    <ScheduleModal
+      title={`Inativar ${profissional.nome}`}
+      subtitle="Cadastro, disponibilidade e histórico continuam guardados."
+      maxWidth={560}
+      onClose={onFechar}
+      footer={
+        <>
+          <button type="button" onClick={onFechar} className={btnSecundario}>Cancelar</button>
+          <button type="button" onClick={confirmar} disabled={salvando || faltaMotivo} className={btnPerigoCheio}>
+            {salvando ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <CircleSlash className="h-4 w-4" aria-hidden />}
+            Inativar
+          </button>
+        </>
+      }
+    >
+        <div className="space-y-4">
           <div>
             <span className={rotulo}>Data de saída (primeiro dia sem o profissional)</span>
             <div className="mt-1"><DatePicker value={saida} onChange={v => v && setSaida(v)} /></div>
@@ -144,17 +144,9 @@ export function InativarProfissionalModal({
               placeholder="Ex.: pediu desligamento" aria-invalid={faltaMotivo && motivo.length > 0 ? true : undefined} />
           </div>
         </div>
-
-        <div className="mt-6 flex flex-wrap justify-end gap-2">
-          <button type="button" autoFocus onClick={onFechar} className={btnSecundario}>Cancelar</button>
-          <button type="button" onClick={confirmar} disabled={salvando || faltaMotivo} className={btnPerigoCheio}>
-            {salvando ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <CircleSlash className="h-4 w-4" aria-hidden />}
-            Inativar
-          </button>
-        </div>
-      </div>
-      {dialogo}
-    </div>
+    </ScheduleModal>
+    {dialogo}
+    </>
   )
 }
 
@@ -163,14 +155,13 @@ function Opcao({ ativa, onClick, Icone, titulo, texto, perigo = false }: {
 }) {
   return (
     <button type="button" role="radio" aria-checked={ativa} onClick={onClick}
-      className={`flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-        ativa ? "border-transparent bg-muted/60 ring-2 ring-ring" : "border-border hover:bg-muted/40"}`}>
+      className={`${opcaoForm(ativa)} w-full !justify-start gap-3 py-3 text-left`}>
       <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted ${perigo ? "text-rose-700 dark:text-rose-400" : "text-amber-700 dark:text-amber-400"}`} aria-hidden>
         <Icone className="h-4 w-4" />
       </span>
       <span>
-        <span className="block text-sm font-semibold">{titulo}</span>
-        <span className="block text-xs text-muted-foreground">{texto}</span>
+        <span className="block text-sm font-semibold text-foreground">{titulo}</span>
+        <span className="block text-xs font-normal text-muted-foreground">{texto}</span>
       </span>
     </button>
   )

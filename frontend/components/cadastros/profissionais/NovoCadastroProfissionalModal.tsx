@@ -7,6 +7,7 @@ import toast from "react-hot-toast"
 import { ScheduleModal } from "@/components/cronograma/ui/ScheduleModal"
 import { MultiSearchCombobox } from "@/components/cronograma/ui/MultiSearchCombobox"
 import { campo, rotulo } from "@/components/cadastros/pacientes/ui/campos"
+import { aviso, btnPrimario, btnSecundario } from "@/components/cronograma/grade/estilo"
 import { useCadastroTerapias } from "@/hooks/useCadastroTerapias"
 import { refetchProfissionais } from "@/hooks/useProfissionais"
 import { normTxt } from "@/lib/cronograma/constants"
@@ -86,22 +87,17 @@ export function NovoCadastroProfissionalModal({
       maxWidth={560}
       onClose={onFechar}
       footer={
-        <div className="flex items-center justify-end gap-2">
-          <button type="button" onClick={onFechar} className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-foreground hover:bg-muted/50">
+        <>
+          <button type="button" onClick={onFechar} className={btnSecundario}>
             Cancelar
           </button>
-          <button
-            type="button"
-            onClick={salvar}
-            disabled={!podeSalvar}
-            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-          >
-            {salvando && <Loader2 className="h-4 w-4 animate-spin" />} Cadastrar e abrir ficha
+          <button type="button" onClick={salvar} disabled={!podeSalvar} className={btnPrimario}>
+            {salvando && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />} Cadastrar e abrir ficha
           </button>
-        </div>
+        </>
       }
     >
-      <div className="grid gap-4 p-5 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-2">
         <div className="sm:col-span-2">
           <label htmlFor="novo-prof-nome" className={rotulo}>Nome completo *</label>
           <input id="novo-prof-nome" autoFocus maxLength={200} value={nome} onChange={e => setNome(e.target.value)} className={`${campo} mt-1`} />
@@ -152,7 +148,7 @@ export function NovoCadastroProfissionalModal({
           <p className="mt-1 text-xs text-muted-foreground">Só estas poderão ser escolhidas na disponibilidade.</p>
         </div>
         {erro && (
-          <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700 sm:col-span-2 dark:bg-rose-950/30 dark:text-rose-400">
+          <p role="alert" className={`${aviso("red")} sm:col-span-2`}>
             {erro}
           </p>
         )}

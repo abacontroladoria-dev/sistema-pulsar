@@ -1,22 +1,21 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Check, Circle, History, X, FolderOpen, Files, FileText, FileSpreadsheet, FileX } from 'lucide-react'
-import { Drawer, Z_DRAWER } from '@/components/cronograma/ui/Drawer'
+import { Check, Circle, Files, FileText, FolderOpen, History, X } from 'lucide-react'
 import { useCountUp } from '@/components/cronograma/remuneracao/RemuneracaoRPDashboard'
-import { dataHora, ETAPAS, GATILHOS, MODOS, numero, segundos } from '@/lib/roboSharepoint/rotulos'
+import { Drawer, Z_DRAWER } from '@/components/cronograma/ui/Drawer'
+import { Indicador } from '@/components/ui/padrao'
 import { ehEstadoAtual } from '@/lib/roboSharepoint/referencias'
+import { dataHora, ETAPAS, GATILHOS, MODOS, numero, segundos } from '@/lib/roboSharepoint/rotulos'
 import { obterResumoExecucao } from '@/services/roboSharepoint.service'
 import type { ResumoExecucao, RoboEtapaNome, RoboExecucao } from '@/types/roboSharepoint'
-import { Aviso, CamadaModal } from './Blocos'
 import { AbaAutenticar } from './AbaAutenticar'
-import { AbaListar } from './AbaListar'
 import { AbaClassificar } from './AbaClassificar'
-import { AbaPlanilhas } from './AbaPlanilhas'
 import { AbaDocumentos } from './AbaDocumentos'
+import { AbaListar } from './AbaListar'
+import { AbaPlanilhas } from './AbaPlanilhas'
 import { AbaReconhecer } from './AbaReconhecer'
-
-import { NumeroPastel, tom } from '@/components/ui/pastel/pecas'
+import { Aviso, CamadaModal } from './Blocos'
 
 // "O que o robô leu": uma execução aberta etapa por etapa. Abre na etapa do
 // card clicado; o trilho de cima troca de etapa sem fechar. Cabeçalho no
@@ -102,23 +101,17 @@ export function DetalheExecucaoDrawer({ execucao, etapaInicial, ehUltima, ultima
     >
       {/* Modais abertos de dentro do painel (arquivo) ficam uma camada acima dele. */}
       <CamadaModal.Provider value={zIndex + 10}>
-      <div className={simples ? 'pp' : 'tema-robo'}>
+      <div className={simples ? '' : 'tema-robo'}>
       <div ref={topoRef} className="-mt-4 h-0" aria-hidden />
 
       {/* Resumo da execução */}
       {simples ? (
-        <div className="mb-6 flex flex-wrap items-center gap-4">
-          <NumeroPastel t="aco" valor={numero(Math.round(hero))} rotulo={estadoAtual ? 'arquivos na pasta' : 'arquivos lidos'} Icone={FolderOpen} compacto />
-          <div className="flex flex-wrap items-center gap-2">
-            <span className={`${tom('cinza')} pp-pilula`}>
-              <span className="pp-pilula-bola">{numero(pastas)}</span> pastas
-            </span>
-            {estadoAtual && (
-              <span className={`${tom('azul')} pp-pilula`}>
-                <span className="pp-pilula-bola">{numero(resumo?.por_tipo.evidencia ?? 0)}</span> evidências
-              </span>
-            )}
-          </div>
+        <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <Indicador Icone={FolderOpen} valor={numero(Math.round(hero))} rotulo={estadoAtual ? 'Arquivos na pasta' : 'Arquivos lidos'} />
+          <Indicador Icone={Files} valor={numero(pastas)} rotulo="Pastas no site" />
+          {estadoAtual && (
+            <Indicador tone="green" Icone={FileText} valor={numero(resumo?.por_tipo.evidencia ?? 0)} rotulo="Evidências na pasta" />
+          )}
         </div>
       ) : (
         <section className="mb-4 overflow-hidden rounded-2xl border border-border bg-card shadow-sm">

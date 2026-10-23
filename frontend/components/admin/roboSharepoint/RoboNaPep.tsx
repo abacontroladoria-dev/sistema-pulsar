@@ -1,16 +1,17 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { DestaqueLeitura } from './DestaqueLeitura'
-import { FilaNaoReconhecidos } from './FilaNaoReconhecidos'
-import { DetalheExecucaoDrawer } from './detalhe/DetalheExecucaoDrawer'
-import { AvisosEvidencias } from './historico/AvisosEvidencias'
+import { Cartao } from '@/components/ui/padrao'
 import { useRoboSharepoint } from '@/hooks/useRoboSharepoint'
+import type { AnalistaDaGrade } from '@/lib/remuneracao/visaoGeralPep'
 import { ESTADO_ATUAL, execucaoEstadoAtual, execucoesDeReferencia } from '@/lib/roboSharepoint/referencias'
 import { estadoAtualDisponivel, obterResumoExecucao } from '@/services/roboSharepoint.service'
-import { PainelEsperadas } from './PainelEsperadas'
-import type { AnalistaDaGrade } from '@/lib/remuneracao/visaoGeralPep'
 import type { ResumoExecucao, RoboEtapaNome, RoboExecucao } from '@/types/roboSharepoint'
+import { DestaqueLeitura } from './DestaqueLeitura'
+import { FilaNaoReconhecidos } from './FilaNaoReconhecidos'
+import { PainelEsperadas } from './PainelEsperadas'
+import { DetalheExecucaoDrawer } from './detalhe/DetalheExecucaoDrawer'
+import { AvisosEvidencias } from './historico/AvisosEvidencias'
 
 // O robô SharePoint dentro da tela Entregas PEP (pedido de 02/10/2026): o que
 // está na pasta e o que precisa de uma pessoa (pedir planilha, dizer de quem
@@ -25,8 +26,6 @@ import type { ResumoExecucao, RoboEtapaNome, RoboExecucao } from '@/types/roboSh
 //
 // Sem permissão ou sem a migration aplicada, não mostra nada: a tela PEP
 // funciona igual sem o robô.
-
-const cartao = 'rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-6'
 
 export function RoboNaPep({ onCarregado, competencia, analistas }: { onCarregado?: () => void; competencia?: string; analistas?: AnalistaDaGrade[] } = {}) {
   const { execucoes, pendencias, itensPresos, carregando, erro, carregarPendencias } = useRoboSharepoint({ comSaude: false })
@@ -62,17 +61,22 @@ export function RoboNaPep({ onCarregado, competencia, analistas }: { onCarregado
   }
 
   return (
-    <div className="tema-robo space-y-4">
-      <DestaqueLeitura execucao={ultima} estadoAtual={estadoAtual} retratoDe={ultimaConcluida} onAbrir={abrir}
+    <div className="space-y-4">
+      <DestaqueLeitura
+        execucao={ultima}
+        estadoAtual={estadoAtual}
+        retratoDe={ultimaConcluida}
+        onAbrir={abrir}
         painelEsperadas={competencia && analistas && analistas.length > 0
           ? <PainelEsperadas competencia={competencia} analistas={analistas} idRetrato={idRetrato} />
-          : null} />
+          : null}
+      />
       <AvisosEvidencias />
 
       {/* O título, o "?" e o progresso moram dentro da fila (redesenho de 02/10/2026). */}
-      <section className={cartao} aria-labelledby="titulo-precisa-de-voce">
+      <Cartao titulo="titulo-precisa-de-voce">
         <FilaNaoReconhecidos fila={pendencias} itens={itensPresos} onAtualizar={carregarPendencias} />
-      </section>
+      </Cartao>
 
       {detalhe && (
         <DetalheExecucaoDrawer

@@ -2,6 +2,10 @@
 
 import { useMemo, useState } from "react"
 import { Bot, Check, ExternalLink, FilePenLine, FileX2, Hourglass, Loader2, RotateCcw, Undo2, User, X } from "lucide-react"
+import { campo, rotulo } from "@/components/cadastros/pacientes/ui/campos"
+import { aviso, btnPerigo, btnPerigoCheio, btnPrimario, btnSecundario, selo } from "@/components/cronograma/grade/estilo"
+import { SegmentedTabs } from "@/components/cronograma/ui/SegmentedTabs"
+import { CabecalhoSecao, Cartao, Indicador } from "@/components/ui/padrao"
 import { MOTIVOS_PADRAO, nomeEsperado, porQueEsperando } from "@/lib/roboSharepoint/rotulos"
 import type { PepCatalogoItem } from "@/types/pep"
 import type { SpItem } from "@/types/roboSharepoint"
@@ -36,25 +40,9 @@ function dataBR(iso: string | null | undefined) {
 function BotaoArquivo({ url }: { url: string | null }) {
   if (!url) return null
   return (
-    <a href={url} target="_blank" rel="noreferrer"
-      className="inline-flex min-h-11 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-blue-200 bg-white px-3 text-sm font-semibold text-blue-700 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand dark:border-blue-900 dark:bg-slate-900 dark:text-blue-300 dark:hover:bg-blue-950/40">
+    <a href={url} target="_blank" rel="noreferrer" className={`${btnSecundario} min-h-11 sm:min-h-0`}>
       <ExternalLink size={15} aria-hidden /> Abrir no SharePoint
     </a>
-  )
-}
-
-function Indicador({ icone: Icone, valor, rotulo, sub, tom }: {
-  icone: typeof Bot; valor: string; rotulo: string; sub?: string; tom: string
-}) {
-  return (
-    <div className={`flex items-center gap-3 rounded-xl border p-3 ${tom}`}>
-      <Icone size={20} className="shrink-0" aria-hidden />
-      <div className="min-w-0">
-        <p className="text-xl font-bold leading-none tabular-nums">{valor}</p>
-        <p className="mt-1 text-xs font-semibold">{rotulo}</p>
-        {sub && <p className="text-[11px] opacity-80">{sub}</p>}
-      </div>
-    </div>
   )
 }
 
@@ -110,214 +98,254 @@ export function EvidenciasSharepoint({ itens, catalogo, avaliar, onConfirmar, on
   ]
 
   return (
-    <section className="tema-robo overflow-hidden rounded-2xl border border-border bg-card shadow-sm" aria-labelledby="titulo-robo-mes">
-      <div className="flex h-1 w-full" aria-hidden><span className="w-1/2 bg-violet-600" /><span className="w-1/2 bg-blue-600" /></div>
-      <div className="space-y-4 p-4 sm:p-5">
-        <div className="flex flex-wrap items-start gap-3">
-          <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300">
-            <Bot size={22} aria-hidden />
-          </span>
-          <div className="min-w-0 flex-1">
-            <h3 id="titulo-robo-mes" className="text-base font-bold text-foreground">O que o robô fez neste mês</h3>
-            <p className="text-sm text-muted-foreground">
-              Toda noite o robô lê o SharePoint e marca sozinho o que segue o padrão de nome. Você só desfaz quando ele errar.
-            </p>
-          </div>
-        </div>
+    <Cartao className="space-y-4">
+      <CabecalhoSecao
+        id="titulo-robo-mes"
+        Icone={Bot}
+        titulo="O que o robô fez neste mês"
+        apoio="Toda noite o robô lê o SharePoint e marca sozinho o que segue o padrão de nome. Você só desfaz quando ele errar."
+      />
 
-        <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-          <Indicador icone={Bot} valor={String(doRobo.length)} rotulo="entregas do robô"
-            sub={valores ? `${brl(valores.robo)} na apuração` : undefined} tom={ORIGEM.robo.tinta} />
-          <Indicador icone={User} valor={String(unidadesPessoa)} rotulo="entregas de pessoas"
-            sub={valores ? `${brl(valores.humano)} na apuração` : undefined} tom={ORIGEM.humano.tinta} />
-          <Indicador icone={Undo2} valor={String(desfeitas.length)} rotulo="desfeitas por pessoas"
-            sub={acerto != null ? `robô acertou ${acerto}%` : undefined}
-            tom="border-slate-200 bg-slate-50 text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200" />
-          <Indicador icone={Hourglass} valor={String(esperando.length)} rotulo="esperando você"
-            sub={esperando.length ? "veja o motivo de cada um" : "nada pendente"}
-            tom="border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200" />
-        </div>
+      <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+        <Indicador
+          Icone={Bot}
+          valor={String(doRobo.length)}
+          rotulo="entregas do robô"
+          apoio={valores ? `${brl(valores.robo)} na apuração` : undefined}
+          tone="purple"
+        />
+        <Indicador
+          Icone={User}
+          valor={String(unidadesPessoa)}
+          rotulo="entregas de pessoas"
+          apoio={valores ? `${brl(valores.humano)} na apuração` : undefined}
+          tone="blue"
+        />
+        <Indicador
+          Icone={Undo2}
+          valor={String(desfeitas.length)}
+          rotulo="desfeitas por pessoas"
+          apoio={acerto != null ? `robô acertou ${acerto}%` : undefined}
+          tone="slate"
+        />
+        <Indicador
+          Icone={Hourglass}
+          valor={String(esperando.length)}
+          rotulo="esperando você"
+          apoio={esperando.length ? "veja o motivo de cada um" : "nada pendente"}
+          tone="amber"
+        />
+      </div>
 
-        <div role="tablist" aria-label="O que o robô fez" className="flex flex-wrap gap-2">
-          {ABAS.map(a => (
-            <button key={a.id} type="button" role="tab" aria-selected={aba === a.id} onClick={() => setEscolhida(a.id)}
-              className={`inline-flex min-h-11 items-center gap-1.5 rounded-xl border px-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand
-                ${aba === a.id ? "border-slate-800 bg-slate-800 text-white dark:border-slate-200 dark:bg-slate-200 dark:text-slate-900" : "border-border bg-background text-foreground hover:bg-muted/50"}`}>
-              <a.icone size={15} aria-hidden /> {a.rotulo}
-              <span className={`rounded-full px-1.5 text-xs tabular-nums ${aba === a.id ? "bg-white/20" : "bg-muted"}`}>{a.n}</span>
-            </button>
-          ))}
-        </div>
+      <SegmentedTabs<Aba>
+        value={aba}
+        onChange={setEscolhida}
+        ariaLabel="O que o robô fez"
+        tabs={ABAS.map(a => ({
+          value: a.id,
+          label: (
+            <span className="inline-flex items-center gap-1.5">
+              <a.icone size={14} aria-hidden /> {a.rotulo}
+            </span>
+          ),
+          count: a.n,
+        }))}
+      />
 
-        <ul className="divide-y divide-border rounded-xl border border-border" role="tabpanel">
-          {aba === "robo" && doRobo.length === 0 && (
-            <li className="px-4 py-6 text-center text-sm text-muted-foreground">O robô ainda não entregou nada deste analista neste mês.</li>
-          )}
-          {aba === "robo" && doRobo.map(i => (
-            <li key={i.sp_id} className="space-y-3 px-4 py-3">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <ul className="divide-y divide-border rounded-lg border border-border" role="tabpanel">
+        {aba === "robo" && doRobo.length === 0 && (
+          <li className="px-4 py-6 text-center text-sm text-muted-foreground">O robô ainda não entregou nada deste analista neste mês.</li>
+        )}
+        {aba === "robo" && doRobo.map(i => (
+          <li key={i.sp_id} className="space-y-3 px-4 py-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-start gap-3">
+                <SeloUnidade origem="robo" tamanho={20} />
+                <div className="min-w-0">
+                  <p className="break-words text-sm font-semibold text-foreground">{titulo(i)}</p>
+                  <p className="break-all text-xs text-muted-foreground">{i.nome}</p>
+                  <p className="text-xs text-muted-foreground">Entregue pelo robô em {dataBR(i.resolvido_em)}</p>
+                  {i.removido_em && (
+                    <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">
+                      Arquivo apagado do SharePoint em {dataBR(i.removido_em)} — o mês está liberado, então a entrega fica.
+                    </p>
+                  )}
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {!i.removido_em && <BotaoArquivo url={i.web_url} />}
+                {!liberado && (
+                  <button
+                    type="button"
+                    onClick={() => { setDesfazendo(desfazendo === i.sp_id ? null : i.sp_id); setMotivo("") }}
+                    className={`${btnPerigo} min-h-11 sm:min-h-0`}
+                  >
+                    <RotateCcw size={15} aria-hidden /> Desfazer
+                  </button>
+                )}
+              </div>
+            </div>
+            {desfazendo === i.sp_id && (
+              <div className={`${aviso("red")} flex-col gap-2`}>
+                <label htmlFor={`motivo-${i.sp_id}`} className={rotulo}>
+                  Por que o robô errou? (fica no histórico)
+                </label>
+                <textarea
+                  id={`motivo-${i.sp_id}`}
+                  value={motivo}
+                  onChange={e => setMotivo(e.target.value)}
+                  rows={2}
+                  placeholder="ex.: não é o PIC deste paciente"
+                  className={campo}
+                />
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={!motivo.trim() || ocupado === i.sp_id}
+                    onClick={async () => { if (await agir(i, () => onDesfazer(i, motivo.trim()))) setDesfazendo(null) }}
+                    className={`${btnPerigoCheio} min-h-11 sm:min-h-0`}
+                  >
+                    {ocupado === i.sp_id ? <Loader2 size={14} className="animate-spin" aria-hidden /> : <RotateCcw size={14} aria-hidden />}
+                    Desfazer a entrega
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDesfazendo(null)}
+                    className={`${btnSecundario} min-h-11 sm:min-h-0`}
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            )}
+          </li>
+        ))}
+
+        {aba === "esperando" && esperando.length === 0 && (
+          <li className="px-4 py-6 text-center text-sm text-muted-foreground">Nada esperando você.</li>
+        )}
+        {aba === "esperando" && esperando.map(i => {
+          const av = avaliar(i)
+          const esperado = i.padrao === "fora" || i.padrao === "duplicado" ? nomeEsperado(sigla(i), i.paciente_nome, i.competencia) : null
+          return (
+            <li key={i.sp_id} className="space-y-2 px-4 py-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="flex min-w-0 items-start gap-3">
-                  <SeloUnidade origem="robo" tamanho={22} />
+                  <SeloUnidade origem={null} tamanho={20} />
                   <div className="min-w-0">
-                    <p className="text-sm font-bold text-foreground">{titulo(i)}</p>
-                    <p className="truncate text-xs text-muted-foreground" title={i.nome}>{i.nome}</p>
-                    <p className="text-[11px] text-muted-foreground">Entregue pelo robô em {dataBR(i.resolvido_em)}</p>
-                    {i.removido_em && (
-                      <p className="text-[11px] font-semibold text-amber-800 dark:text-amber-300">
-                        Arquivo apagado do SharePoint em {dataBR(i.removido_em)} — o mês está liberado, então a entrega fica.
+                    <p className="break-words text-sm font-semibold text-foreground">{titulo(i)}</p>
+                    <p className="break-all text-xs text-muted-foreground">{i.nome}</p>
+                    <span className={`mt-1.5 ${selo("amber")} whitespace-normal`}>
+                      {porQueEsperando(i)}
+                    </span>
+                    {esperado && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Nome esperado: <code className="rounded bg-muted px-1 py-0.5 font-semibold text-foreground">{esperado}</code>.
+                        {" "}Pode marcar como entrega: ela vale e fica com o aviso “Ajustar nomenclatura” até o arquivo ser renomeado.
                       </p>
                     )}
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {!i.removido_em && <BotaoArquivo url={i.web_url} />}
-                  {!liberado && (
-                    <button type="button" onClick={() => { setDesfazendo(desfazendo === i.sp_id ? null : i.sp_id); setMotivo("") }}
-                      className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-rose-200 bg-white px-3 text-sm font-semibold text-rose-700 hover:bg-rose-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand dark:border-rose-900 dark:bg-slate-900 dark:text-rose-300">
-                      <RotateCcw size={15} aria-hidden /> Desfazer
-                    </button>
-                  )}
+                  <BotaoArquivo url={i.web_url} />
+                  <button
+                    type="button"
+                    disabled={!av.pode || ocupado === i.sp_id}
+                    onClick={() => agir(i, () => onConfirmar(i))}
+                    title="A pessoa assume a entrega (fica azul)"
+                    className={`${btnPrimario} min-h-11 sm:min-h-0`}
+                  >
+                    {ocupado === i.sp_id ? <Loader2 size={14} className="animate-spin" aria-hidden /> : <Check size={14} aria-hidden />}
+                    Marcar como entrega
+                  </button>
+                  <button
+                    type="button"
+                    disabled={ocupado === i.sp_id}
+                    onClick={() => agir(i, () => onIgnorar(i))}
+                    className={`${btnSecundario} min-h-11 sm:min-h-0`}
+                  >
+                    <X size={14} aria-hidden /> Ignorar
+                  </button>
                 </div>
               </div>
-              {desfazendo === i.sp_id && (
-                <div className="space-y-2 rounded-xl border border-rose-200 bg-rose-50/60 p-3 dark:border-rose-900 dark:bg-rose-950/30">
-                  <label htmlFor={`motivo-${i.sp_id}`} className="block text-xs font-semibold text-rose-900 dark:text-rose-200">
-                    Por que o robô errou? (fica no histórico)
-                  </label>
-                  <textarea id={`motivo-${i.sp_id}`} value={motivo} onChange={e => setMotivo(e.target.value)} rows={2}
-                    placeholder="ex.: não é o PIC deste paciente"
-                    className="w-full rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-sm dark:border-rose-900 dark:bg-slate-900" />
-                  <div className="flex flex-wrap gap-2">
-                    <button type="button" disabled={!motivo.trim() || ocupado === i.sp_id}
-                      onClick={async () => { if (await agir(i, () => onDesfazer(i, motivo.trim()))) setDesfazendo(null) }}
-                      className="inline-flex min-h-11 items-center gap-1.5 rounded-xl bg-rose-600 px-4 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-50">
-                      {ocupado === i.sp_id ? <Loader2 size={14} className="animate-spin" aria-hidden /> : <RotateCcw size={14} aria-hidden />}
-                      Desfazer a entrega
-                    </button>
-                    <button type="button" onClick={() => setDesfazendo(null)}
-                      className="inline-flex min-h-11 items-center rounded-xl border border-border bg-background px-4 text-sm font-medium text-muted-foreground hover:bg-muted/50">
-                      Cancelar
-                    </button>
-                  </div>
-                </div>
-              )}
+              {!av.pode && <p className="text-xs text-amber-800 dark:text-amber-300">{av.motivo}</p>}
             </li>
-          ))}
+          )
+        })}
 
-          {aba === "esperando" && esperando.length === 0 && (
-            <li className="px-4 py-6 text-center text-sm text-muted-foreground">Nada esperando você.</li>
-          )}
-          {aba === "esperando" && esperando.map(i => {
-            const av = avaliar(i)
-            const esperado = i.padrao === "fora" || i.padrao === "duplicado" ? nomeEsperado(sigla(i), i.paciente_nome, i.competencia) : null
-            return (
-              <li key={i.sp_id} className="space-y-2 px-4 py-3">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="flex min-w-0 items-start gap-3">
-                    <SeloUnidade origem={null} tamanho={22} />
-                    <div className="min-w-0">
-                      <p className="text-sm font-bold text-foreground">{titulo(i)}</p>
-                      <p className="truncate text-xs text-muted-foreground" title={i.nome}>{i.nome}</p>
-                      <span className="mt-1.5 inline-flex rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-900 ring-1 ring-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-900">
-                        {porQueEsperando(i)}
-                      </span>
-                      {esperado && (
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          Nome esperado: <code className="rounded bg-muted px-1 py-0.5 font-semibold text-foreground">{esperado}</code>.
-                          {" "}Pode marcar como entrega: ela vale e fica com o aviso “Ajustar nomenclatura” até o arquivo ser renomeado.
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <BotaoArquivo url={i.web_url} />
-                    <button type="button" disabled={!av.pode || ocupado === i.sp_id} onClick={() => agir(i, () => onConfirmar(i))}
-                      title="A pessoa assume a entrega (fica azul)"
-                      className="inline-flex min-h-11 items-center gap-1.5 rounded-xl bg-blue-600 px-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
-                      {ocupado === i.sp_id ? <Loader2 size={14} className="animate-spin" aria-hidden /> : <Check size={14} aria-hidden />}
-                      Marcar como entrega
-                    </button>
-                    <button type="button" disabled={ocupado === i.sp_id} onClick={() => agir(i, () => onIgnorar(i))}
-                      className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-border bg-background px-3 text-sm font-medium text-muted-foreground hover:bg-muted/50 disabled:opacity-50">
-                      <X size={14} aria-hidden /> Ignorar
-                    </button>
-                  </div>
-                </div>
-                {!av.pode && <p className="text-xs text-amber-800 dark:text-amber-300">{av.motivo}</p>}
-              </li>
-            )
-          })}
-
-          {aba === "ajustar" && ajustar.map(i => {
-            const quem = i.entregue_por === "robo" ? "robo" : "humano"
-            const esperado = nomeEsperado(sigla(i), i.paciente_nome, i.competencia, Number(i.nome_padrao?.seq ?? 1) || 1)
-            return (
-              <li key={i.sp_id} className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
-                <div className="flex min-w-0 items-start gap-3">
-                  <SeloUnidade origem={quem} tamanho={22} />
-                  <div className="min-w-0">
-                    <p className="text-sm font-bold text-foreground">{titulo(i)}</p>
-                    <p className="truncate text-xs text-muted-foreground" title={i.nome}>{i.nome}</p>
-                    <span className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-900 ring-1 ring-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-900">
-                      <FilePenLine size={12} aria-hidden />
-                      {i.padrao === "duplicado" ? MOTIVOS_PADRAO.repetido : MOTIVOS_PADRAO[i.padrao_motivo ?? ""] ?? "Nome fora do padrão"}
-                    </span>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      A entrega vale ({quem === "robo" ? "robô" : "pessoa"}{i.resolvido_em ? `, ${dataBR(i.resolvido_em)}` : ""}). Renomeie no SharePoint
-                      {esperado ? <>: <code className="rounded bg-muted px-1 py-0.5 font-semibold text-foreground">{esperado}</code></> : null}
-                    </p>
-                  </div>
-                </div>
-                <BotaoArquivo url={i.web_url} />
-              </li>
-            )
-          })}
-
-          {aba === "desfeitas" && desfeitas.length === 0 && (
-            <li className="px-4 py-6 text-center text-sm text-muted-foreground">Ninguém desfez entrega do robô neste mês.</li>
-          )}
-          {aba === "desfeitas" && desfeitas.map(i => (
-            <li key={i.sp_id} className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        {aba === "ajustar" && ajustar.map(i => {
+          const quem = i.entregue_por === "robo" ? "robo" : "humano"
+          const esperado = nomeEsperado(sigla(i), i.paciente_nome, i.competencia, Number(i.nome_padrao?.seq ?? 1) || 1)
+          return (
+            <li key={i.sp_id} className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="flex min-w-0 items-start gap-3">
-                <span className="flex size-[22px] shrink-0 items-center justify-center rounded-full bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-200"><Undo2 size={13} aria-hidden /></span>
+                <SeloUnidade origem={quem} tamanho={20} />
                 <div className="min-w-0">
-                  <p className="text-sm font-bold text-foreground line-through decoration-slate-400">{titulo(i)}</p>
-                  <p className="truncate text-xs text-muted-foreground" title={i.nome}>{i.nome}</p>
-                  <p className="text-xs text-slate-700 dark:text-slate-300">
-                    Desfeita por <strong>{i.revertido_por_nome ?? "pessoa"}</strong> em {dataBR(i.revertido_em)}
-                    {i.revertido_motivo ? <> — “{i.revertido_motivo}”</> : null}
+                  <p className="break-words text-sm font-semibold text-foreground">{titulo(i)}</p>
+                  <p className="break-all text-xs text-muted-foreground">{i.nome}</p>
+                  <span className={`mt-1.5 ${selo("amber")} whitespace-normal`}>
+                    <FilePenLine size={12} aria-hidden />
+                    {i.padrao === "duplicado" ? MOTIVOS_PADRAO.repetido : MOTIVOS_PADRAO[i.padrao_motivo ?? ""] ?? "Nome fora do padrão"}
+                  </span>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    A entrega vale ({quem === "robo" ? "robô" : "pessoa"}{i.resolvido_em ? `, ${dataBR(i.resolvido_em)}` : ""}). Renomeie no SharePoint
+                    {esperado ? <>: <code className="rounded bg-muted px-1 py-0.5 font-semibold text-foreground">{esperado}</code></> : null}
                   </p>
                 </div>
               </div>
               <BotaoArquivo url={i.web_url} />
             </li>
-          ))}
+          )
+        })}
 
-          {aba === "sairam" && sairam.map(i => {
-            const quem = i.entregue_por === "robo" ? "robo" : "humano"
-            return (
-              <li key={i.sp_id} className="flex min-w-0 items-start gap-3 px-4 py-3">
-                <span className="flex size-[22px] shrink-0 items-center justify-center rounded-full bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300"><FileX2 size={13} aria-hidden /></span>
-                <div className="min-w-0">
-                  <p className="text-sm font-bold text-foreground">{titulo(i)}</p>
-                  <p className="truncate text-xs text-muted-foreground line-through decoration-slate-400" title={i.nome}>{i.nome}</p>
-                  <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-slate-700 dark:text-slate-300">
-                    <span className={`inline-flex items-center gap-1 font-semibold ${ORIGEM[quem].texto}`}>
-                      {quem === "robo" ? <Bot size={12} aria-hidden /> : <User size={12} aria-hidden />} Entregue por {quem === "robo" ? "robô" : "pessoa"}
-                      {i.resolvido_em ? ` em ${dataBR(i.resolvido_em)}` : ""}
-                    </span>
-                    <span>·</span>
-                    <span>
-                      {i.robo_obs === "saiu_da_pasta_do_item" ? "saiu da pasta do item" : "apagado do SharePoint"}
-                      {i.removido_em ? ` em ${dataBR(i.removido_em)}` : ""}: a unidade saiu da entrega e o valor foi recalculado.
-                    </span>
-                  </p>
-                </div>
-              </li>
-            )
-          })}
-        </ul>
-      </div>
-    </section>
+        {aba === "desfeitas" && desfeitas.length === 0 && (
+          <li className="px-4 py-6 text-center text-sm text-muted-foreground">Ninguém desfez entrega do robô neste mês.</li>
+        )}
+        {aba === "desfeitas" && desfeitas.map(i => (
+          <li key={i.sp_id} className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
+              <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                <Undo2 size={12} aria-hidden />
+              </span>
+              <div className="min-w-0">
+                <p className="break-words text-sm font-semibold text-foreground line-through decoration-muted-foreground">{titulo(i)}</p>
+                <p className="break-all text-xs text-muted-foreground">{i.nome}</p>
+                <p className="break-words text-xs text-muted-foreground">
+                  Desfeita por <strong className="text-foreground">{i.revertido_por_nome ?? "pessoa"}</strong> em {dataBR(i.revertido_em)}
+                  {i.revertido_motivo ? <> — “{i.revertido_motivo}”</> : null}
+                </p>
+              </div>
+            </div>
+            <BotaoArquivo url={i.web_url} />
+          </li>
+        ))}
+
+        {aba === "sairam" && sairam.map(i => {
+          const quem = i.entregue_por === "robo" ? "robo" : "humano"
+          return (
+            <li key={i.sp_id} className="flex min-w-0 items-start gap-3 px-4 py-3">
+              <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
+                <FileX2 size={12} aria-hidden />
+              </span>
+              <div className="min-w-0">
+                <p className="break-words text-sm font-semibold text-foreground">{titulo(i)}</p>
+                <p className="break-all text-xs text-muted-foreground line-through decoration-muted-foreground">{i.nome}</p>
+                <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                  <span className={`inline-flex items-center gap-1 font-semibold ${ORIGEM[quem].texto}`}>
+                    {quem === "robo" ? <Bot size={12} aria-hidden /> : <User size={12} aria-hidden />} Entregue por {quem === "robo" ? "robô" : "pessoa"}
+                    {i.resolvido_em ? ` em ${dataBR(i.resolvido_em)}` : ""}
+                  </span>
+                  <span>·</span>
+                  <span>
+                    {i.robo_obs === "saiu_da_pasta_do_item" ? "saiu da pasta do item" : "apagado do SharePoint"}
+                    {i.removido_em ? ` em ${dataBR(i.removido_em)}` : ""}: a unidade saiu da entrega e o valor foi recalculado.
+                  </span>
+                </p>
+              </div>
+            </li>
+          )
+        })}
+      </ul>
+    </Cartao>
   )
 }

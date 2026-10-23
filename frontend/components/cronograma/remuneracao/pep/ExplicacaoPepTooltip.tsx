@@ -13,6 +13,7 @@
 // quebra — para os valores ficarem alinhados um embaixo do outro e nenhum
 // "R$" se separar do número.
 
+import { aviso } from "@/components/cronograma/grade/estilo"
 import { InfoTooltip } from "@/components/cronograma/ui/InfoTooltip"
 import { explicarPepPaciente, type LinhaExplicacaoPep } from "@/lib/remuneracao/explicacaoPep"
 import type { PepApuracaoMensal, PepCatalogoItem } from "@/types/pep"
@@ -66,14 +67,14 @@ export function ExplicacaoPepTooltip({ apuracao, catalogo, semanasCalendario }: 
       }
     >
       <div className="space-y-3 text-left">
-        <p className="text-[13px] font-bold text-foreground">Como chegamos em {money(e.liquido)}</p>
+        <p className="text-sm font-semibold text-foreground">Como chegamos em {money(e.liquido)}</p>
 
         {/* ── A conta ── */}
         <div className="space-y-2">
           <Linha rotulo="Potencial do paciente" valor={money(e.potencial)} />
           {descontos.map((l, i) => (
             <Linha key={`d${i}`} sigla={l.sigla} rotulo={l.nome} nota={nota(l)}
-              valor={`− ${money(l.valor)}`} tom="text-rose-600 dark:text-rose-400" />
+              valor={`− ${money(l.valor)}`} tom="text-rose-700 dark:text-rose-400" />
           ))}
           {devolucoes.map((l, i) => (
             <Linha key={`v${i}`} rotulo={l.nome} nota={nota(l)}
@@ -83,25 +84,25 @@ export function ExplicacaoPepTooltip({ apuracao, catalogo, semanasCalendario }: 
             <Linha rotulo="PEP apurada" valor={money(e.liquido)} forte />
           </div>
           {e.saldoParaProximoMes > 0.005 && (
-            <p className="text-[11px] leading-snug text-muted-foreground">
+            <p className="text-xs leading-snug text-muted-foreground">
               O desconto passou do potencial: {money(e.saldoParaProximoMes)} ficam para descontar no mês seguinte.
             </p>
           )}
         </div>
 
         {e.modoTeste && (
-          <p className="rounded-md bg-amber-50 px-2.5 py-2 text-[11px] leading-snug text-amber-800 dark:bg-amber-950/50 dark:text-amber-300">
+          <p className={`${aviso("amber")} text-xs leading-snug`}>
             Mês de teste: os descontos aparecem só para demonstração — paga-se 100% do potencial.
           </p>
         )}
 
         {!e.modoTeste && e.faltaPara100 <= 0.005 && (
-          <p className="text-[11px] leading-snug text-emerald-700 dark:text-emerald-400">Todos os itens em dia: 100% do potencial.</p>
+          <p className="text-xs leading-snug text-[var(--status-ok)]">Todos os itens em dia: 100% do potencial.</p>
         )}
 
         {/* ── O que falta para 100% ── mesma grade de duas colunas da conta. */}
         {mostraFalta && (
-          <div className="space-y-1.5 rounded-md bg-muted/60 px-2.5 py-2">
+          <div className="space-y-1.5 rounded-md bg-muted px-2.5 py-2">
             <Linha rotulo="Falta para 100%" valor={money(e.faltaPara100)} forte />
             {e.recuperavelComEntregas > 0.005 && (porItemExato
               ? recuperaveis.map((l, i) => (
@@ -116,7 +117,7 @@ export function ExplicacaoPepTooltip({ apuracao, catalogo, semanasCalendario }: 
         )}
 
         {e.liberado && (
-          <p className="text-[11px] leading-snug text-muted-foreground">Faturamento liberado: este valor está congelado.</p>
+          <p className="text-xs leading-snug text-muted-foreground">Faturamento liberado: este valor está congelado.</p>
         )}
       </div>
     </InfoTooltip>
@@ -134,14 +135,14 @@ function Linha({ sigla, rotulo, nota, valor, tom, forte = false, suave = false }
   const titulo = sigla ? `${sigla} · ${rotulo}` : rotulo
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-4">
-      <p className={`truncate text-xs ${forte ? "font-bold text-foreground" : suave ? "text-muted-foreground" : "text-foreground/90"}`} title={titulo}>
-        {sigla && <span className="mr-1.5 font-bold text-foreground">{sigla}</span>}
+      <p className={`truncate text-xs ${forte ? "font-semibold text-foreground" : suave ? "text-muted-foreground" : "text-foreground/90"}`} title={titulo}>
+        {sigla && <span className="mr-1.5 font-semibold text-foreground">{sigla}</span>}
         {rotulo}
       </p>
-      <p className={`whitespace-nowrap text-right text-xs tabular-nums ${forte ? "font-bold" : "font-semibold"} ${tom ?? "text-foreground"}`}>
+      <p className={`whitespace-nowrap text-right text-xs tabular-nums ${forte ? "font-semibold" : "font-medium"} ${tom ?? "text-foreground"}`}>
         {valor}
       </p>
-      {nota && <p className="col-span-2 -mt-0.5 truncate text-[11px] text-muted-foreground" title={nota}>{nota}</p>}
+      {nota && <p className="col-span-2 -mt-0.5 truncate text-xs text-muted-foreground" title={nota}>{nota}</p>}
     </div>
   )
 }

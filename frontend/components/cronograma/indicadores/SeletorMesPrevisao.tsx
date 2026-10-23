@@ -7,6 +7,7 @@
 // passados (pra ver deduções por falta reais, não só a projeção futura).
 
 import { ChevronLeft, ChevronRight, CalendarClock } from "lucide-react"
+import { btnSecundario } from "@/components/cronograma/grade/estilo"
 
 const MESES_PT = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -29,33 +30,35 @@ export function SeletorMesPrevisao({ ano, mes, onChange }: SeletorMesPrevisaoPro
   const ehMesAtual = ano === hoje.getFullYear() && mes === hoje.getMonth() + 1
 
   return (
-    <div className="flex h-9 items-center gap-1 rounded-lg border border-border bg-card px-1.5">
-      <button
-        type="button"
-        onClick={() => { const p = somarMes(ano, mes, -1); onChange(p.ano, p.mes) }}
-        className="rounded p-1 text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-        aria-label="Mês anterior"
-      >
-        <ChevronLeft size={14} />
-      </button>
-      <span className="min-w-[110px] text-center text-[12px] font-bold text-foreground">
-        {MESES_PT[mes - 1]}/{ano}
-      </span>
-      <button
-        type="button"
-        onClick={() => { const p = somarMes(ano, mes, 1); onChange(p.ano, p.mes) }}
-        className="rounded p-1 text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-        aria-label="Próximo mês"
-      >
-        <ChevronRight size={14} />
-      </button>
+    <div className="inline-flex flex-wrap items-center gap-1.5">
+      <div className="flex h-9 items-center gap-1 rounded-md border border-border bg-card px-1.5">
+        <button
+          type="button"
+          onClick={() => { const p = somarMes(ano, mes, -1); onChange(p.ano, p.mes) }}
+          className="rounded p-1 text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+          aria-label="Mês anterior"
+        >
+          <ChevronLeft size={14} />
+        </button>
+        <span className="min-w-[110px] text-center text-sm font-semibold text-foreground">
+          {MESES_PT[mes - 1]}/{ano}
+        </span>
+        <button
+          type="button"
+          onClick={() => { const p = somarMes(ano, mes, 1); onChange(p.ano, p.mes) }}
+          className="rounded p-1 text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+          aria-label="Próximo mês"
+        >
+          <ChevronRight size={14} />
+        </button>
+      </div>
       {!ehMesAtual && (
         <button
           type="button"
           onClick={() => onChange(hoje.getFullYear(), hoje.getMonth() + 1)}
-          className="ml-1 flex items-center gap-1 rounded px-1.5 py-1 text-[11px] font-semibold text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/30"
+          className={btnSecundario}
         >
-          <CalendarClock size={12} /> Mês atual
+          <CalendarClock size={14} aria-hidden /> Mês atual
         </button>
       )}
     </div>

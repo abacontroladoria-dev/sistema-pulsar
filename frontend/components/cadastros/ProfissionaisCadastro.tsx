@@ -1,9 +1,9 @@
 "use client"
 
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { memo, useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import {
-  AlertCircle, ArrowDownUp, Check, ChevronLeft, ChevronRight, CloudDownload, Database,
+  AlertCircle, ArrowDownUp, ChevronLeft, ChevronRight, CloudDownload, Database,
   History, ListFilter, Search, UserPlus, X,
 } from "lucide-react"
 import { HistoricoCadastrosModal } from "@/components/cadastros/historico/HistoricoCadastrosModal"
@@ -23,7 +23,9 @@ import { estiloTons } from "@/lib/cadastros/tonsTerapia"
 import { dataBR, somarDias } from "@/lib/disponibilidadeProfissional"
 import { NovoCadastroProfissionalModal } from "./profissionais/NovoCadastroProfissionalModal"
 import type { SituacaoGrade, SituacaoGradeProfissional } from "@/types/disponibilidadeProfissional"
-import { BarraAlfabeto, SeletorModo, type ModoExibicao } from "./shared/ListaCadastro"
+import { BarraAlfabeto, OpcaoFiltro, PopoverFiltro, SeletorModo, alternarEm, type ModoExibicao } from "./shared/ListaCadastro"
+import { btnSecundario } from "@/components/cronograma/grade/estilo"
+import { EstadoVazio } from "@/components/ui/padrao"
 
 // Listagem do cadastro de profissionais — mesmo desenho da de pacientes (cards,
 // A–Z, grade/lista), com a cor da terapia focal como destaque do card.
@@ -228,78 +230,34 @@ export function ProfissionaisCadastro() {
 
 
   const { setRightContent } = useHeader()
+
+  // No header ficam só as AÇÕES (padrão da lista de Pacientes). Busca e
+  // filtros moram no bloco da página, junto com a barra A–Z.
   useEffect(() => {
     setRightContent(
-      // O header do painel tem altura fixa (80px) e ~840px livres em tela de
-      // 1440: tudo numa linha só, com rótulos longos só em tela bem larga.
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <div className="relative w-40 min-w-0 min-[1680px]:w-64">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-          <input
-            type="text"
-            className={`${campo} h-9 pl-9 ${buscaTexto ? "pr-9" : ""} w-full`}
-            placeholder="Buscar nome, CPF, registro…"
-            value={buscaTexto}
-            onChange={e => { setBuscaTexto(e.target.value); setPagina(1) }}
-            aria-label="Buscar profissional"
-          />
-          {buscaTexto && (
-            <button
-              type="button"
-              onClick={() => { setBuscaTexto(""); setPagina(1) }}
-              className={`absolute right-1.5 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground ${foco}`}
-              aria-label="Limpar busca"
-            >
-              <X className="h-4 w-4" aria-hidden="true" />
-            </button>
-          )}
-        </div>
-        <div className="w-40 shrink-0 min-[1680px]:w-48">
-          <MultiSearchCombobox
-            opcoes={opcoesTerapia}
-            selecionados={filtroTerapias}
-            onToggle={id => {
-              setFiltroTerapias(prev => {
-                const n = new Set(prev)
-                if (n.has(id)) n.delete(id)
-                else n.add(id)
-                return n
-              })
-              setPagina(1)
-            }}
-            onDesmarcarTodos={() => { setFiltroTerapias(new Set()); setPagina(1) }}
-            ariaLabel="Filtrar por terapia"
-            nomePlural="terapias"
-            placeholder="Terapia: todas"
-            className="h-9 text-sm"
-          />
-        </div>
-        <FiltroSituacao value={situacoes} onChange={v => { setSituacoes(v); setPagina(1) }} />
-        <OrdenarPor value={ordem} onChange={trocarOrdem} />
-        <SeletorModo value={modo} onChange={trocarModo} />
-        <span className="mx-1 h-6 w-px shrink-0 bg-border" aria-hidden="true" />
+      <div className="flex items-center gap-2">
         <button
           type="button"
           onClick={() => setVerHistorico(true)}
-          title="Histórico de alterações"
-          aria-label="Histórico de alterações"
-          className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border text-foreground hover:bg-muted ${foco}`}
+          aria-label="Histórico"
+          className={`inline-flex shrink-0 items-center gap-2 rounded-md border border-border px-3 py-2 text-sm font-semibold text-foreground hover:bg-muted ${foco}`}
         >
           <History className="h-4 w-4" aria-hidden="true" />
+          <span className="hidden sm:inline">Histórico</span>
         </button>
         <button
           type="button"
           onClick={() => setModalNovo(true)}
           disabled={migrationPendente}
-          className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-md bg-primary px-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 ${foco}`}
+          className={`inline-flex shrink-0 items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 ${foco}`}
         >
           <UserPlus className="h-4 w-4" aria-hidden="true" />
-          <span>Novo<span className="hidden min-[1680px]:inline">&nbsp;profissional</span></span>
+          Novo profissional
         </button>
       </div>
     )
     return () => setRightContent(null)
-  }, [buscaTexto, situacoes, filtroTerapias, opcoesTerapia, ordem, trocarOrdem, modo, trocarModo, migrationPendente, setRightContent])
+  }, [migrationPendente, setRightContent])
 
   if (migrationPendente) {
     return (
@@ -315,7 +273,82 @@ export function ProfissionaisCadastro() {
   const vazio = !loading && profissionais.length === 0
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 py-6">
+    // Mesma largura e mesmo bloco de filtros da lista de Pacientes.
+    <div className="mx-auto w-full max-w-screen-2xl px-4 py-6">
+      {/* Busca, filtros e A–Z num bloco só: tudo que recorta a lista mora junto,
+          e a lista abaixo é a resposta. */}
+      {!vazio && (
+        <div className="mb-5 rounded-xl border border-border/70 bg-card shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+          <div className="flex flex-wrap items-center gap-2 px-3 pb-2 pt-3">
+            <div className="relative w-full md:w-80 lg:w-96">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+              <input
+                type="text"
+                className={`${campo} w-full pl-9 ${buscaTexto ? "pr-11 sm:pr-9" : ""}`}
+                placeholder="Buscar por nome, CPF, registro ou ID…"
+                value={buscaTexto}
+                onChange={e => { setBuscaTexto(e.target.value); setPagina(1) }}
+                aria-label="Buscar profissional"
+              />
+              {buscaTexto && (
+                <button
+                  type="button"
+                  onClick={() => { setBuscaTexto(""); setPagina(1) }}
+                  // 40px no toque (o campo inteiro tem essa altura), 24px no mouse.
+                  className={`absolute right-0 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground sm:right-1.5 sm:h-6 sm:w-6 ${foco}`}
+                  aria-label="Limpar busca"
+                >
+                  <X className="h-4 w-4" aria-hidden="true" />
+                </button>
+              )}
+            </div>
+            <div className="w-full sm:w-52">
+              <MultiSearchCombobox
+                opcoes={opcoesTerapia}
+                selecionados={filtroTerapias}
+                onToggle={id => {
+                  setFiltroTerapias(prev => {
+                    const n = new Set(prev)
+                    if (n.has(id)) n.delete(id)
+                    else n.add(id)
+                    return n
+                  })
+                  setPagina(1)
+                }}
+                onDesmarcarTodos={() => { setFiltroTerapias(new Set()); setPagina(1) }}
+                ariaLabel="Filtrar por terapia"
+                nomePlural="terapias"
+                placeholder="Terapia: todas"
+                className="min-h-11 text-sm sm:min-h-0"
+              />
+            </div>
+            <FiltroSituacao value={situacoes} onChange={v => { setSituacoes(v); setPagina(1) }} />
+            <OrdenarPor value={ordem} onChange={trocarOrdem} />
+            <div className="ml-auto flex w-full items-center justify-between gap-3 sm:w-auto sm:justify-end">
+              {!loading && (
+                <span className="shrink-0 text-xs tabular-nums text-muted-foreground" aria-live="polite">
+                  {ordem === "terapia" ? (
+                    <>
+                      <span className="text-sm font-semibold text-foreground">{totalProfissionais}</span>{" "}
+                      {totalProfissionais === 1 ? "profissional" : "profissionais"} · {entradas.length} cards
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-sm font-semibold text-foreground">{entradas.length}</span> de{" "}
+                      {profissionais.length} {profissionais.length === 1 ? "profissional" : "profissionais"}
+                    </>
+                  )}
+                </span>
+              )}
+              <SeletorModo value={modo} onChange={trocarModo} destaque />
+            </div>
+          </div>
+          <div className="px-3 pb-3">
+            <BarraAlfabeto embutida value={letra} disponiveis={letrasDisponiveis} onChange={v => { setLetra(v); setPagina(1) }} />
+          </div>
+        </div>
+      )}
+
       {error && (
         <div role="alert" className="mb-4 flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
@@ -324,18 +357,15 @@ export function ProfissionaisCadastro() {
       )}
 
       {vazio ? (
-        <div className="mx-auto flex max-w-xl flex-col items-center gap-3 rounded-2xl border border-dashed border-border bg-card px-6 py-14 text-center">
-          <CloudDownload className="h-9 w-9 text-muted-foreground" aria-hidden="true" />
-          <h2 className="text-lg font-bold text-foreground">Nenhum profissional cadastrado ainda</h2>
-          <p className="text-sm text-muted-foreground">
-            Os profissionais do TiTa chegam pela carga diária (04:00) ou em Administração → Carregar do TiTa —
-            nome, CPF, celular, CBO e registro vêm junto. Quem ainda não está no TiTa entra por &quot;Novo profissional&quot;.
-          </p>
-        </div>
+        <EstadoVazio
+          Icone={CloudDownload}
+          titulo="Nenhum profissional cadastrado ainda"
+          texto={<>Os profissionais do TiTa chegam pela carga diária (04:00) ou em Administração → Carregar do TiTa —
+            nome, CPF, celular, CBO e registro vêm junto. Quem ainda não está no TiTa entra por &quot;Novo profissional&quot;.</>}
+          className="mx-auto max-w-xl"
+        />
       ) : (
         <>
-          <BarraAlfabeto value={letra} disponiveis={letrasDisponiveis} onChange={v => { setLetra(v); setPagina(1) }} rotuloTodos="TUDO" />
-
           {loading ? (
             <GridEsqueleto />
           ) : entradas.length === 0 ? (
@@ -349,7 +379,7 @@ export function ProfissionaisCadastro() {
                     : "Nenhum profissional neste recorte."}
             </p>
           ) : modo === "lista" ? (
-            <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+            <div className="overflow-hidden rounded-xl border border-border/70 bg-card shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
               <div className={`hidden gap-4 border-b border-border bg-muted/50 px-4 py-2.5 text-xs font-semibold text-muted-foreground md:grid ${COLUNAS_LISTA}`} aria-hidden="true">
                 <span>Profissional</span>
                 <span>ID</span>
@@ -388,28 +418,20 @@ export function ProfissionaisCadastro() {
             </div>
           )}
 
-          {!loading && entradas.length > 0 && (
-            <div className="mt-4 flex flex-col items-center gap-3 sm:grid sm:grid-cols-3 sm:items-center">
-              <p className="text-xs text-muted-foreground sm:justify-self-start" aria-live="polite">
-                Mostrando {inicio + 1}–{Math.min(inicio + POR_PAGINA, entradas.length)} de {entradas.length}{" "}
-                {ordem === "terapia"
-                  ? `cards · ${totalProfissionais} ${totalProfissionais === 1 ? "profissional" : "profissionais"}`
-                  : entradas.length === 1 ? "profissional" : "profissionais"}
-              </p>
-              {totalPaginas > 1 && (
-                <nav className="flex items-center gap-2 sm:col-start-2 sm:justify-self-center" aria-label="Paginação de profissionais">
-                  <button type="button" onClick={() => irPara(paginaAtual - 1)} disabled={paginaAtual <= 1}
-                    className={`inline-flex items-center gap-1 rounded-md border border-border px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted disabled:opacity-40 ${foco}`}>
-                    <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" /> Anterior
-                  </button>
-                  <span className="text-xs text-muted-foreground">Página {paginaAtual} de {totalPaginas}</span>
-                  <button type="button" onClick={() => irPara(paginaAtual + 1)} disabled={paginaAtual >= totalPaginas}
-                    className={`inline-flex items-center gap-1 rounded-md border border-border px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted disabled:opacity-40 ${foco}`}>
-                    Próxima <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
-                  </button>
-                </nav>
-              )}
-            </div>
+          {!loading && totalPaginas > 1 && (
+            <nav className="mt-4 flex items-center justify-center gap-2" aria-label="Paginação de profissionais">
+              <button type="button" onClick={() => irPara(paginaAtual - 1)} disabled={paginaAtual <= 1} className={`${btnSecundario} min-h-11 sm:min-h-0`}>
+                <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />
+                Anterior
+              </button>
+              <span className="text-xs tabular-nums text-muted-foreground">
+                Página {paginaAtual} de {totalPaginas} · {inicio + 1}–{Math.min(inicio + POR_PAGINA, entradas.length)}
+              </span>
+              <button type="button" onClick={() => irPara(paginaAtual + 1)} disabled={paginaAtual >= totalPaginas} className={`${btnSecundario} min-h-11 sm:min-h-0`}>
+                Próxima
+                <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+              </button>
+            </nav>
           )}
         </>
       )}
@@ -442,83 +464,36 @@ function CabecalhoGrupo({ nome, cor, total }: { nome: string | null; cor: string
   )
 }
 
-/** "Ordenar: Nome / Terapia / Tom da cor" — escolha única. */
+/** "Ordenar: Nome / Terapia / Tom da cor" — escolha única, mesmo gatilho dos filtros. */
 function OrdenarPor({ value, onChange }: { value: Ordem; onChange: (v: Ordem) => void }) {
-  const [aberto, setAberto] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!aberto) return
-    const fora = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setAberto(false) }
-    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setAberto(false) }
-    document.addEventListener("mousedown", fora)
-    document.addEventListener("keydown", esc)
-    return () => { document.removeEventListener("mousedown", fora); document.removeEventListener("keydown", esc) }
-  }, [aberto])
-
   return (
-    <div ref={ref} className="relative shrink-0">
-      <button type="button" onClick={() => setAberto(a => !a)} aria-expanded={aberto} aria-haspopup="listbox"
-        title="Ordenar" aria-label={`Ordenar: ${ORDENS.find(o => o.valor === value)?.rotulo}`}
-        className={`inline-flex h-9 items-center gap-2 whitespace-nowrap rounded-md border border-border bg-card px-3 text-sm font-semibold text-foreground hover:bg-muted ${foco}`}>
-        <ArrowDownUp className="h-4 w-4 shrink-0" aria-hidden />
-        <span><span className="hidden min-[1680px]:inline">Ordenar:&nbsp;</span>{ORDENS.find(o => o.valor === value)?.rotulo}</span>
-      </button>
-      {aberto && (
-        <div role="listbox" aria-label="Ordenar profissionais" className="absolute right-0 top-[calc(100%+4px)] z-[100] w-44 rounded-md border border-border bg-popover p-1 shadow-lg">
-          {ORDENS.map(o => (
-            <button key={o.valor} type="button" role="option" aria-selected={value === o.valor}
-              onClick={() => { onChange(o.valor); setAberto(false) }}
-              className={`flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted ${foco}`}>
-              {o.rotulo}
-              {value === o.valor && <Check className="h-4 w-4 shrink-0 text-primary" aria-hidden />}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+    <PopoverFiltro
+      icone={ArrowDownUp}
+      nome="Ordenar"
+      valor={ORDENS.find(o => o.valor === value)?.rotulo ?? ""}
+      rotuloPainel="Ordenar profissionais"
+      larguraPainel="w-48"
+      unico
+    >
+      {ORDENS.map(o => (
+        <OpcaoFiltro key={o.valor} marcado={value === o.valor} onAlternar={() => onChange(o.valor)}>
+          <span className="flex-1">{o.rotulo}</span>
+        </OpcaoFiltro>
+      ))}
+    </PopoverFiltro>
   )
 }
 
 function FiltroSituacao({ value, onChange }: { value: Set<SituacaoFiltro>; onChange: (v: Set<SituacaoFiltro>) => void }) {
-  const [aberto, setAberto] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!aberto) return
-    const fora = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setAberto(false) }
-    document.addEventListener("mousedown", fora)
-    return () => document.removeEventListener("mousedown", fora)
-  }, [aberto])
-
-  const alternar = (s: SituacaoFiltro) => {
-    const n = new Set(value)
-    if (n.has(s)) n.delete(s)
-    else n.add(s)
-    onChange(n)
-  }
   const resumo = value.size === 0 ? "Nenhuma" : value.size === SITUACOES.length ? "Todos" : SITUACOES.filter(s => value.has(s.valor)).map(s => s.rotulo).join(", ")
-
   return (
-    <div ref={ref} className="relative shrink-0">
-      <button type="button" onClick={() => setAberto(a => !a)} aria-expanded={aberto}
-        title="Situação" aria-label={`Situação: ${resumo}`}
-        className={`inline-flex h-9 items-center gap-2 whitespace-nowrap rounded-md border border-border bg-card px-3 text-sm font-semibold text-foreground hover:bg-muted ${foco}`}>
-        <ListFilter className="h-4 w-4 shrink-0" aria-hidden="true" />
-        <span><span className="hidden min-[1680px]:inline">Situação:&nbsp;</span>{resumo}</span>
-      </button>
-      {aberto && (
-        <div role="listbox" aria-label="Filtrar por situação" className="absolute left-0 top-[calc(100%+4px)] z-[100] w-44 rounded-md border border-border bg-popover p-1 shadow-lg">
-          {SITUACOES.map(s => (
-            <button key={s.valor} type="button" role="option" aria-selected={value.has(s.valor)} onClick={() => alternar(s.valor)}
-              className={`flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted ${foco}`}>
-              {s.rotulo}
-              {value.has(s.valor) && <Check className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+    <PopoverFiltro icone={ListFilter} nome="Situação" valor={resumo} rotuloPainel="Filtrar por situação" larguraPainel="w-48">
+      {SITUACOES.map(s => (
+        <OpcaoFiltro key={s.valor} marcado={value.has(s.valor)} onAlternar={() => onChange(alternarEm(value, s.valor))}>
+          <span className="flex-1">{s.rotulo}</span>
+        </OpcaoFiltro>
+      ))}
+    </PopoverFiltro>
   )
 }
 
@@ -625,7 +600,7 @@ const LinhaProfissional = memo(function LinhaProfissional({ linha }: { linha: Li
         <div className="flex min-w-0 items-center gap-3">
           <AvatarProfissional icone={principal?.icone ?? null} fotoPath={prof.foto_path} cor={corDoCatalogo(principal)} tamanho="sm" inativo={!prof.ativo} />
           <div className="min-w-0">
-            <span className="block truncate font-medium text-primary group-hover:underline" title={prof.nome}>{prof.nome}</span>
+            <span className="block break-words font-medium text-primary group-hover:underline">{prof.nome}</span>
             <p className="mt-0.5 truncate text-xs text-muted-foreground md:hidden">
               ID {idExibicaoProfissional(prof)}{terapias[0] ? ` · ${terapias[0].nome}` : ""}
             </p>

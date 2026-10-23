@@ -1,9 +1,12 @@
 "use client"
 
 import { useMemo, useState } from "react"
+import toast from "react-hot-toast"
 import { CalendarClock, Check, CircleAlert, Loader2, Palette, Plus, Sparkles, Undo2 } from "lucide-react"
+import { btnPrimario, btnSecundario, selo } from "@/components/cronograma/grade/estilo"
 import { MultiSearchCombobox } from "@/components/cronograma/ui/MultiSearchCombobox"
-import { CabecalhoPastel, SecaoPastel, avisoFeito, tom } from "@/components/ui/pastel/pecas"
+import { foco } from "@/components/cadastros/pacientes/ui/campos"
+import { CabecalhoSecao, EstadoVazio } from "@/components/ui/padrao"
 import type { CadastroTerapia } from "@/types/terapia"
 import type { Profissional, TerapiaDoProfissional } from "@/types/profissional"
 import { estiloCor } from "./pecas"
@@ -11,7 +14,8 @@ import { estiloCor } from "./pecas"
 // Aba Terapias: o que o profissional pode prestar (a disponibilidade só oferece
 // estas) e o que a grade do TiTa mostra que ele presta. A lista é da equipe — a
 // importação só a semeia uma vez —, então terapia nova na grade aparece aqui
-// como "só no TiTa", com o botão para habilitar.
+// como "só no TiTa", com o botão para habilitar. O pincel de cada terapia
+// escolhe a cor do card do profissional.
 
 export function AbaTerapias({
   prof,
@@ -53,7 +57,7 @@ export function AbaTerapias({
     setSalvando(false)
     if (ok) {
       setRascunho(null)
-      avisoFeito("Terapias salvas")
+      toast.success("Terapias salvas")
     }
   }
 
@@ -62,117 +66,117 @@ export function AbaTerapias({
   const focalId = terapias[0]?.terapiaId ?? null
 
   return (
-    <div className="space-y-5">
-      <SecaoPastel titulo="ter-hab">
-        <CabecalhoPastel
-          id="ter-hab"
-          titulo="Terapias habilitadas"
-          t="rosa"
-          Icone={Sparkles}
-          apoio="Só estas podem ser escolhidas na disponibilidade"
-          ajuda={[
-            { t: "rosa", Icone: Sparkles, texto: "Habilitada = o profissional tem a formação e pode prestar." },
-            { t: "amber", Icone: CalendarClock, texto: "“Só no TiTa” = aparece na grade, mas ainda não foi habilitada aqui." },
-            { t: "aco", Icone: Palette, texto: "A estrela escolhe qual cor pinta o card do profissional." },
-          ]}
-          direita={
-            mudou ? (
-              <div className="flex gap-2">
-                <button type="button" onClick={() => setRascunho(null)} className={`${tom("cinza")} pp-btn pp-btn-suave`} disabled={salvando}>
-                  <Undo2 className="h-4 w-4" aria-hidden /> Desfazer
-                </button>
-                <button type="button" onClick={() => salvar([...selecionadas])} className={`${tom("verde")} pp-btn`} disabled={salvando}>
-                  {salvando ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Check className="h-4 w-4" aria-hidden />} Salvar
-                </button>
-              </div>
-            ) : undefined
-          }
+    <section aria-labelledby="ter-hab" className="rounded-lg border border-border bg-card px-4 py-4">
+      <CabecalhoSecao
+        id="ter-hab"
+        titulo="Terapias habilitadas"
+        apoio="Só estas podem ser escolhidas na disponibilidade"
+        rotuloAjuda="Sobre as terapias"
+        ajuda={[
+          { Icone: Sparkles, texto: "Habilitada = o profissional tem a formação e pode prestar.", tone: "green" },
+          { Icone: CalendarClock, texto: "“Só no TiTa” = aparece na grade, mas ainda não foi habilitada aqui.", tone: "amber" },
+          { Icone: Palette, texto: "O pincel escolhe qual cor pinta o card do profissional." },
+        ]}
+        direita={
+          mudou ? (
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setRascunho(null)} className={btnSecundario} disabled={salvando}>
+                <Undo2 className="h-4 w-4" aria-hidden /> Desfazer
+              </button>
+              <button type="button" onClick={() => salvar([...selecionadas])} className={btnPrimario} disabled={salvando}>
+                {salvando ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Check className="h-4 w-4" aria-hidden />} Salvar
+              </button>
+            </div>
+          ) : undefined
+        }
+      />
+      <div className="max-w-xl">
+        <MultiSearchCombobox
+          opcoes={opcoes}
+          selecionados={selecionadas}
+          onToggle={alternar}
+          ariaLabel="Terapias habilitadas"
+          nomePlural="terapias"
+          placeholder="Nenhuma terapia habilitada"
+          resumoCompleto
         />
-        <div className="max-w-xl">
-          <MultiSearchCombobox
-            opcoes={opcoes}
-            selecionados={selecionadas}
-            onToggle={alternar}
-            ariaLabel="Terapias habilitadas"
-            nomePlural="terapias"
-            placeholder="Nenhuma terapia habilitada"
-            resumoCompleto
-          />
-        </div>
+      </div>
 
-        {terapias.length > 0 && (
-          <ul className="mt-5 grid grid-cols-1 gap-3 @xl:grid-cols-2 @4xl:grid-cols-3">
-            {terapias.map(t => {
-              const ehFocal = t.terapiaId !== null && t.terapiaId === focalId
-              return (
-                <li
-                  key={t.nome}
-                  style={estiloCor(t.cor)}
-                  className="relative flex items-center gap-3 rounded-[20px] bg-[var(--pp-surface)] p-3.5 shadow-[var(--pp-sombra),inset_0_0_0_1px_var(--pp-border)]"
-                >
-                  <span className="h-11 w-11 shrink-0 rounded-[14px] bg-[var(--t-cor)] shadow-[inset_0_0_0_1px_rgba(0,0,0,0.08)]" aria-hidden />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[15px] font-extrabold" title={t.nome}>{t.nome}</p>
-                    <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs font-semibold text-[var(--pp-ink-muted)]">
-                      {t.habilitada ? (
-                        <span className={`${tom("verde")} inline-flex items-center gap-1 text-[var(--c-tinta)]`}><Check className="h-3 w-3" aria-hidden /> Habilitada</span>
-                      ) : t.terapiaId === null ? (
-                        <span className={`${tom("vermelho")} inline-flex items-center gap-1 text-[var(--c-tinta)]`}><CircleAlert className="h-3 w-3" aria-hidden /> Fora do catálogo</span>
-                      ) : (
-                        <span className={`${tom("amber")} inline-flex items-center gap-1 text-[var(--c-tinta)]`}><CalendarClock className="h-3 w-3" aria-hidden /> Só no TiTa</span>
-                      )}
-                      {t.horariosGrade > 0 && <span>· {t.horariosGrade} horário{t.horariosGrade === 1 ? "" : "s"} na grade</span>}
-                    </p>
-                  </div>
-                  {!t.habilitada && t.terapiaId !== null && (
-                    <button
-                      type="button"
-                      onClick={() => salvar([...new Set([...habilitadas, t.terapiaId as number])])}
-                      disabled={salvando || mudou}
-                      title={mudou ? "Salve ou desfaça a lista acima primeiro" : `Habilitar ${t.nome}`}
-                      className={`${tom("aco")} pp-btn pp-btn-suave !min-h-9 !px-3 text-[13px]`}
-                    >
-                      <Plus className="h-4 w-4" aria-hidden /> Habilitar
-                    </button>
-                  )}
-                  {t.terapiaId !== null && (
-                    <button
-                      type="button"
-                      aria-pressed={ehFocal}
-                      onClick={async () => {
-                        if (ehFocal || t.terapiaId === null) return
-                        if (await onDefinirFocal(t.terapiaId)) avisoFeito(`Card agora em ${t.nome}`)
-                      }}
-                      title={ehFocal ? "Esta é a cor do card" : `Usar ${t.nome} como cor do card`}
-                      aria-label={ehFocal ? `${t.nome} é a cor do card` : `Usar ${t.nome} como cor do card`}
-                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors ${
-                        ehFocal
-                          ? "bg-[var(--t-suave)] text-[var(--t-tinta)] shadow-[inset_0_0_0_2px_var(--t-linha)] dark:text-[var(--t-tinta-escuro)]"
-                          : "text-[var(--pp-ink-muted)] hover:bg-[var(--pp-muted)]"
-                      }`}
-                    >
-                      <Palette className="h-4 w-4" aria-hidden />
-                    </button>
-                  )}
-                </li>
-              )
-            })}
-          </ul>
-        )}
+      {terapias.length > 0 && (
+        <ul className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+          {terapias.map(t => {
+            const ehFocal = t.terapiaId !== null && t.terapiaId === focalId
+            return (
+              <li
+                key={t.nome}
+                style={estiloCor(t.cor)}
+                className={`flex items-center gap-3 rounded-lg border px-3 py-3 ${ehFocal ? "border-foreground/30" : "border-border"}`}
+              >
+                {/* A amostra é a cor da terapia — a única cor do cartão. */}
+                <span className="h-9 w-9 shrink-0 rounded-md bg-[var(--t-cor)] ring-1 ring-black/10" aria-hidden />
+                <div className="min-w-0 flex-1">
+                  <p className="break-words text-md font-semibold text-foreground">{t.nome}</p>
+                  <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                    {t.habilitada ? (
+                      <span className={selo("green")}><Check className="h-3 w-3" aria-hidden /> Habilitada</span>
+                    ) : t.terapiaId === null ? (
+                      <span className={selo("red")}><CircleAlert className="h-3 w-3" aria-hidden /> Fora do catálogo</span>
+                    ) : (
+                      <span className={selo("amber")}><CalendarClock className="h-3 w-3" aria-hidden /> Só no TiTa</span>
+                    )}
+                    {t.horariosGrade > 0 && <span>{t.horariosGrade} horário{t.horariosGrade === 1 ? "" : "s"} na grade</span>}
+                    {ehFocal && <span>· cor do card</span>}
+                  </p>
+                </div>
+                {!t.habilitada && t.terapiaId !== null && (
+                  <button
+                    type="button"
+                    onClick={() => salvar([...new Set([...habilitadas, t.terapiaId as number])])}
+                    disabled={salvando || mudou}
+                    title={mudou ? "Salve ou desfaça a lista acima primeiro" : `Habilitar ${t.nome}`}
+                    className={btnSecundario}
+                  >
+                    <Plus className="h-4 w-4" aria-hidden /> Habilitar
+                  </button>
+                )}
+                {t.terapiaId !== null && (
+                  <button
+                    type="button"
+                    aria-pressed={ehFocal}
+                    onClick={async () => {
+                      if (ehFocal || t.terapiaId === null) return
+                      if (await onDefinirFocal(t.terapiaId)) toast.success(`Card agora em ${t.nome}`)
+                    }}
+                    title={ehFocal ? "Esta é a cor do card" : `Usar ${t.nome} como cor do card`}
+                    aria-label={ehFocal ? `${t.nome} é a cor do card` : `Usar ${t.nome} como cor do card`}
+                    className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border transition-colors ${foco} ${
+                      ehFocal ? "border-foreground/30 bg-muted text-foreground" : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                    }`}
+                  >
+                    <Palette className="h-4 w-4" aria-hidden />
+                  </button>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+      )}
 
-        {terapias.length === 0 && (
-          <p className="mt-5 rounded-[20px] bg-[var(--pp-muted)] px-4 py-6 text-center text-sm font-semibold text-[var(--pp-ink-muted)]">
-            Nenhuma terapia ainda. Escolha acima o que {prof.nome.split(" ")[0]} pode prestar.
-          </p>
-        )}
+      {terapias.length === 0 && (
+        <EstadoVazio
+          Icone={Sparkles}
+          titulo="Nenhuma terapia ainda"
+          texto={`Escolha acima o que ${prof.nome.split(" ")[0]} pode prestar.`}
+          className="mt-4"
+        />
+      )}
 
-        {(soNaTita.length > 0 || semCatalogo.length > 0) && (
-          <p className="mt-4 text-xs font-semibold text-[var(--pp-ink-muted)]">
-            {soNaTita.length > 0 && `${soNaTita.length} terapia${soNaTita.length === 1 ? "" : "s"} aparece${soNaTita.length === 1 ? "" : "m"} na grade do TiTa sem estar habilitada${soNaTita.length === 1 ? "" : "s"}. `}
-            {semCatalogo.length > 0 && `${semCatalogo.map(t => t.nome).join(", ")} não existe no Cadastro de Terapias — cadastre para poder habilitar.`}
-          </p>
-        )}
-      </SecaoPastel>
-    </div>
+      {(soNaTita.length > 0 || semCatalogo.length > 0) && (
+        <p className="mt-4 text-xs text-muted-foreground">
+          {soNaTita.length > 0 && `${soNaTita.length} terapia${soNaTita.length === 1 ? "" : "s"} aparece${soNaTita.length === 1 ? "" : "m"} na grade do TiTa sem estar habilitada${soNaTita.length === 1 ? "" : "s"}. `}
+          {semCatalogo.length > 0 && `${semCatalogo.map(t => t.nome).join(", ")} não existe no Cadastro de Terapias — cadastre para poder habilitar.`}
+        </p>
+      )}
+    </section>
   )
 }
