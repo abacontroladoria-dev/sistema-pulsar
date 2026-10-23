@@ -1,7 +1,7 @@
 import { timingSafeEqual } from "crypto"
 import { after, NextResponse } from "next/server"
 import { supabaseService } from "@/lib/supabase/service"
-import { executarCargaTita } from "@/services/tita/cargaTita.server"
+import { encerrarCargasAbandonadas, executarCargaTita } from "@/services/tita/cargaTita.server"
 
 // Rotina diária das 04:00 (Brasília): "Carregar o Pulsar segundo o TiTa" sem
 // ninguém clicar. Chamada pelo pg_cron (docs/ATIVAR_CARGA_TITA_DIARIA_1_SEGREDO.sql e _2_LIGAR.sql) com
@@ -30,12 +30,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false }, { status: 401 })
   }
 
-  // Uma carga por vez: se outra começou há menos de 3 horas e não terminou, não empilha.
+  // Uma carga por vez: a que morreu no meio é encerrada; se outra está viva, não empilha.
+  await encerrarCargasAbandonadas(supabaseService)
   const { data: rodando } = await supabaseService
     .from("tita_cargas")
-    .select("id, iniciado_em")
+    .select("id")
     .eq("situacao", "rodando")
-    .gte("iniciado_em", new Date(Date.now() - 3 * 3600_000).toISOString())
     .limit(1)
   if (rodando?.length) return NextResponse.json({ ok: false, mensagem: "Já há uma carga rodando." }, { status: 409 })
 

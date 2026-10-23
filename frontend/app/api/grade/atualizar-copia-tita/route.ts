@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server"
 import { carregarPermissoesEfetivas } from "@/lib/permissions/carregar"
 import { temPermissao } from "@/lib/permissions/resolver"
 import { checkRateLimit } from "@/lib/rate-limit"
+import { pedirCopiaGradeTita } from "@/services/tita/copiaGrade.server"
 
 // "Atualizar a cópia do TiTa agora" — pede ao sync (Edge Function
 // sync-grade-csv, modo "grade") uma leitura nova da grade do TiTa para a janela.
@@ -47,28 +48,7 @@ export async function POST(req: Request) {
   const dias = (Date.parse(corpo.ate) - Date.parse(corpo.de)) / 86_400_000
   if (dias > 120) return negar(400, "Período longo demais (máximo 120 dias).")
 
-  const url = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL
-  const chave = process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!url || !chave) return negar(500, "Servidor sem a configuração do Supabase.")
-
-  try {
-    // A primeira fatia responde em até ~30 s e encadeia as seguintes. Se a
-    // resposta demorar mais, o pedido já foi feito: a tela acompanha pelo frescor.
-    const r = await fetch(`${url}/functions/v1/sync-grade-csv`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${chave}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ modo: "grade", data_inicio: corpo.de, data_fim: corpo.ate }),
-      signal: AbortSignal.timeout(90_000),
-    })
-    if (!r.ok) {
-      console.error("[atualizar-copia-tita] sync respondeu", r.status, (await r.text()).slice(0, 300))
-      return negar(502, "O sync do TiTa recusou o pedido. Tente de novo em alguns minutos.")
-    }
-  } catch (e) {
-    if (!(e instanceof Error && e.name === "TimeoutError")) {
-      console.error("[atualizar-copia-tita]", e)
-      return negar(502, "Não foi possível falar com o sync do TiTa.")
-    }
-  }
+  const r = await pedirCopiaGradeTita(corpo.de, corpo.ate)
+  if (!r.ok) return negar(502, r.mensagem)
   return NextResponse.json({ ok: true })
 }
