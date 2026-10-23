@@ -10,7 +10,7 @@ import { normTxt } from "@/lib/cronograma/constants"
 import { compararTom, luminancia } from "@/lib/cadastros/terapias"
 import { IconeTerapia } from "@/lib/cadastros/iconesTerapia"
 import { atualizarTerapia, criarTerapia } from "@/services/cadastroTerapias.service"
-import { TIPO_TERAPIA_LABEL, type CadastroTerapia, type CadastroTerapiaEdit, type TipoTerapia } from "@/types/terapia"
+import { MODALIDADE_TERAPIA_LABEL, TIPO_TERAPIA_LABEL, type CadastroTerapia, type CadastroTerapiaEdit, type TipoTerapia } from "@/types/terapia"
 import { TerapiaModal } from "./terapias/TerapiaModal"
 
 type FiltroTipo = "todos" | TipoTerapia
@@ -269,6 +269,18 @@ function CartaoTerapia({
             <span className="font-mono">{terapia.cor_hex}</span>
             <span aria-hidden="true">·</span>
             {TIPO_TERAPIA_LABEL[terapia.tipo]}
+            {terapia.modalidade !== "clinica" && (
+              <>
+                <span aria-hidden="true">·</span>
+                <span className="whitespace-nowrap">{MODALIDADE_TERAPIA_LABEL[terapia.modalidade]}</span>
+              </>
+            )}
+            {!terapia.exige_presenca_fila && (
+              <>
+                <span aria-hidden="true">·</span>
+                <span title="Não passa pela solicitação de autorização" className="whitespace-nowrap">sem fila</span>
+              </>
+            )}
             {terapia.tita_terapia_id && (
               <>
                 <span aria-hidden="true">·</span>

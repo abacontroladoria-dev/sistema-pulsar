@@ -8,7 +8,10 @@ import { normTxt } from "@/lib/cronograma/constants"
 import { COR_NEUTRA } from "@/lib/cadastros/terapias"
 import { ICONES_TERAPIA, IconeTerapia } from "@/lib/cadastros/iconesTerapia"
 import { estiloTons } from "@/lib/cadastros/tonsTerapia"
-import { TIPO_TERAPIA_LABEL, type CadastroTerapia, type CadastroTerapiaEdit, type TipoTerapia } from "@/types/terapia"
+import {
+  MODALIDADE_TERAPIA_LABEL, TIPO_TERAPIA_LABEL,
+  type CadastroTerapia, type CadastroTerapiaEdit, type ModalidadeTerapia, type TipoTerapia,
+} from "@/types/terapia"
 
 export function TerapiaModal({
   terapia,
@@ -28,6 +31,8 @@ export function TerapiaModal({
     tipo: terapia?.tipo ?? "terapia",
     cor_hex: terapia?.cor_hex ?? COR_NEUTRA,
     icone: terapia?.icone ?? null,
+    modalidade: terapia?.modalidade ?? "clinica",
+    exige_presenca_fila: terapia?.exige_presenca_fila ?? true,
   })
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
@@ -137,6 +142,43 @@ export function TerapiaModal({
             ))}
           </div>
         </div>
+
+        <div>
+          <span className={rotulo}>Modalidade</span>
+          <div className="mt-1 inline-flex rounded-md border border-border p-0.5" role="radiogroup" aria-label="Modalidade">
+            {(Object.keys(MODALIDADE_TERAPIA_LABEL) as ModalidadeTerapia[]).map(m => (
+              <button
+                key={m}
+                type="button"
+                role="radio"
+                aria-checked={form.modalidade === m}
+                onClick={() => setForm(f => ({ ...f, modalidade: m }))}
+                className={`rounded px-3 py-1 text-sm font-medium ${
+                  form.modalidade === m ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted/50"
+                }`}
+              >
+                {MODALIDADE_TERAPIA_LABEL[m]}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">Só Clínica tem unidade e entra no rateio por unidade. Vale mais que a sala da sessão.</p>
+        </div>
+
+        <label className="flex items-start gap-2.5">
+          <input
+            type="checkbox"
+            checked={form.exige_presenca_fila}
+            onChange={e => setForm(f => ({ ...f, exige_presenca_fila: e.target.checked }))}
+            className="mt-0.5 h-4 w-4 rounded border-border"
+          />
+          <span>
+            <span className="text-sm font-medium text-foreground">Presença pela solicitação de autorização</span>
+            <span className="block text-xs text-muted-foreground">
+              Desmarque para terapia fora do ROL ou fora do ciclo de autorização: ela não passa pela /solicitar, e a
+              conferência não acusa falta de presença nela.
+            </span>
+          </span>
+        </label>
 
         <CampoCor
           label="Cor (hexadecimal)"

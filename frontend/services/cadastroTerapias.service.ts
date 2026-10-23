@@ -6,20 +6,22 @@ import type { CadastroTerapia, CadastroTerapiaEdit } from "@/types/terapia"
 // Ver supabase/migrations/20261006120000_cadastro_terapias.sql.
 
 const TABLE = "cadastro_terapias"
-const COLUNAS = "id, nome, tipo, cor_hex, tita_terapia_id, icone, ativo, atualizado_em"
+const COLUNAS = "id, nome, tipo, cor_hex, tita_terapia_id, icone, modalidade, exige_presenca_fila, ativo, atualizado_em"
 const COLUNAS_SEM_ICONE = "id, nome, tipo, cor_hex, tita_terapia_id, ativo, atualizado_em"
 
-// O localhost usa o banco de produção: enquanto a migration 20261006150000
-// (coluna `icone`) não estiver aplicada, a tela segue sem ícone em vez de quebrar.
+// O localhost usa o banco de produção: enquanto as migrations 20261006150000
+// (coluna `icone`) e 20261023180000 (`modalidade`, `exige_presenca_fila`) não
+// estiverem aplicadas, a tela segue sem essas colunas em vez de quebrar.
 let semColunaIcone = false
 const colunas = () => (semColunaIcone ? COLUNAS_SEM_ICONE : COLUNAS)
-const semIcone = <T extends { icone?: string | null }>(input: T) => {
+const semIcone = <T extends { icone?: string | null; modalidade?: string; exige_presenca_fila?: boolean }>(input: T) => {
   if (!semColunaIcone) return input
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { icone, ...resto } = input
+  const { icone, modalidade, exige_presenca_fila, ...resto } = input
   return resto
 }
-const comIconeNulo = (linhas: unknown[]) => linhas.map(l => ({ icone: null, ...(l as object) }))
+const comIconeNulo = (linhas: unknown[]) =>
+  linhas.map(l => ({ icone: null, modalidade: "clinica", exige_presenca_fila: true, ...(l as object) }))
 
 /** Erro com aviso próprio para a tela: a tabela ainda não existe no banco. */
 export class MigrationPendenteError extends Error {
