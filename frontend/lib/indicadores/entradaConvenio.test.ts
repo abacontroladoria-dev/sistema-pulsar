@@ -120,6 +120,15 @@ describe("prazo e ação em linguagem de gente", () => {
     expect(linkDaEtapa(paciente("X", { links: { aut: "a1" } }, { etapa: "E4" })).id).toBe("a1")
     expect(linkDaEtapa(paciente("X", { links: null }))).toEqual(CANAL_CHAT_AUTORIZACAO)
     expect(linkDaEtapa(paciente("X", { links: {}, aberto: null }, { etapa: "E0", setor: "Gestão" }))).toEqual(CANAL_CHAT_AUTORIZACAO)
+
+    // Se tiver link específico da mensagem do chat na etapa E0, usa ele direto
+    const comChatMsg = paciente("X", { links: { chat: "msg_999" } }, { etapa: "E0", setor: "Gestão" })
+    expect(linkDaEtapa(comChatMsg)).toEqual({
+      chave: "chat",
+      rotulo: "Chat",
+      id: "msg_999",
+      url: "https://app.clickup.com/9011600909/chat/r/8cj47gd-16071/t/msg_999",
+    })
   })
 
   it("avisos de registro aceitam texto e objeto, sem os resolvidos", () => {

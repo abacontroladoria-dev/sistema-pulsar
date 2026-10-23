@@ -309,8 +309,21 @@ export function linkClickUp(taskId: string): string {
   return `https://app.clickup.com/t/${encodeURIComponent(taskId)}`
 }
 
-export function linkCanalClickUp(channelId: string): string {
-  return `https://app.clickup.com/9011600909/chat/r/${encodeURIComponent(channelId)}`
+/**
+ * Monta o link para o chat do ClickUp.
+ * Se for o canal direto (ex.: '8cj47gd-16071'), abre o canal.
+ * Se for o ID de uma mensagem específica ou 'canal/t/mensagem', abre direto na mensagem.
+ */
+export function linkCanalClickUp(identifier: string): string {
+  const limpo = identifier.trim().replace(/^\/+|\/+$/g, "")
+  if (limpo === "8cj47gd-16071" || limpo.startsWith("8cj47gd-")) {
+    if (limpo.includes("/t/")) {
+      return `https://app.clickup.com/9011600909/chat/r/${limpo}`
+    }
+    return `https://app.clickup.com/9011600909/chat/r/${encodeURIComponent(limpo)}`
+  }
+  // Se for apenas o message_id, direciona para a mensagem dentro do canal de autorização
+  return `https://app.clickup.com/9011600909/chat/r/8cj47gd-16071/t/${encodeURIComponent(limpo)}`
 }
 
 const ehIdValido = (id: unknown): id is string => typeof id === "string" && !!id.trim() && id !== "TASK_ID"
@@ -333,14 +346,22 @@ export function idFormulario(p: PacienteEntrada): string | null {
 }
 
 /**
- * Link do ClickUp onde a etapa atual se resolve: tarefa da etapa, primeira
- * tarefa válida ou, quando ainda não há nenhuma task (pedido só no chat, sem
- * formulário aberto), o canal do Chat de autorização.
+ * Link do ClickUp onde a etapa atual se resolve: tarefa da etapa, link direto do chat
+ * (se a etapa for E0 ou não tiver task aberta), primeira tarefa válida ou canal de autorização.
  */
 export function linkDaEtapa(p: PacienteEntrada): { chave: string; rotulo: string; id: string; url: string } {
   const links = linksDoPaciente(p)
   const chave = p.atual ? ACAO_POR_ETAPA[p.atual.etapa]?.link : undefined
-  return links.find(l => l.chave === chave) ?? links[0] ?? CANAL_CHAT_AUTORIZACAO
+  const linkEtapa = links.find(l => l.chave === chave)
+  if (linkEtapa) return linkEtapa
+
+  // Se estiver na etapa E0 ou não tiver task do formulário, prioriza o link direto da mensagem do chat se existir
+  const linkChat = links.find(l => l.chave === "chat")
+  if (linkChat && (!p.atual || p.atual.etapa === "E0" || !p.links?.aut)) {
+    return linkChat
+  }
+
+  return links[0] ?? CANAL_CHAT_AUTORIZACAO
 }
 
 /** Data de hoje (AAAA-MM-DD) no horário de Brasília. */
