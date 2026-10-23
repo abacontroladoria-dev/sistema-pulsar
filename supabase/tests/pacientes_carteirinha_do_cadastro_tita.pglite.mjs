@@ -1,11 +1,13 @@
-// Teste da migration 20261023160000 (carteirinha do paciente = cadastro do TiTa)
+// Teste das migrations 20261023160000 (carteirinha do paciente = cadastro do TiTa)
+// e 20261023170000 ("Não informado" não vale como carteirinha + desfaz o estrago)
 // no PGlite, por cima da importação de pacientes real (20261009100000 →
 // 20261016140000 → 20261016160000).
 //
 // Prova: paciente sem carteirinha no agendamento ganha a do cadastro; a do
 // cadastro prevalece sobre a do agendamento; cadastro sem carteirinha ou cópia
 // velha mantém a do agendamento; carteirinha chega mesmo com o convênio em
-// conflito; o log registra; a migration reroda.
+// conflito; texto sem dígito ("Não informado") não cobre a do agendamento e o
+// estrago da 1ª versão é desfeito pelo log; as migrations rerodam.
 //
 //   mkdir /tmp/pg && cd /tmp/pg && npm i @electric-sql/pglite
 //   cp <repo>/supabase/tests/pacientes_carteirinha_do_cadastro_tita.pglite.mjs /tmp/pg/
@@ -60,12 +62,12 @@ await db.exec(arquivo('20261009100000'))
 await db.exec(`
 insert into public.pacientes (tita_paciente_id, nome, convenio_nome, numero_carteirinha) values
   (1, 'Ana', 'ASSIM Saúde', null), (2, 'Beto', 'ASSIM Saúde', '111'), (3, 'Caio', 'LEVE SAUDE', '333'),
-  (4, 'Dani', 'LEVE SAUDE', '444'), (5, 'Eva', 'ASSIM Saúde', null);
+  (4, 'Dani', 'LEVE SAUDE', '444'), (5, 'Eva', 'ASSIM Saúde', null), (6, 'Gil', 'Particular', '0000');
 -- Agendamento: Ana sem carteirinha; Beto com uma velha; Caio e Dani com a certa.
 insert into public.agenda_tita (paciente_id, paciente_nome, data_atendimento, convenio_id, convenio_nome, numero_carteirinha) values
   (1, 'Ana', current_date, 100, 'ASSIM Saúde', null), (2, 'Beto', current_date, 100, 'ASSIM Saúde', '111'),
   (3, 'Caio', current_date, 200, 'LEVE SAUDE', '333'), (4, 'Dani', current_date, 200, 'LEVE SAUDE', '444'),
-  (5, 'Eva', current_date, 100, 'ASSIM Saúde', null);
+  (5, 'Eva', current_date, 100, 'ASSIM Saúde', null), (6, 'Gil', current_date, 300, 'Particular', '0000');
 `)
 await db.exec(arquivo('20261016140000'))
 await db.exec(arquivo('20261016160000'))
@@ -82,7 +84,8 @@ insert into public.tita_favorecidos_cadastro (tita_favorecido_id, nome, situacao
   (2, 'Beto', 'Ativo', 'ASSIM Saude', false, '222', now()),
   (3, 'Caio', 'Ativo', 'LEVE SAUDE',  false, '', now()),
   (4, 'Dani', 'Ativo', 'LEVE SAUDE',  false, '999', now() - interval '3 days'),
-  (5, 'Eva',  'Ativo', null,          true,  '555', now());
+  (5, 'Eva',  'Ativo', null,          true,  '555', now()),
+  (6, 'Gil',  'Ativo', 'Particular',  false, 'Não informado', now());
 `)
 
 console.log('2. importação')
@@ -96,6 +99,18 @@ ok(await cart(5) === '555', 'Eva: plano em conflito não impede a carteirinha')
 const det = (await um(`select detalhes from public.pacientes_importacoes_log where id = $1`, [r.log_id])).detalhes
 const beto = det.atualizados.find(a => a.nome === 'Beto')
 ok(beto?.mudancas.some(m => m.campo === 'Carteirinha' && m.de === '111' && m.para === '222'), 'log: Beto 111 → 222')
+ok(await cart(6) === 'Não informado', '1ª versão (20261023160000): Gil 0000 → "Não informado" — o estrago de 23/10')
+
+console.log('3. correção 20261023170000')
+await db.query(`update public.pacientes_importacoes_log set iniciado_em = '2026-10-23 17:06:19+00' where id = $1`, [r.log_id])
+const mig2 = arquivo('20261023170000')
+await db.exec(mig2)
+await db.exec(mig2)
+ok(await cart(6) === '0000', 'Gil volta ao valor anterior, tirado do log (e a migration reroda)')
+ok(await cart(2) === '222' && await cart(1) === '73723094402', 'carteirinha de verdade não é desfeita')
+const r2 = (await um(`select public.pacientes_importar_tita('cron') r`)).r
+ok(r2.sucesso && await cart(6) === '0000', 'nova importação: "Não informado" não cobre mais a do agendamento')
+ok(await cart(1) === '73723094402' && await cart(5) === '555', 'nova importação: carteirinha com dígito continua vindo do cadastro')
 
 console.log(falhas ? `\n${falhas} FALHA(S)` : '\nTudo certo.')
 process.exit(falhas ? 1 : 0)
