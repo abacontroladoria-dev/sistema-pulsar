@@ -35,11 +35,11 @@ export default function BolinhaNaoLidas({ n, compacta = false }: { n: number; co
           key={pulsos}
           // A classe (e não `animation` inline) é o que faz o Tailwind emitir
           // o @keyframes ping; o número de ondas vem por cima dela.
-          className="absolute inset-0 animate-ping rounded-full bg-rose-500/70 [animation-iteration-count:3]"
+          className="absolute inset-0 animate-ping motion-reduce:hidden rounded-full bg-destructive/70 [animation-iteration-count:3]"
         />
       )}
       <span
-        className={`relative flex h-full w-full items-center justify-center rounded-full bg-rose-500 px-1 font-bold leading-none text-white ring-2 ring-sidebar tabular-nums ${
+        className={`relative flex h-full w-full items-center justify-center rounded-full bg-destructive px-1 font-bold leading-none text-white ring-2 ring-sidebar tabular-nums ${
           compacta ? 'text-[9px]' : 'text-[11px]'
         }`}
       >
