@@ -44,6 +44,8 @@ type Releitura = { inicio: string; fim: string; desde: string }
 /** O que cada etapa recebe para contar o que está fazendo e saber se deve parar. */
 type Contexto = {
   passo: (texto: string, progresso?: Record<string, unknown>) => Promise<void>
+  /** Aviso de lote (muitos por segundo): grava no máximo a cada 3 s. */
+  lote: (texto: string) => void
   pararPedido: () => Promise<boolean>
   releitura: Releitura | null
 }
@@ -138,8 +140,8 @@ async function etapaDisponibilidade(sb: SupabaseClient, ctx: Contexto): Promise<
   await ctx.passo("Lendo a grade do TiTa das próximas semanas…")
   const { data: catalogo, error } = await sb.from("cadastro_terapias").select("id, nome, ativo")
   if (error) throw error
-  const previa = await prepararPreviaDisponibilidade({ catalogo: catalogo ?? [], cliente: sb, onPasso: t => void ctx.passo(t) })
-  const g = await gravarDisponibilidadeTita(previa, (feitos, total) => void ctx.passo(total ? `Gravando ${feitos} de ${total} lotes…` : "Conferindo…"), sb)
+  const previa = await prepararPreviaDisponibilidade({ catalogo: catalogo ?? [], cliente: sb, onPasso: t => ctx.lote(t) })
+  const g = await gravarDisponibilidadeTita(previa, (feitos, total) => ctx.lote(total ? `Gravando ${feitos} de ${total} lotes…` : "Conferindo…"), sb)
   const imp = await lerImportacao(previa.id, sb)
   const avisos = [
     g.erros ? `${g.erros} profissional(is) não gravado(s). O motivo está em "Ver o que foi trazido".` : null,
@@ -197,7 +199,7 @@ async function etapaAgenda(sb: SupabaseClient, ctx: Contexto): Promise<EtapaCarg
       importacao_id: previa.importacao_id,
     }
   }
-  const a = await aplicarImportacaoCompleta(previa, (feitos, total) => void ctx.passo(total ? `Gravando ${feitos} de ${total} lotes de profissionais…` : "Conferindo…"), true, sb)
+  const a = await aplicarImportacaoCompleta(previa, (feitos, total) => ctx.lote(total ? `Gravando ${feitos} de ${total} lotes de profissionais…` : "Conferindo…"), true, sb)
   return {
     etapa: "agenda",
     situacao: "sucesso",
@@ -285,11 +287,15 @@ export async function executarCargaTita(sb: SupabaseClient, origem: "cron" | "ma
 
   let ultimoPasso = 0
   const ctx: Contexto = {
-    // Os lotes avisam muitas vezes por segundo: grava no máximo a cada 3 s.
+    // O passo de cada etapa sempre grava; só os avisos de lote são limitados.
     passo: async (texto, progresso) => {
-      if (!progresso && Date.now() - ultimoPasso < 3000) return
       ultimoPasso = Date.now()
       await registrar({}, { passo: texto, progresso: progresso ?? null })
+    },
+    lote: texto => {
+      if (Date.now() - ultimoPasso < 3000) return
+      ultimoPasso = Date.now()
+      void registrar({}, { passo: texto, progresso: null })
     },
     pararPedido: async () => {
       if (!id || !comAcompanhamento) return false
